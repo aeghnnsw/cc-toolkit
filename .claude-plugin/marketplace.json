@@ -1,11 +1,11 @@
 {
-  "name": "dev-skills",
+  "name": "cc-skills",
   "owner": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"
   },
   "metadata": {
-    "description": "Development workflow skills for systematic problem-solving",
+    "description": "Custom Claude Code skills for development workflows and scientific content creation",
     "version": "1.0.0"
   },
   "plugins": [
@@ -16,6 +16,15 @@
       "strict": false,
       "skills": [
         "./dev-skills/problem-solving-cycle"
+      ]
+    },
+    {
+      "name": "creator-skills",
+      "description": "Collection of content creation skills for scientific figures and publication-quality materials",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./creator-skills/sci-figure-format"
       ]
     }
   ]
