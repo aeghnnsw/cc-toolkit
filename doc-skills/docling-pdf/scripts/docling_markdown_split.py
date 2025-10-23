@@ -32,65 +32,51 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling_core.types.doc import ImageRefMode
 
 
-def split_markdown_by_page_markers(full_markdown, doc, text_folder):
-    """Split markdown by analyzing content and matching to pages."""
+def split_markdown_by_page_markers(full_markdown, doc, text_folder, images_folder):
+    """Split markdown by page using image markers as reliable page boundaries."""
 
-    # Build a mapping of page content
-    page_contents = {}
+    # Build page->content mapping directly from docling
+    # Use the text attribute directly instead of export_to_text()
+    page_content = {}
     for page_no in range(len(doc.pages)):
-        items = []
+        page_items = []
         for item, level in doc.iterate_items():
             if hasattr(item, 'prov') and item.prov and len(item.prov) > 0:
                 if item.prov[0].page_no == page_no:
-                    # Get text representation
+                    # Try different ways to get text content
+                    text = None
                     if hasattr(item, 'text') and item.text:
-                        items.append(item.text.strip())
-        page_contents[page_no] = items
+                        text = item.text
+                    elif hasattr(item, 'get_text') and callable(item.get_text):
+                        text = item.get_text()
 
-    # Split markdown by trying to match content to pages
+                    if text and text.strip():
+                        page_items.append(text.strip())
+        page_content[page_no] = '\n\n'.join(page_items) if page_items else ""
+
+    # Save each page with its content from docling plus images from full markdown
     lines = full_markdown.split('\n')
-    page_lines = {i: [] for i in range(len(doc.pages))}
-    current_page = 0
 
-    for line in lines:
-        # Check if line contains image reference
-        if '![Image]' in line or '![image]' in line:
-            # Extract image number from path
-            match = re.search(r'image_(\d+)_page_(\d+)', line)
-            if match:
-                page_num = int(match.group(2)) - 1  # Convert to 0-indexed
-                if page_num < len(doc.pages):  # Validate page number
-                    page_lines[page_num].append(line)
-                    continue
-
-        # Try to match line to page content
-        line_stripped = line.strip()
-        if line_stripped:
-            matched = False
-            for page_no, content_items in page_contents.items():
-                for content in content_items:
-                    if line_stripped in content or content in line_stripped:
-                        page_lines[page_no].append(line)
-                        matched = True
-                        break
-                if matched:
-                    break
-
-            if not matched:
-                # Add to current page
-                page_lines[current_page].append(line)
-        else:
-            # Empty line - add to current page
-            if page_lines[current_page]:
-                page_lines[current_page].append(line)
-
-    # Save each page
     for page_no in range(len(doc.pages)):
-        page_markdown = '\n'.join(page_lines[page_no]).strip()
-        if page_markdown:
+        content = page_content.get(page_no, "")
+
+        # Find images for this page from full markdown
+        image_lines = []
+        for line in lines:
+            if f'_page_{page_no + 1:03d}.png)' in line and '![Image]' in line:
+                image_lines.append(line)
+
+        # Combine content and images
+        if content or image_lines:
+            full_page = content
+            if image_lines:
+                full_page += '\n\n' + '\n'.join(image_lines)
+
             md_file = text_folder / f"page_{page_no + 1:03d}.md"
-            md_file.write_text(page_markdown, encoding='utf-8')
-            print(f"   ✓ Saved {md_file.name} ({len(page_markdown)} chars)")
+            md_file.write_text(full_page, encoding='utf-8')
+            print(f"   ✓ Saved {md_file.name} ({len(full_page)} chars)")
+        else:
+            print(f"   ⚠️  Skipped page_{page_no + 1:03d}.md (no content)")
 
 
 def main():
@@ -210,7 +196,7 @@ def main():
 
     # Split markdown by pages
     print(f"\n📄 Splitting markdown by pages...")
-    split_markdown_by_page_markers(full_markdown, doc, text_folder)
+    split_markdown_by_page_markers(full_markdown, doc, text_folder, images_folder)
 
     # Clean up temp file
     if temp_md.exists():
