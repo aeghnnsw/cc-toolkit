@@ -20,11 +20,12 @@
     },
     {
       "name": "creator-skills",
-      "description": "Collection of content creation skills for scientific figures and publication-quality materials",
+      "description": "Collection of content creation skills for scientific figures, presentations, and publication-quality materials",
       "source": "./",
       "strict": false,
       "skills": [
-        "./creator-skills/sci-figure-format"
+        "./creator-skills/sci-figure-format",
+        "./creator-skills/sci-slides"
       ]
     }
   ]
