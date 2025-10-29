@@ -5,7 +5,7 @@
     "email": "aeghnnsw@users.noreply.github.com"
   },
   "metadata": {
-    "description": "Custom Claude Code skills for development workflows and scientific content creation",
+    "description": "Custom Claude Code skills for development workflows, scientific content creation, and document processing",
     "version": "1.0.0"
   },
   "plugins": [
@@ -26,6 +26,15 @@
       "skills": [
         "./creator-skills/sci-figure-format",
         "./creator-skills/sci-slides"
+      ]
+    },
+    {
+      "name": "doc-skills",
+      "description": "Document processing skills for AI agent accessibility, including PDF to markdown conversion split by page for efficient AI processing without context limitations",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./doc-skills/docling-pdf"
       ]
     }
   ]
