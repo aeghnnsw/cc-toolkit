@@ -1,0 +1,33 @@
+{
+  "document_name": "nrd.2015.21",
+  "pdf_pages": 18,
+  "total_figures": 5,
+  "total_tables": 3,
+  "total_chars": 135358,
+  "image_resolution_scale": 2.0,
+  "table_info": [
+    {
+      "name": "table_001",
+      "rows": 14,
+      "columns": 4,
+      "path": "tables/table_001.md"
+    },
+    {
+      "name": "table_002",
+      "rows": 7,
+      "columns": 4,
+      "path": "tables/table_002.md"
+    },
+    {
+      "name": "table_003",
+      "rows": 23,
+      "columns": 3,
+      "path": "tables/table_003.md"
+    }
+  ],
+  "pipeline": "standard",
+  "timing": {
+    "conversion_time": 33.72,
+    "total_time": 34.1
+  }
+}
