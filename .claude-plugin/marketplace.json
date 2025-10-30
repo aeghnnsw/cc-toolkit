@@ -15,7 +15,8 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./dev-skills/problem-solving-cycle"
+        "./dev-skills/problem-solving-cycle",
+        "./dev-skills/step-workflow"
       ]
     },
     {
