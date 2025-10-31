@@ -35,10 +35,12 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./doc-skills/docling-pdf"
+        "./doc-skills/docling-pdf",
+        "./doc-skills/paper-rename"
       ],
       "agents": [
-        "./doc-skills/agents/paper-reader.md"
+        "./doc-skills/agents/paper-reader.md",
+        "./doc-skills/agents/paper-consolidator.md"
       ]
     }
   ]
