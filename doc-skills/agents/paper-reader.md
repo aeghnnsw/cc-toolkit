@@ -3,7 +3,7 @@ name: paper-reader
 description: Use PROACTIVELY to analyze research papers and answer specific questions about their content. This specialist reads PDF papers, extracts key information, and provides detailed answers and relevant bibliographic references. MUST BE USED when the user has a PDF research paper and a list of questions to be answered from its content.
 tools: Read, Write, Glob, TodoWrite, Bash
 model: haiku
-color: purple
+color: yellow
 ---
 
 # Purpose
