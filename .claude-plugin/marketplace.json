@@ -38,7 +38,8 @@
         "./doc-skills/docling-pdf"
       ],
       "agents": [
-        "./doc-skills/agents/paper-reader.md"
+        "./doc-skills/agents/paper-reader.md",
+        "./doc-skills/agents/paper-consolidator.md"
       ]
     }
   ]

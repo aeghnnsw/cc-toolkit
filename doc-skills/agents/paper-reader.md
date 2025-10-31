@@ -2,7 +2,7 @@
 name: paper-reader
 description: Use PROACTIVELY to analyze research papers and answer specific questions about their content. This specialist reads PDF papers, extracts key information, and provides detailed answers and relevant bibliographic references. MUST BE USED when the user has a PDF research paper and a list of questions to be answered from its content.
 tools: Read, Write, Glob, TodoWrite
-model: sonnet
+model: haiku
 color: purple
 ---
 
@@ -48,7 +48,7 @@ When invoked, you must follow these steps precisely:
 
 ### Phase 2: Document Analysis
 **Start:** Mark Phase 2 todo as "in_progress"
-1. Use the Read tool to read the PDF file directly
+1. Use the Read tool to read the PDF file directly, if the Read tool fails due to the large size, use plain pdftotext to extract text content
 2. Analyze the document structure completely and carefully
 3. Identify key sections
 4. Note important concepts, findings, and methodologies mentioned
