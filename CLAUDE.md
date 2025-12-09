@@ -268,7 +268,7 @@ The core skill defines a complete development workflow with 8 phases:
 - Issue auto-closes if PR description references it
 
 **Phase 8: Cleanup**
-- Remove worktree: `git worktree remove`
+- Remove worktree: `git worktree remove trees/<type>-<issue>-<description>`
 - Delete local branch if needed
 - Keep workspace organized
 
