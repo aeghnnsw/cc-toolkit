@@ -1,0 +1,79 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/safety_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/pre_git_hook.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/post_tool_use.py"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py --success"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py --success"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py --success"
+          }
+        ]
+      }
+    ]
+  }
+}

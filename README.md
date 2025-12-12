@@ -24,15 +24,25 @@ cc-toolkit/
 │   └── skills/
 │       ├── sci-figure-format/
 │       └── sci-slides/
-└── doc-skills/                     # Document processing plugin
+├── doc-skills/                     # Document processing plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── skills/
+│   │   ├── docling-pdf/
+│   │   └── paper-rename/
+│   └── agents/
+│       ├── paper-reader.md
+│       └── paper-consolidator.md
+└── core-hooks/                     # Safety and workflow hooks plugin
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── skills/
-    │   ├── docling-pdf/
-    │   └── paper-rename/
-    └── agents/
-        ├── paper-reader.md
-        └── paper-consolidator.md
+    ├── hooks/
+    │   └── hooks.json
+    └── scripts/
+        ├── safety_guard.py
+        ├── pre_git_hook.py
+        ├── post_tool_use.py
+        └── system_notification.py
 ```
 
 ## Available Plugins
@@ -62,6 +72,15 @@ Document processing and AI-accessible content extraction.
 - **paper-reader**: Analyzes research papers and answers questions about content
 - **paper-consolidator**: Consolidates multiple paper analysis outputs into unified reports
 
+### Core Hooks (`core-hooks`)
+Safety guards and workflow enforcement hooks.
+
+**Hooks:**
+- **safety_guard.py**: Blocks dangerous `rm` commands and `.env` file access
+- **pre_git_hook.py**: Enforces branch naming conventions, blocks bulk `git add`, prevents Claude attribution in commits
+- **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.json`
+- **system_notification.py**: Plays sound notifications on task completion
+
 ## Plugin System Benefits
 
 1. **Modular**: Each plugin is self-contained and portable
@@ -80,3 +99,4 @@ Each plugin can be used independently by referencing its directory:
 - `./dev-skills`
 - `./creator-skills`
 - `./doc-skills`
+- `./core-hooks`
