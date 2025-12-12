@@ -62,8 +62,10 @@ def main():
                 if match:
                     branch_name = match.group(1)
                 else:
-                    # No new branch being created, allow operation
-                    sys.exit(0)
+                    # Also check for positional branch name: git worktree add <path> <branch>
+                    match = re.search(r'git worktree add\s+\S+\s+([a-zA-Z][\w-]*)', command)
+                    if match:
+                        branch_name = match.group(1)
 
             if branch_name:
                 valid_prefixes = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']

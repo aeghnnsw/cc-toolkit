@@ -6,11 +6,7 @@
 # ]
 # ///
 
-import json
 import sys
-import subprocess
-import platform
-from pathlib import Path
 
 def play_notification_sound(sound_type="default"):
     """
@@ -73,9 +69,6 @@ def main():
 
         sys.exit(0)
 
-    except json.JSONDecodeError:
-        # Gracefully handle JSON decode errors
-        sys.exit(0)
     except Exception:
         # Handle any other errors gracefully
         sys.exit(0)

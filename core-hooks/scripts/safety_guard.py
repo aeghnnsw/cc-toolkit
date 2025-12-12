@@ -22,7 +22,7 @@ def is_dangerous_rm_command(command):
 
     # IMMEDIATELY block any rm command with wildcards (check BEFORE safe patterns)
     # This avoids regex backtracking issues on long paths
-    if re.search(r'\*', command):
+    if '*' in command:
         return True
 
     # Dangerous path patterns that should always be blocked
@@ -42,6 +42,10 @@ def is_dangerous_rm_command(command):
         r'/sbin\b',
         r'/lib\b',
         r'/opt\b',
+        r'/sys\b',      # Linux system directories
+        r'/proc\b',
+        r'/dev\b',
+        r'/boot\b',
     ]
 
     # Block rm commands that target dangerous paths
