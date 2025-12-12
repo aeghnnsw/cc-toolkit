@@ -20,6 +20,10 @@
     {
       "name": "doc-skills",
       "source": "./doc-skills"
+    },
+    {
+      "name": "core-hooks",
+      "source": "./core-hooks"
     }
   ]
 }
