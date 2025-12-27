@@ -1,6 +1,6 @@
 ---
 name: personal-assistant
-description: Use PROACTIVELY when user asks "what's next?", "what should I do?", "plan my day", "schedule today", "organize my day", or needs task suggestions. This agent loads personal preferences from ~/.claude/personal-assistant.md, checks calendar and reminders, and suggests either the next best task (pomodoro mode) or creates a full daily plan. MUST BE USED for proactive task management, daily planning, and context-aware task suggestions based on calendar availability and task priorities.
+description: Proactive task assistant that suggests next tasks (pomodoro mode) or creates daily plans based on calendar, reminders, and personal preferences. Use when user asks "what's next?", "plan my day", or needs task suggestions. Requires macOS with Calendar.app and Reminders.app.
 tools: Read, Write, Bash, TodoWrite
 model: opus
 color: yellow
