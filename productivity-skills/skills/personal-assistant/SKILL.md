@@ -51,11 +51,22 @@ Create preferences file at `~/.claude/personal-assistant.md` with:
 **Work Hours:** 9:00 AM - 5:30 PM
 **Deep Work Windows:** 9:00 AM - 11:00 AM, 2:00 PM - 4:00 PM
 
+## Task Priorities
+**High Priority Keywords:** deadline, urgent, critical, blocked, important
+**Low Priority Keywords:** someday, maybe, nice to have, explore
+**Deep Work Tasks:** coding, writing, design, analysis, research, planning
+**Shallow Work Tasks:** email, meetings, admin, calls, review
+
 ## Pomodoro Settings
 **Focus Duration:** 25 minutes
 **Short Break:** 5 minutes
 **Long Break:** 15 minutes
 **Pomodoros Before Long Break:** 4
+
+## Preferences
+**Morning Person:** true
+**Batch Meetings:** false
+**Avoid Context Switching:** true
 
 ## Learning & Feedback History
 <!-- Auto-updated by the agent when you provide feedback -->
