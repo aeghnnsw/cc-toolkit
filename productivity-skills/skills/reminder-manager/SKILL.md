@@ -209,8 +209,12 @@ EOF
 osascript <<'EOF'
 tell application "Reminders"
     tell list "LIST_NAME"
-        set targetReminder to first reminder whose name is "Buy groceries"
-        set completed of targetReminder to true
+        try
+            set targetReminder to first reminder whose name is "Buy groceries"
+            set completed of targetReminder to true
+        on error
+            return "Reminder not found."
+        end try
     end tell
 end tell
 EOF
@@ -236,8 +240,12 @@ EOF
 osascript <<'EOF'
 tell application "Reminders"
     tell list "LIST_NAME"
-        set targetReminder to first reminder whose name is "Buy groceries"
-        set completed of targetReminder to false
+        try
+            set targetReminder to first reminder whose name is "Buy groceries"
+            set completed of targetReminder to false
+        on error
+            return "Reminder not found."
+        end try
     end tell
 end tell
 EOF
@@ -250,7 +258,11 @@ EOF
 osascript <<'EOF'
 tell application "Reminders"
     tell list "LIST_NAME"
-        delete (first reminder whose name is "Buy groceries")
+        try
+            delete (first reminder whose name is "Buy groceries")
+        on error
+            return "Reminder not found."
+        end try
     end tell
 end tell
 EOF

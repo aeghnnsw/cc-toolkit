@@ -239,8 +239,12 @@ tell application "Calendar"
         set minutes of dayStart to 0
         set dayEnd to dayStart + (1 * days)
 
-        set evt to first event whose start date >= dayStart and start date < dayEnd
-        return {title:(summary of evt), startDate:(start date of evt), endDate:(end date of evt), location:(location of evt), notes:(description of evt)}
+        try
+            set evt to first event whose start date >= dayStart and start date < dayEnd
+            return {title:(summary of evt), startDate:(start date of evt), endDate:(end date of evt), location:(location of evt), notes:(description of evt)}
+        on error
+            return "No matching event found."
+        end try
     end tell
 end tell
 EOF
