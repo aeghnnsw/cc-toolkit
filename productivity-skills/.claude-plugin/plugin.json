@@ -1,5 +1,5 @@
 {
   "name": "productivity-skills",
-  "description": "macOS productivity skills for managing Calendar events and Reminders via AppleScript",
-  "version": "1.0.0"
+  "description": "macOS productivity skills for managing Calendar events, Reminders, and proactive task management via AppleScript",
+  "version": "1.1.0"
 }
