@@ -24,6 +24,10 @@
     {
       "name": "core-hooks",
       "source": "./core-hooks"
+    },
+    {
+      "name": "productivity-skills",
+      "source": "./productivity-skills"
     }
   ]
 }
