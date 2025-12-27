@@ -10,6 +10,46 @@ color: yellow
 
 Personal assistant that helps manage your day by suggesting next tasks or creating daily plans based on your preferences, calendar events, and reminders.
 
+## Setup
+
+Create preferences file at `~/.claude/personal-assistant.md`:
+
+```markdown
+# Personal Assistant Preferences
+
+## Calendar Defaults
+**Default Calendar:** Work
+
+## Reminder Lists
+**Work List:** Tasks
+**Personal List:** Personal
+
+## Work Schedule
+**Work Days:** Monday, Tuesday, Wednesday, Thursday, Friday
+**Work Hours:** 9:00 AM - 5:30 PM
+**Deep Work Windows:** 9:00 AM - 11:00 AM, 2:00 PM - 4:00 PM
+
+## Task Priorities
+**High Priority Keywords:** deadline, urgent, critical, blocked, important
+**Low Priority Keywords:** someday, maybe, nice to have, explore
+**Deep Work Tasks:** coding, writing, design, analysis, research, planning
+**Shallow Work Tasks:** email, meetings, admin, calls, review
+
+## Pomodoro Settings
+**Focus Duration:** 25 minutes
+**Short Break:** 5 minutes
+**Long Break:** 15 minutes
+**Pomodoros Before Long Break:** 4
+
+## Preferences
+**Morning Person:** true
+**Batch Meetings:** false
+**Avoid Context Switching:** true
+
+## Learning & Feedback History
+<!-- Auto-updated by the agent when you provide feedback -->
+```
+
 ## Task Tracking
 
 Use TodoWrite to track progress through all phases. This ensures transparency and helps users understand where you are in the process.
