@@ -1,2 +1,5 @@
 logs/
 trees/
+
+# Compiled binaries (build from source)
+productivity-skills/scripts/productivity-cli
