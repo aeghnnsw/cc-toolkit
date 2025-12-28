@@ -154,6 +154,33 @@ func parseArgs(_ args: [String]) -> [String: String] {
 let store = EKEventStore()
 
 func requestCalendarAccess() -> (granted: Bool, error: String?) {
+    // Check current authorization status first to avoid unnecessary async calls
+    if #available(macOS 14.0, *) {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        switch status {
+        case .fullAccess:
+            return (true, nil)
+        case .denied, .restricted:
+            return (false, "Calendar access denied or restricted")
+        case .notDetermined, .writeOnly:
+            break // Need to request access
+        @unknown default:
+            break
+        }
+    } else {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        switch status {
+        case .authorized, .fullAccess:
+            return (true, nil)
+        case .denied, .restricted:
+            return (false, "Calendar access denied or restricted")
+        case .notDetermined, .writeOnly:
+            break // Need to request access
+        @unknown default:
+            break
+        }
+    }
+
     var granted = false
     var accessError: String? = nil
     let semaphore = DispatchSemaphore(value: 0)
@@ -180,6 +207,33 @@ func requestCalendarAccess() -> (granted: Bool, error: String?) {
 }
 
 func requestReminderAccess() -> (granted: Bool, error: String?) {
+    // Check current authorization status first to avoid unnecessary async calls
+    if #available(macOS 14.0, *) {
+        let status = EKEventStore.authorizationStatus(for: .reminder)
+        switch status {
+        case .fullAccess:
+            return (true, nil)
+        case .denied, .restricted:
+            return (false, "Reminder access denied or restricted")
+        case .notDetermined, .writeOnly:
+            break // Need to request access
+        @unknown default:
+            break
+        }
+    } else {
+        let status = EKEventStore.authorizationStatus(for: .reminder)
+        switch status {
+        case .authorized, .fullAccess:
+            return (true, nil)
+        case .denied, .restricted:
+            return (false, "Reminder access denied or restricted")
+        case .notDetermined, .writeOnly:
+            break // Need to request access
+        @unknown default:
+            break
+        }
+    }
+
     var granted = false
     var accessError: String? = nil
     let semaphore = DispatchSemaphore(value: 0)
@@ -225,10 +279,20 @@ func listCalendars() {
         case .birthday: typeString = "birthday"
         @unknown default: typeString = "unknown"
         }
+        // Convert color to hex string for easier parsing
+        let hexColor: String?
+        if let cgColor = cal.cgColor, let components = cgColor.components, components.count >= 3 {
+            let r = Int(components[0] * 255.0)
+            let g = Int(components[1] * 255.0)
+            let b = Int(components[2] * 255.0)
+            hexColor = String(format: "#%02X%02X%02X", r, g, b)
+        } else {
+            hexColor = nil
+        }
         return CalendarInfo(
             name: cal.title,
             type: typeString,
-            color: cal.cgColor?.components?.description
+            color: hexColor
         )
     }
     outputSuccess(calendarInfos)
@@ -296,7 +360,6 @@ func searchEvents(_ term: String) {
 func getEventsOnDate(_ dateStr: String, calendarName: String?) {
     guard let date = parseDate(dateStr) else {
         outputError("Invalid date format. Use yyyy-MM-dd")
-        return
     }
     getEvents(from: startOfDay(date), to: endOfDay(date), calendarName: calendarName)
 }
@@ -323,30 +386,25 @@ func createEvent(_ args: [String: String]) {
         outputError("Calendar access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
-    guard let calendarName = args["calendar"] else {
-        outputError("Missing required argument: --calendar")
-        return
+    guard let calendarName = args["calendar"], !calendarName.isEmpty else {
+        outputError("Missing or empty required argument: --calendar")
     }
 
-    guard let startStr = args["start"] else {
-        outputError("Missing required argument: --start (format: yyyy-MM-dd HH:mm)")
-        return
+    guard let startStr = args["start"], !startStr.isEmpty else {
+        outputError("Missing or empty required argument: --start (format: yyyy-MM-dd HH:mm)")
     }
 
     guard let startDate = parseDate(startStr) else {
         outputError("Invalid start date format. Use yyyy-MM-dd HH:mm")
-        return
     }
 
     let calendars = store.calendars(for: .event)
     guard let calendar = calendars.first(where: { $0.title.lowercased() == calendarName.lowercased() }) else {
         outputError("Calendar '\(calendarName)' not found")
-        return
     }
 
     let event = EKEvent(eventStore: store)
@@ -397,23 +455,20 @@ func deleteEvent(_ args: [String: String]) {
         outputError("Calendar access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
-    guard let dateStr = args["date"] else {
-        outputError("Missing required argument: --date (format: yyyy-MM-dd)")
-        return
+    guard let dateStr = args["date"], !dateStr.isEmpty else {
+        outputError("Missing or empty required argument: --date (format: yyyy-MM-dd)")
     }
 
     guard let date = parseDate(dateStr) else {
         outputError("Invalid date format. Use yyyy-MM-dd")
-        return
     }
 
     var calendars = store.calendars(for: .event)
-    if let calendarName = args["calendar"] {
+    if let calendarName = args["calendar"], !calendarName.isEmpty {
         calendars = calendars.filter { $0.title.lowercased() == calendarName.lowercased() }
         if calendars.isEmpty {
             outputError("Calendar '\(calendarName)' not found")
@@ -425,7 +480,6 @@ func deleteEvent(_ args: [String: String]) {
 
     if events.isEmpty {
         outputError("No event found with title '\(title)' on \(dateStr)")
-        return
     }
 
     var deletedCount = 0
@@ -502,7 +556,12 @@ func listReminderLists() {
     lock.unlock()
 
     if !finalFailedLists.isEmpty {
-        outputError("Failed to fetch reminder counts for: \(finalFailedLists.joined(separator: ", "))")
+        if finalListInfos.isEmpty {
+            outputError("Failed to fetch reminder counts for: \(finalFailedLists.joined(separator: ", "))")
+        } else {
+            // Output partial success with warning to stderr
+            fputs("Warning: Failed to fetch reminder counts for: \(finalFailedLists.joined(separator: ", "))\n", stderr)
+        }
     }
 
     outputSuccess(finalListInfos.sorted { $0.name < $1.name })
@@ -635,20 +694,17 @@ func createReminder(_ args: [String: String]) {
         outputError("Reminder access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
-    guard let listName = args["list"] else {
-        outputError("Missing required argument: --list")
-        return
+    guard let listName = args["list"], !listName.isEmpty else {
+        outputError("Missing or empty required argument: --list")
     }
 
     let calendars = store.calendars(for: .reminder)
     guard let calendar = calendars.first(where: { $0.title.lowercased() == listName.lowercased() }) else {
         outputError("Reminder list '\(listName)' not found")
-        return
     }
 
     let reminder = EKReminder(eventStore: store)
@@ -693,17 +749,15 @@ func completeReminder(_ args: [String: String]) {
         outputError("Reminder access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
     var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"] {
+    if let listName = args["list"], !listName.isEmpty {
         calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
         if calendars.isEmpty {
             outputError("Reminder list '\(listName)' not found")
-            return
         }
     }
 
@@ -742,17 +796,15 @@ func uncompleteReminder(_ args: [String: String]) {
         outputError("Reminder access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
     var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"] {
+    if let listName = args["list"], !listName.isEmpty {
         calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
         if calendars.isEmpty {
             outputError("Reminder list '\(listName)' not found")
-            return
         }
     }
 
@@ -791,17 +843,15 @@ func deleteReminder(_ args: [String: String]) {
         outputError("Reminder access denied: \(reason)")
     }
 
-    guard let title = args["title"] else {
-        outputError("Missing required argument: --title")
-        return
+    guard let title = args["title"], !title.isEmpty else {
+        outputError("Missing or empty required argument: --title")
     }
 
     var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"] {
+    if let listName = args["list"], !listName.isEmpty {
         calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
         if calendars.isEmpty {
             outputError("Reminder list '\(listName)' not found")
-            return
         }
     }
 
@@ -844,7 +894,6 @@ func createReminderList(_ name: String) {
     // Use the default source for reminders
     guard let source = store.defaultCalendarForNewReminders()?.source else {
         outputError("No default reminder source available")
-        return
     }
     calendar.source = source
 
@@ -919,8 +968,8 @@ case ("calendars", "today"):
 case ("calendars", "week"):
     getWeekEvents()
 case ("calendars", "search"):
-    guard remainingArgs.count >= 1 else {
-        outputError("Missing search term")
+    guard remainingArgs.count >= 1, !remainingArgs[0].isEmpty else {
+        outputError("Missing or empty search term")
     }
     searchEvents(remainingArgs[0])
 case ("calendars", "date"):
@@ -961,8 +1010,8 @@ case ("reminders", "uncomplete"):
 case ("reminders", "delete"):
     deleteReminder(parsedArgs)
 case ("reminders", "create-list"):
-    guard remainingArgs.count >= 1 else {
-        outputError("Missing list name")
+    guard remainingArgs.count >= 1, !remainingArgs[0].isEmpty else {
+        outputError("Missing or empty list name")
     }
     createReminderList(remainingArgs[0])
 
