@@ -362,6 +362,9 @@ func createEvent(_ args: [String: String]) {
         }
         event.endDate = allDayEnd
     } else if let endStr = args["end"], let endDate = parseDate(endStr) {
+        guard endDate >= startDate else {
+            outputError("End date must be after or equal to start date")
+        }
         event.endDate = endDate
     } else {
         // Default to 1 hour duration
@@ -427,7 +430,7 @@ func deleteEvent(_ args: [String: String]) {
 
     var deletedCount = 0
     var failedCount = 0
-    var lastError: String? = nil
+    var errors: [String] = []
 
     for event in events {
         do {
@@ -435,14 +438,18 @@ func deleteEvent(_ args: [String: String]) {
             deletedCount += 1
         } catch {
             failedCount += 1
-            lastError = error.localizedDescription
+            let errorMsg = error.localizedDescription
+            if !errors.contains(errorMsg) {
+                errors.append(errorMsg)
+            }
         }
     }
 
+    let errorSummary = errors.isEmpty ? "Unknown error" : errors.joined(separator: "; ")
     if failedCount > 0 && deletedCount == 0 {
-        outputError("Failed to delete event(s): \(lastError ?? "Unknown error")")
+        outputError("Failed to delete event(s): \(errorSummary)")
     } else if failedCount > 0 {
-        outputResult(false, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(lastError ?? "Unknown error")")
+        outputResult(false, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(errorSummary)")
     } else {
         outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'")
     }
@@ -488,11 +495,17 @@ func listReminderLists() {
         outputError("Timeout fetching reminder lists")
     }
 
-    if !failedLists.isEmpty {
-        outputError("Failed to fetch reminder counts for: \(failedLists.joined(separator: ", "))")
+    // Lock before reading shared state after concurrent modifications
+    lock.lock()
+    let finalFailedLists = failedLists
+    let finalListInfos = listInfos
+    lock.unlock()
+
+    if !finalFailedLists.isEmpty {
+        outputError("Failed to fetch reminder counts for: \(finalFailedLists.joined(separator: ", "))")
     }
 
-    outputSuccess(listInfos.sorted { $0.name < $1.name })
+    outputSuccess(finalListInfos.sorted { $0.name < $1.name })
 }
 
 func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = nil) -> Result<[ReminderInfo], FetchError> {
