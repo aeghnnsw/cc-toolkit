@@ -11,6 +11,17 @@ Manage macOS Reminders using the productivity-cli tool (EventKit-based).
 
 The CLI tool is located at: `scripts/productivity-cli` (relative to plugin root)
 
+## Building the CLI
+
+If the binary doesn't exist, build it from source:
+
+```bash
+cd scripts
+swiftc -O -o productivity-cli productivity-cli.swift -framework EventKit
+```
+
+Requires: macOS 13+ with Xcode command line tools installed.
+
 ## Important: Always Ask for Reminder List
 
 Before any create operation, list reminder lists and ask the user which one to use:

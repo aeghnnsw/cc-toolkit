@@ -86,18 +86,21 @@ func outputResult(_ success: Bool, _ message: String) {
 let dateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    formatter.timeZone = TimeZone.current
     return formatter
 }()
 
 let inputDateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm"
+    formatter.timeZone = TimeZone.current
     return formatter
 }()
 
 let dateOnlyFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd"
+    formatter.timeZone = TimeZone.current
     return formatter
 }()
 
@@ -404,6 +407,9 @@ func deleteEvent(_ args: [String: String]) {
     var calendars = store.calendars(for: .event)
     if let calendarName = args["calendar"] {
         calendars = calendars.filter { $0.title.lowercased() == calendarName.lowercased() }
+        if calendars.isEmpty {
+            outputError("Calendar '\(calendarName)' not found")
+        }
     }
 
     let predicate = store.predicateForEvents(withStart: startOfDay(date), end: endOfDay(date), calendars: calendars)
@@ -449,6 +455,7 @@ func listReminderLists() {
     let calendars = store.calendars(for: .reminder)
 
     var listInfos: [ReminderListInfo] = []
+    var fetchFailed = false
     let lock = NSLock()
     let group = DispatchGroup()
 
@@ -456,21 +463,35 @@ func listReminderLists() {
         group.enter()
         let predicate = store.predicateForReminders(in: [cal])
         store.fetchReminders(matching: predicate) { reminders in
-            let count = reminders?.filter { !$0.isCompleted }.count ?? 0
-            let info = ReminderListInfo(name: cal.title, count: count)
-            lock.lock()
-            listInfos.append(info)
-            lock.unlock()
+            if let reminders = reminders {
+                let count = reminders.filter { !$0.isCompleted }.count
+                let info = ReminderListInfo(name: cal.title, count: count)
+                lock.lock()
+                listInfos.append(info)
+                lock.unlock()
+            } else {
+                lock.lock()
+                fetchFailed = true
+                lock.unlock()
+            }
             group.leave()
         }
     }
 
-    group.wait()
+    let timeout = DispatchTime.now() + .seconds(30)
+    if group.wait(timeout: timeout) == .timedOut {
+        outputError("Timeout fetching reminder lists")
+    }
+
+    if fetchFailed {
+        outputError("Failed to fetch some reminder lists")
+    }
+
     outputSuccess(listInfos.sorted { $0.name < $1.name })
 }
 
-func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = nil) -> [ReminderInfo] {
-    var reminderInfos: [ReminderInfo] = []
+func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = nil) -> [ReminderInfo]? {
+    var reminderInfos: [ReminderInfo]? = nil
     let semaphore = DispatchSemaphore(value: 0)
 
     store.fetchReminders(matching: predicate) { reminders in
@@ -479,7 +500,7 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
             return
         }
 
-        let filtered = filter != nil ? reminders.filter(filter!) : reminders
+        let filtered = filter.map { reminders.filter($0) } ?? reminders
 
         reminderInfos = filtered.map { reminder -> ReminderInfo in
             var dueDateStr: String? = nil
@@ -499,7 +520,10 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
         semaphore.signal()
     }
 
-    semaphore.wait()
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        return nil
+    }
     return reminderInfos
 }
 
@@ -516,12 +540,14 @@ func getTodayReminders() {
     let today = startOfDay(Date())
     let tomorrow = endOfDay(Date())
 
-    let reminders = fetchReminders(predicate: predicate) { reminder in
+    guard let reminders = fetchReminders(predicate: predicate, filter: { reminder in
         guard !reminder.isCompleted,
               let dueDate = reminder.dueDateComponents?.date else {
             return false
         }
         return dueDate >= today && dueDate < tomorrow
+    }) else {
+        outputError("Failed to fetch reminders")
     }
 
     outputSuccess(reminders)
@@ -545,7 +571,9 @@ func getIncompleteReminders(listName: String?) {
     }
 
     let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
-    let reminders = fetchReminders(predicate: predicate)
+    guard let reminders = fetchReminders(predicate: predicate) else {
+        outputError("Failed to fetch reminders")
+    }
     outputSuccess(reminders)
 }
 
@@ -559,7 +587,9 @@ func getOverdueReminders() {
     let calendars = store.calendars(for: .reminder)
     let now = Date()
     let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: now, calendars: calendars)
-    let reminders = fetchReminders(predicate: predicate)
+    guard let reminders = fetchReminders(predicate: predicate) else {
+        outputError("Failed to fetch reminders")
+    }
     outputSuccess(reminders)
 }
 
@@ -652,11 +682,14 @@ func completeReminder(_ args: [String: String]) {
         foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() && !$0.isCompleted }
         semaphore.signal()
     }
-    semaphore.wait()
+
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        outputError("Timeout searching for reminder")
+    }
 
     guard let reminder = foundReminder else {
         outputError("Incomplete reminder '\(title)' not found")
-        return
     }
 
     reminder.isCompleted = true
@@ -698,11 +731,14 @@ func uncompleteReminder(_ args: [String: String]) {
         foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() && $0.isCompleted }
         semaphore.signal()
     }
-    semaphore.wait()
+
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        outputError("Timeout searching for reminder")
+    }
 
     guard let reminder = foundReminder else {
         outputError("Completed reminder '\(title)' not found")
-        return
     }
 
     reminder.isCompleted = false
@@ -744,11 +780,14 @@ func deleteReminder(_ args: [String: String]) {
         foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() }
         semaphore.signal()
     }
-    semaphore.wait()
+
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        outputError("Timeout searching for reminder")
+    }
 
     guard let reminder = foundReminder else {
         outputError("Reminder '\(title)' not found")
-        return
     }
 
     do {
