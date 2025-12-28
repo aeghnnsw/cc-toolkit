@@ -371,15 +371,6 @@ func createEvent(_ args: [String: String]) {
         event.notes = notes
     }
 
-    // Add alarm if specified (minutes before)
-    if let alarmStr = args["alarm"] {
-        guard let alarmMinutes = Int(alarmStr), alarmMinutes >= 0 else {
-            outputError("Invalid alarm value: '\(alarmStr)' - must be a non-negative number of minutes")
-        }
-        let alarm = EKAlarm(relativeOffset: TimeInterval(-alarmMinutes * 60))
-        event.addAlarm(alarm)
-    }
-
     do {
         try store.save(event, span: .thisEvent)
         outputResult(true, "Event '\(title)' created successfully")
@@ -810,8 +801,7 @@ func printUsage() {
                                               Get events in date range
       calendars create --title <title> --calendar <name> --start <yyyy-MM-dd HH:mm>
                        [--end <yyyy-MM-dd HH:mm>] [--location <loc>] [--notes <text>]
-                       [--allday] [--alarm <minutes>]
-                                              Create a new event
+                       [--allday]             Create a new event
       calendars delete --title <title> --date <yyyy-MM-dd> [--calendar <name>]
                                               Delete an event
 

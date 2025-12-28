@@ -1,6 +1,6 @@
 ---
 name: calendar-manager
-description: Manage macOS Calendar app events via EventKit CLI. Use this skill when the user wants to create calendar events, add meetings, schedule appointments, check calendar availability, list upcoming events, search for events by date or title, update event details, or delete calendar entries. Supports setting event details like title, start/end times, location, notes, and alarms. Requires macOS and Calendar.app access permissions.
+description: Manage macOS Calendar app events via EventKit CLI. Use this skill when the user wants to create calendar events, add meetings, schedule appointments, check calendar availability, list upcoming events, search for events by date or title, update event details, or delete calendar entries. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
 ---
 
 # Calendar Manager
@@ -112,15 +112,6 @@ productivity-cli calendars create \
   --allday
 ```
 
-**Event with alarm (minutes before):**
-```bash
-productivity-cli calendars create \
-  --title "Important Meeting" \
-  --calendar "Work" \
-  --start "2025-01-15 14:00" \
-  --alarm 15
-```
-
 ### Delete an Event
 
 ```bash
@@ -182,7 +173,6 @@ Error responses:
 | `--location` | No | Event location |
 | `--notes` | No | Event notes/description |
 | `--allday` | No | Make it an all-day event |
-| `--alarm` | No | Alarm in minutes before event |
 
 ## Limitations
 
