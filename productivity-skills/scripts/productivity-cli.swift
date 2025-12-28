@@ -53,9 +53,17 @@ struct SuccessResponse<T: Codable>: Codable {
 func outputJSON<T: Codable>(_ data: T) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    if let jsonData = try? encoder.encode(data),
-       let jsonString = String(data: jsonData, encoding: .utf8) {
-        print(jsonString)
+    do {
+        let jsonData = try encoder.encode(data)
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print(jsonString)
+        } else {
+            fputs("{\"error\": \"Failed to encode JSON as UTF-8 string\"}\n", stderr)
+            exit(1)
+        }
+    } catch {
+        fputs("{\"error\": \"JSON encoding failed: \(error.localizedDescription)\"}\n", stderr)
+        exit(1)
     }
 }
 
@@ -102,7 +110,11 @@ func startOfDay(_ date: Date) -> Date {
 }
 
 func endOfDay(_ date: Date) -> Date {
-    Calendar.current.date(byAdding: .day, value: 1, to: startOfDay(date))!
+    guard let result = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay(date)) else {
+        // Fallback: add 24 hours if date arithmetic fails
+        return startOfDay(date).addingTimeInterval(86400)
+    }
+    return result
 }
 
 // MARK: - Argument Parsing Helpers
@@ -132,52 +144,59 @@ func parseArgs(_ args: [String]) -> [String: String] {
 
 let store = EKEventStore()
 
-func requestCalendarAccess() -> Bool {
+func requestCalendarAccess() -> (granted: Bool, error: String?) {
     var granted = false
+    var accessError: String? = nil
     let semaphore = DispatchSemaphore(value: 0)
 
     if #available(macOS 14.0, *) {
         store.requestFullAccessToEvents { success, error in
             granted = success
+            accessError = error?.localizedDescription
             semaphore.signal()
         }
     } else {
         store.requestAccess(to: .event) { success, error in
             granted = success
+            accessError = error?.localizedDescription
             semaphore.signal()
         }
     }
 
     semaphore.wait()
-    return granted
+    return (granted, accessError)
 }
 
-func requestReminderAccess() -> Bool {
+func requestReminderAccess() -> (granted: Bool, error: String?) {
     var granted = false
+    var accessError: String? = nil
     let semaphore = DispatchSemaphore(value: 0)
 
     if #available(macOS 14.0, *) {
         store.requestFullAccessToReminders { success, error in
             granted = success
+            accessError = error?.localizedDescription
             semaphore.signal()
         }
     } else {
         store.requestAccess(to: .reminder) { success, error in
             granted = success
+            accessError = error?.localizedDescription
             semaphore.signal()
         }
     }
 
     semaphore.wait()
-    return granted
+    return (granted, accessError)
 }
 
 // MARK: - Calendar Read Commands
 
 func listCalendars() {
-    guard requestCalendarAccess() else {
-        outputError("Calendar access denied")
-        return
+    let access = requestCalendarAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Calendar access denied: \(reason)")
     }
 
     let calendars = store.calendars(for: .event)
@@ -201,9 +220,10 @@ func listCalendars() {
 }
 
 func getEvents(from startDate: Date, to endDate: Date, searchTerm: String? = nil, calendarName: String? = nil) {
-    guard requestCalendarAccess() else {
-        outputError("Calendar access denied")
-        return
+    let access = requestCalendarAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Calendar access denied: \(reason)")
     }
 
     var calendars = store.calendars(for: .event)
@@ -244,13 +264,17 @@ func getTodayEvents() {
 
 func getWeekEvents() {
     let today = Date()
-    let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: today)!
+    guard let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: today) else {
+        outputError("Internal error: Could not calculate week end date")
+    }
     getEvents(from: startOfDay(today), to: endOfDay(weekEnd))
 }
 
 func searchEvents(_ term: String) {
     let today = Date()
-    let yearEnd = Calendar.current.date(byAdding: .day, value: 365, to: today)!
+    guard let yearEnd = Calendar.current.date(byAdding: .day, value: 365, to: today) else {
+        outputError("Internal error: Could not calculate search end date")
+    }
     getEvents(from: startOfDay(today), to: endOfDay(yearEnd), searchTerm: term)
 }
 
@@ -277,9 +301,10 @@ func getEventsInRange(_ startStr: String, _ endStr: String, calendarName: String
 // MARK: - Calendar Write Commands
 
 func createEvent(_ args: [String: String]) {
-    guard requestCalendarAccess() else {
-        outputError("Calendar access denied")
-        return
+    let access = requestCalendarAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Calendar access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -316,12 +341,18 @@ func createEvent(_ args: [String: String]) {
     // Handle all-day events
     if args["allday"] == "true" {
         event.isAllDay = true
-        event.endDate = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay(startDate))!
+        guard let allDayEnd = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay(startDate)) else {
+            outputError("Internal error: Could not calculate all-day event end date")
+        }
+        event.endDate = allDayEnd
     } else if let endStr = args["end"], let endDate = parseDate(endStr) {
         event.endDate = endDate
     } else {
         // Default to 1 hour duration
-        event.endDate = Calendar.current.date(byAdding: .hour, value: 1, to: startDate)!
+        guard let defaultEnd = Calendar.current.date(byAdding: .hour, value: 1, to: startDate) else {
+            outputError("Internal error: Could not calculate default event end date")
+        }
+        event.endDate = defaultEnd
     }
 
     if let location = args["location"] {
@@ -347,9 +378,10 @@ func createEvent(_ args: [String: String]) {
 }
 
 func deleteEvent(_ args: [String: String]) {
-    guard requestCalendarAccess() else {
-        outputError("Calendar access denied")
-        return
+    let access = requestCalendarAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Calendar access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -381,30 +413,41 @@ func deleteEvent(_ args: [String: String]) {
     }
 
     var deletedCount = 0
+    var failedCount = 0
+    var lastError: String? = nil
+
     for event in events {
         do {
             try store.remove(event, span: .thisEvent)
             deletedCount += 1
         } catch {
-            outputError("Failed to delete event: \(error.localizedDescription)")
-            return
+            failedCount += 1
+            lastError = error.localizedDescription
         }
     }
 
-    outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'")
+    if failedCount > 0 && deletedCount == 0 {
+        outputError("Failed to delete event(s): \(lastError ?? "Unknown error")")
+    } else if failedCount > 0 {
+        outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(lastError ?? "Unknown error")")
+    } else {
+        outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'")
+    }
 }
 
 // MARK: - Reminder Read Commands
 
 func listReminderLists() {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     let calendars = store.calendars(for: .reminder)
 
     var listInfos: [ReminderListInfo] = []
+    let lock = NSLock()
     let group = DispatchGroup()
 
     for cal in calendars {
@@ -412,7 +455,10 @@ func listReminderLists() {
         let predicate = store.predicateForReminders(in: [cal])
         store.fetchReminders(matching: predicate) { reminders in
             let count = reminders?.filter { !$0.isCompleted }.count ?? 0
-            listInfos.append(ReminderListInfo(name: cal.title, count: count))
+            let info = ReminderListInfo(name: cal.title, count: count)
+            lock.lock()
+            listInfos.append(info)
+            lock.unlock()
             group.leave()
         }
     }
@@ -456,9 +502,10 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
 }
 
 func getTodayReminders() {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     let calendars = store.calendars(for: .reminder)
@@ -479,9 +526,10 @@ func getTodayReminders() {
 }
 
 func getIncompleteReminders(listName: String?) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     var calendars = store.calendars(for: .reminder)
@@ -500,9 +548,10 @@ func getIncompleteReminders(listName: String?) {
 }
 
 func getOverdueReminders() {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     let calendars = store.calendars(for: .reminder)
@@ -515,9 +564,10 @@ func getOverdueReminders() {
 // MARK: - Reminder Write Commands
 
 func createReminder(_ args: [String: String]) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -544,8 +594,15 @@ func createReminder(_ args: [String: String]) {
         reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
     }
 
-    if let priorityStr = args["priority"], let priority = Int(priorityStr) {
+    if let priorityStr = args["priority"] {
+        guard let priority = Int(priorityStr) else {
+            outputError("Invalid priority value: '\(priorityStr)' - must be a number")
+        }
         // Priority: 0=none, 1=high, 5=medium, 9=low
+        let validPriorities = [0, 1, 5, 9]
+        guard validPriorities.contains(priority) else {
+            outputError("Invalid priority: \(priority) - valid values are 0 (none), 1 (high), 5 (medium), 9 (low)")
+        }
         reminder.priority = priority
     }
 
@@ -562,9 +619,10 @@ func createReminder(_ args: [String: String]) {
 }
 
 func completeReminder(_ args: [String: String]) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -607,9 +665,10 @@ func completeReminder(_ args: [String: String]) {
 }
 
 func uncompleteReminder(_ args: [String: String]) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -652,9 +711,10 @@ func uncompleteReminder(_ args: [String: String]) {
 }
 
 func deleteReminder(_ args: [String: String]) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     guard let title = args["title"] else {
@@ -695,9 +755,10 @@ func deleteReminder(_ args: [String: String]) {
 }
 
 func createReminderList(_ name: String) {
-    guard requestReminderAccess() else {
-        outputError("Reminder access denied")
-        return
+    let access = requestReminderAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Reminder access denied: \(reason)")
     }
 
     let calendar = EKCalendar(for: .reminder, eventStore: store)
