@@ -44,6 +44,11 @@ struct ErrorResponse: Codable {
     let error: String
 }
 
+enum FetchError: Error {
+    case timeout
+    case apiFailed
+}
+
 struct SuccessResponse<T: Codable>: Codable {
     let success: Bool
     let data: T
@@ -437,7 +442,7 @@ func deleteEvent(_ args: [String: String]) {
     if failedCount > 0 && deletedCount == 0 {
         outputError("Failed to delete event(s): \(lastError ?? "Unknown error")")
     } else if failedCount > 0 {
-        outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(lastError ?? "Unknown error")")
+        outputResult(false, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(lastError ?? "Unknown error")")
     } else {
         outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'")
     }
@@ -455,7 +460,7 @@ func listReminderLists() {
     let calendars = store.calendars(for: .reminder)
 
     var listInfos: [ReminderListInfo] = []
-    var fetchFailed = false
+    var failedLists: [String] = []
     let lock = NSLock()
     let group = DispatchGroup()
 
@@ -471,7 +476,7 @@ func listReminderLists() {
                 lock.unlock()
             } else {
                 lock.lock()
-                fetchFailed = true
+                failedLists.append(cal.title)
                 lock.unlock()
             }
             group.leave()
@@ -483,26 +488,27 @@ func listReminderLists() {
         outputError("Timeout fetching reminder lists")
     }
 
-    if fetchFailed {
-        outputError("Failed to fetch some reminder lists")
+    if !failedLists.isEmpty {
+        outputError("Failed to fetch reminder counts for: \(failedLists.joined(separator: ", "))")
     }
 
     outputSuccess(listInfos.sorted { $0.name < $1.name })
 }
 
-func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = nil) -> [ReminderInfo]? {
-    var reminderInfos: [ReminderInfo]? = nil
+func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = nil) -> Result<[ReminderInfo], FetchError> {
+    var result: Result<[ReminderInfo], FetchError>? = nil
     let semaphore = DispatchSemaphore(value: 0)
 
     store.fetchReminders(matching: predicate) { reminders in
         guard let reminders = reminders else {
+            result = .failure(.apiFailed)
             semaphore.signal()
             return
         }
 
         let filtered = filter.map { reminders.filter($0) } ?? reminders
 
-        reminderInfos = filtered.map { reminder -> ReminderInfo in
+        let reminderInfos = filtered.map { reminder -> ReminderInfo in
             var dueDateStr: String? = nil
             if let dueDate = reminder.dueDateComponents?.date {
                 dueDateStr = dateFormatter.string(from: dueDate)
@@ -517,14 +523,15 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
                 notes: reminder.notes
             )
         }
+        result = .success(reminderInfos)
         semaphore.signal()
     }
 
     let timeout = DispatchTime.now() + .seconds(30)
     if semaphore.wait(timeout: timeout) == .timedOut {
-        return nil
+        return .failure(.timeout)
     }
-    return reminderInfos
+    return result ?? .failure(.apiFailed)
 }
 
 func getTodayReminders() {
@@ -540,17 +547,22 @@ func getTodayReminders() {
     let today = startOfDay(Date())
     let tomorrow = endOfDay(Date())
 
-    guard let reminders = fetchReminders(predicate: predicate, filter: { reminder in
+    let result = fetchReminders(predicate: predicate, filter: { reminder in
         guard !reminder.isCompleted,
               let dueDate = reminder.dueDateComponents?.date else {
             return false
         }
         return dueDate >= today && dueDate < tomorrow
-    }) else {
-        outputError("Failed to fetch reminders")
-    }
+    })
 
-    outputSuccess(reminders)
+    switch result {
+    case .success(let reminders):
+        outputSuccess(reminders)
+    case .failure(.timeout):
+        outputError("Timeout fetching reminders")
+    case .failure(.apiFailed):
+        outputError("Failed to fetch reminders from EventKit")
+    }
 }
 
 func getIncompleteReminders(listName: String?) {
@@ -571,10 +583,14 @@ func getIncompleteReminders(listName: String?) {
     }
 
     let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
-    guard let reminders = fetchReminders(predicate: predicate) else {
-        outputError("Failed to fetch reminders")
+    switch fetchReminders(predicate: predicate) {
+    case .success(let reminders):
+        outputSuccess(reminders)
+    case .failure(.timeout):
+        outputError("Timeout fetching reminders")
+    case .failure(.apiFailed):
+        outputError("Failed to fetch reminders from EventKit")
     }
-    outputSuccess(reminders)
 }
 
 func getOverdueReminders() {
@@ -587,10 +603,14 @@ func getOverdueReminders() {
     let calendars = store.calendars(for: .reminder)
     let now = Date()
     let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: now, calendars: calendars)
-    guard let reminders = fetchReminders(predicate: predicate) else {
-        outputError("Failed to fetch reminders")
+    switch fetchReminders(predicate: predicate) {
+    case .success(let reminders):
+        outputSuccess(reminders)
+    case .failure(.timeout):
+        outputError("Timeout fetching reminders")
+    case .failure(.apiFailed):
+        outputError("Failed to fetch reminders from EventKit")
     }
-    outputSuccess(reminders)
 }
 
 // MARK: - Reminder Write Commands
