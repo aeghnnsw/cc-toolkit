@@ -111,7 +111,8 @@ func startOfDay(_ date: Date) -> Date {
 
 func endOfDay(_ date: Date) -> Date {
     guard let result = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay(date)) else {
-        // Fallback: add 24 hours if date arithmetic fails
+        // Fallback: add 24 hours if date arithmetic fails (may be incorrect during DST transitions)
+        fputs("Warning: Calendar date arithmetic failed for \(date), using 24-hour fallback\n", stderr)
         return startOfDay(date).addingTimeInterval(86400)
     }
     return result
@@ -163,7 +164,10 @@ func requestCalendarAccess() -> (granted: Bool, error: String?) {
         }
     }
 
-    semaphore.wait()
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        return (false, "Timeout waiting for calendar access permission")
+    }
     return (granted, accessError)
 }
 
@@ -186,7 +190,10 @@ func requestReminderAccess() -> (granted: Bool, error: String?) {
         }
     }
 
-    semaphore.wait()
+    let timeout = DispatchTime.now() + .seconds(30)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        return (false, "Timeout waiting for reminder access permission")
+    }
     return (granted, accessError)
 }
 
@@ -289,11 +296,12 @@ func getEventsOnDate(_ dateStr: String, calendarName: String?) {
 func getEventsInRange(_ startStr: String, _ endStr: String, calendarName: String?) {
     guard let startDate = parseDate(startStr) else {
         outputError("Invalid start date format. Use yyyy-MM-dd")
-        return
     }
     guard let endDate = parseDate(endStr) else {
         outputError("Invalid end date format. Use yyyy-MM-dd")
-        return
+    }
+    guard startDate <= endDate else {
+        outputError("Start date must be before or equal to end date")
     }
     getEvents(from: startOfDay(startDate), to: endOfDay(endDate), calendarName: calendarName)
 }
@@ -364,7 +372,10 @@ func createEvent(_ args: [String: String]) {
     }
 
     // Add alarm if specified (minutes before)
-    if let alarmStr = args["alarm"], let alarmMinutes = Int(alarmStr) {
+    if let alarmStr = args["alarm"] {
+        guard let alarmMinutes = Int(alarmStr), alarmMinutes >= 0 else {
+            outputError("Invalid alarm value: '\(alarmStr)' - must be a non-negative number of minutes")
+        }
         let alarm = EKAlarm(relativeOffset: TimeInterval(-alarmMinutes * 60))
         event.addAlarm(alarm)
     }
@@ -590,7 +601,10 @@ func createReminder(_ args: [String: String]) {
     reminder.calendar = calendar
     reminder.title = title
 
-    if let dueDateStr = args["due"], let dueDate = parseDate(dueDateStr) {
+    if let dueDateStr = args["due"] {
+        guard let dueDate = parseDate(dueDateStr) else {
+            outputError("Invalid due date format: '\(dueDateStr)' - use yyyy-MM-dd or yyyy-MM-dd HH:mm")
+        }
         reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
     }
 
