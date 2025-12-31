@@ -54,6 +54,22 @@ cc-toolkit/
 │   └── agents/
 │       ├── paper-reader.md
 │       └── paper-consolidator.md
+├── productivity-skills/                 # Personal productivity plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   └── skills/
+│       ├── calendar-manager/
+│       │   └── SKILL.md
+│       └── reminder-manager/
+│           └── SKILL.md
+├── pymol-skills/                        # PyMOL molecular visualization plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── skills/
+│   │   └── pymol-mcp/
+│   │       └── SKILL.md
+│   └── commands/
+│       └── setup.md
 ├── logs/                                # Claude Code execution logs
 ├── trees/                               # Git worktrees for active development
 └── README.md                            # Project overview
