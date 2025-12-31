@@ -368,28 +368,7 @@ def make_dialog():
             listening = False
             form.button_toggle_listening.setText("Start Listening")
             update_status_label(form, "Not listening")
-    
-    # Callback for the "Show Commands" button
-    def show_commands():
-        global received_commands
-        
-        if not received_commands:
-            cmd.feedback("No commands received yet", "output")
-            return
-            
-        # Print all received commands to the PyMOL console
-        cmd.feedback("=== Received Commands ===", "output")
-        for i, command in enumerate(received_commands):
-            cmd.feedback(f"--- Command {i+1} ---", "output")
-            cmd.feedback(command, "output")
-        cmd.feedback("=======================", "output")
-    
-    # Callback for the "Clear Commands" button
-    def clear_commands():
-        global received_commands
-        received_commands = []
-        cmd.feedback("Command history cleared", "output")
-    
+
     # Callback for the "Close" button
     def close_dialog():
         global socket_server, listening
@@ -403,8 +382,6 @@ def make_dialog():
     
     # Hook up button callbacks
     form.button_toggle_listening.clicked.connect(toggle_listening)
-    # form.button_show_commands.clicked.connect(show_commands)
-    # form.button_clear_commands.clicked.connect(clear_commands)
     form.button_close.clicked.connect(close_dialog)
     
     return dialog
