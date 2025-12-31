@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pymol-mcp": {
+      "command": "uv",
+      "args": ["run", "${CLAUDE_PLUGIN_ROOT}/pymol_mcp_server.py"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

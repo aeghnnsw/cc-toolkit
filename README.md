@@ -33,16 +33,29 @@ cc-toolkit/
 │   └── agents/
 │       ├── paper-reader.md
 │       └── paper-consolidator.md
-└── core-hooks/                     # Safety and workflow hooks plugin
+├── core-hooks/                     # Safety and workflow hooks plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── hooks/
+│   │   └── hooks.json
+│   └── scripts/
+│       ├── safety_guard.py
+│       ├── pre_git_hook.py
+│       ├── post_tool_use.py
+│       └── system_notification.py
+├── productivity-skills/            # Personal productivity plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   └── skills/
+│       ├── calendar-manager/
+│       └── reminder-manager/
+└── pymol-skills/                   # PyMOL molecular visualization plugin
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── hooks/
-    │   └── hooks.json
-    └── scripts/
-        ├── safety_guard.py
-        ├── pre_git_hook.py
-        ├── post_tool_use.py
-        └── system_notification.py
+    ├── skills/
+    │   └── pymol-mcp/
+    └── commands/
+        └── setup.md
 ```
 
 ## Available Plugins
@@ -81,6 +94,22 @@ Safety guards and workflow enforcement hooks.
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.json`
 - **system_notification.py**: Plays sound notifications on task completion
 
+### Productivity Skills (`productivity-skills`)
+Personal productivity automation using macOS Calendar and Reminders.
+
+**Skills:**
+- **calendar-manager**: Manage macOS Calendar events via EventKit CLI
+- **reminder-manager**: Manage macOS Reminders via EventKit CLI
+
+### PyMOL Skills (`pymol-skills`)
+PyMOL molecular visualization control via MCP server.
+
+**Skills:**
+- **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis
+
+**Commands:**
+- **/pymol-skills:setup**: Installation instructions for PyMOL socket plugin
+
 ## Plugin System Benefits
 
 1. **Modular**: Each plugin is self-contained and portable
@@ -100,3 +129,5 @@ Each plugin can be used independently by referencing its directory:
 - `./creator-skills`
 - `./doc-skills`
 - `./core-hooks`
+- `./productivity-skills`
+- `./pymol-skills`

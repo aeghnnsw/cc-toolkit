@@ -28,6 +28,10 @@
     {
       "name": "productivity-skills",
       "source": "./productivity-skills"
+    },
+    {
+      "name": "pymol-skills",
+      "source": "./pymol-skills"
     }
   ]
 }
