@@ -1,6 +1,8 @@
 ---
 description: Manage GTD inbox for capturing thoughts and tasks
 argument-hint: [instructions]
+allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
+model: haiku
 ---
 
 <!--
