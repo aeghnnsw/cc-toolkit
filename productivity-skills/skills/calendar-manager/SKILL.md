@@ -9,14 +9,14 @@ Manage macOS Calendar events using the productivity-cli tool (EventKit-based).
 
 ## CLI Location
 
-The CLI tool is located at: `scripts/productivity-cli` (relative to plugin root)
+The CLI tool is located at `${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli`.
 
 ## Building the CLI
 
 If the binary doesn't exist, build it from source:
 
 ```bash
-cd scripts
+cd ${CLAUDE_PLUGIN_ROOT}/scripts
 swiftc -O -o productivity-cli productivity-cli.swift -framework EventKit
 ```
 
