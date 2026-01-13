@@ -42,8 +42,27 @@ If unclear, use **AskUserQuestion** to clarify.
 **Adding Items:**
 1. Check if a semantically similar item already exists
 2. If similar found, use **AskUserQuestion**: "Similar item exists: '[item]'. Add anyway?" with options "Yes, add it" / "No, skip"
-3. If confirmed or no duplicate, append to list
-4. Report: "Added to inbox (N items pending)"
+3. **Get current date** if item contains time references:
+   ```bash
+   date "+%Y-%m-%d %A"
+   ```
+   This returns the date and day of week (e.g., "2026-01-13 Monday") for accurate time calculation.
+4. **Convert relative time references to explicit dates** before adding:
+   - "today" → "(YYYY-MM-DD)"
+   - "tomorrow" → "(YYYY-MM-DD)"
+   - "this Monday" → "(Mon YYYY-MM-DD)"
+   - "next week" → "(week of YYYY-MM-DD)"
+   - "end of week" → "(by Fri YYYY-MM-DD)"
+   - "end of month" → "(by YYYY-MM-DD)"
+   - If no time reference, store item as-is
+
+   Examples:
+   - "call John this Monday" → "call John (Mon 2026-01-20)"
+   - "finish report by end of week" → "finish report (by Fri 2026-01-17)"
+   - "buy groceries tomorrow" → "buy groceries (2026-01-14)"
+   - "review docs" → "review docs" (no change)
+5. If confirmed or no duplicate, append the converted item to list
+6. Report: "Added '[converted item]' to inbox (N items pending)"
 
 **Listing Items:**
 1. Display numbered list
