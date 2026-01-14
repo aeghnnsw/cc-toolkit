@@ -7,17 +7,12 @@ description: Manage macOS Reminders app via EventKit CLI. Use this skill when th
 
 Manage macOS Reminders using the productivity-cli tool (EventKit-based).
 
-## CLI Location
+## CLI Usage
 
-The CLI tool is located at `${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli`.
-
-## Building the CLI
-
-If the binary doesn't exist, build it from source:
+Run the Swift source directly (no build step required):
 
 ```bash
-cd ${CLAUDE_PLUGIN_ROOT}/scripts
-swiftc -O -o productivity-cli productivity-cli.swift -framework EventKit
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 ```
 
 Requires: macOS 13+ with Xcode command line tools installed.
@@ -27,7 +22,7 @@ Requires: macOS 13+ with Xcode command line tools installed.
 Before any create operation, list reminder lists and ask the user which one to use:
 
 ```bash
-productivity-cli reminders lists
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders lists
 ```
 
 ## Operations
@@ -35,7 +30,7 @@ productivity-cli reminders lists
 ### List All Reminder Lists
 
 ```bash
-productivity-cli reminders lists
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders lists
 ```
 
 Returns JSON:
@@ -56,39 +51,39 @@ The `count` field shows incomplete reminders in each list.
 ### Get Reminders Due Today
 
 ```bash
-productivity-cli reminders today
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders today
 ```
 
 ### Get Incomplete Reminders
 
 **All incomplete reminders:**
 ```bash
-productivity-cli reminders incomplete
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete
 ```
 
 **From a specific list:**
 ```bash
-productivity-cli reminders incomplete "Tasks"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Tasks"
 ```
 
 ### Get Overdue Reminders
 
 ```bash
-productivity-cli reminders overdue
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders overdue
 ```
 
 ### Create a Reminder
 
 **Basic reminder:**
 ```bash
-productivity-cli reminders create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Buy groceries" \
   --list "Tasks"
 ```
 
 **With due date:**
 ```bash
-productivity-cli reminders create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Submit report" \
   --list "Work" \
   --due "2025-01-15 17:00"
@@ -96,7 +91,7 @@ productivity-cli reminders create \
 
 **With priority:**
 ```bash
-productivity-cli reminders create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Urgent task" \
   --list "Work" \
   --priority 1
@@ -104,7 +99,7 @@ productivity-cli reminders create \
 
 **With notes:**
 ```bash
-productivity-cli reminders create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Call John" \
   --list "Tasks" \
   --notes "Discuss project timeline and budget"
@@ -112,7 +107,7 @@ productivity-cli reminders create \
 
 **Full reminder with all properties:**
 ```bash
-productivity-cli reminders create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Team meeting prep" \
   --list "Work" \
   --due "2025-01-15 09:00" \
@@ -123,40 +118,40 @@ productivity-cli reminders create \
 ### Mark Reminder as Complete
 
 ```bash
-productivity-cli reminders complete --title "Buy groceries"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete --title "Buy groceries"
 ```
 
 With specific list:
 ```bash
-productivity-cli reminders complete --title "Buy groceries" --list "Tasks"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete --title "Buy groceries" --list "Tasks"
 ```
 
 ### Mark Reminder as Incomplete
 
 ```bash
-productivity-cli reminders uncomplete --title "Buy groceries"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders uncomplete --title "Buy groceries"
 ```
 
 With specific list:
 ```bash
-productivity-cli reminders uncomplete --title "Buy groceries" --list "Tasks"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders uncomplete --title "Buy groceries" --list "Tasks"
 ```
 
 ### Delete a Reminder
 
 ```bash
-productivity-cli reminders delete --title "Buy groceries"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete --title "Buy groceries"
 ```
 
 With specific list:
 ```bash
-productivity-cli reminders delete --title "Buy groceries" --list "Tasks"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete --title "Buy groceries" --list "Tasks"
 ```
 
 ### Create a New Reminder List
 
 ```bash
-productivity-cli reminders create-list "Shopping"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "Shopping"
 ```
 
 ## Response Format

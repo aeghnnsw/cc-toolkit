@@ -7,17 +7,12 @@ description: Manage macOS Calendar app events via EventKit CLI. Use this skill w
 
 Manage macOS Calendar events using the productivity-cli tool (EventKit-based).
 
-## CLI Location
+## CLI Usage
 
-The CLI tool is located at `${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli`.
-
-## Building the CLI
-
-If the binary doesn't exist, build it from source:
+Run the Swift source directly (no build step required):
 
 ```bash
-cd ${CLAUDE_PLUGIN_ROOT}/scripts
-swiftc -O -o productivity-cli productivity-cli.swift -framework EventKit
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 ```
 
 Requires: macOS 13+ with Xcode command line tools installed.
@@ -27,7 +22,7 @@ Requires: macOS 13+ with Xcode command line tools installed.
 Before any create/delete operation, list calendars and ask the user which one to use:
 
 ```bash
-productivity-cli calendars list
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars list
 ```
 
 ## Operations
@@ -35,7 +30,7 @@ productivity-cli calendars list
 ### List All Calendars
 
 ```bash
-productivity-cli calendars list
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars list
 ```
 
 Returns JSON:
@@ -53,33 +48,33 @@ Returns JSON:
 ### Get Today's Events
 
 ```bash
-productivity-cli calendars today
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars today
 ```
 
 ### Get This Week's Events
 
 ```bash
-productivity-cli calendars week
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars week
 ```
 
 ### Get Events on a Specific Date
 
 ```bash
-productivity-cli calendars date 2025-01-15
-productivity-cli calendars date 2025-01-15 --calendar Work
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars date 2025-01-15
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars date 2025-01-15 --calendar Work
 ```
 
 ### Get Events in a Date Range
 
 ```bash
-productivity-cli calendars range 2025-01-01 2025-01-31
-productivity-cli calendars range 2025-01-01 2025-01-31 --calendar Work
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31 --calendar Work
 ```
 
 ### Search Events by Title
 
 ```bash
-productivity-cli calendars search "meeting"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars search "meeting"
 ```
 
 Searches events in the next 365 days matching the term.
@@ -88,7 +83,7 @@ Searches events in the next 365 days matching the term.
 
 **Basic event (1 hour duration):**
 ```bash
-productivity-cli calendars create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00"
@@ -96,7 +91,7 @@ productivity-cli calendars create \
 
 **Event with end time:**
 ```bash
-productivity-cli calendars create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -105,7 +100,7 @@ productivity-cli calendars create \
 
 **Event with location and notes:**
 ```bash
-productivity-cli calendars create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -116,7 +111,7 @@ productivity-cli calendars create \
 
 **All-day event:**
 ```bash
-productivity-cli calendars create \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
   --title "Company Holiday" \
   --calendar "Work" \
   --start "2025-01-20" \
@@ -126,14 +121,14 @@ productivity-cli calendars create \
 ### Delete an Event
 
 ```bash
-productivity-cli calendars delete \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15"
 ```
 
 With specific calendar:
 ```bash
-productivity-cli calendars delete \
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15" \
   --calendar "Work"

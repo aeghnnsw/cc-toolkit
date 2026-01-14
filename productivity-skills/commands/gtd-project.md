@@ -16,7 +16,11 @@ Manage GTD projects based on user instructions: $ARGUMENTS
 
 ## CLI Tool
 
-Uses `productivity-cli` at `${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli`. See reminder-manager skill for build instructions.
+Run Swift source directly (no build step required):
+
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
+```
 
 ## Step 1: Interpret Instructions
 
@@ -39,7 +43,7 @@ If unclear, use **AskUserQuestion** to clarify.
 
 1. Query Projects list:
    ```bash
-   productivity-cli reminders incomplete "Projects"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
    ```
 2. Display projects with format:
    ```
@@ -55,11 +59,11 @@ If unclear, use **AskUserQuestion** to clarify.
 2. If ambiguous, use **AskUserQuestion** to select from matching projects
 3. Query all context lists for actions with `#{FullProjectName}` in notes:
    ```bash
-   productivity-cli reminders incomplete "@5min"
-   productivity-cli reminders incomplete "@15min"
-   productivity-cli reminders incomplete "@30min"
-   productivity-cli reminders incomplete "@1hr"
-   productivity-cli reminders incomplete "@Deep"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@5min"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@15min"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@30min"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@1hr"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@Deep"
    ```
 4. Filter results where notes contain `#{FullProjectName}`
 5. Display:
@@ -81,7 +85,7 @@ If unclear, use **AskUserQuestion** to clarify.
 5. Optionally ask for priority and due date
 6. Create action in appropriate context list:
    ```bash
-   productivity-cli reminders create \
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
      --list "@15min" \
      --notes "#{ProjectName-20260112}" \
@@ -99,7 +103,7 @@ If unclear, use **AskUserQuestion** to clarify.
    - Options: "Yes, complete project", "No, show actions first"
 5. Mark project complete:
    ```bash
-   productivity-cli reminders complete \
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
      --title "ProjectName-20260112" \
      --list "Projects"
    ```
