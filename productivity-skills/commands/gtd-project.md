@@ -1,18 +1,22 @@
 ---
-description: Manage GTD projects via natural language instructions
-argument-hint: [instructions]
+description: Review and manage GTD projects with guided workflow
+argument-hint: []
 allowed-tools: Read, Bash, AskUserQuestion
-model: haiku
+model: opus
 ---
 
 <!--
 Projects list: "Projects" in macOS Reminders
 Project naming: {CamelCaseSummary}-{YYYYMMDD} (e.g., VacationResearch-20260112)
-Action reference: #{FullProjectName} in notes field (e.g., #VacationResearch-20260112)
-Context lists: @5min, @15min, @30min, @1hr, @Deep
+Action reference: #{FullProjectName} in notes field
+Project notes: "Goal: [end goal description]"
+Context lists: @quick, @1pomo, @2pomo, @deep
+CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
+
+Key principle: One actionable task per project - only track the NEXT action, not all future actions.
 -->
 
-Manage GTD projects based on user instructions: $ARGUMENTS
+Review and manage GTD projects with auto-review and guided workflow.
 
 ## CLI Tool
 
@@ -22,139 +26,258 @@ Run Swift source directly (no build step required):
 swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 ```
 
-## Step 1: Interpret Instructions
+## Step 1: Gather Data
 
-Parse `$ARGUMENTS` to understand intent:
+1. Get current date for overdue calculation:
+   ```bash
+   date "+%Y-%m-%d"
+   ```
 
-| Intent | Example phrases |
-|--------|-----------------|
-| List projects | "list", "show all", "open projects", "" (empty = list) |
-| Show actions | "show actions for X", "what's in X", "actions for X" |
-| Add action | "add action: X", "next action: X", "add to X: task" |
-| Complete project | "complete X", "mark X done", "finish X" |
-| Find stalled | "stalled", "stuck", "no progress", "which projects are stalled" |
-| Project status | "status of X", "how is X going", "progress on X" |
+2. Ensure required lists exist:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders lists
+   ```
+   If any required lists are missing, create them:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "Projects"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@quick"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@1pomo"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@2pomo"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@deep"
+   ```
 
-If unclear, use **AskUserQuestion** to clarify.
-
-## Step 2: Execute Action
-
-### List Projects
-
-1. Query Projects list:
+3. Query all open projects:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
    ```
-2. Display projects with format:
-   ```
-   # Open Projects (N)
-   1. ProjectName-20260112 [Priority]
-   2. AnotherProject-20260110 [Priority]
-   ```
-3. If empty: "No open projects"
 
-### Show Actions for Project
-
-1. Identify project name from user input (match partial names)
-2. If ambiguous, use **AskUserQuestion** to select from matching projects
-3. Query all context lists for actions with `#{FullProjectName}` in notes:
+4. Query all context lists for actions:
    ```bash
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@5min"
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@15min"
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@30min"
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@1hr"
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "@Deep"
+   for context in "@quick" "@1pomo" "@2pomo" "@deep"; do
+     swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "$context"
+   done
    ```
-4. Filter results where notes contain `#{FullProjectName}`
-5. Display:
-   ```
-   # Actions for ProjectName-20260112 (N)
-   1. [15min] Task title [Priority]
-   2. [1hr] Another task [Priority]
-   ```
-6. If no actions: "No pending actions for this project"
 
-### Add Action to Project
+5. For each project, find its action by matching `#{ProjectName}` in the action's notes field:
+   - Parse the JSON output from context list queries
+   - Match the notes field against pattern `#{ProjectName}`
+   - Example: Project "VacationResearch-20260112" matches action with notes containing "#VacationResearch-20260112"
 
-1. Identify project name from user input
-2. If ambiguous, use **AskUserQuestion** to select project
-3. Extract action title from input
-4. Use **AskUserQuestion** for time estimate:
-   - Question: "Time estimate for this action?"
-   - Options: "5 minutes", "15 minutes", "30 minutes", "1 hour", "Deep work"
-5. Optionally ask for priority and due date
-6. Create action in appropriate context list:
+6. Extract project end goal from project's notes field (format: "Goal: [description]")
+
+7. Determine project status:
+   - **Healthy** (✓): Has a pending action that is not overdue
+   - **Stalled** (⚠️): No pending action linked to this project
+   - **Overdue** (⚠️): Action's due date OR project's due date is in the past
+
+## Step 2: Display Projects Overview
+
+Present all projects with status indicators and end goals:
+
+```
+# Projects Overview
+
+1. ✓ VacationResearch-20260112 [High]
+   - Goal: Flights and hotel booked for Hawaii trip
+   - Action: "Research flights to Hawaii" (@1pomo)
+
+2. ⚠️ ReviewQ1Roadmap-20260115 [High]
+   - Goal: Roadmap approved by stakeholders
+   - No pending action (stalled)
+
+3. ⚠️ ClientProject-20260110 [Medium]
+   - Goal: Invoice paid and project closed
+   - Action: "Send invoice" (@quick) - OVERDUE (due 2026-01-10)
+
+Which project to work on? [1/2/3/Done]
+```
+
+Use **AskUserQuestion**: "Which project to work on?"
+- Options: Numbered list of projects + "Done reviewing"
+
+If no open projects, inform user: "No open projects. Use /gtd-process to create projects from inbox items."
+
+## Step 3: Project Options
+
+Based on the selected project's state, present appropriate options.
+
+Use **AskUserQuestion**: "What would you like to do?"
+
+Options presented based on project state:
+
+| Option | When Available | Action |
+|--------|----------------|--------|
+| Add action | Stalled projects only | Go to Step 4a |
+| Mark action complete | Projects with actions | Go to Step 4b |
+| Reschedule action | Overdue actions only | Go to Step 4c (due date only) |
+| Edit action | Projects with actions | Go to Step 4c (all properties) |
+| Mark project complete | All projects | Go to Step 5 |
+| Skip | All projects | Return to Step 2 |
+
+**Note:** For overdue actions, highlight the "Reschedule" option to user.
+
+## Step 4a: Add Action
+
+1. Use **AskUserQuestion**: "What's the next action for this project?"
+   - User provides action title
+
+2. Gather action properties using **Action Property Questions** (see reference section below)
+
+3. Create the action:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
-     --list "@15min" \
+     --list "@1pomo" \
      --notes "#{ProjectName-20260112}" \
-     --priority 5
+     --priority 5 \
+     --due "2026-01-20 17:00"
    ```
-7. Report: "Added action '[title]' to ProjectName"
+   (omit `--due` if user selected "No due date")
 
-### Complete Project
+4. Report: "Added action '[title]' to [ProjectName]"
 
-1. Identify project name from user input
-2. If ambiguous, use **AskUserQuestion** to select project
-3. Check for remaining actions (query all context lists)
-4. If actions remain, use **AskUserQuestion**:
-   - "Project has N pending actions. Complete anyway?"
-   - Options: "Yes, complete project", "No, show actions first"
-5. Mark project complete:
+5. Return to Step 2.
+
+## Step 4b: Complete Action
+
+1. Mark the action complete:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
+     --title "Action title" \
+     --list "@1pomo"
+   ```
+
+2. Report: "Completed: '[action title]'"
+
+3. **Immediately ask for next action** - Use **AskUserQuestion**: "What's the next action for this project?"
+   - Options: "Enter next action", "Mark project complete", "Skip for now"
+
+4. If "Enter next action": Go to Step 4a (Add Action)
+5. If "Mark project complete": Go to Step 5 (Complete Project)
+6. If "Skip for now": Return to Step 2
+
+## Step 4c: Edit Action
+
+1. Show current action properties:
+   ```
+   Current action: "Send invoice"
+   List: @quick
+   Priority: Medium
+   Due: 2026-01-10 17:00
+   ```
+
+2. Use **AskUserQuestion**: "What would you like to edit?"
+   - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
+   - multiSelect: true (allow multiple selections)
+
+3. For each selected property, gather new value using **Action Property Questions** (see reference section below)
+
+4. To update, delete old action and create new one with updated properties:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete \
+     --title "Old title" \
+     --list "@old-list"
+
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+     --title "New title" \
+     --list "@new-list" \
+     --notes "#{ProjectName}" \
+     --priority 5 \
+     --due "2026-01-15 17:00"
+   ```
+
+5. Report: "Updated action '[title]'"
+
+6. Return to Step 2.
+
+## Step 5: Complete Project
+
+1. Mark the project complete:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
      --title "ProjectName-20260112" \
      --list "Projects"
    ```
-6. Report: "Project 'ProjectName' marked complete"
 
-### Find Stalled Projects
-
-1. Get all open projects from Projects list
-2. For each project, check for actions with `#{FullProjectName}` in notes
-3. A project is stalled if it has zero pending actions
-4. Display:
-   ```
-   # Stalled Projects (N)
-   1. ProjectName-20260112 - No pending actions
-   2. AnotherProject-20260110 - No pending actions
-   ```
-5. If none stalled: "All projects have pending actions"
-
-### Project Status
-
-1. Identify project name
-2. Get project details from Projects list
-3. Count pending actions across all context lists
-4. Display:
-   ```
-   # ProjectName-20260112
-   Priority: Medium
-   Pending actions: 3
-   - [15min] Task 1
-   - [30min] Task 2
-   - [Deep] Task 3
+2. Check for any remaining actions linked to this project and complete them:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
+     --title "Action title" \
+     --list "@1pomo"
    ```
 
-## Step 3: Handle Errors
+3. Report: "Project '[ProjectName]' marked complete"
 
-- **Project not found**: "No project matching 'X'. Show all projects?"
-- **List not found**: Create missing lists automatically
-- **CLI error**: Report error message to user
+4. Return to Step 2.
 
-## Priority Values
+## Step 6: Exit
 
-| Value | Display |
-|-------|---------|
-| 1 | High |
-| 5 | Medium |
-| 9 | Low |
-| 0 | None |
+When user selects "Done reviewing" in Step 2:
+
+1. Show summary:
+   ```
+   # Review Complete
+
+   Projects reviewed: 3
+   Actions completed: 2
+   Actions added: 1
+   Projects completed: 1
+   ```
+
+2. Exit the workflow.
+
+---
+
+## Reference: Action Property Questions
+
+Use these standardized prompts when gathering action properties in Steps 4a and 4c:
+
+**Time estimate:**
+- Use **AskUserQuestion**: "Time estimate?"
+- Options: "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
+- Maps to lists: @quick, @1pomo, @2pomo, @deep
+
+**Priority:**
+- Use **AskUserQuestion**: "Priority?"
+- Options: "High", "Medium", "Low", "None"
+- Values: High=1, Medium=5, Low=9, None=0
+
+**Due date:**
+- Use **AskUserQuestion**: "Due date?"
+- Options: "No due date", "Today", "Tomorrow", "This week", "Custom date"
+- If custom: ask for specific date
+
+---
+
+## Reference: Context Lists
+
+| List | Time Estimate |
+|------|---------------|
+| @quick | Quick tasks (< 25 min) |
+| @1pomo | 1 Pomodoro (25 min) |
+| @2pomo | 2 Pomodoros (50 min) |
+| @deep | Deep focus (3+ pomodoros) |
+
+## Reference: Priority Values
+
+| Display | Value |
+|---------|-------|
+| High | 1 |
+| Medium | 5 |
+| Low | 9 |
+| None | 0 |
+
+## Reference: Date Format
+
+Use `yyyy-MM-dd HH:mm` for due dates. Default time is 17:00 if only date provided.
+
+---
 
 ## Guidelines
 
-- Match project names case-insensitively and support partial matches
-- When multiple projects match, always ask user to select
-- Show context (time estimate) when displaying actions
-- Warn before completing projects with pending actions
+- **One action per project**: Only track the NEXT action, not all future actions
+- Every project should have exactly one pending action (unless stalled or complete)
+- After completing an action, immediately prompt for the next action
+- Create missing reminder lists automatically before creating reminders
+- Handle CLI errors gracefully and report to user
+- Match project names case-insensitively
