@@ -9,7 +9,7 @@ model: opus
 Inbox file: ~/.claude/productivity-skills/inbox.md
 Projects list: "Projects" in macOS Reminders
 Context lists: @quick, @1pomo, @2pomo, @deep
-CLI tool: ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli
+CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
 -->
 
 Process GTD inbox items based on user instructions: $ARGUMENTS
@@ -75,7 +75,7 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
    - If custom: ask for specific date
 6. Create project in Projects list with end goal in notes:
    ```bash
-   productivity-cli reminders create \
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "ProjectName-20260112" \
      --list "Projects" \
      --priority 5 \
@@ -87,7 +87,7 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
    - If yes: get action title, time estimate, due date (optional)
    - Create action in appropriate context list with project reference:
      ```bash
-     productivity-cli reminders create \
+     swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
        --title "Action title" \
        --list "@1pomo" \
        --notes "#{ProjectName-20260112}" \
@@ -103,7 +103,7 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
 3. Optionally ask for due date
 4. Create reminder in appropriate context list:
    ```bash
-   productivity-cli reminders create \
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
      --list "@1pomo" \
      --priority 5 \
