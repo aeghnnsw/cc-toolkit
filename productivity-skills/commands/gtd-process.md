@@ -60,20 +60,21 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
 
 1. Generate project name: `{CamelCaseSummary}-{YYYYMMDD}`
    - Examples: "Research vacation" → `VacationResearch-20260112`
+
 2. Use **AskUserQuestion** to confirm/edit name
+
 3. Use **AskUserQuestion** for end goal: "What does 'done' look like for this project?"
    - This is critical for GTD - every project needs a clear outcome
    - User provides a concrete, achievable end state
    - Examples: "Flights and hotel booked for Hawaii trip", "Documentation updated and reviewed"
    - Record this end goal in the project's notes field
-4. Use **AskUserQuestion** for priority:
-   - Options: "High", "Medium", "Low", "None"
-   - Values: High=1, Medium=5, Low=9, None=0
-5. Use **AskUserQuestion** for due date (optional):
-   - "When should this project be completed?"
-   - Options: "No deadline", "This week", "Next week", "Custom date"
-   - If custom: ask for specific date
-6. Create project in Projects list with end goal in notes:
+
+4. Use **AskUserQuestion** to gather priority and due date together (2 questions in one call):
+   - Question 1 - "Priority?": Options "High", "Medium", "Low", "None"
+   - Question 2 - "Due date?": Options "No deadline", "This week", "Next week", "Custom date"
+   - If custom date selected: follow up to ask for specific date
+
+5. Create project in Projects list with end goal in notes:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "ProjectName-20260112" \
@@ -96,12 +97,13 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
 
 ## Step 5b: Process as Single Action
 
-1. Use **AskUserQuestion** for time estimate:
-   - Options: "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
-2. Use **AskUserQuestion** for priority:
-   - Options: "High", "Medium", "Low", "None"
-3. Optionally ask for due date
-4. Create reminder in appropriate context list:
+1. Use **AskUserQuestion** to gather all action properties together (3 questions in one call):
+   - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
+   - Question 2 - "Priority?": Options "High", "Medium", "Low", "None"
+   - Question 3 - "Due date?": Options "No due date", "Today", "Tomorrow", "This week", "Custom date"
+   - If custom date selected: follow up to ask for specific date
+
+2. Create reminder in appropriate context list:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
@@ -158,3 +160,13 @@ Use Edit tool to remove the processed item from inbox.md.
 - Project notes contain the end goal: "Goal: [description]"
 - Date format for due dates: `yyyy-MM-dd HH:mm`
 - Handle CLI errors gracefully and report to user
+
+## Note: Batched vs Sequential Questions
+
+**Batched (independent answers):**
+- Time estimate + Priority + Due date → ask in single AskUserQuestion call with 3 questions
+
+**Sequential (dependent answers):**
+- "Project or Single Action?" → must ask first, determines which properties to gather
+- "Confirm project name" → must confirm before asking for end goal
+- "Add first action?" → must ask after project is created
