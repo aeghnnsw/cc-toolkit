@@ -121,7 +121,11 @@ Options presented based on project state:
 1. Use **AskUserQuestion**: "What's the next action for this project?"
    - User provides action title
 
-2. Gather action properties using **Action Property Questions** (see reference section below)
+2. Use **AskUserQuestion** to gather all action properties together (3 questions in one call):
+   - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
+   - Question 2 - "Priority?": Options "High", "Medium", "Low", "None"
+   - Question 3 - "Due date?": Options "No due date", "Today", "Tomorrow", "This week", "Custom date"
+   - If custom date selected: follow up to ask for specific date
 
 3. Create the action:
    ```bash
@@ -228,24 +232,26 @@ When user selects "Done reviewing" in Step 2:
 
 ---
 
-## Reference: Action Property Questions
+## Reference: Batched Action Property Questions
 
-Use these standardized prompts when gathering action properties in Steps 4a and 4c:
+When gathering action properties, use a single **AskUserQuestion** call with multiple questions:
 
-**Time estimate:**
-- Use **AskUserQuestion**: "Time estimate?"
-- Options: "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
-- Maps to lists: @quick, @1pomo, @2pomo, @deep
+```
+AskUserQuestion with 3 questions:
+  Question 1 (header: "Time"): "Time estimate?"
+    Options: "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
+    Maps to lists: @quick, @1pomo, @2pomo, @deep
 
-**Priority:**
-- Use **AskUserQuestion**: "Priority?"
-- Options: "High", "Medium", "Low", "None"
-- Values: High=1, Medium=5, Low=9, None=0
+  Question 2 (header: "Priority"): "Priority?"
+    Options: "High", "Medium", "Low", "None"
+    Values: High=1, Medium=5, Low=9, None=0
 
-**Due date:**
-- Use **AskUserQuestion**: "Due date?"
-- Options: "No due date", "Today", "Tomorrow", "This week", "Custom date"
-- If custom: ask for specific date
+  Question 3 (header: "Due"): "Due date?"
+    Options: "No due date", "Today", "Tomorrow", "This week", "Custom date"
+    If custom selected: follow up to ask for specific date
+```
+
+This reduces back-and-forth interactions from 3 separate questions to 1 batched question.
 
 ---
 
@@ -281,3 +287,14 @@ Use `yyyy-MM-dd HH:mm` for due dates. Default time is 17:00 if only date provide
 - Create missing reminder lists automatically before creating reminders
 - Handle CLI errors gracefully and report to user
 - Match project names case-insensitively
+
+## Note: Batched vs Sequential Questions
+
+**Batched (independent answers):**
+- Time estimate + Priority + Due date → ask in single AskUserQuestion call with 3 questions (Step 4a)
+
+**Sequential (dependent answers):**
+- "Which project?" → must select before showing options
+- "What to do?" → options depend on project state (stalled vs healthy)
+- "Action title" → must get title before asking for properties
+- "What to edit?" → must know which properties before gathering new values
