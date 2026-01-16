@@ -118,6 +118,49 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
   --allday
 ```
 
+### Create a Recurring Event
+
+**Daily standup:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+  --title "Daily Standup" \
+  --calendar "Work" \
+  --start "2026-01-20 09:00" \
+  --end "2026-01-20 09:30" \
+  --repeat daily
+```
+
+**Weekly team meeting on Mondays:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+  --title "Team Meeting" \
+  --calendar "Work" \
+  --start "2026-01-20 14:00" \
+  --repeat weekly \
+  --repeat-days mon \
+  --repeat-until "2026-06-30"
+```
+
+**Monthly review (12 occurrences):**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+  --title "Monthly Review" \
+  --calendar "Work" \
+  --start "2026-02-01 10:00" \
+  --repeat monthly \
+  --repeat-count 12
+```
+
+**Bi-weekly meeting:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+  --title "Bi-weekly Sync" \
+  --calendar "Work" \
+  --start "2026-01-20 15:00" \
+  --repeat weekly \
+  --repeat-interval 2
+```
+
 ### Delete an Event
 
 ```bash
@@ -132,6 +175,14 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15" \
   --calendar "Work"
+```
+
+**Delete recurring event and all future occurrences:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
+  --title "Daily Standup" \
+  --date "2026-01-25" \
+  --all-future
 ```
 
 ## Response Format
@@ -179,11 +230,38 @@ Error responses:
 | `--location` | No | Event location |
 | `--notes` | No | Event notes/description |
 | `--allday` | No | Make it an all-day event |
+| `--repeat` | No | Recurrence frequency: daily, weekly, monthly, yearly |
+| `--repeat-interval` | No | Every N periods (default: 1) |
+| `--repeat-until` | No | End date for recurrence (yyyy-MM-dd) |
+| `--repeat-count` | No | Number of occurrences |
+| `--repeat-days` | No | Days for weekly recurrence (e.g., mon,wed,fri) |
+| `--all-future` | No | Delete all future occurrences (delete only) |
+
+## Event Output with Recurrence
+
+When reading events, recurring events include additional fields:
+
+```json
+{
+  "title": "Daily Standup",
+  "calendar": "Work",
+  "startDate": "2026-01-20 09:00:00",
+  "endDate": "2026-01-20 09:30:00",
+  "isAllDay": false,
+  "isRecurring": true,
+  "recurrence": {
+    "frequency": "daily",
+    "interval": 1,
+    "endDate": "2026-12-31",
+    "occurrenceCount": null,
+    "daysOfWeek": null
+  }
+}
+```
 
 ## Limitations
 
 - Events from subscribed calendars (holidays, etc.) cannot be deleted
-- Recurring event editing affects only the single instance
 - No support for attendees or invitations
 
 ## Notes
