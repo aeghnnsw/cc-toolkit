@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.1.0] - 2026-01-15
+
+### Added
+- `/gtd-next` command for calendar-aware task selection (GTD Engage step)
+- Batched AskUserQuestion calls for independent questions
+
+### Changed
+- Refactored `/gtd-process` to batch time/priority/due questions
+- Refactored `/gtd-project` to batch action property questions
+- Added documentation for batched vs sequential question patterns
+
 ## [2.0.0] - 2026-01-14
 
 ### Added
