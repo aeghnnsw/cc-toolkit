@@ -11,6 +11,14 @@ struct CalendarInfo: Codable {
     let color: String?
 }
 
+struct RecurrenceInfo: Codable {
+    let frequency: String           // "daily", "weekly", "monthly", "yearly"
+    let interval: Int               // Every N periods
+    let endDate: String?            // End date if specified
+    let occurrenceCount: Int?       // Occurrence count if specified
+    let daysOfWeek: [String]?       // For weekly: ["mon", "wed", "fri"]
+}
+
 struct EventInfo: Codable {
     let title: String
     let calendar: String
@@ -19,6 +27,8 @@ struct EventInfo: Codable {
     let location: String?
     let notes: String?
     let isAllDay: Bool
+    let isRecurring: Bool
+    let recurrence: RecurrenceInfo?
 }
 
 struct ReminderListInfo: Codable {
@@ -33,6 +43,8 @@ struct ReminderInfo: Codable {
     let priority: Int
     let isCompleted: Bool
     let notes: String?
+    let isRecurring: Bool
+    let recurrence: RecurrenceInfo?
 }
 
 struct ActionResult: Codable {
@@ -147,6 +159,119 @@ func parseArgs(_ args: [String]) -> [String: String] {
         }
     }
     return result
+}
+
+// MARK: - Recurrence Helpers
+
+func parseRecurrenceFrequency(_ string: String) -> EKRecurrenceFrequency? {
+    switch string.lowercased() {
+    case "daily": return .daily
+    case "weekly": return .weekly
+    case "monthly": return .monthly
+    case "yearly": return .yearly
+    default: return nil
+    }
+}
+
+func frequencyToString(_ frequency: EKRecurrenceFrequency) -> String {
+    switch frequency {
+    case .daily: return "daily"
+    case .weekly: return "weekly"
+    case .monthly: return "monthly"
+    case .yearly: return "yearly"
+    @unknown default: return "unknown"
+    }
+}
+
+func parseDaysOfWeek(_ string: String) -> [EKRecurrenceDayOfWeek]? {
+    let dayMap: [String: EKWeekday] = [
+        "sun": .sunday, "sunday": .sunday,
+        "mon": .monday, "monday": .monday,
+        "tue": .tuesday, "tuesday": .tuesday,
+        "wed": .wednesday, "wednesday": .wednesday,
+        "thu": .thursday, "thursday": .thursday,
+        "fri": .friday, "friday": .friday,
+        "sat": .saturday, "saturday": .saturday
+    ]
+
+    let days = string.lowercased().split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+    var result: [EKRecurrenceDayOfWeek] = []
+
+    for day in days {
+        guard let weekday = dayMap[day] else {
+            return nil
+        }
+        result.append(EKRecurrenceDayOfWeek(weekday))
+    }
+
+    return result.isEmpty ? nil : result
+}
+
+func dayOfWeekToString(_ day: EKRecurrenceDayOfWeek) -> String {
+    switch day.dayOfTheWeek {
+    case .sunday: return "sun"
+    case .monday: return "mon"
+    case .tuesday: return "tue"
+    case .wednesday: return "wed"
+    case .thursday: return "thu"
+    case .friday: return "fri"
+    case .saturday: return "sat"
+    @unknown default: return "unknown"
+    }
+}
+
+func formatRecurrenceRule(_ rule: EKRecurrenceRule) -> RecurrenceInfo {
+    var endDateStr: String? = nil
+    var occurrenceCount: Int? = nil
+
+    if let recurrenceEnd = rule.recurrenceEnd {
+        if let endDate = recurrenceEnd.endDate {
+            endDateStr = dateOnlyFormatter.string(from: endDate)
+        }
+        if recurrenceEnd.occurrenceCount > 0 {
+            occurrenceCount = recurrenceEnd.occurrenceCount
+        }
+    }
+
+    var daysOfWeek: [String]? = nil
+    if let days = rule.daysOfTheWeek, !days.isEmpty {
+        daysOfWeek = days.map { dayOfWeekToString($0) }
+    }
+
+    return RecurrenceInfo(
+        frequency: frequencyToString(rule.frequency),
+        interval: rule.interval,
+        endDate: endDateStr,
+        occurrenceCount: occurrenceCount,
+        daysOfWeek: daysOfWeek
+    )
+}
+
+func createRecurrenceRule(
+    frequency: EKRecurrenceFrequency,
+    interval: Int,
+    endDate: Date?,
+    occurrenceCount: Int?,
+    daysOfWeek: [EKRecurrenceDayOfWeek]?
+) -> EKRecurrenceRule {
+    var recurrenceEnd: EKRecurrenceEnd? = nil
+    if let endDate = endDate {
+        recurrenceEnd = EKRecurrenceEnd(end: endDate)
+    } else if let count = occurrenceCount {
+        recurrenceEnd = EKRecurrenceEnd(occurrenceCount: count)
+    }
+
+    return EKRecurrenceRule(
+        recurrenceWith: frequency,
+        interval: interval,
+        daysOfTheWeek: daysOfWeek,
+        daysOfTheMonth: nil,
+        monthsOfTheYear: nil,
+        weeksOfTheYear: nil,
+        daysOfTheYear: nil,
+        setPositions: nil,
+        end: recurrenceEnd
+    )
 }
 
 // MARK: - EventKit Store
@@ -323,14 +448,23 @@ func getEvents(from startDate: Date, to endDate: Date, searchTerm: String? = nil
     }
 
     let eventInfos = events.map { event -> EventInfo in
-        EventInfo(
+        let recurrence: RecurrenceInfo?
+        if let rules = event.recurrenceRules, let firstRule = rules.first {
+            recurrence = formatRecurrenceRule(firstRule)
+        } else {
+            recurrence = nil
+        }
+
+        return EventInfo(
             title: event.title ?? "Untitled",
             calendar: event.calendar.title,
             startDate: dateFormatter.string(from: event.startDate),
             endDate: dateFormatter.string(from: event.endDate),
             location: event.location,
             notes: event.notes,
-            isAllDay: event.isAllDay
+            isAllDay: event.isAllDay,
+            isRecurring: event.hasRecurrenceRules,
+            recurrence: recurrence
         )
     }
     outputSuccess(eventInfos)
@@ -440,6 +574,61 @@ func createEvent(_ args: [String: String]) {
         event.notes = notes
     }
 
+    // Handle recurrence
+    if let repeatStr = args["repeat"] {
+        guard let frequency = parseRecurrenceFrequency(repeatStr) else {
+            outputError("Invalid recurrence frequency: '\(repeatStr)' - use daily, weekly, monthly, or yearly")
+        }
+
+        let interval = Int(args["repeat-interval"] ?? "1") ?? 1
+        guard interval > 0 else {
+            outputError("Invalid repeat interval: must be a positive number")
+        }
+
+        // Check for mutually exclusive end conditions
+        let hasUntil = args["repeat-until"] != nil
+        let hasCount = args["repeat-count"] != nil
+        if hasUntil && hasCount {
+            outputError("Cannot specify both --repeat-until and --repeat-count - they are mutually exclusive")
+        }
+
+        var endDate: Date? = nil
+        if let untilStr = args["repeat-until"] {
+            guard let date = parseDate(untilStr) else {
+                outputError("Invalid repeat-until date format: '\(untilStr)' - use yyyy-MM-dd")
+            }
+            endDate = date
+        }
+
+        var occurrenceCount: Int? = nil
+        if let countStr = args["repeat-count"] {
+            guard let count = Int(countStr), count > 0 else {
+                outputError("Invalid repeat-count: '\(countStr)' - must be a positive number")
+            }
+            occurrenceCount = count
+        }
+
+        var daysOfWeek: [EKRecurrenceDayOfWeek]? = nil
+        if let daysStr = args["repeat-days"] {
+            guard frequency == .weekly else {
+                outputError("--repeat-days can only be used with weekly recurrence")
+            }
+            guard let days = parseDaysOfWeek(daysStr) else {
+                outputError("Invalid days of week: '\(daysStr)' - use comma-separated values like mon,wed,fri")
+            }
+            daysOfWeek = days
+        }
+
+        let rule = createRecurrenceRule(
+            frequency: frequency,
+            interval: interval,
+            endDate: endDate,
+            occurrenceCount: occurrenceCount,
+            daysOfWeek: daysOfWeek
+        )
+        event.addRecurrenceRule(rule)
+    }
+
     do {
         try store.save(event, span: .thisEvent)
         outputResult(true, "Event '\(title)' created successfully")
@@ -482,13 +671,17 @@ func deleteEvent(_ args: [String: String]) {
         outputError("No event found with title '\(title)' on \(dateStr)")
     }
 
+    // Determine delete span based on --all-future flag
+    let deleteAllFuture = args["all-future"] == "true"
+    let span: EKSpan = deleteAllFuture ? .futureEvents : .thisEvent
+
     var deletedCount = 0
     var failedCount = 0
     var errors: [String] = []
 
     for event in events {
         do {
-            try store.remove(event, span: .thisEvent)
+            try store.remove(event, span: span)
             deletedCount += 1
         } catch {
             failedCount += 1
@@ -499,13 +692,14 @@ func deleteEvent(_ args: [String: String]) {
         }
     }
 
+    let spanMessage = deleteAllFuture ? " and all future occurrences" : ""
     let errorSummary = errors.isEmpty ? "Unknown error" : errors.joined(separator: "; ")
     if failedCount > 0 && deletedCount == 0 {
         outputError("Failed to delete event(s): \(errorSummary)")
     } else if failedCount > 0 {
-        outputResult(false, "Deleted \(deletedCount) event(s) with title '\(title)', but \(failedCount) failed: \(errorSummary)")
+        outputResult(false, "Deleted \(deletedCount) event(s) with title '\(title)'\(spanMessage), but \(failedCount) failed: \(errorSummary)")
     } else {
-        outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'")
+        outputResult(true, "Deleted \(deletedCount) event(s) with title '\(title)'\(spanMessage)")
     }
 }
 
@@ -586,13 +780,22 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
                 dueDateStr = dateFormatter.string(from: dueDate)
             }
 
+            let recurrence: RecurrenceInfo?
+            if let rules = reminder.recurrenceRules, let firstRule = rules.first {
+                recurrence = formatRecurrenceRule(firstRule)
+            } else {
+                recurrence = nil
+            }
+
             return ReminderInfo(
                 title: reminder.title ?? "Untitled",
                 list: reminder.calendar.title,
                 dueDate: dueDateStr,
                 priority: reminder.priority,
                 isCompleted: reminder.isCompleted,
-                notes: reminder.notes
+                notes: reminder.notes,
+                isRecurring: reminder.hasRecurrenceRules,
+                recurrence: recurrence
             )
         }
         result = .success(reminderInfos)
@@ -732,6 +935,38 @@ func createReminder(_ args: [String: String]) {
 
     if let notes = args["notes"] {
         reminder.notes = notes
+    }
+
+    // Handle recurrence
+    if let repeatStr = args["repeat"] {
+        guard let frequency = parseRecurrenceFrequency(repeatStr) else {
+            outputError("Invalid recurrence frequency: '\(repeatStr)' - use daily, weekly, monthly, or yearly")
+        }
+
+        let interval = Int(args["repeat-interval"] ?? "1") ?? 1
+        guard interval > 0 else {
+            outputError("Invalid repeat interval: must be a positive number")
+        }
+
+        // Warn about unsupported parameters for reminders
+        if args["repeat-until"] != nil {
+            fputs("Warning: --repeat-until is not supported for reminders and will be ignored\n", stderr)
+        }
+        if args["repeat-count"] != nil {
+            fputs("Warning: --repeat-count is not supported for reminders and will be ignored\n", stderr)
+        }
+        if args["repeat-days"] != nil {
+            fputs("Warning: --repeat-days is not supported for reminders and will be ignored\n", stderr)
+        }
+
+        let rule = createRecurrenceRule(
+            frequency: frequency,
+            interval: interval,
+            endDate: nil,
+            occurrenceCount: nil,
+            daysOfWeek: nil
+        )
+        reminder.addRecurrenceRule(rule)
     }
 
     do {
@@ -922,9 +1157,12 @@ func printUsage() {
                                               Get events in date range
       calendars create --title <title> --calendar <name> --start <yyyy-MM-dd HH:mm>
                        [--end <yyyy-MM-dd HH:mm>] [--location <loc>] [--notes <text>]
-                       [--allday]             Create a new event
+                       [--allday] [--repeat <daily|weekly|monthly|yearly>]
+                       [--repeat-interval <N>] [--repeat-until <yyyy-MM-dd>]
+                       [--repeat-count <N>] [--repeat-days <mon,wed,fri>]
+                                              Create a new event
       calendars delete --title <title> --date <yyyy-MM-dd> [--calendar <name>]
-                                              Delete an event
+                       [--all-future]         Delete an event (--all-future for recurring)
 
     Reminder Commands:
       reminders lists                         List all reminder lists
@@ -933,6 +1171,7 @@ func printUsage() {
       reminders overdue                       Get overdue reminders
       reminders create --title <title> --list <name>
                        [--due <yyyy-MM-dd HH:mm>] [--priority <0|1|5|9>] [--notes <text>]
+                       [--repeat <daily|weekly|monthly|yearly>] [--repeat-interval <N>]
                                               Create a new reminder
       reminders complete --title <title> [--list <name>]
                                               Mark reminder as complete
@@ -943,6 +1182,7 @@ func printUsage() {
       reminders create-list <name>            Create a new reminder list
 
     Priority values: 0=none, 1=high, 5=medium, 9=low
+    Recurrence: daily, weekly, monthly, yearly (interval defaults to 1)
     """
     print(usage)
 }

@@ -115,6 +115,36 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --notes "Prepare slides and agenda"
 ```
 
+### Create a Recurring Reminder
+
+**Daily medication reminder:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+  --title "Take medication" \
+  --list "Health" \
+  --due "2026-01-20 08:00" \
+  --repeat daily
+```
+
+**Weekly grocery shopping:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+  --title "Grocery shopping" \
+  --list "Personal" \
+  --due "2026-01-25 10:00" \
+  --repeat weekly
+```
+
+**Bi-weekly task:**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+  --title "Review expenses" \
+  --list "Work" \
+  --due "2026-01-20 17:00" \
+  --repeat weekly \
+  --repeat-interval 2
+```
+
 ### Mark Reminder as Complete
 
 ```bash
@@ -169,9 +199,31 @@ All commands return JSON. Success responses:
       "dueDate": "2025-01-15 17:00:00",
       "priority": 0,
       "isCompleted": false,
-      "notes": null
+      "notes": null,
+      "isRecurring": false,
+      "recurrence": null
     }
   ]
+}
+```
+
+**Recurring reminder response:**
+```json
+{
+  "title": "Take medication",
+  "list": "Health",
+  "dueDate": "2026-01-20 08:00:00",
+  "priority": 0,
+  "isCompleted": false,
+  "notes": null,
+  "isRecurring": true,
+  "recurrence": {
+    "frequency": "daily",
+    "interval": 1,
+    "endDate": null,
+    "occurrenceCount": null,
+    "daysOfWeek": null
+  }
 }
 ```
 
@@ -214,6 +266,8 @@ Use `yyyy-MM-dd HH:mm` for due dates:
 | `--due` | No | Due date/time |
 | `--priority` | No | Priority (0, 1, 5, or 9) |
 | `--notes` | No | Notes/description |
+| `--repeat` | No | Recurrence frequency: daily, weekly, monthly, yearly |
+| `--repeat-interval` | No | Every N periods (default: 1) |
 
 ## Limitations
 
