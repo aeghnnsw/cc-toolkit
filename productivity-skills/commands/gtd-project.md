@@ -28,9 +28,9 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 
 ## Step 1: Gather Data
 
-1. Get current date for overdue calculation:
+1. Query overdue reminders (uses Apple's datetime-aware overdue detection):
    ```bash
-   date "+%Y-%m-%d"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders overdue
    ```
 
 2. Ensure required lists exist:
@@ -68,7 +68,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 7. Determine project status:
    - **Healthy** (✓): Has a pending action that is not overdue
    - **Stalled** (⚠️): No pending action linked to this project
-   - **Overdue** (⚠️): Action's due date OR project's due date is in the past
+   - **Overdue** (⚠️): Action OR project appears in the overdue query results from Step 1.1
 
 ## Step 2: Display Projects Overview
 
