@@ -1,5 +1,5 @@
 ---
-description: Calendar-aware task selection for GTD Engage step
+description: Calendar-aware task selection and agenda generation for GTD Engage step
 argument-hint: []
 allowed-tools: Read, Bash, AskUserQuestion
 model: opus
@@ -11,14 +11,21 @@ Context lists: @quick, @1pomo, @2pomo, @deep
 Projects list: "Projects" in macOS Reminders
 Action reference: #{ProjectName} in notes field
 
+Note: Projects can have multiple parallel actions. When displaying suggestions,
+show all matching actions even if multiple belong to the same project.
+
 Time to context mapping:
 - < 25 min → @quick only
 - 25-50 min → @quick, @1pomo
 - 50-90 min → @quick, @1pomo, @2pomo
 - 90+ min → all contexts including @deep
+
+Task durations: @quick=15min, @1pomo=25min, @2pomo=50min, @deep=90min
+Buffer: ~10 min per hour (available_minutes / 6, min 5, max 20)
+Pomodoro: 25 min work + 5 min break
 -->
 
-Help user pick the best task based on available time until their next fixed event (GTD "Engage" step).
+Help user select tasks and generate a time-blocked agenda for their available time slot (GTD "Engage" step).
 
 ## CLI Tool
 
@@ -113,7 +120,7 @@ If available time < 15 minutes:
    - Due date
    - Whether overdue
 
-## Step 5: Prioritize and Display Suggestions
+## Step 5: Select Tasks for Agenda
 
 Sort actions by:
 1. Overdue items first
@@ -127,13 +134,13 @@ Display format:
 ```
 # Available Time: [X hours/minutes] until [Event] ([Time])
 
-Suggested actions:
+Available actions:
 
-1. ⚠️ [Action Title] #[ProjectName] [Priority] @[context] - OVERDUE
-2. [Action Title] #[ProjectName] [Priority] @[context] - due [date]
-3. [Action Title] [Priority] @[context]
+1. ⚠️ [Action Title] #[ProjectName] [Priority] @[context] (~15 min) - OVERDUE
+2. [Action Title] #[ProjectName] [Priority] @[context] (~25 min) - due [date]
+3. [Action Title] [Priority] @[context] (~25 min)
 
-Recommended: Start with #1 (overdue), then #2
+Select the tasks you want to work on.
 ```
 
 Format notes:
@@ -141,85 +148,82 @@ Format notes:
 - Show project name if linked (from notes field)
 - Show priority: [High], [Medium], [Low], or omit for None
 - Show context list: @quick, @1pomo, @2pomo, @deep
+- Show estimated duration based on context (see Reference: Task Durations)
 - Show due date if set, with "OVERDUE" if past
 
 If no actions match available contexts:
 - Display: "No actions found matching your available time. Consider adding actions to @quick or @1pomo lists."
 - Exit the workflow
 
-Use **AskUserQuestion**: "Which task to start?"
-- Options: Numbered list (up to 4 items) + "Show more" + "Skip for now"
-- If "Show more": display next batch of suggestions
-- If "Skip for now": exit workflow
+Use **AskUserQuestion** with **multiSelect: true**: "Which tasks do you want to work on?"
+- Options: Numbered list of matching actions + "None of these"
+- If "None of these" selected: exit workflow
 
-## Step 6: Start Selected Task
+**Validate selection:**
+1. Calculate total time needed:
+   - Sum of task durations based on context
+   - Add pomodoro breaks (5 min after each 25 min of work)
+   - Add buffer time (see Reference: Buffer Calculation)
 
-1. Display task details:
-   ```
-   Starting: "[Action Title]"
-   Context: @[context]
-   ```
+2. If total time exceeds available time:
+   - Display: "Selected tasks need [X] minutes but you only have [Y] minutes available."
+   - Suggest which tasks could fit (e.g., "You could fit tasks 1 and 3 within your available time.")
+   - Re-ask with multiSelect showing the same full list
+   - Continue validation until selections fit or user selects "None of these"
+   - If "None of these" on re-prompt: exit workflow
 
-2. If task is linked to a project (has #{ProjectName} in notes):
-   - Query the project to get its goal:
-     ```bash
-     swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
-     ```
-   - Parse to find matching project and extract goal from notes
-   - Display: "Project: [ProjectName]\nGoal: [Goal description]"
+3. Once validated, proceed to Step 6.
 
-3. Display: "Let me know when you're done with this task."
+## Step 6: Generate Agenda
 
-## Step 7: Task Completion
+Based on the user's selections and available time, create a time-blocked agenda.
 
-Use **AskUserQuestion**: "How did it go?"
-- Options: "Completed", "Partially done, need more time", "Couldn't start, will do later"
+**Agenda Generation Rules:**
 
-**If "Completed":**
-1. Mark the action complete:
-   ```bash
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
-     --title "[Action title]" \
-     --list "@[context]"
-   ```
-2. Report: "Marked complete: '[Action title]'"
-3. Go to Step 8
+1. **Calculate buffer time** before next event:
+   - Buffer = available_minutes / 6 (roughly 10 min per hour)
+   - Round to nearest 5 minutes
+   - Minimum 5 minutes, maximum 20 minutes
 
-**If "Partially done":**
-1. Keep action incomplete
-2. Report: "Keeping '[Action title]' on your list for later."
-3. Go to Step 8
+2. **Calculate usable work time:**
+   - Usable time = Available time - Buffer time
 
-**If "Couldn't start":**
-1. Keep action incomplete
-2. Go to Step 8
+3. **Arrange tasks into pomodoro blocks:**
+   - Each pomodoro = 25 min work + 5 min break
+   - If multiple short tasks fit within 25 min, group them without breaks
+   - After each 25 min of work, schedule a 5 min break
+   - No break needed before the final buffer
 
-## Step 8: Recalculate and Continue
+4. **Generate the agenda:**
 
-1. Get current time:
-   ```bash
-   date "+%Y-%m-%d %H:%M"
-   ```
+```
+## Your Agenda (until [Event] at [Time])
 
-2. Recalculate remaining time until the original next event
+[Start Time] - [End Time]  [Task A] (@quick)
+[Start Time] - [End Time]  [Task B] (@1pomo)
+[Start Time] - [End Time]  Break
+[Start Time] - [End Time]  [Task C] (@2pomo)
+[Start Time] - [End Time]  Buffer before [Event]
+```
 
-3. If remaining time < 15 minutes:
-   - Display: "Only [X] minutes left before [Event]. Take a break and prepare for your meeting."
-   - Exit workflow
+**Example with multiple tasks:**
 
-4. Otherwise, display updated time and next suggestion:
-   ```
-   Remaining time: [X hours/minutes] until [Event] ([Time])
+```
+## Your Agenda (until Team Meeting at 11:00)
 
-   Next suggestion:
-   1. [Action Title] [Priority] @[context]
-   ```
+09:00 - 09:15  Reply to client email (@quick)
+09:15 - 09:25  Review PR comments (@quick)
+09:25 - 09:30  Break
+09:30 - 09:55  Write documentation (@1pomo)
+09:55 - 10:00  Break
+10:00 - 10:50  Deep work on feature (@2pomo)
+10:50 - 11:00  Buffer before Team Meeting
+```
 
-Use **AskUserQuestion**: "Continue?"
-- Options: "Yes, start this task", "Pick a different task", "Done for now"
-- If "Yes": Go to Step 6
-- If "Pick a different task": Go to Step 4 (re-query and display options)
-- If "Done for now": Exit workflow
+5. **Present the agenda:**
+   - Display the formatted agenda
+   - Optionally show linked project goals for context
+   - Exit the workflow
 
 ---
 
@@ -231,6 +235,15 @@ Use **AskUserQuestion**: "Continue?"
 | @1pomo | 25 min | 25+ min available |
 | @2pomo | 50 min | 50+ min available |
 | @deep | 90+ min | Long uninterrupted time |
+
+## Reference: Task Durations
+
+| Context | Duration (minutes) |
+|---------|-------------------|
+| @quick | 15 |
+| @1pomo | 25 |
+| @2pomo | 50 |
+| @deep | 90 |
 
 ## Reference: Priority Display
 
@@ -247,7 +260,35 @@ To calculate available minutes:
 1. Parse event start time from calendar JSON (format: "2026-01-15 14:00:00")
 2. Parse current time (format: "2026-01-15 13:30")
 3. Calculate difference in minutes
-4. Subtract 5-10 minutes buffer for transition
+4. When generating agenda, subtract buffer time (see Reference: Buffer Calculation)
+
+## Reference: Buffer Calculation
+
+Buffer time provides transition time before the next event:
+
+```
+buffer_minutes = available_minutes / 6
+buffer_minutes = round_to_nearest_5(buffer_minutes)
+buffer_minutes = max(5, min(20, buffer_minutes))
+```
+
+Examples:
+- 30 min available → 5 min buffer
+- 60 min available → 10 min buffer
+- 90 min available → 15 min buffer
+- 120 min available → 20 min buffer
+
+## Reference: Pomodoro Breaks
+
+Breaks are scheduled after every 25 minutes of cumulative work:
+
+- Multiple @quick tasks within 25 min: no break between them, break after reaching 25 min
+- @1pomo (25 min): break after completing the task
+- @2pomo (50 min): treat as single focused block, break after completing (not mid-task)
+- @deep (90 min): treat as single focused block, break after completing (not mid-task)
+- No break needed immediately before the final buffer
+
+Note: For simplicity, longer tasks (@2pomo, @deep) are not interrupted with breaks. The pomodoro timing applies to cumulative work when combining multiple smaller tasks.
 
 ---
 
@@ -256,16 +297,17 @@ To calculate available minutes:
 - Always show context (@quick, @1pomo, etc.) with each action
 - Prioritize overdue items - they should always appear first
 - Link actions to projects when #{ProjectName} is found in notes
+- Show all matching actions even if multiple belong to the same project
 - Provide time-appropriate suggestions (don't suggest @deep tasks for 30-minute windows)
-- After each completed task, immediately recalculate and suggest next
-- Respect the user's time by exiting gracefully when time is short
+- Show estimated duration with each task to help user plan
+- Validate total time of selected tasks before generating agenda
+- Display a clear, time-blocked agenda as the final output
 - Handle CLI errors gracefully and report to user
 
-## Note: Sequential Questions
+## Note: Question Patterns
 
-Questions in this command are asked sequentially (not batched) because each answer affects subsequent behavior:
+**Sequential questions** (dependent answers):
 - Step 2: "Other commitments?" → only ask "When?" if user says yes
-- Step 7: "How did it go?" → determines whether to mark complete
-- Step 8: "Continue?" → depends on remaining time after completion
 
-Use batched questions only when answers are independent (e.g., time estimate + priority + due date in /gtd-process).
+**MultiSelect questions:**
+- Step 5: "Which tasks?" → allows selecting multiple tasks for the agenda
