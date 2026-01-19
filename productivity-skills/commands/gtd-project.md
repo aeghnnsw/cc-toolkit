@@ -71,6 +71,8 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    - **Stalled** (⚠️): Has 0 pending actions linked to this project
    - **Overdue** (⚠️): Any action's due date OR project's due date is in the past
 
+   **Note:** Statuses are evaluated in order of severity: Overdue, then Stalled, then Healthy.
+
 ## Step 2: Display Projects Overview
 
 Present all projects with status indicators, end goals, and all linked actions:
@@ -163,7 +165,7 @@ Options presented based on project state:
 3. Report: "Completed: '[action title]'"
 
 4. Check if project has other remaining actions:
-   - **If other actions remain**: Report remaining action count and return to Step 2
+   - **If other actions remain**: Report "Project [ProjectName] has N remaining actions: '[Action A]', '[Action B]'." and return to Step 2
    - **If no actions remain**: Use **AskUserQuestion**: "No remaining actions. What's next?"
      - Options: "Add next action", "Mark project complete", "Skip for now"
 
@@ -179,7 +181,7 @@ Options presented based on project state:
 
 2. Show current action properties:
    ```
-   Current action: "Send invoice"
+   Editing action: "Send invoice"
    List: @quick
    Priority: Medium
    Due: 2026-01-10 17:00
