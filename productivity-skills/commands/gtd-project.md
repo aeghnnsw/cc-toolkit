@@ -13,7 +13,7 @@ Project notes: "Goal: [end goal description]"
 Context lists: @quick, @1pomo, @2pomo, @deep
 CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
 
-Key principle: One actionable task per project - only track the NEXT action, not all future actions.
+Key principle: Projects can have multiple parallel actions. Track all actionable tasks that can be worked on independently.
 -->
 
 Review and manage GTD projects with auto-review and guided workflow.
@@ -58,36 +58,42 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    done
    ```
 
-5. For each project, find its action by matching `#{ProjectName}` in the action's notes field:
+5. For each project, find ALL linked actions by matching `#{ProjectName}` in the action's notes field:
    - Parse the JSON output from context list queries
    - Match the notes field against pattern `#{ProjectName}`
-   - Example: Project "VacationResearch-20260112" matches action with notes containing "#VacationResearch-20260112"
+   - Collect ALL matching actions (not just one)
+   - Example: Project "VacationResearch-20260112" matches all actions with notes containing "#VacationResearch-20260112"
 
 6. Extract project end goal from project's notes field (format: "Goal: [description]")
 
 7. Determine project status:
-   - **Healthy** (✓): Has a pending action that is not overdue
-   - **Stalled** (⚠️): No pending action linked to this project
-   - **Overdue** (⚠️): Action's due date OR project's due date is in the past
+   - **Healthy** (✓): Has 1+ pending actions, none overdue
+   - **Stalled** (⚠️): Has 0 pending actions linked to this project
+   - **Overdue** (⚠️): Any action's due date OR project's due date is in the past
+
+   **Note:** Statuses are evaluated in order of severity: Overdue, then Stalled, then Healthy.
 
 ## Step 2: Display Projects Overview
 
-Present all projects with status indicators and end goals:
+Present all projects with status indicators, end goals, and all linked actions:
 
 ```
 # Projects Overview
 
 1. ✓ VacationResearch-20260112 [High]
    - Goal: Flights and hotel booked for Hawaii trip
-   - Action: "Research flights to Hawaii" (@1pomo)
+   - Actions (2):
+     • "Research flights to Hawaii" (@1pomo)
+     • "Email hotel for rates" (@quick)
 
 2. ⚠️ ReviewQ1Roadmap-20260115 [High]
    - Goal: Roadmap approved by stakeholders
-   - No pending action (stalled)
+   - No pending actions (stalled)
 
 3. ⚠️ ClientProject-20260110 [Medium]
    - Goal: Invoice paid and project closed
-   - Action: "Send invoice" (@quick) - OVERDUE (due 2026-01-10)
+   - Actions (1):
+     • "Send invoice" (@quick) - OVERDUE (due 2026-01-10)
 
 Which project to work on? [1/2/3/Done]
 ```
@@ -107,7 +113,7 @@ Options presented based on project state:
 
 | Option | When Available | Action |
 |--------|----------------|--------|
-| Add action | Stalled projects only | Go to Step 4a |
+| Add action | All projects | Go to Step 4a |
 | Mark action complete | Projects with actions | Go to Step 4b |
 | Reschedule action | Overdue actions only | Go to Step 4c (due date only) |
 | Edit action | Projects with actions | Go to Step 4c (all properties) |
@@ -115,6 +121,7 @@ Options presented based on project state:
 | Skip | All projects | Return to Step 2 |
 
 **Note:** For overdue actions, highlight the "Reschedule" option to user.
+**Note:** User can add multiple actions to a project by repeating "Add action".
 
 ## Step 4a: Add Action
 
@@ -144,39 +151,49 @@ Options presented based on project state:
 
 ## Step 4b: Complete Action
 
-1. Mark the action complete:
+1. If project has multiple actions, use **AskUserQuestion**: "Which action to complete?"
+   - Options: List of actions for this project
+   - If only one action, skip this step
+
+2. Mark the selected action complete:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
      --title "Action title" \
      --list "@1pomo"
    ```
 
-2. Report: "Completed: '[action title]'"
+3. Report: "Completed: '[action title]'"
 
-3. **Immediately ask for next action** - Use **AskUserQuestion**: "What's the next action for this project?"
-   - Options: "Enter next action", "Mark project complete", "Skip for now"
+4. Check if project has other remaining actions:
+   - **If other actions remain**: Report "Project [ProjectName] has N remaining actions: '[Action A]', '[Action B]'." and return to Step 2
+   - **If no actions remain**: Use **AskUserQuestion**: "No remaining actions. What's next?"
+     - Options: "Add next action", "Mark project complete", "Skip for now"
 
-4. If "Enter next action": Go to Step 4a (Add Action)
-5. If "Mark project complete": Go to Step 5 (Complete Project)
-6. If "Skip for now": Return to Step 2
+5. If "Add next action": Go to Step 4a (Add Action)
+6. If "Mark project complete": Go to Step 5 (Complete Project)
+7. If "Skip for now": Return to Step 2 (project becomes stalled)
 
 ## Step 4c: Edit Action
 
-1. Show current action properties:
+1. If project has multiple actions, use **AskUserQuestion**: "Which action to edit?"
+   - Options: List of actions for this project
+   - If only one action, skip this step
+
+2. Show current action properties:
    ```
-   Current action: "Send invoice"
+   Editing action: "Send invoice"
    List: @quick
    Priority: Medium
    Due: 2026-01-10 17:00
    ```
 
-2. Use **AskUserQuestion**: "What would you like to edit?"
+3. Use **AskUserQuestion**: "What would you like to edit?"
    - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
    - multiSelect: true (allow multiple selections)
 
-3. For each selected property, gather new value using **Action Property Questions** (see reference section below)
+4. For each selected property, gather new value using **Action Property Questions** (see reference section below)
 
-4. To update, delete old action and create new one with updated properties:
+5. To update, delete old action and create new one with updated properties:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete \
      --title "Old title" \
@@ -190,9 +207,9 @@ Options presented based on project state:
      --due "2026-01-15 17:00"
    ```
 
-5. Report: "Updated action '[title]'"
+6. Report: "Updated action '[title]'"
 
-6. Return to Step 2.
+7. Return to Step 2.
 
 ## Step 5: Complete Project
 
@@ -281,9 +298,9 @@ Use `yyyy-MM-dd HH:mm` for due dates. Default time is 17:00 if only date provide
 
 ## Guidelines
 
-- **One action per project**: Only track the NEXT action, not all future actions
-- Every project should have exactly one pending action (unless stalled or complete)
-- After completing an action, immediately prompt for the next action
+- **Multiple actions per project**: Track all actionable tasks that can be worked on independently
+- Projects can have 0, 1, or many pending actions
+- After completing an action, only prompt for next action if no other actions remain
 - Create missing reminder lists automatically before creating reminders
 - Handle CLI errors gracefully and report to user
 - Match project names case-insensitively
