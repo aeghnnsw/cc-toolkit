@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.2.0] - 2026-01-19
+
+### Changed
+- `/gtd-project` now supports multiple parallel actions per project
+- `/gtd-next` clarified to show all actions even if multiple belong to same project
+- Updated project status logic: Healthy (1+ actions), Stalled (0 actions), Overdue (any action overdue)
+- "Add action" now available for all projects, not just stalled ones
+- After completing action, only prompts for next if no remaining actions
+
 ## [2.1.0] - 2026-01-15
 
 ### Added

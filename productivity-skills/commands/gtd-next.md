@@ -11,6 +11,9 @@ Context lists: @quick, @1pomo, @2pomo, @deep
 Projects list: "Projects" in macOS Reminders
 Action reference: #{ProjectName} in notes field
 
+Note: Projects can have multiple parallel actions. When displaying suggestions,
+show all matching actions even if multiple belong to the same project.
+
 Time to context mapping:
 - < 25 min → @quick only
 - 25-50 min → @quick, @1pomo
@@ -256,6 +259,7 @@ To calculate available minutes:
 - Always show context (@quick, @1pomo, etc.) with each action
 - Prioritize overdue items - they should always appear first
 - Link actions to projects when #{ProjectName} is found in notes
+- Show all matching actions even if multiple belong to the same project
 - Provide time-appropriate suggestions (don't suggest @deep tasks for 30-minute windows)
 - After each completed task, immediately recalculate and suggest next
 - Respect the user's time by exiting gracefully when time is short
