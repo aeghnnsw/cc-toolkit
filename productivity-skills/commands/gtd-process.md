@@ -53,7 +53,7 @@ Use **AskUserQuestion**: "What is this item?"
 | Option | Description |
 |--------|-------------|
 | New Project | Multi-step outcome requiring multiple actions |
-| Project Action | Action for an existing project |
+| Project Action | A next action that belongs to an existing project |
 | Single Action | One clear next action |
 | Skip | Leave in inbox for later |
 
@@ -85,7 +85,7 @@ Use **AskUserQuestion**: "What is this item?"
      --due "2026-01-20 17:00"
    ```
    (omit `--due` if user selected "No deadline")
-7. Use **AskUserQuestion**: "Add first action now?"
+6. Use **AskUserQuestion**: "Add first action now?"
    - If yes: get action title, time estimate, due date (optional)
    - Create action in appropriate context list with project reference:
      ```bash
@@ -103,25 +103,34 @@ Use **AskUserQuestion**: "What is this item?"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
    ```
 
-2. If no projects exist, inform user and offer to create a new project (go to Step 5a) or a single action (go to Step 5c)
+2. If no projects exist, use **AskUserQuestion**: "No projects found. What would you like to do?"
+   - Options: "Create a new project" (go to Step 5a), "Create a single action" (go to Step 5c)
 
 3. Display project list and use **AskUserQuestion**: "Which project does this belong to?"
    - Options: project titles from the response
 
-4. Use **AskUserQuestion** to gather action properties (3 questions in one call):
+4. Use **AskUserQuestion**: "What's the action title?"
+   - Use the inbox item text as the default suggestion
+
+5. Use **AskUserQuestion** to gather action properties (3 questions in one call):
    - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
-   - Question 2 - "Priority?": Options "High (inherit from project)", "Medium", "Low", "None"
+   - Question 2 - "Priority?": Options "Inherit from project", "High", "Medium", "Low", "None"
    - Question 3 - "Due date?": Options "No due date", "Today", "Tomorrow", "This week", "Custom date"
    - If custom date selected: follow up to ask for specific date
 
-5. Create action in appropriate context list with project link:
+6. Determine context list from time estimate:
+   - Quick → @quick, 1 Pomodoro → @1pomo, 2 Pomodoros → @2pomo, Deep → @deep
+
+7. Create action in context list with project link:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
      --list "@1pomo" \
      --notes "#{ProjectName-20260112}" \
-     --priority 5
+     --priority 5 \
+     --due "2026-01-15 14:00"
    ```
+   (omit `--due` if user selected "No due date", use project's priority if "Inherit from project" selected)
 
 ## Step 5c: Process as Single Action
 
@@ -184,7 +193,7 @@ Use Edit tool to remove the processed item from inbox.md.
 - **Every project must have a clear end goal** - this defines what "done" looks like
 - Create missing reminder lists automatically before creating reminders
 - Project actions inherit priority from the project
-- Use `#{ProjectName}` in notes field to link actions to projects
+- Use `#{ProjectName-YYYYMMDD}` in notes field to link actions to projects
 - Project notes contain the end goal: "Goal: [description]"
 - Date format for due dates: `yyyy-MM-dd HH:mm`
 - Handle CLI errors gracefully and report to user
@@ -196,6 +205,7 @@ Use Edit tool to remove the processed item from inbox.md.
 
 **Sequential (dependent answers):**
 - "What is this item?" → must ask first, determines which path to follow
-- "Which project?" → must ask before gathering action properties (Project Action path)
+- "Which project?" → must ask before action title (Project Action path)
+- "Action title?" → must ask before gathering action properties (Project Action path)
 - "Confirm project name" → must confirm before asking for end goal (New Project path)
 - "Add first action?" → must ask after project is created (New Project path)
