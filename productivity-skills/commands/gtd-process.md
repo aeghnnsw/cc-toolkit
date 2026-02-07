@@ -48,11 +48,12 @@ Parse `$ARGUMENTS` to understand intent:
 
 ## Step 4: Categorize Item
 
-Use **AskUserQuestion**: "Is this a Project or Single Action?"
+Use **AskUserQuestion**: "What is this item?"
 
 | Option | Description |
 |--------|-------------|
-| Project | Multi-step outcome requiring multiple actions |
+| New Project | Multi-step outcome requiring multiple actions |
+| Project Action | Action for an existing project |
 | Single Action | One clear next action |
 | Skip | Leave in inbox for later |
 
@@ -95,7 +96,34 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
        --priority 5
      ```
 
-## Step 5b: Process as Single Action
+## Step 5b: Process as Project Action
+
+1. Fetch existing projects:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
+   ```
+
+2. If no projects exist, inform user and offer to create a new project (go to Step 5a) or a single action (go to Step 5c)
+
+3. Display project list and use **AskUserQuestion**: "Which project does this belong to?"
+   - Options: project titles from the response
+
+4. Use **AskUserQuestion** to gather action properties (3 questions in one call):
+   - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
+   - Question 2 - "Priority?": Options "High (inherit from project)", "Medium", "Low", "None"
+   - Question 3 - "Due date?": Options "No due date", "Today", "Tomorrow", "This week", "Custom date"
+   - If custom date selected: follow up to ask for specific date
+
+5. Create action in appropriate context list with project link:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+     --title "Action title" \
+     --list "@1pomo" \
+     --notes "#{ProjectName-20260112}" \
+     --priority 5
+   ```
+
+## Step 5c: Process as Single Action
 
 1. Use **AskUserQuestion** to gather all action properties together (3 questions in one call):
    - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
@@ -112,7 +140,7 @@ Use **AskUserQuestion**: "Is this a Project or Single Action?"
      --due "2026-01-15 14:00"
    ```
 
-## Step 5c: Skip
+## Step 5d: Skip
 
 Leave item in inbox, proceed to Step 7.
 
@@ -167,6 +195,7 @@ Use Edit tool to remove the processed item from inbox.md.
 - Time estimate + Priority + Due date → ask in single AskUserQuestion call with 3 questions
 
 **Sequential (dependent answers):**
-- "Project or Single Action?" → must ask first, determines which properties to gather
-- "Confirm project name" → must confirm before asking for end goal
-- "Add first action?" → must ask after project is created
+- "What is this item?" → must ask first, determines which path to follow
+- "Which project?" → must ask before gathering action properties (Project Action path)
+- "Confirm project name" → must confirm before asking for end goal (New Project path)
+- "Add first action?" → must ask after project is created (New Project path)
