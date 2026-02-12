@@ -89,10 +89,10 @@ def main():
             }
             print(json.dumps(response))
             sys.exit(0)
-        elif "gh pr merge" in command and "--squash" in command:
-            # Warn about squash merge
+        elif "gh pr merge" in command and "--squash" not in command:
+            # Encourage squash merge
             response = {
-                "systemMessage": "Merge Strategy: Use regular merge instead of squash to preserve commit history and authorship."
+                "systemMessage": "Merge Strategy: Prefer --squash when merging PRs to keep history clean."
             }
             print(json.dumps(response))
             sys.exit(0)
