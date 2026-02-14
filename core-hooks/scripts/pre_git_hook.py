@@ -62,10 +62,17 @@ def main():
                 if match:
                     branch_name = match.group(1)
                 else:
-                    # Also check for positional branch name: git worktree add <path> <branch>
+                    # Check for positional branch name: git worktree add <path> <branch>
                     match = re.search(r'git worktree add\s+\S+\s+([a-zA-Z][\w-]*)', command)
                     if match:
                         branch_name = match.group(1)
+                    else:
+                        # No explicit branch — git derives branch name from last path component
+                        # e.g. git worktree add trees/my-feature -> branch "my-feature"
+                        match = re.search(r'git worktree add\s+(\S+)', command)
+                        if match:
+                            import os
+                            branch_name = os.path.basename(match.group(1))
 
             if branch_name:
                 valid_prefixes = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
