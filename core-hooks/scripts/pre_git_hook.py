@@ -8,6 +8,7 @@ Adds context reminders before git commits and PR creation.
 """
 
 import json
+import os
 import sys
 
 def main():
@@ -71,7 +72,6 @@ def main():
                         # e.g. git worktree add trees/my-feature -> branch "my-feature"
                         match = re.search(r'git worktree add\s+(\S+)', command)
                         if match:
-                            import os
                             branch_name = os.path.basename(match.group(1))
 
             if branch_name:
