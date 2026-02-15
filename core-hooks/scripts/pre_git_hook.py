@@ -109,7 +109,7 @@ def main():
             claude_patterns = [
                 r'Generated with \[Claude Code\]',
                 r'claude\.ai/code',
-                r'Co-Authored-By: Claude <noreply@anthropic\.com>',
+                r'noreply@anthropic\.com',
                 r'Generated with',
                 r'Claude Code'
             ]
