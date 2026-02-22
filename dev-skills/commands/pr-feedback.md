@@ -19,9 +19,19 @@ Uses: gh CLI for PR operations, code-review skill for structured review
 
 Gather and address all feedback on the current PR through a structured review-fix-push cycle.
 
+## Step 0: Pre-flight Check
+
+Verify the current branch has an associated PR:
+```bash
+gh pr view --json number -q '.number'
+```
+If this fails, inform the user they need to be on a branch with an open PR and exit.
+
 ## Step 1: Self-Review
 
 Invoke the `code-review:code-review` skill to review the current PR. This produces a structured review with confidence-based filtering.
+
+> **Note:** The `code-review` skill is an external dependency (not part of this repository). If the skill is not available, fall back to manually reviewing the PR diff with `gh pr diff` and identifying potential issues.
 
 After the review completes, save the list of issues found for consolidation in Step 3.
 
@@ -44,17 +54,17 @@ When not skipping, read all PR review comments:
 
 2. Read PR review comments:
    ```bash
-   gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[] | {user: .user.login, state: .state, body: .body}'
+   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[] | {user: .user.login, state: .state, body: .body}'
    ```
 
 3. Read inline review comments:
    ```bash
-   gh api repos/$REPO/pulls/$PR_NUMBER/comments --jq '.[] | {user: .user.login, path: .path, line: .line, body: .body}'
+   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/comments --jq '.[] | {user: .user.login, path: .path, line: .line, body: .body}'
    ```
 
 4. Read general PR comments:
    ```bash
-   gh api repos/$REPO/issues/$PR_NUMBER/comments --jq '.[] | {user: .user.login, body: .body}'
+   gh api --paginate repos/$REPO/issues/$PR_NUMBER/comments --jq '.[] | {user: .user.login, body: .body}'
    ```
 
 Collect all comments and extract actionable feedback items.
@@ -125,7 +135,7 @@ If no fixes were needed, skip this step.
 
    **If "Merge the PR":**
    ```bash
-   gh pr merge $PR_NUMBER --merge
+   gh pr merge $(gh pr view --json number -q '.number') --squash
    ```
    After successful merge, inform the user to clean up their worktree and local branch if applicable.
 
