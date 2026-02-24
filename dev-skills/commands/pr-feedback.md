@@ -14,7 +14,7 @@ This command orchestrates a full PR feedback cycle:
 5. Commit and push
 6. Re-review and decide on merge readiness
 
-Uses: gh CLI for PR operations, code-review skill for structured review
+Uses: gh CLI for PR operations
 -->
 
 Gather and address all feedback on the current PR through a structured review-fix-push cycle.
@@ -29,9 +29,7 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Invoke the `code-review:code-review` skill to review the current PR. This produces a structured review with confidence-based filtering.
-
-> **Note:** The `code-review` skill is an external dependency (not part of this repository). If the skill is not available, fall back to manually reviewing the PR diff with `gh pr diff` and identifying potential issues.
+Review the current PR for bugs, logic errors, and code quality issues.
 
 After the review completes, save the list of issues found for consolidation in Step 3.
 
@@ -44,30 +42,7 @@ Use **AskUserQuestion**: "Have all external reviewers (GitHub Actions, teammates
 
 **If "Yes" or "Skip":**
 
-When not skipping, read all PR review comments:
-
-1. Get the PR number and repo:
-   ```bash
-   PR_NUMBER=$(gh pr view --json number -q '.number')
-   REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-   ```
-
-2. Read PR review comments:
-   ```bash
-   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[] | {user: .user.login, state: .state, body: .body}'
-   ```
-
-3. Read inline review comments:
-   ```bash
-   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/comments --jq '.[] | {user: .user.login, path: .path, line: .line, body: .body}'
-   ```
-
-4. Read general PR comments:
-   ```bash
-   gh api --paginate repos/$REPO/issues/$PR_NUMBER/comments --jq '.[] | {user: .user.login, body: .body}'
-   ```
-
-Collect all comments and extract actionable feedback items.
+When not skipping, read all reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
 
 ## Step 3: Consolidate Issues
 
