@@ -29,9 +29,9 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Review the current PR for bugs, logic errors, and code quality issues.
+Review the current PR for bugs, logic errors, and code quality issues. List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
 
-After the review completes, save the list of issues found for consolidation in Step 3.
+Save the full list for consolidation in Step 3.
 
 ## Step 2: Gather External Reviews
 
@@ -46,7 +46,7 @@ When not skipping, read all reviewer comments on the PR — including review com
 
 ## Step 3: Consolidate Issues
 
-Merge issues from Step 1 (self-review) and Step 2 (external reviews) into a single deduplicated list.
+Merge **all** issues from Step 1 (self-review) and Step 2 (external reviews) into a single deduplicated list. Include every issue regardless of its original score or severity — all issues are treated equally from this point forward.
 
 Present the consolidated list to the user:
 
@@ -63,11 +63,11 @@ If no issues were found from any source, inform the user the PR looks clean and 
 
 ## Step 4: Investigate and Fix
 
-For each issue in the consolidated list:
+For each issue in the consolidated list, investigate one by one:
 
 1. **Investigate**: Read the relevant code, understand the context, and determine if the issue is valid.
 
-2. **If valid**: Fix the issue. Make the minimal change needed.
+2. **If valid**: Fix the issue, even if minor. Make the minimal change needed.
 
 3. **If invalid**: Skip it with a brief explanation of why (e.g., "false positive — the null check already exists on line 42").
 
