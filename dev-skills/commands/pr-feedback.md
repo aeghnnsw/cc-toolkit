@@ -14,7 +14,7 @@ This command orchestrates a full PR feedback cycle:
 5. Commit and push
 6. Re-review and decide on merge readiness
 
-Uses: gh CLI for PR operations, code-review skill for structured review
+Uses: gh CLI for PR operations
 -->
 
 Gather and address all feedback on the current PR through a structured review-fix-push cycle.
@@ -29,11 +29,9 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Invoke the `code-review:code-review` skill to review the current PR. This produces a structured review with confidence-based filtering.
+Review the current PR for bugs, logic errors, and code quality issues. List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
 
-> **Note:** The `code-review` skill is an external dependency (not part of this repository). If the skill is not available, fall back to manually reviewing the PR diff with `gh pr diff` and identifying potential issues.
-
-After the review completes, save the list of issues found for consolidation in Step 3.
+Save the full list for consolidation in Step 3.
 
 ## Step 2: Gather External Reviews
 
@@ -44,34 +42,11 @@ Use **AskUserQuestion**: "Have all external reviewers (GitHub Actions, teammates
 
 **If "Yes" or "Skip":**
 
-When not skipping, read all PR review comments:
-
-1. Get the PR number and repo:
-   ```bash
-   PR_NUMBER=$(gh pr view --json number -q '.number')
-   REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-   ```
-
-2. Read PR review comments:
-   ```bash
-   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[] | {user: .user.login, state: .state, body: .body}'
-   ```
-
-3. Read inline review comments:
-   ```bash
-   gh api --paginate repos/$REPO/pulls/$PR_NUMBER/comments --jq '.[] | {user: .user.login, path: .path, line: .line, body: .body}'
-   ```
-
-4. Read general PR comments:
-   ```bash
-   gh api --paginate repos/$REPO/issues/$PR_NUMBER/comments --jq '.[] | {user: .user.login, body: .body}'
-   ```
-
-Collect all comments and extract actionable feedback items.
+When not skipping, read all reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
 
 ## Step 3: Consolidate Issues
 
-Merge issues from Step 1 (self-review) and Step 2 (external reviews) into a single deduplicated list.
+Merge **all** issues from Step 1 (self-review) and Step 2 (external reviews) into a single deduplicated list. Include every issue regardless of its original score or severity — all issues are treated equally from this point forward.
 
 Present the consolidated list to the user:
 
@@ -88,11 +63,11 @@ If no issues were found from any source, inform the user the PR looks clean and 
 
 ## Step 4: Investigate and Fix
 
-For each issue in the consolidated list:
+For each issue in the consolidated list, investigate one by one:
 
 1. **Investigate**: Read the relevant code, understand the context, and determine if the issue is valid.
 
-2. **If valid**: Fix the issue. Make the minimal change needed.
+2. **If valid**: Fix the issue, even if minor. Make the minimal change needed.
 
 3. **If invalid**: Skip it with a brief explanation of why (e.g., "false positive — the null check already exists on line 42").
 
