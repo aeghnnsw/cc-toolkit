@@ -7,12 +7,12 @@ model: opus
 
 <!--
 This command orchestrates a full PR feedback cycle:
-1. Self-review using code-review skill
-2. Gather external reviewer comments (GitHub Actions, human reviewers)
+1. Self-review (loads relevant skills automatically)
+2. Read external reviewer comments
 3. Consolidate all issues into a single list
 4. Investigate and fix valid issues, skip invalid ones
 5. Commit and push
-6. Re-review and decide on merge readiness
+6. Re-read reviewer comments, then decide on merge readiness
 
 Uses: gh CLI for PR operations
 -->
@@ -29,20 +29,13 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Review the current PR for bugs, logic errors, and code quality issues. List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
+Load any relevant review skills available, then review the current PR for bugs, logic errors, and code quality issues. List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
 
 Save the full list for consolidation in Step 3.
 
 ## Step 2: Gather External Reviews
 
-Use **AskUserQuestion**: "Have all external reviewers (GitHub Actions, teammates) posted their comments on the PR?"
-- Options: "Yes, all reviews are in", "Not yet, I'll wait", "Skip external reviews"
-
-**If "Not yet":** Inform the user to re-run `/pr-feedback` when reviews are ready, then exit.
-
-**If "Yes" or "Skip":**
-
-When not skipping, read all reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
+Read all other reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
 
 ## Step 3: Consolidate Issues
 
@@ -99,13 +92,15 @@ If no fixes were needed, skip this step.
 
 1. If fixes were made, briefly review the changes to confirm they are correct and don't introduce new issues.
 
-2. Summarize the overall PR state:
+2. Re-read other reviewer comments on the PR to check if any new comments were posted or if any previously missed feedback should be addressed. If new issues are found, go back to Step 4.
+
+3. Summarize the overall PR state:
    - Total issues found
    - Issues fixed
    - Issues skipped (with reasons)
    - Any remaining concerns
 
-3. Use **AskUserQuestion**: "PR feedback cycle complete. What would you like to do?"
+4. Use **AskUserQuestion**: "PR feedback cycle complete. What would you like to do?"
    - Options: "Merge the PR", "Run another feedback cycle", "I'll handle it manually"
 
    **If "Merge the PR":**
