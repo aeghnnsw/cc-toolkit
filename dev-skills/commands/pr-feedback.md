@@ -87,7 +87,7 @@ If any fixes were made in Step 4:
    git push
    ```
 
-If no fixes were needed, skip this step.
+If no fixes were needed, skip to Step 7.
 
 ## Step 6: Loop
 
