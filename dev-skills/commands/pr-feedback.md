@@ -123,7 +123,7 @@ When no new issues are found, summarize the overall PR state:
 
 Merge the PR directly:
 ```bash
-gh pr merge $(gh pr view --json number -q '.number') --squash
+gh pr merge --merge
 ```
 After successful merge, inform the user to clean up their worktree and local branch if applicable.
 
@@ -134,7 +134,7 @@ You MUST get user approval before merging. Use **AskUserQuestion**: "PR feedback
 
 **If "Merge the PR":**
 ```bash
-gh pr merge $(gh pr view --json number -q '.number') --squash
+gh pr merge --merge
 ```
 After successful merge, inform the user to clean up their worktree and local branch if applicable.
 
