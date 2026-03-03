@@ -1,6 +1,6 @@
 ---
 description: Gather and address PR feedback from all reviewers
-argument-hint: []
+argument-hint: [--allow-merge]
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion, Skill, Task
 model: opus
 ---
@@ -13,12 +13,24 @@ This command orchestrates a full PR feedback cycle that loops until clean:
 4. Investigate and fix valid issues, skip invalid ones
 5. Commit and push
 6. Loop back to Step 1 until no new issues found
-7. When clean, ask user about merge
+7. When clean, merge or ask user about merge
+
+Arguments: $ARGUMENTS
+  --allow-merge : Agent may merge the PR autonomously when clean (default: requires user approval)
 
 Uses: gh CLI for PR operations
 -->
 
 Gather and address all feedback on the current PR through a structured review-fix-push cycle.
+
+## Arguments
+
+Parse `$ARGUMENTS` for flags:
+
+| Flag | Behavior |
+|------|----------|
+| `--allow-merge` | Agent may merge the PR when the review cycle is clean, without asking the user |
+| (no flags) | **Default.** Agent MUST ask the user for approval before merging |
 
 ## Step 0: Pre-flight Check
 
@@ -91,7 +103,12 @@ If no fixes were needed, skip to Step 7.
 
 ## Step 6: Loop
 
-After fixes are committed and pushed, go back to Step 1 to run a full review cycle again. The self-review will catch any issues introduced by the fixes, and external reviewer comments will be re-read for any new feedback.
+After fixes are committed and pushed, go back to **Step 1** and run the **exact same full review cycle again**. Do NOT take shortcuts — every cycle must invoke the same review skills and apply the same level of scrutiny as cycle 1. Fixing issues can introduce new bugs, so a superficial "looks good" check is not acceptable.
+
+Specifically:
+- **Re-invoke review skills** — do not just scan the diff or skim changes
+- **Treat cycle N the same as cycle 1** — same tools, same depth, same rigor
+- External reviewer comments will also be re-read for any new feedback
 
 Repeat until no new issues are found in Step 3, then proceed to Step 7.
 
@@ -102,7 +119,17 @@ When no new issues are found, summarize the overall PR state:
 - Issues fixed
 - Issues skipped (with reasons)
 
-Use **AskUserQuestion**: "PR feedback cycle complete. No new issues found. What would you like to do?"
+**If `--allow-merge` was provided:**
+
+Merge the PR directly:
+```bash
+gh pr merge $(gh pr view --json number -q '.number') --squash
+```
+After successful merge, inform the user to clean up their worktree and local branch if applicable.
+
+**If `--allow-merge` was NOT provided (default):**
+
+You MUST get user approval before merging. Use **AskUserQuestion**: "PR feedback cycle complete. No new issues found. What would you like to do?"
 - Options: "Merge the PR", "I'll handle it manually"
 
 **If "Merge the PR":**
