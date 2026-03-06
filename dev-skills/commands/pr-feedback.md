@@ -42,7 +42,11 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Load any relevant review skills available, then review the current PR for bugs, logic errors, and code quality issues. List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
+You **MUST** use the **Skill tool** to invoke a code review or PR review skill for the self-review. Do NOT skip this — do not just run `gh pr diff` and eyeball it. The skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
+
+If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
+
+List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
 
 Save the full list for consolidation in Step 3.
 
@@ -106,7 +110,7 @@ If no fixes were needed, skip to Step 7.
 After fixes are committed and pushed, go back to **Step 1** and run the **exact same full review cycle again**. Do NOT take shortcuts — every cycle must invoke the same review skills and apply the same level of scrutiny as cycle 1. Fixing issues can introduce new bugs, so a superficial "looks good" check is not acceptable.
 
 Specifically:
-- **Re-invoke review skills** — do not just scan the diff or skim changes
+- **Re-invoke review skills via the Skill tool** — do not just scan the diff or skim changes
 - **Treat cycle N the same as cycle 1** — same tools, same depth, same rigor
 - External reviewer comments will also be re-read for any new feedback
 
