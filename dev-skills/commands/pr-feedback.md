@@ -46,7 +46,7 @@ You **MUST** use the **Skill tool** to invoke a code review or PR review skill f
 
 If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
 
-List **all** potential issues found regardless of severity or confidence — do not filter or skip any.
+**IMPORTANT: Collect ALL issues the review skill finds, regardless of their scores.** The review skill may internally score and filter issues — ignore its filtering. Even if the skill says "no issues met the threshold" or "not posting a comment", extract every issue it identified at any score level. Do NOT let the skill's score-based filtering determine what reaches Step 3. Scores are informational only — the decision of whether an issue is valid happens in Step 4 through investigation, not through score thresholds.
 
 Save the full list for consolidation in Step 3.
 
