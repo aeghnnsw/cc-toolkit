@@ -7,6 +7,21 @@
 # ///
 
 import sys
+import platform
+import glob as globmod
+
+
+def has_audio_output():
+    """Check if the system has audio output devices available."""
+    system = platform.system()
+    if system == "Darwin":
+        return True
+    if system == "Linux":
+        # Check for PCM playback devices in /dev/snd/
+        return len(globmod.glob("/dev/snd/pcm*p*")) > 0
+    # Unknown platform, assume audio is available
+    return True
+
 
 def play_notification_sound(sound_type="default"):
     """
@@ -15,6 +30,9 @@ def play_notification_sound(sound_type="default"):
     Args:
         sound_type: Type of sound to play (success, error, info, attention, default)
     """
+    if not has_audio_output():
+        return
+
     try:
         import chime
 
@@ -33,18 +51,8 @@ def play_notification_sound(sound_type="default"):
         else:
             chime.warning(sync=True)  # default
 
-    except ImportError:
-        # Fallback to terminal bell if chime not available
-        try:
-            print("\a", end="", flush=True)
-        except:
-            pass  # Silent failure
     except Exception:
-        # Ultimate fallback - terminal bell
-        try:
-            print("\a", end="", flush=True)
-        except:
-            pass  # Silent failure
+        pass  # Silent failure — no audio fallback
 
 
 def main():
