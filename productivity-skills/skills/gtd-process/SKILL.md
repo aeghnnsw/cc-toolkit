@@ -1,5 +1,6 @@
 ---
-description: Process GTD inbox items into projects or actions
+name: gtd-process
+description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 argument-hint: [all]
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 model: opus

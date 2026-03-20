@@ -5,7 +5,7 @@
 **cc-toolkit** is a unified Claude Code plugin marketplace that extends Claude Code functionality. This is a modular plugin system that provides capabilities for development workflows, scientific content creation, and document processing.
 
 ### Purpose
-- Store and version-control custom Claude Code plugins (skills, agents, hooks, commands)
+- Store and version-control custom Claude Code plugins (skills, agents, hooks)
 - Enable discovery and reusability of modular capabilities through a unified marketplace
 - Provide systematic development workflow automation
 - Facilitate scientific content creation and document processing
@@ -31,6 +31,8 @@ cc-toolkit/
 │   ├── .claude-plugin/
 │   │   └── plugin.json                  # Plugin manifest
 │   └── skills/
+│       ├── pr-feedback/
+│       │   └── SKILL.md
 │       ├── problem-solving-cycle/
 │       │   └── SKILL.md
 │       └── step-workflow/
@@ -60,16 +62,24 @@ cc-toolkit/
 │   └── skills/
 │       ├── calendar-manager/
 │       │   └── SKILL.md
+│       ├── gtd-inbox/
+│       │   └── SKILL.md
+│       ├── gtd-next/
+│       │   └── SKILL.md
+│       ├── gtd-process/
+│       │   └── SKILL.md
+│       ├── gtd-project/
+│       │   └── SKILL.md
 │       └── reminder-manager/
 │           └── SKILL.md
 ├── pymol-skills/                        # PyMOL molecular visualization plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
-│   ├── skills/
-│   │   └── pymol-mcp/
-│   │       └── SKILL.md
-│   └── commands/
-│       └── setup.md
+│   └── skills/
+│       ├── pymol-mcp/
+│       │   └── SKILL.md
+│       └── pymol-setup/
+│           └── SKILL.md
 ├── logs/                                # Claude Code execution logs
 ├── trees/                               # Git worktrees for active development
 └── README.md                            # Project overview
@@ -371,9 +381,9 @@ The root `marketplace.json` must be updated whenever:
 #### Plugin Manifests
 Each plugin's `plugin.json` must be updated whenever:
 - Plugin description or version changes
-- Hooks or commands configuration changes
+- Hooks configuration changes
 
-**Note:** Skills and agents are auto-discovered from `skills/` and `agents/` directories. No manifest update is needed when adding or removing them.
+**Note:** Skills, agents, and commands are auto-discovered from `skills/` and `agents/` directories. No manifest update is needed when adding or removing them. Commands now use the same `skills/<name>/SKILL.md` format as skills.
 
 ### Skill Documentation
 Each skill's `SKILL.md` file serves as both:

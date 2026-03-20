@@ -1,5 +1,6 @@
 ---
-description: Review and manage GTD projects with guided workflow
+name: gtd-project
+description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking and action management.
 argument-hint: []
 allowed-tools: Read, Bash, AskUserQuestion
 model: opus

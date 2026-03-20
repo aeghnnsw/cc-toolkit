@@ -1,5 +1,6 @@
 ---
-description: Gather and address PR feedback from all reviewers
+name: pr-feedback
+description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 argument-hint: [--allow-merge]
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion, Skill, Task
 model: opus
