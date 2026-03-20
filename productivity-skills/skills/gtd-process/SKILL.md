@@ -1,5 +1,6 @@
 ---
 name: gtd-process
+version: 1.0.0
 description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 argument-hint: [all]
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion

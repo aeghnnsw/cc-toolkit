@@ -383,7 +383,7 @@ Each plugin's `plugin.json` must be updated whenever:
 - Plugin description or version changes
 - Hooks configuration changes
 
-**Note:** Skills, agents, and commands are auto-discovered from `skills/` and `agents/` directories. No manifest update is needed when adding or removing them. Commands now use the same `skills/<name>/SKILL.md` format as skills.
+**Note:** Skills and agents are auto-discovered from `skills/` and `agents/` directories. No manifest update is needed when adding or removing them.
 
 ### Skill Documentation
 Each skill's `SKILL.md` file serves as both:
