@@ -1,5 +1,7 @@
 ---
-description: Calendar-aware task selection and agenda generation for GTD Engage step
+name: gtd-next
+version: 1.0.0
+description: This skill should be used when the user asks "what should I work on next?", "plan my next block", "generate an agenda", "what's next?", or wants calendar-aware task selection and time-blocked agenda generation for the GTD Engage step.
 argument-hint: []
 allowed-tools: Read, Bash, AskUserQuestion
 model: opus

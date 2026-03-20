@@ -1,5 +1,7 @@
 ---
-description: Manage GTD inbox for capturing thoughts and tasks
+name: gtd-inbox
+version: 1.0.0
+description: This skill should be used when the user asks to "add to inbox", "capture a thought", "show inbox", "list inbox items", "clear inbox", "remove from inbox", or wants to manage their GTD inbox for capturing thoughts and tasks.
 argument-hint: [instructions]
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 model: haiku

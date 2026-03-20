@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.0] - 2026-03-19
+
+### Changed
+- Migrate all GTD commands from `commands/` to `skills/<name>/SKILL.md` format
+- Add `name` and `version` fields to all skill frontmatter
+- Rewrite descriptions to third-person trigger format for better discoverability
+- Remove legacy `commands/` directory
+
 ## [2.2.0] - 2026-01-19
 
 ### Changed

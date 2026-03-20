@@ -1,6 +1,7 @@
 ---
-name: setup
-description: Show PyMOL socket plugin installation instructions
+name: pymol-setup
+version: 1.0.0
+description: This skill should be used when the user asks to "set up PyMOL", "install PyMOL plugin", "configure PyMOL socket", "PyMOL setup instructions", or needs help installing and configuring the PyMOL MCP socket plugin for use with Claude Code.
 ---
 
 Print the following setup instructions to the user:

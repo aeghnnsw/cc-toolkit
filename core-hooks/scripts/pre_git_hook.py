@@ -26,23 +26,19 @@ def main():
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         import re
-        # Block git add . and git add -A operations
-        if re.search(r'git add\s+(-A|--all|\.|\.\/)', command):
-            # Allow git add for specific dotfiles, but block git add . and git add -A
-            # Check if it's adding a specific dotfile (like .gitignore, .env.example, etc.)
-            dotfile_pattern = r'git add \.[a-zA-Z][a-zA-Z0-9._-]*(?:\s|$)'
-            if not re.search(dotfile_pattern, command) or re.search(r'git add\s+(-A|--all|\s+\.\s*$)', command):
-                # Block bulk git add operations
-                response = {
-                    "systemMessage": "BLOCKED: Use 'git add <filename>' with specific file names instead of 'git add .', 'git add -A', or 'git add --all' for precise change control.",
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": "Bulk git add operations are prohibited - use specific file names"
-                    }
+        # Block git add . and git add -A operations (but allow dotfile paths like .claude-plugin/)
+        if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
+            # Block bulk git add operations
+            response = {
+                "systemMessage": "BLOCKED: Use 'git add <filename>' with specific file names instead of 'git add .', 'git add -A', or 'git add --all' for precise change control.",
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "Bulk git add operations are prohibited - use specific file names"
                 }
-                print(json.dumps(response))
-                sys.exit(0)
+            }
+            print(json.dumps(response))
+            sys.exit(0)
         elif "git checkout -b" in command or "git switch -c" in command or "git worktree add" in command:
             # Extract branch name and validate naming convention
             import re
