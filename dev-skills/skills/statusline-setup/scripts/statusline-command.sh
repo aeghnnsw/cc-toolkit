@@ -34,7 +34,6 @@ RST="\033[0m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
 RED="\033[31m"
-MAGENTA="\033[35m"
 
 # Helper: make a 10-char progress bar with color
 make_bar() {
@@ -169,7 +168,7 @@ if [ "$CW" != "null" ] && [ -n "$CW" ]; then
       printf "%.2f", cost
     }')
 
-    printf "  ${DIM}in:${RST}%s ${DIM}cw:${RST}%s ${DIM}cr:${RST}%s ${DIM}out:${RST}%s ${DIM}|${RST} \$%s\n" \
+    printf "  ${DIM}in:${RST}%s ${DIM}cw:${RST}%s ${DIM}cr:${RST}%s ${DIM}out:${RST}%s ${DIM}│${RST} \$%s\n" \
       "$IN_FMT" "$CW_FMT" "$CR_FMT" "$OUT_FMT" "$COST"
   fi
 fi
