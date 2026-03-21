@@ -14,7 +14,7 @@ PROJECT=$(basename "$CWD" 2>/dev/null)
 
 # Git status
 GIT_BRANCH=""
-if [ -n "$CWD" ] && [ -d "$CWD/.git" ] || git -C "$CWD" rev-parse --git-dir >/dev/null 2>&1; then
+if [ -n "$CWD" ] && { [ -d "$CWD/.git" ] || git -C "$CWD" rev-parse --git-dir >/dev/null 2>&1; }; then
   GIT_BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
   GIT_DIRTY=""
   GIT_AHEAD=""
@@ -46,21 +46,9 @@ make_bar() {
   for ((i=0; i<empty; i++)); do bar+="░"; done
   local color="$GREEN"
   if [ "$pct" -ge 90 ]; then color="$RED"
-  elif [ "$pct" -ge 70 ]; then color="$YELLOW"
   elif [ "$pct" -ge 50 ]; then color="$YELLOW"
   fi
   printf "${color}%s${RST}" "$bar"
-}
-
-# Helper: format duration from seconds
-fmt_duration() {
-  local secs="$1"
-  local mins=$(( secs / 60 ))
-  if [ "$mins" -ge 60 ]; then
-    printf "%dh %dm" $(( mins / 60 )) $(( mins % 60 ))
-  else
-    printf "%dm" "$mins"
-  fi
 }
 
 format_k() {
@@ -145,7 +133,7 @@ if [ "$RL" != "null" ] && [ -n "$RL" ]; then
       fi
     fi
 
-    printf " ${DIM}| 7d:${RST} "
+    printf " ${DIM}│ 7d:${RST} "
     make_bar "$RL_7D_INT"
     printf " %d%%${DIM}%s${RST}" "$RL_7D_INT" "$RESET_7D_FMT"
   fi
