@@ -1,6 +1,7 @@
 ---
 name: calendar-manager
-description: Manage macOS Calendar app events via EventKit CLI. Use this skill when the user wants to create calendar events, add meetings, schedule appointments, check calendar availability, list upcoming events, search for events by date or title, update event details, or delete calendar entries. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
+version: 1.0.0
+description: This skill should be used when the user asks to "create calendar event", "add meeting", "schedule appointment", "check calendar", "list upcoming events", "search events", "update event", "delete event", or wants to manage macOS Calendar app events via EventKit CLI. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
 ---
 
 # Calendar Manager

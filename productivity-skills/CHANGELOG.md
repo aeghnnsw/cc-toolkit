@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1] - 2026-03-22
+
+### Changed
+- Standardize calendar-manager and reminder-manager frontmatter
+- Add missing `version` field to both skills
+- Rewrite descriptions to third-person trigger format for consistency with GTD skills
+
 ## [3.0.0] - 2026-03-19
 
 ### Changed

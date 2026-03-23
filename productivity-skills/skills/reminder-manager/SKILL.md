@@ -1,6 +1,7 @@
 ---
 name: reminder-manager
-description: Manage macOS Reminders app via EventKit CLI. Use this skill when the user wants to create reminders, add tasks, add todos, set due dates, check pending tasks, list reminder lists, view overdue reminders, mark tasks as complete, or delete reminders. Supports setting due dates, priorities, and notes. Requires macOS and Reminders.app access permissions.
+version: 1.0.0
+description: This skill should be used when the user asks to "create reminder", "add task", "add todo", "set due date", "check pending tasks", "list reminder lists", "view overdue reminders", "mark task complete", "delete reminder", or wants to manage macOS Reminders app via EventKit CLI. Supports setting due dates, priorities, and notes. Requires macOS and Reminders.app access permissions.
 ---
 
 # Reminder Manager
