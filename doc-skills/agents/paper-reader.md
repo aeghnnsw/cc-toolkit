@@ -1,10 +1,12 @@
 ---
 name: paper-reader
-description: Use PROACTIVELY to analyze research papers and answer specific questions about their content. This specialist reads PDF papers, extracts key information, and provides detailed answers and relevant bibliographic references. MUST BE USED when the user has a PDF research paper and a list of questions to be answered from its content.
+description: "[DEPRECATED] Analyze research papers and answer specific questions about their content. Reads PDF papers, extracts key information, and provides detailed answers and relevant bibliographic references."
 tools: Read, Write, Glob, TodoWrite, Bash
 model: haiku
 color: yellow
 ---
+
+> **DEPRECATED:** This agent is no longer actively maintained. It remains available but is not recommended for use.
 
 # Purpose
 
