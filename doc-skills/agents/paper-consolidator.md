@@ -1,10 +1,12 @@
 ---
 name: paper-consolidator
-description: Use to consolidate multiple paper-reader analysis outputs into a unified report. This specialist merges findings from 1-3 paper analysis reports, eliminates duplicate expressions, synthesizes insights, and adds proper attribution to indicate source papers. MUST BE USED sequentially (not in parallel) when combining multiple paper analysis answer files into a single consolidated report.
+description: "[DEPRECATED] Consolidate multiple paper-reader analysis outputs into a unified report. Merges findings from 1-3 paper analysis reports, eliminates duplicate expressions, synthesizes insights, and adds proper attribution."
 tools: Read, Write, Edit, Bash
 model: haiku
 color: pink
 ---
+
+> **DEPRECATED:** This agent is no longer actively maintained. It remains available but is not recommended for use.
 
 # Purpose
 
