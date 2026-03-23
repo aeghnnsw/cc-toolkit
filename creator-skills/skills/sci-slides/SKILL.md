@@ -1,5 +1,6 @@
 ---
 name: sci-slides
+version: 1.0.0
 description: Comprehensive guide for creating effective academic presentation slides for STEM fields. Use this skill when users ask to create scientific presentations, review slide design, need guidance on slide content density, bullet point limits, text vs visuals, equation presentation, figure adaptation, or want to avoid common presentation mistakes. Applies to conference talks, lab meetings, journal clubs, and all academic presentation contexts.
 ---
 

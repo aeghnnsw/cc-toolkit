@@ -1,5 +1,6 @@
 ---
 name: problem-solving-cycle
+version: 1.0.0
 description: Guides through standardized development workflow from brainstorming to PR merge and cleanup. This skill should be used when starting new features, bug fixes, refactoring, documentation updates, or any development work that requires issue tracking and PR workflow. Use when the user wants to follow a systematic approach to problem-solving with proper version control and code review practices.
 ---
 

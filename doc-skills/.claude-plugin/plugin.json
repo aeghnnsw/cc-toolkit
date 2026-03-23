@@ -1,5 +1,5 @@
 {
   "name": "doc-skills",
   "description": "Document processing skills for AI agent accessibility, including PDF to markdown conversion split by page for efficient AI processing without context limitations",
-  "version": "1.0.0"
+  "version": "1.0.1"
 }

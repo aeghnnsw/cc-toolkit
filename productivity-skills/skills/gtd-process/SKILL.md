@@ -2,28 +2,18 @@
 name: gtd-process
 version: 1.0.0
 description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
-argument-hint: [all]
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
-model: opus
 ---
 
-<!--
-Inbox file: ~/.claude/productivity-skills/inbox.md
-Projects list: "Projects" in macOS Reminders
-Context lists: @quick, @1pomo, @2pomo, @deep
-CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
--->
+Process GTD inbox items into projects or actions.
 
-Process GTD inbox items based on user instructions: $ARGUMENTS
+## Step 1: Determine Processing Mode
 
-## Step 1: Interpret Instructions
+Determine the processing mode from the user's message:
 
-Parse `$ARGUMENTS` to understand intent:
-
-| Argument | Behavior |
-|----------|----------|
-| (empty) | Show inbox, ask which item to process, process one item |
-| `all` | Process all items sequentially until inbox empty or user says "Done" |
+| User Intent | Behavior |
+|-------------|----------|
+| Process specific item or no qualifier | Show inbox, ask which item to process, process one item |
+| "process all", "process everything" | Process all items sequentially until inbox empty or user says "Done" |
 
 ## Step 2: Read Inbox
 
@@ -40,11 +30,11 @@ Parse `$ARGUMENTS` to understand intent:
 
 ## Step 3: Select Item
 
-**If `$ARGUMENTS` is empty:**
+**If processing a single item:**
 - Use **AskUserQuestion**: "Which item to process?"
 - Options: numbered items plus "Done processing"
 
-**If `$ARGUMENTS` is `all`:**
+**If processing all items:**
 - Start with first item automatically
 - After each item, continue to next unless user chooses "Done"
 
@@ -161,12 +151,12 @@ Use Edit tool to remove the processed item from inbox.md.
 
 ## Step 7: Continue Processing
 
-**If `$ARGUMENTS` is empty:**
+**If processing a single item:**
 - Use **AskUserQuestion**: "Process another item?"
 - If yes: return to Step 2
 - If no: show summary and exit
 
-**If `$ARGUMENTS` is `all`:**
+**If processing all items:**
 - If more items remain: automatically continue to next item
 - Use **AskUserQuestion**: "Continue with next item '[item]'?"
 - Options: "Yes, process it", "Skip this one", "Done processing"

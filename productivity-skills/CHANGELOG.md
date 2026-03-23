@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0] - 2026-03-22
+
+### Changed
+- Remove command-specific frontmatter (argument-hint, allowed-tools, model) from all GTD skills
+- Rewrite gtd-inbox and gtd-process to use user-intent detection instead of $ARGUMENTS
+- Full compliance with skill-development standard
+
 ## [3.0.1] - 2026-03-22
 
 ### Changed

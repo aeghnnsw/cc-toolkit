@@ -1,5 +1,6 @@
 ---
 name: sci-figure-format
+version: 1.0.0
 description: Guide for creating publication-quality scientific figures that meet major journal standards (Nature, Science, ACS, RSC). Use this skill when users ask about scientific figure formatting, journal requirements, colorblind-safe palettes, resolution/DPI, file formats, fonts, or figure dimensions for publication.
 ---
 

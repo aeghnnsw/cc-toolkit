@@ -1,5 +1,6 @@
 ---
 name: docling-pdf
+version: 1.0.0
 description: Convert PDF documents to AI-accessible markdown format using IBM's Docling library. This skill should be used when the user needs to extract content from PDFs including text, figures, and tables in a structured markdown format. It handles scientific papers, technical documents, reports, and any PDF requiring content extraction for AI processing or analysis.
 ---
 
