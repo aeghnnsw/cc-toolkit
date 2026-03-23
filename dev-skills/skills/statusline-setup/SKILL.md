@@ -2,7 +2,6 @@
 name: statusline-setup
 version: 1.0.0
 description: This skill should be used when the user asks to "set up statusline", "configure statusline", "install statusline", "set up status bar", or wants to configure the Claude Code statusline with model info, git status, context/rate-limit bars, and token cost tracking.
-allowed-tools: Read, Write, Edit, Bash
 ---
 
 Install and configure a custom Claude Code statusline that shows model info, git status, context usage, rate limits, and token costs.

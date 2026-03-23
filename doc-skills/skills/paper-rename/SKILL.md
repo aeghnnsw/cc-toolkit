@@ -1,5 +1,6 @@
 ---
 name: paper-rename
+version: 1.0.0
 description: Intelligently rename research paper PDFs from generic filenames (DOIs, serial numbers) to descriptive names based on extracted titles and metadata. This skill should be used when the user has downloaded research articles with non-descriptive filenames and wants to organize them with meaningful names based on the document content.
 ---
 

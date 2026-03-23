@@ -1,5 +1,6 @@
 ---
 name: step-workflow
+version: 1.0.0
 description: This skill should be used when organizing work using step-based file naming and folder structure. Load this skill at the start of working on a new feature to establish sequential, numbered organization for all files (scripts, outputs, tests, documentation). The skill guides the use of numbered prefixes (01_, 02_, 03_) and sub-step notation (01_1_, 01_2_) to maintain clear workflow order and traceability.
 ---
 

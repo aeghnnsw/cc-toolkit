@@ -1,5 +1,6 @@
 ---
 name: pymol-mcp
+version: 1.0.0
 description: Control PyMOL molecular visualization software through natural language. This skill should be used when the user wants to visualize protein structures, create molecular representations, perform structural analysis, or generate publication-quality molecular images using PyMOL.
 ---
 

@@ -2,22 +2,14 @@
 name: gtd-inbox
 version: 1.0.0
 description: This skill should be used when the user asks to "add to inbox", "capture a thought", "show inbox", "list inbox items", "clear inbox", "remove from inbox", or wants to manage their GTD inbox for capturing thoughts and tasks.
-argument-hint: [instructions]
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
-model: haiku
 ---
 
-<!--
-Inbox file: ~/.claude/productivity-skills/inbox.md
-Format: Markdown with "# Inbox" header and bullet list items
--->
-
-Manage the user's GTD inbox based on their instructions: $ARGUMENTS
+Manage the user's GTD inbox based on their request.
 
 ## Step 1: Read Inbox File
 
-1. Use the Read tool to read `~/.claude/productivity-skills/inbox.md`
-2. If file or directory doesn't exist:
+1. Read `~/.claude/productivity-skills/inbox.md`
+2. If file or directory does not exist:
    - Create directory: `mkdir -p ~/.claude/productivity-skills`
    - Create file with format:
      ```markdown
@@ -27,7 +19,7 @@ Manage the user's GTD inbox based on their instructions: $ARGUMENTS
 
 ## Step 2: Interpret Instructions
 
-Parse `$ARGUMENTS` to understand the user's intent:
+Determine the user's intent from their message:
 
 | Intent | Example phrases |
 |--------|-----------------|
