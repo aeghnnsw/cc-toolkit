@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.0.0] - 2026-03-24
+
+### Changed
+- Rewrite gtd-next to be fully autonomous — agent decides what to work on, no user interaction
+- Remove all AskUserQuestion calls from gtd-next
+- With time constraint (next event): auto-select optimal tasks and generate time-blocked agenda
+- Without time constraint: present top 5 ranked tasks with time estimates
+- Bump gtd-next skill to v2.0.0
+
 ## [3.1.0] - 2026-03-22
 
 ### Changed
