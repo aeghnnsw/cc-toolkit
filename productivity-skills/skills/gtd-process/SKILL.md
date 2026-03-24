@@ -24,13 +24,23 @@ Determine the processing mode from the user's message:
 ## Step 2: Read Inbox and Gather Context
 
 1. Read `~/.claude/productivity-skills/inbox.md`
-2. If file or directory does not exist, create it:
+2. If file or directory does not exist, create directory and file:
    ```bash
    mkdir -p ~/.claude/productivity-skills
    ```
+   Then write an empty inbox file with header `# Inbox` and a blank line.
 3. If empty, inform user: "Inbox is empty. Nothing to process." and exit.
 4. Display numbered list of items.
-5. Fetch existing projects for context:
+5. Ensure required lists exist, creating any that are missing:
+   ```bash
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders lists
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "Projects"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@quick"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@1pomo"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@2pomo"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@deep"
+   ```
+6. Fetch existing projects for context:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
    ```
