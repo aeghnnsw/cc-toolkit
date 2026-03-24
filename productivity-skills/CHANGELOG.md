@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.1.0] - 2026-03-24
+
+### Changed
+- Rewrite gtd-process to infer categorization, project, priority, time, and due date automatically
+- Reduce user interaction to single confirm/modify per item (was 3-6 questions)
+- Agent analyzes inbox item text and existing projects to propose processing
+- Bump gtd-process skill to v2.0.0
+
 ## [4.0.0] - 2026-03-24
 
 ### Changed
