@@ -131,7 +131,7 @@ Total estimated time: ~X hours Y min
 **Display formatting:**
 - ⚠️ prefix for overdue items
 - Show project name if linked (from notes field)
-- Show priority: [High], [Medium], [Low], or omit for None
+- Map priority values: 1=[High], 5=[Medium], 9=[Low], 0=omit
 - Show context list: @quick, @1pomo, @2pomo, @deep
 - Show estimated duration based on context
 - Show due date if set, with "OVERDUE" if past
