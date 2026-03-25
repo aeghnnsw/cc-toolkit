@@ -1,5 +1,11 @@
 # Changelog
 
+## [4.2.0] - 2026-03-24
+
+### Changed
+- Increase gtd-next recommended tasks from 5 to 10 (no time constraint mode)
+- Bump gtd-next skill to v2.1.0
+
 ## [4.1.0] - 2026-03-24
 
 ### Changed

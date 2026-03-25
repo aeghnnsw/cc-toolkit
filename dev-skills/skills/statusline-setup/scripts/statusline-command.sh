@@ -7,7 +7,6 @@ INPUT=$(cat)
 MODEL=$(echo "$INPUT" | jq -r '.model.display_name // .model.id // "Claude"')
 CW=$(echo "$INPUT" | jq -c '.context_window // null')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
-MODEL_ID=$(echo "$INPUT" | jq -r '.model.id // ""')
 
 # Project name from cwd
 PROJECT=$(basename "$CWD" 2>/dev/null)
@@ -152,21 +151,8 @@ if [ "$CW" != "null" ] && [ -n "$CW" ]; then
     CW_FMT=$(format_k "$CACHE_WRITE")
     CR_FMT=$(format_k "$CACHE_READ")
 
-    # Cost calculation
-    case "$MODEL_ID" in
-      *opus-4*) P_IN="15.00"; P_CW="18.75"; P_CR="1.50"; P_OUT="75.00" ;;
-      *sonnet-4*) P_IN="3.00"; P_CW="3.75"; P_CR="0.30"; P_OUT="15.00" ;;
-      *haiku*) P_IN="0.80"; P_CW="1.00"; P_CR="0.08"; P_OUT="4.00" ;;
-      *) P_IN="3.00"; P_CW="3.75"; P_CR="0.30"; P_OUT="15.00" ;;
-    esac
-
-    COST=$(echo "$TOTAL_INPUT $TOTAL_OUTPUT $CACHE_WRITE $CACHE_READ $P_IN $P_OUT $P_CW $P_CR" | awk '{
-      input=$1; output=$2; cw=$3; cr=$4
-      plain = input - cw - cr
-      if (plain < 0) plain = 0
-      cost = (plain * $5 + cw * $7 + cr * $8 + output * $6) / 1000000
-      printf "%.2f", cost
-    }')
+    # Cost from Claude Code's built-in calculation
+    COST=$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0' | awk '{printf "%.2f", $1}')
 
     printf "  ${DIM}in:${RST}%s ${DIM}cw:${RST}%s ${DIM}cr:${RST}%s ${DIM}out:${RST}%s ${DIM}│${RST} \$%s\n" \
       "$IN_FMT" "$CW_FMT" "$CR_FMT" "$OUT_FMT" "$COST"
