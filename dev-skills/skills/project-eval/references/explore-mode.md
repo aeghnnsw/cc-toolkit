@@ -50,7 +50,8 @@ mkdir -p docs/eval
 Generate timestamp and deadline:
 ```bash
 TIMESTAMP=$(date "+%Y%m%d-%H%M%S")
-DEADLINE=$(( $(date +%s) + TIME_LIMIT_SECONDS ))
+# TIME_LIMIT_MINUTES parsed from user input (default 30)
+DEADLINE=$(( $(date +%s) + TIME_LIMIT_MINUTES * 60 ))
 ```
 
 Dispatch 3-5 critics with diverse starting directions. Assign different project areas to each to maximize coverage:

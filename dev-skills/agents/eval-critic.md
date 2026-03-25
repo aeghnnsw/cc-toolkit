@@ -36,7 +36,7 @@ Your dispatch prompt will tell you:
 2. **Investigate thoroughly**. Read code, trace flows, check edge cases. Use Glob and Grep to find relevant files. Use Bash to run tests or check build state if helpful.
 3. **Write findings** to your output file. Each finding must include:
    - Local ID (e.g., C1-F1, C1-F2)
-   - Severity (critical / major / minor)
+   - Severity (Critical / Major / Minor)
    - Direction and specific angle
    - File location with line range
    - Iteration number (which iteration found this)
