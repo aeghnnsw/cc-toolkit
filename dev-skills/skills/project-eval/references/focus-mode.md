@@ -91,7 +91,7 @@ When all background critic agents complete (you'll receive notifications):
    - Assign global IDs: F1, F2, ... ordered by severity (critical first)
    - Build iteration log from each critic's output
 
-4. Write consolidated report to `docs/eval/findings-<YYYY-MM-DD-HHMMSS>.md`
+4. Write consolidated report to `docs/eval/findings-<YYYYMMDD-HHMMSS>.md`
 
 5. Delete per-critic files only after the consolidated report is fully written
 

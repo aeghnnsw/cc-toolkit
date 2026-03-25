@@ -61,7 +61,7 @@ When all critics complete, read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/refer
 1. Read all per-critic findings files matching `docs/eval/findings-<timestamp>-critic-*.md` (use this run's timestamp)
 2. Deduplicate findings (same file + same issue = one finding)
 3. Assign global IDs: F1, F2, ... ordered by severity (critical first)
-4. Write consolidated report to `docs/eval/findings-<YYYY-MM-DD-HHMMSS>.md`
+4. Write consolidated report to `docs/eval/findings-<YYYYMMDD-HHMMSS>.md`
 5. Delete per-critic files only after the consolidated report is fully written
 6. Present the final report to the user
 

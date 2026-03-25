@@ -2,7 +2,7 @@
 
 ## Per-Critic Output File
 
-Each critic writes to its own file: `docs/eval/findings-<timestamp>-<critic-id>.md`
+Each critic writes to its own file: `docs/eval/findings-<timestamp>-critic-<N>.md`
 
 ### File Structure
 
@@ -29,6 +29,10 @@ Started: <ISO timestamp>
 ### [C1-F2] <Title> (<Severity>)
 ...
 
+## Directions Explored
+- <angle 1>: <brief description of what you examined and how deep>
+- <angle 2>: ...
+
 ## Suggested Directions
 - <direction>: <what you noticed and why it's worth investigating>
 ```
@@ -48,7 +52,7 @@ Started: <ISO timestamp>
 
 ## Consolidated Report
 
-The main agent merges all per-critic files into a single report: `docs/eval/findings-<YYYY-MM-DD-HHMMSS>.md`
+The main agent merges all per-critic files into a single report: `docs/eval/findings-<YYYYMMDD-HHMMSS>.md`
 
 ### Report Structure
 
