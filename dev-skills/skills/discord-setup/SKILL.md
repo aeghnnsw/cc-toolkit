@@ -52,7 +52,12 @@ Confirm both are configured:
 
 ```bash
 command -v bun && echo "bun: OK" || echo "bun: NOT FOUND"
-grep -q "dangercc-discord" ~/.zshrc 2>/dev/null && echo "alias: OK" || echo "alias: NOT FOUND"
 ```
 
-Inform the user to restart their shell or run `source ~/.zshrc` for changes to take effect.
+Check the appropriate rc file (from Step 1) for the alias:
+
+```bash
+grep -q "dangercc-discord" ~/.zshrc 2>/dev/null || grep -q "dangercc-discord" ~/.bashrc 2>/dev/null && echo "alias: OK" || echo "alias: NOT FOUND"
+```
+
+Inform the user to restart their shell or run `source` on their rc file for changes to take effect.
