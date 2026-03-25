@@ -101,16 +101,22 @@ Adapt if the project doesn't have a frontend, API layer, etc.
 
 When all background critic agents complete:
 
-1. Read all per-critic findings files
-2. Read the finding format reference
+1. Read all per-critic findings files:
+   ```
+   Glob docs/eval/findings-<timestamp>-critic-*.md
+   ```
+2. Read the finding format reference:
+   ```
+   Read ${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/finding-format.md
+   ```
 3. Merge findings (same process as Focus mode)
 4. Additionally, build a **Coverage Map**:
-   - Parse each critic's findings for file paths
+   - Parse each critic's findings for file paths and "Directions Explored" sections
    - Group by project area (directory)
    - Map which directions were explored in which areas
    - Identify areas that were NOT explored
-5. Write consolidated report with the Coverage Map section
-6. Delete per-critic files after consolidated report is written
+5. Write consolidated report to `docs/eval/findings-<YYYYMMDD-HHMMSS>.md` with the Coverage Map section
+6. Delete per-critic files only after the consolidated report is fully written
 7. Present the final report to the user, highlighting:
    - Total findings by severity
    - Areas with the most issues

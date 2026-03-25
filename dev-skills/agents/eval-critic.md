@@ -39,6 +39,8 @@ Your dispatch prompt will tell you:
    - Severity (critical / major / minor)
    - Direction and specific angle
    - File location with line range
+   - Iteration number (which iteration found this)
+   - Status: Open
    - Description of what's wrong and why it matters
    - Evidence: the actual code snippet
 4. **Note anything outside your direction** that looked suspicious — include these as suggested directions at the end of your output file.
