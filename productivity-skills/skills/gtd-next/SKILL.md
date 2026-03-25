@@ -1,6 +1,6 @@
 ---
 name: gtd-next
-version: 2.0.0
+version: 2.1.0
 description: This skill should be used when the user asks "what should I work on next?", "plan my next block", "generate an agenda", "what's next?", or wants calendar-aware task selection and time-blocked agenda generation for the GTD Engage step.
 ---
 
@@ -80,7 +80,7 @@ Select tasks from the top of the ranked list that fit within the available time.
 
 **If there is no time constraint:**
 
-Select the top 5 actionable tasks from the ranked list.
+Select the top 10 actionable tasks from the ranked list.
 
 ## Step 4: Generate Agenda
 
@@ -114,7 +114,7 @@ Select the top 5 actionable tasks from the ranked list.
 
 **If there is no time constraint:**
 
-Present the top 5 tasks as a ranked recommendation list:
+Present the top 10 tasks as a ranked recommendation list:
 
 ```
 ## Recommended Next Tasks
@@ -122,8 +122,8 @@ Present the top 5 tasks as a ranked recommendation list:
 1. ⚠️ [Action Title] #[ProjectName] [High] @quick (~15 min) - OVERDUE
 2. [Action Title] #[ProjectName] [High] @1pomo (~25 min) - due [date]
 3. [Action Title] [Medium] @2pomo (~50 min)
-4. [Action Title] @quick (~15 min)
-5. [Action Title] @1pomo (~25 min)
+...
+10. [Action Title] @1pomo (~25 min)
 
 Total estimated time: ~X hours Y min
 ```
