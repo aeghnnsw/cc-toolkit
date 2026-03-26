@@ -1,6 +1,6 @@
 ---
 name: gtd-process
-version: 2.0.0
+version: 2.1.0
 description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 ---
 
@@ -55,7 +55,7 @@ For each inbox item, analyze the text and infer:
 3. **Action title**: Clean up the inbox text into a clear action title
 4. **Time estimate**: Infer from complexity — @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min)
 5. **Priority**: Infer from urgency cues in the text (default: Medium)
-6. **Due date**: Infer from any time references in the text (default: no due date)
+6. **Due date**: Infer from any time references in the text (default: one week from today)
 
 **For new projects**, also infer:
 - Project name: `{CamelCaseSummary}-{YYYYMMDD}`
@@ -125,7 +125,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --due "YYYY-MM-DD 17:00"
 ```
 
-Omit `--due` if no due date. Omit `--priority` if None (0).
+Omit `--due` only if user explicitly requests no due date. Omit `--priority` if None (0).
 
 ## Step 5: Remove from Inbox
 
