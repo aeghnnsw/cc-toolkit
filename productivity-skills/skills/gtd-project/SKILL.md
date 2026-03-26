@@ -1,6 +1,6 @@
 ---
 name: gtd-project
-version: 1.0.0
+version: 2.0.0
 description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking and action management.
 ---
 
@@ -15,7 +15,7 @@ CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
 Key principle: Projects can have multiple parallel actions. Track all actionable tasks that can be worked on independently.
 -->
 
-Review and manage GTD projects with auto-review and guided workflow.
+Review and manage GTD projects with infer-and-confirm workflow. The agent analyzes project state, proposes actions, and the user confirms or overrides — minimizing back-and-forth.
 
 ## CLI Tool
 
@@ -61,98 +61,114 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    - Parse the JSON output from context list queries
    - Match the notes field against pattern `#{ProjectName}`
    - Collect ALL matching actions (not just one)
-   - Example: Project "VacationResearch-20260112" matches all actions with notes containing "#VacationResearch-20260112"
 
 6. Extract project end goal from project's notes field (format: "Goal: [description]")
 
 7. Determine project status:
    - **Healthy** (✓): Has 1+ pending actions, none overdue
    - **Stalled** (⚠️): Has 0 pending actions linked to this project
-   - **Overdue** (⚠️): Any action OR project appears in the overdue query results from Step 1.1
+   - **Overdue** (⚠️): Any action OR project appears in the overdue query results
 
-   **Note:** Statuses are evaluated in order of severity: Overdue, then Stalled, then Healthy.
+   Statuses evaluated in order of severity: Overdue > Stalled > Healthy.
 
 ## Step 2: Display Projects Overview
 
-Present all projects with status indicators, end goals, and all linked actions:
+Present all projects sorted by urgency (overdue first, then stalled, then healthy):
 
 ```
 # Projects Overview
 
-1. ✓ VacationResearch-20260112 [High]
+1. ⚠️ ClientProject-20260110 [Medium] — OVERDUE
+   - Goal: Invoice paid and project closed
+   - Actions (1):
+     • "Send invoice" (@quick) - OVERDUE (due 2026-01-10)
+   → Suggested: Reschedule overdue action
+
+2. ⚠️ ReviewQ1Roadmap-20260115 [High] — STALLED
+   - Goal: Roadmap approved by stakeholders
+   - No pending actions
+   → Suggested: Add next action
+
+3. ✓ VacationResearch-20260112 [High]
    - Goal: Flights and hotel booked for Hawaii trip
    - Actions (2):
      • "Research flights to Hawaii" (@1pomo)
      • "Email hotel for rates" (@quick)
-
-2. ⚠️ ReviewQ1Roadmap-20260115 [High]
-   - Goal: Roadmap approved by stakeholders
-   - No pending actions (stalled)
-
-3. ⚠️ ClientProject-20260110 [Medium]
-   - Goal: Invoice paid and project closed
-   - Actions (1):
-     • "Send invoice" (@quick) - OVERDUE (due 2026-01-10)
 
 Which project to work on? [1/2/3/Done]
 ```
 
 Use **AskUserQuestion**: "Which project to work on?"
 - Options: Numbered list of projects + "Done reviewing"
+- Overdue and stalled projects are listed first with suggested actions shown inline
 
 If no open projects, inform user: "No open projects. Use /gtd-process to create projects from inbox items."
 
-## Step 3: Project Options
+## Step 3: Auto-Infer Action
 
-Based on the selected project's state, present appropriate options.
+Based on the selected project's state, **infer the most logical action automatically** — do not ask "what would you like to do?":
 
-Use **AskUserQuestion**: "What would you like to do?"
+| Project State | Auto-Inferred Action | Rationale |
+|---------------|---------------------|-----------|
+| Overdue actions | Reschedule the overdue action (Step 4c) | Overdue items need immediate attention |
+| Stalled (0 actions) | Add next action (Step 4a) | Stalled projects need a next action to move forward |
+| Healthy with actions | Present brief options | Multiple valid paths — ask user |
 
-Options presented based on project state:
+**For overdue/stalled projects**: Announce the inferred action and proceed:
+> "Project has overdue action 'Send invoice' (due 2026-01-10). Rescheduling..."
 
-| Option | When Available | Action |
-|--------|----------------|--------|
-| Add action | All projects | Go to Step 4a |
-| Mark action complete | Projects with actions | Go to Step 4b |
-| Reschedule action | Overdue actions only | Go to Step 4c (due date only) |
-| Edit action | Projects with actions | Go to Step 4c (all properties) |
-| Mark project complete | All projects | Go to Step 5 |
-| Skip | All projects | Return to Step 2 |
+> "Project is stalled with no actions. Let's add the next action."
 
-**Note:** For overdue actions, highlight the "Reschedule" option to user.
-**Note:** User can add multiple actions to a project by repeating "Add action".
+**For healthy projects only**: Use **AskUserQuestion**: "What would you like to do?"
+- Options: "Add action", "Mark action complete", "Edit action", "Mark project complete", "Skip"
 
 ## Step 4a: Add Action
 
-1. Use **AskUserQuestion**: "What's the next action for this project?"
+1. Use **AskUserQuestion**: "What's the next action for [ProjectName]?"
    - User provides action title
 
-2. Use **AskUserQuestion** to gather all action properties together (3 questions in one call):
-   - Question 1 - "Time estimate?": Options "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
-   - Question 2 - "Priority?": Options "High", "Medium", "Low", "None"
-   - Question 3 - "Due date?": Options "No due date", "Today", "Tomorrow", "This week", "Custom date"
-   - If custom date selected: follow up to ask for specific date
+2. **Infer all properties from the title text** (same pattern as gtd-process):
+   - **Time estimate**: Infer from complexity. "Email..." → @quick, "Research..." → @1pomo, "Write report..." → @2pomo, "Redesign..." → @deep
+   - **Priority**: Inherit from project priority by default
+   - **Due date**: No due date unless the title implies urgency ("today", "by Friday", "urgent")
 
-3. Create the action:
+3. Present a single proposal for confirmation:
+
+   ```
+   Action: "Email hotel for rates"
+   → List: @quick (~15 min)
+   → Priority: High (inherited from project)
+   → Due: No due date
+
+   Confirm? [Yes / Modify / Skip]
+   ```
+
+   Use **AskUserQuestion**: "Confirm this action?"
+   - Options: "Yes", "Modify", "Skip"
+   - If "Modify": ask which property to change, then re-confirm
+   - If "Yes": create the action
+   - If "Skip": return to Step 2
+
+4. Create the action:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
-     --list "@1pomo" \
+     --list "@quick" \
      --notes "#{ProjectName-20260112}" \
-     --priority 5 \
+     --priority 1 \
      --due "2026-01-20 17:00"
    ```
-   (omit `--due` if user selected "No due date")
+   (omit `--due` if no due date)
 
-4. Report: "Added action '[title]' to [ProjectName]"
+5. Report: "Added action '[title]' to [ProjectName]"
 
-5. Return to Step 2.
+6. Return to Step 2.
 
 ## Step 4b: Complete Action
 
 1. If project has multiple actions, use **AskUserQuestion**: "Which action to complete?"
    - Options: List of actions for this project
-   - If only one action, skip this step
+   - If only one action, skip this question and complete it directly
 
 2. Mark the selected action complete:
    ```bash
@@ -163,36 +179,34 @@ Options presented based on project state:
 
 3. Report: "Completed: '[action title]'"
 
-4. Check if project has other remaining actions:
-   - **If other actions remain**: Report "Project [ProjectName] has N remaining actions: '[Action A]', '[Action B]'." and return to Step 2
-   - **If no actions remain**: Use **AskUserQuestion**: "No remaining actions. What's next?"
-     - Options: "Add next action", "Mark project complete", "Skip for now"
+4. Check remaining actions:
+   - **If other actions remain**: Report "Project [ProjectName] has N remaining actions." Return to Step 2.
+   - **If no actions remain**: Auto-suggest adding the next action:
+     > "No remaining actions — project will become stalled. Let's add the next action."
+     Proceed to Step 4a. If user provides an empty/skip response, return to Step 2 (project becomes stalled).
 
-5. If "Add next action": Go to Step 4a (Add Action)
-6. If "Mark project complete": Go to Step 5 (Complete Project)
-7. If "Skip for now": Return to Step 2 (project becomes stalled)
-
-## Step 4c: Edit Action
+## Step 4c: Reschedule / Edit Action
 
 1. If project has multiple actions, use **AskUserQuestion**: "Which action to edit?"
-   - Options: List of actions for this project
-   - If only one action, skip this step
+   - If only one action (or arrived here via auto-infer for overdue), skip this question
 
-2. Show current action properties:
-   ```
-   Editing action: "Send invoice"
-   List: @quick
-   Priority: Medium
-   Due: 2026-01-10 17:00
-   ```
+2. **For overdue reschedule** (arrived from auto-infer):
+   - Show current due date
+   - Infer a reasonable new date (tomorrow if 1 day overdue, next week if more)
+   - Present proposal:
+     ```
+     "Send invoice" is overdue (due 2026-01-10)
+     → Reschedule to: 2026-01-16 17:00 (tomorrow)
+     Confirm? [Yes / Pick different date]
+     ```
+   - Use **AskUserQuestion** with options: "Yes", "Today", "Tomorrow", "This week", "Custom date"
 
-3. Use **AskUserQuestion**: "What would you like to edit?"
-   - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
-   - multiSelect: true (allow multiple selections)
+3. **For general edit** (user selected "Edit action"):
+   - Show current properties
+   - Use **AskUserQuestion**: "What to edit?" with multiSelect
+     - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
 
-4. For each selected property, gather new value using **Action Property Questions** (see reference section below)
-
-5. To update, delete old action and create new one with updated properties:
+4. To update, delete old action and create new one with updated properties:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete \
      --title "Old title" \
@@ -206,9 +220,9 @@ Options presented based on project state:
      --due "2026-01-15 17:00"
    ```
 
-6. Report: "Updated action '[title]'"
+5. Report: "Updated action '[title]'"
 
-7. Return to Step 2.
+6. Return to Step 2.
 
 ## Step 5: Complete Project
 
@@ -219,7 +233,7 @@ Options presented based on project state:
      --list "Projects"
    ```
 
-2. Check for any remaining actions linked to this project and complete them:
+2. Complete any remaining linked actions:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
      --title "Action title" \
@@ -234,42 +248,26 @@ Options presented based on project state:
 
 When user selects "Done reviewing" in Step 2:
 
-1. Show summary:
-   ```
-   # Review Complete
-
-   Projects reviewed: 3
-   Actions completed: 2
-   Actions added: 1
-   Projects completed: 1
-   ```
-
-2. Exit the workflow.
-
----
-
-## Reference: Batched Action Property Questions
-
-When gathering action properties, use a single **AskUserQuestion** call with multiple questions:
-
 ```
-AskUserQuestion with 3 questions:
-  Question 1 (header: "Time"): "Time estimate?"
-    Options: "Quick (< 25 min)", "1 Pomodoro (25 min)", "2 Pomodoros (50 min)", "Deep (3+ pomodoros)"
-    Maps to lists: @quick, @1pomo, @2pomo, @deep
+# Review Complete
 
-  Question 2 (header: "Priority"): "Priority?"
-    Options: "High", "Medium", "Low", "None"
-    Values: High=1, Medium=5, Low=9, None=0
-
-  Question 3 (header: "Due"): "Due date?"
-    Options: "No due date", "Today", "Tomorrow", "This week", "Custom date"
-    If custom selected: follow up to ask for specific date
+Projects reviewed: 3
+Actions completed: 2
+Actions added: 1
+Projects completed: 1
 ```
 
-This reduces back-and-forth interactions from 3 separate questions to 1 batched question.
+## Guidelines
 
----
+- Prioritize overdue items — they always appear first in the overview
+- Auto-infer actions for overdue/stalled projects to reduce questions
+- Infer action properties from title text — only ask user to confirm
+- Multiple actions per project: track all actionable tasks independently
+- After completing an action, auto-suggest next action if project becomes stalled
+- Create missing reminder lists automatically before creating reminders
+- Handle CLI errors gracefully and report to user
+- Match project names case-insensitively
+- Use `yyyy-MM-dd HH:mm` for due dates, default time 17:00
 
 ## Reference: Context Lists
 
@@ -288,29 +286,3 @@ This reduces back-and-forth interactions from 3 separate questions to 1 batched 
 | Medium | 5 |
 | Low | 9 |
 | None | 0 |
-
-## Reference: Date Format
-
-Use `yyyy-MM-dd HH:mm` for due dates. Default time is 17:00 if only date provided.
-
----
-
-## Guidelines
-
-- **Multiple actions per project**: Track all actionable tasks that can be worked on independently
-- Projects can have 0, 1, or many pending actions
-- After completing an action, only prompt for next action if no other actions remain
-- Create missing reminder lists automatically before creating reminders
-- Handle CLI errors gracefully and report to user
-- Match project names case-insensitively
-
-## Note: Batched vs Sequential Questions
-
-**Batched (independent answers):**
-- Time estimate + Priority + Due date → ask in single AskUserQuestion call with 3 questions (Step 4a)
-
-**Sequential (dependent answers):**
-- "Which project?" → must select before showing options
-- "What to do?" → options depend on project state (stalled vs healthy)
-- "Action title" → must get title before asking for properties
-- "What to edit?" → must know which properties before gathering new values

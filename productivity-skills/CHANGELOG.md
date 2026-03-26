@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.3.0] - 2026-03-26
+
+### Changed
+- Rewrite gtd-project to use infer-and-confirm pattern
+- Auto-infer actions for overdue (reschedule) and stalled (add action) projects
+- Infer action properties from title text instead of asking 3 sub-questions
+- Auto-suggest next action when project becomes stalled after completing an action
+- Bump gtd-project skill to v2.0.0
+
 ## [4.2.0] - 2026-03-24
 
 ### Changed
