@@ -110,17 +110,22 @@ Based on the selected project's state, **infer the most logical action automatic
 
 | Project State | Auto-Inferred Action | Rationale |
 |---------------|---------------------|-----------|
-| Overdue actions | Reschedule the overdue action (Step 4c) | Overdue items need immediate attention |
+| Overdue actions | Reschedule the specific overdue action(s) (Step 4c) | Overdue items need immediate attention |
 | Stalled (0 actions) | Add next action (Step 4a) | Stalled projects need a next action to move forward |
 | Healthy with actions | Present brief options | Multiple valid paths — ask user |
 
-**For overdue/stalled projects**: Announce the inferred action and proceed:
-> "Project has overdue action 'Send invoice' (due 2026-01-10). Rescheduling..."
+**For overdue projects**: Identify the specific overdue action(s) and announce:
+> "Project has overdue action 'Send invoice' (due 2026-01-10). Rescheduling — or would you rather mark the project complete / skip?"
 
-> "Project is stalled with no actions. Let's add the next action."
+If multiple actions are overdue, process each one sequentially. If the project also has non-overdue actions, only target the overdue ones.
 
-**For healthy projects only**: Use **AskUserQuestion**: "What would you like to do?"
+**For stalled projects**: Announce:
+> "Project is stalled with no actions. Let's add the next action — or mark project complete / skip?"
+
+**For healthy projects**: Use **AskUserQuestion**: "What would you like to do?"
 - Options: "Add action", "Mark action complete", "Edit action", "Mark project complete", "Skip"
+
+In all cases, the user can override the suggestion by saying "complete project" or "skip".
 
 ## Step 4a: Add Action
 
@@ -155,10 +160,9 @@ Based on the selected project's state, **infer the most logical action automatic
      --title "Action title" \
      --list "@quick" \
      --notes "#{ProjectName-20260112}" \
-     --priority 1 \
-     --due "2026-01-20 17:00"
+     --priority 1
    ```
-   (omit `--due` if no due date)
+   Add `--due "2026-01-20 17:00"` only if a due date was inferred or confirmed.
 
 5. Report: "Added action '[title]' to [ProjectName]"
 
@@ -183,7 +187,7 @@ Based on the selected project's state, **infer the most logical action automatic
    - **If other actions remain**: Report "Project [ProjectName] has N remaining actions." Return to Step 2.
    - **If no actions remain**: Auto-suggest adding the next action:
      > "No remaining actions — project will become stalled. Let's add the next action."
-     Proceed to Step 4a. If user provides an empty/skip response, return to Step 2 (project becomes stalled).
+     Proceed to Step 4a. The user can select "Skip" in Step 4a's confirm prompt to decline and return to Step 2 (project becomes stalled).
 
 ## Step 4c: Reschedule / Edit Action
 
@@ -196,7 +200,7 @@ Based on the selected project's state, **infer the most logical action automatic
    - Present proposal:
      ```
      "Send invoice" is overdue (due 2026-01-10)
-     → Reschedule to: 2026-01-16 17:00 (tomorrow)
+     → Reschedule to: tomorrow 17:00
      Confirm? [Yes / Pick different date]
      ```
    - Use **AskUserQuestion** with options: "Yes", "Today", "Tomorrow", "This week", "Custom date"
@@ -205,6 +209,11 @@ Based on the selected project's state, **infer the most logical action automatic
    - Show current properties
    - Use **AskUserQuestion**: "What to edit?" with multiSelect
      - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
+   - For each selected property, gather the new value:
+     - Title: ask for new title text
+     - Time estimate: options "Quick", "1 Pomodoro", "2 Pomodoros", "Deep" (maps to @quick, @1pomo, @2pomo, @deep)
+     - Priority: options "High", "Medium", "Low", "None" (maps to 1, 5, 9, 0)
+     - Due date: options "No due date", "Today", "Tomorrow", "This week", "Custom date"
 
 4. To update, delete old action and create new one with updated properties:
    ```bash
