@@ -8,6 +8,8 @@
 - Infer action properties from title text instead of asking 3 sub-questions
 - Auto-suggest next action when project becomes stalled after completing an action
 - Bump gtd-project skill to v2.0.0
+- Change gtd-process default due date from "no due date" to one week from today
+- Bump gtd-process skill to v2.1.0
 
 ## [4.2.0] - 2026-03-24
 
