@@ -58,7 +58,7 @@ Injection vectors, authentication/authorization gaps, secret exposure, data priv
 
 ### Calibration: Security
 
-**Tool tip:** Use WebSearch to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "npm audit express 4.18"). Code-only analysis catches injection and auth issues, but WebSearch catches known vulnerabilities in third-party packages.
+**Tool tip:** Use WebSearch to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "express 4.18 vulnerabilities"). Code-only analysis catches injection and auth issues, but WebSearch catches known vulnerabilities in third-party packages.
 
 **REAL ISSUE:**
 File: `api/search.ts:34`
