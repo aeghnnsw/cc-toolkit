@@ -58,10 +58,19 @@ Injection vectors, authentication/authorization gaps, secret exposure, data priv
 
 ### Calibration: Security
 
+**Tool tip:** Use WebSearch to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "express 4.18 vulnerabilities"). Code-only analysis catches injection and auth issues, but WebSearch catches known vulnerabilities in third-party packages.
+
 **REAL ISSUE:**
 File: `api/search.ts:34`
 Code: `db.query("SELECT * FROM products WHERE name LIKE '%" + userInput + "%'")` with raw string concatenation.
 Why real: Classic SQL injection. User can terminate the string and execute arbitrary SQL. Must use parameterized queries.
+Severity: Critical
+
+**REAL ISSUE (WebSearch-detected):**
+File: `package.json`
+Dependency: `jsonwebtoken@8.5.1`
+Search result: CVE-2022-23529 — allows attackers to execute arbitrary code via crafted JWS tokens when using a malicious JWK.
+Why real: Known critical vulnerability with a published fix (upgrade to 9.0.0+). WebSearch confirmed the CVE; code analysis alone would not surface this.
 Severity: Critical
 
 **FALSE POSITIVE:**
@@ -80,10 +89,18 @@ Visual coherence, responsiveness, accessibility, component design consistency.
 
 ### Calibration: Frontend & Design
 
+**Tool tip:** Use Chrome browser tools to inspect the running UI. Navigate to pages, read page content, check console for errors, and inspect network requests. This catches visual and interaction issues that code-only analysis misses.
+
 **REAL ISSUE:**
 File: `components/Modal.tsx:45`
 Code: Modal content receives focus but has no `aria-modal="true"` or `role="dialog"`, and pressing Escape does nothing.
 Why real: Screen reader users cannot identify this as a modal, and keyboard users are trapped without an exit. WCAG 2.1 Level A violation.
+Severity: Major
+
+**REAL ISSUE (browser-detected):**
+Page: `/dashboard` (inspected via Chrome tools)
+Observation: Navigation menu overflows on viewport width below 768px, overlapping main content. Console shows repeated `ResizeObserver loop limit exceeded` warnings.
+Why real: Responsive breakpoint is broken — mobile users see overlapping, unusable layout. Confirmed by reading the page in Chrome, not visible from code alone.
 Severity: Major
 
 **FALSE POSITIVE:**
@@ -102,10 +119,18 @@ Navigation flow, feedback mechanisms, discoverability, edge state handling.
 
 ### Calibration: User Experience
 
+**Tool tip:** Use Chrome browser tools to walk through user flows — navigate between pages, check loading states, verify error messages render correctly, and test edge states like empty lists. Console messages and network requests reveal silent failures invisible in code.
+
 **REAL ISSUE:**
 File: `pages/Dashboard.tsx:120`
 Code: Component renders a blank div when `data.items` is empty. No empty state message, no call to action.
 Why real: Users with no data see a blank screen with no guidance on what to do next. First-time users will think the app is broken.
+Severity: Major
+
+**REAL ISSUE (browser-detected):**
+Page: `/checkout` (inspected via Chrome tools)
+Observation: Clicking "Place Order" with an invalid card shows no error message. The button briefly disables then re-enables. Network tab reveals a 422 response with validation errors, but the UI silently swallows them.
+Why real: Users have no feedback on what went wrong. Confirmed by navigating the flow in Chrome — the error handling gap is invisible from code review alone since the API response is correct but the UI discards it.
 Severity: Major
 
 **FALSE POSITIVE:**

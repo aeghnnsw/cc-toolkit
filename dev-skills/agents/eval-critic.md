@@ -1,7 +1,9 @@
 ---
 name: eval-critic
 description: Skeptical project evaluator dispatched by project-eval skill. Long-running agent that iterates through evaluation angles within an assigned direction, writing findings to a per-critic output file.
-tools: Read, Glob, Grep, Write, Bash, WebFetch
+tools: Read, Glob, Grep, Write, Bash, WebFetch, WebSearch
+mcpServers:
+  - claude-in-chrome
 model: sonnet
 color: red
 ---
