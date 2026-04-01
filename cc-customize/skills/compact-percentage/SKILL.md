@@ -36,7 +36,7 @@ Use **AskUserQuestion** to ask:
 Parse the user's response as an integer.
 
 - If not a valid integer, inform the user and ask again.
-- If the value is less than 1, inform the user the minimum is 1.
+- If the value is less than 1, inform the user the minimum is 1 and ask again.
 - If the value is greater than 83, inform the user: "The maximum effective value is 83 (Claude Code caps anything higher internally). Setting to 83." Use 83.
 - If the value equals the current setting, inform the user: "Already set to N%. No changes made." and exit.
 

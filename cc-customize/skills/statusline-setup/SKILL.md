@@ -31,17 +31,17 @@ chmod +x ~/.claude/statusline-command.sh
 
 ### Step 2: Configure settings.json
 
-Read `~/.claude/settings.json`, then set the `statusLine` field to:
+Read `~/.claude/settings.json`, then set the `statusLine` field to the following value:
 
 ```json
-"statusLine": {
+{
   "type": "command",
   "command": "bash ~/.claude/statusline-command.sh"
 }
 ```
 
-- If `~/.claude/settings.json` does not exist, create it with only the `statusLine` field above.
-- If the file exists and a `statusLine` field already exists, replace it. If not, add it.
+- If `~/.claude/settings.json` does not exist, create it: `{ "statusLine": <value above> }`.
+- If the file exists and a `statusLine` field already exists, replace its value. If not, add it.
 - Preserve all other top-level keys in the file.
 
 ### Step 3: Verify
