@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Unified Claude Code plugin marketplace for development workflows, scientific content creation, and document processing",
-    "version": "2.0.0"
+    "version": "2.1.0"
   },
   "plugins": [
     {
@@ -32,6 +32,10 @@
     {
       "name": "pymol-skills",
       "source": "./pymol-skills"
+    },
+    {
+      "name": "cc-customize",
+      "source": "./cc-customize"
     }
   ]
 }
