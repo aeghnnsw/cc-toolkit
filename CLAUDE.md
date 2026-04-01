@@ -27,6 +27,16 @@ cc-toolkit/
 │   └── workflows/
 │       ├── claude-code-review.yml       # Claude Code Review automation
 │       └── claude.yml                   # Claude Code trigger automation
+├── cc-customize/                        # Claude Code customization plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   └── skills/
+│       ├── compact-percentage/
+│       │   └── SKILL.md
+│       └── statusline-setup/
+│           ├── SKILL.md
+│           └── scripts/
+│               └── statusline-command.sh
 ├── dev-skills/                          # Development workflow plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json                  # Plugin manifest
