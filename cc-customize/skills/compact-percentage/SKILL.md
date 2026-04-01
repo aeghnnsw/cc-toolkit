@@ -60,3 +60,7 @@ The value must be a **string** (environment variables are strings). Example part
 ## Step 6: Confirm
 
 Inform the user: "Auto-compact threshold set to **N%**. Restart Claude Code for the change to take effect."
+
+## Uninstall
+
+To revert to default behavior, remove the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key from the `env` block in `~/.claude/settings.json`. Preserve all other keys.
