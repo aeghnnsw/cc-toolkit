@@ -31,7 +31,7 @@ cc-toolkit/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
 │   └── skills/
-│       ├── compact-percentage/
+│       ├── model-config/
 │       │   └── SKILL.md
 │       └── statusline-setup/
 │           ├── SKILL.md
