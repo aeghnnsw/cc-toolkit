@@ -156,7 +156,7 @@ git push -u origin <branch-name>
 gh pr create --title "Brief title" --body "Description and closes #<issue>"
 
 # Merge PR after review
-gh pr merge <pr-number> --merge
+gh pr merge <pr-number> --squash
 ```
 
 ### Managing the Plugin Marketplace
@@ -300,7 +300,7 @@ The core skill defines a complete development workflow with 8 phases:
 - Re-run tests after updates
 
 **Phase 7: Merge & Close**
-- Merge via `gh pr merge --merge` (not squash)
+- Merge via `gh pr merge --squash` to keep history clean
 - Issue auto-closes if PR description references it
 
 **Phase 8: Cleanup**
