@@ -34,11 +34,21 @@ Claude Code strips the `[1m]` suffix before sending the model ID to the API — 
 
 For auto-compact: the default behavior (no setting) triggers compaction at ~95% context capacity. The valid range is 1–83; values above 83 are silently capped internally.
 
-## Step 1: Read Current Settings
+## Step 1: Fetch Current Model Information
+
+Use **WebFetch** to read `https://code.claude.com/docs/en/model-config` and extract the current list of supported models, their effort levels, and 1M context support. Parse the page content to identify:
+
+- Available model IDs
+- Which models support extended thinking and their valid effort levels
+- Which models support the `[1m]` suffix for 1M context window
+
+If WebFetch fails or the page format is unrecognizable, fall back to the hardcoded table in the Background section above. Inform the user: "Could not fetch latest model info; using built-in defaults."
+
+## Step 2: Read Current Settings
 
 Read `~/.claude/settings.json` to check the current configuration.
 
-## Step 2: Display Current Values
+## Step 3: Display Current Values
 
 Extract and display all three current values:
 
@@ -46,7 +56,7 @@ Extract and display all three current values:
 - **Effort level**: the value of the top-level `effortLevel` key, or "not set (model default)" if absent
 - **Auto-compact threshold**: the value of `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, or "not set (default: ~95%)" if absent
 
-## Step 3: Ask Which Settings to Change
+## Step 4: Ask Which Settings to Change
 
 Use **AskUserQuestion** to ask:
 
@@ -54,39 +64,56 @@ Use **AskUserQuestion** to ask:
 
 Parse the response and collect a list of the selected settings. Proceed through the applicable steps below in order, skipping any not selected.
 
-## Step 4: Update Model (if selected)
+## Step 5: Update Model (if selected)
+
+### Step 5a: Select Base Model
 
 Use **AskUserQuestion** to present the following choices:
 
 ```
 1. claude-opus-4-7
-2. claude-opus-4-7[1m]     (1M context window)
-3. claude-opus-4-6
-4. claude-opus-4-6[1m]     (1M context window)
-5. claude-sonnet-4-6
-6. claude-sonnet-4-6[1m]   (1M context window)
-7. claude-haiku-4-5-20251001
-8. Enter a custom model ID
+2. claude-opus-4-6
+3. claude-sonnet-4-6
+4. claude-haiku-4-5-20251001
 ```
+
+Include in the question text: "Or type a custom model ID directly."
 
 Parse the user's response:
 
-- If 1–7, use the corresponding model ID (including the `[1m]` suffix if selected).
-- If 8, use **AskUserQuestion** to ask for the custom model ID and use that value exactly. Inform the user they can append `[1m]` to any supported model for 1M context.
-- If the user enters a model name matching one of options 1–7, use the corresponding model ID.
+- If 1–4, use the corresponding model ID.
+- If the user enters a model name matching one of options 1–4, use the corresponding model ID.
+- If the user enters a different model ID string, use that value exactly as a custom model ID.
 - If the input is empty or unrecognized, inform the user and ask again.
-- If the selected model equals the current setting, note "Already set to that model. No change needed." and skip the write for this field.
 
-Record the chosen model ID as the **target model** for Step 5. When determining the base model for effort level validation in Step 5, strip the `[1m]` suffix (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
+### Step 5b: Enable 1M Context Window
 
-## Step 5: Update Effort Level (if selected)
+If the selected base model supports 1M context (check the model table in Background, or the data fetched in Step 1), use **AskUserQuestion** to ask:
+
+"Enable 1M context window? (yes / no)"
+
+- If yes, append `[1m]` to the model ID (e.g., `claude-opus-4-6` → `claude-opus-4-6[1m]`).
+- If no, use the base model ID as-is.
+- Inform the user: "On Max, Team, and Enterprise plans, Opus models auto-upgrade to 1M context even without the suffix."
+
+If the selected model does not support 1M context (e.g., Haiku), skip this sub-step.
+
+For custom model IDs (option 5), inform the user they can manually append `[1m]` to any supported model for 1M context.
+
+### Step 5c: Validate Selection
+
+- If the final model ID (with or without `[1m]`) equals the current setting, note "Already set to that model. No change needed." and skip the write for this field.
+
+Record the chosen model ID as the **target model** for Step 6. When determining the base model for effort level validation in Step 6, strip the `[1m]` suffix (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
+
+## Step 6: Update Effort Level (if selected)
 
 Determine which model to validate against:
 
-- If the user changed the model in Step 4, use the newly selected model as the reference.
-- Otherwise, use the current `model` value from settings.json. If no `model` key exists, treat as unknown.
+- If the user changed the model in Step 5, use the newly selected model as the reference. Strip the `[1m]` suffix before validation (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
+- Otherwise, use the current `model` value from settings.json (also stripping any `[1m]` suffix). If no `model` key exists, treat as unknown.
 
-If the reference model is `claude-haiku-4-5-20251001`, inform the user: "Haiku 4.5 does not support effortLevel. Skipping effort configuration." If an `effortLevel` key currently exists in settings.json, ask the user if they want to remove it. Proceed to Step 6.
+If the reference model is `claude-haiku-4-5-20251001`, inform the user: "Haiku 4.5 does not support effortLevel. Skipping effort configuration." If an `effortLevel` key currently exists in settings.json, ask the user if they want to remove it. Proceed to Step 7.
 
 Use **AskUserQuestion** to present the valid effort levels for the reference model:
 
@@ -104,9 +131,9 @@ Parse the response:
 
 > "Note: `max` effort has a known bug where it does not persist correctly in settings.json. Preferred workaround: add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block in settings.json. Alternatively, add `export CLAUDE_CODE_EFFORT_LEVEL=max` to your shell profile. Would you like to set it via the env block, or skip?"
 
-If the user chooses the env block workaround, write `CLAUDE_CODE_EFFORT_LEVEL` with value `"max"` to the `env` block in Step 7 instead of writing the `effortLevel` key. If an `effortLevel` key currently exists, remove it to avoid conflicts. If the user chooses to skip, do not write the `effortLevel` key.
+If the user chooses the env block workaround, write `CLAUDE_CODE_EFFORT_LEVEL` with value `"max"` to the `env` block in Step 8 instead of writing the `effortLevel` key. If an `effortLevel` key currently exists, remove it to avoid conflicts. If the user chooses to skip, do not write the `effortLevel` key.
 
-## Step 6: Update Auto-Compact Threshold (if selected)
+## Step 7: Update Auto-Compact Threshold (if selected)
 
 Use **AskUserQuestion** to ask:
 
@@ -119,15 +146,15 @@ Parse the user's response as an integer:
 - If the value is greater than 83, inform the user: "The maximum effective value is 83 (Claude Code caps anything higher internally). Setting to 83." Use 83.
 - If the value equals the current setting, note "Already set to N%. No change needed." and skip the write for this field.
 
-## Step 7: Write All Changes
+## Step 8: Write All Changes
 
 Read `~/.claude/settings.json` again (to get the latest state), then apply all collected changes in a single surgical update:
 
 - If `~/.claude/settings.json` does not exist, use the **Write** tool to create it with only the keys being set.
 - If the file exists, use the **Edit** tool for surgical updates.
 - For the `model` key: add or replace the top-level `model` key. Preserve all other top-level keys.
-- For the `effortLevel` key: add or replace the top-level `effortLevel` key. Preserve all other top-level keys. If the user chose the `max` env block workaround in Step 5, remove the `effortLevel` key instead.
-- For `CLAUDE_CODE_EFFORT_LEVEL` (max workaround): if the user chose the env block workaround in Step 5, add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block.
+- For the `effortLevel` key: add or replace the top-level `effortLevel` key. Preserve all other top-level keys. If the user chose the `max` env block workaround in Step 6, remove the `effortLevel` key instead.
+- For `CLAUDE_CODE_EFFORT_LEVEL` (max workaround): if the user chose the env block workaround in Step 6, add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block.
 - For `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: if no `env` block exists, add one. Add or replace only the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key within `env`. Preserve all other keys in both the `env` block and the rest of the file.
 
 All values are JSON strings: `model`, `effortLevel`, and env var values must be quoted.
@@ -147,7 +174,7 @@ Example partial result after setting all three:
 
 Only write keys that the user selected and that differ from the current value.
 
-## Step 8: Confirm
+## Step 9: Confirm
 
 For each setting that was changed, report the new value. Then inform the user: "Restart Claude Code for changes to take effect."
 
