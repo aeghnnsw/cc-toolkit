@@ -1,5 +1,5 @@
 {
   "name": "cc-customize",
   "description": "Claude Code customization skills for configuring model, effort level, auto-compact threshold, and statusline",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
