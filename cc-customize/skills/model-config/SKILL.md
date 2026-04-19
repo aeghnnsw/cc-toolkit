@@ -114,7 +114,8 @@ Read `~/.claude/settings.json` again (to get the latest state), then apply all c
 - If `~/.claude/settings.json` does not exist, use the **Write** tool to create it with only the keys being set.
 - If the file exists, use the **Edit** tool for surgical updates.
 - For the `model` key: add or replace the top-level `model` key. Preserve all other top-level keys.
-- For the `effortLevel` key: add or replace the top-level `effortLevel` key. Preserve all other top-level keys.
+- For the `effortLevel` key: add or replace the top-level `effortLevel` key. Preserve all other top-level keys. If the user chose the `max` env block workaround in Step 5, remove the `effortLevel` key instead.
+- For `CLAUDE_CODE_EFFORT_LEVEL` (max workaround): if the user chose the env block workaround in Step 5, add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block.
 - For `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: if no `env` block exists, add one. Add or replace only the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key within `env`. Preserve all other keys in both the `env` block and the rest of the file.
 
 All values are JSON strings: `model`, `effortLevel`, and env var values must be quoted.
