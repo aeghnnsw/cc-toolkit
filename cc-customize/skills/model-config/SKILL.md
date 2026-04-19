@@ -98,7 +98,7 @@ If the selected base model supports 1M context (check the model table in Backgro
 
 If the selected model does not support 1M context (e.g., Haiku), skip this sub-step.
 
-For custom model IDs (option 5), inform the user they can manually append `[1m]` to any supported model for 1M context.
+For custom model IDs, inform the user they can manually append `[1m]` to any supported model for 1M context.
 
 ### Step 5c: Validate Selection
 
