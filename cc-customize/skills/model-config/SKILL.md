@@ -61,6 +61,7 @@ Parse the user's response:
 
 - If 1–4, use the corresponding model ID.
 - If 5, use **AskUserQuestion** to ask for the custom model ID (e.g., `claude-sonnet-4-6`) and use that value exactly.
+- If the user enters a model name matching one of options 1–4, use the corresponding model ID.
 - If the input is empty or unrecognized, inform the user and ask again.
 - If the selected model equals the current setting, note "Already set to that model. No change needed." and skip the write for this field.
 
@@ -91,7 +92,7 @@ Parse the response:
 
 > "Note: `max` effort has a known bug where it does not persist correctly in settings.json. Preferred workaround: add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block in settings.json. Alternatively, add `export CLAUDE_CODE_EFFORT_LEVEL=max` to your shell profile. Would you like to set it via the env block, or skip?"
 
-If the user chooses the env block workaround, write `CLAUDE_CODE_EFFORT_LEVEL` with value `"max"` to the `env` block in Step 7 instead of writing the `effortLevel` key. If the user chooses to skip, do not write the `effortLevel` key.
+If the user chooses the env block workaround, write `CLAUDE_CODE_EFFORT_LEVEL` with value `"max"` to the `env` block in Step 7 instead of writing the `effortLevel` key. If an `effortLevel` key currently exists, remove it to avoid conflicts. If the user chooses to skip, do not write the `effortLevel` key.
 
 ## Step 6: Update Auto-Compact Threshold (if selected)
 
@@ -145,6 +146,8 @@ To revert to defaults, remove the relevant keys from `~/.claude/settings.json`:
 
 - Remove the top-level `model` key to restore Claude Code's default model selection.
 - Remove the top-level `effortLevel` key to restore the model's default thinking depth.
-- Remove the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key from the `env` block to restore the ~95% default compaction threshold. If the `env` block becomes empty after removal, remove the `env` block as well.
+- Remove the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key from the `env` block to restore the ~95% default compaction threshold.
+- Remove the `CLAUDE_CODE_EFFORT_LEVEL` key from the `env` block if present (set via the `max` effort workaround).
+- If the `env` block becomes empty after removal, remove the `env` block as well.
 
 Preserve all other keys in the file.
