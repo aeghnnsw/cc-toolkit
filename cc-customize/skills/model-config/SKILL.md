@@ -1,7 +1,7 @@
 ---
 name: model-config
 version: 1.0.0
-description: This skill should be used when the user asks to "change model", "set default model", "switch model", "change effort level", "set thinking depth", "configure effort", "adjust auto compact", "change compact percentage", "set auto compact threshold", "configure auto compaction", "configure model settings", or wants to modify the model, effortLevel, or CLAUDE_AUTOCOMPACT_PCT_OVERRIDE settings in Claude Code.
+description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "adjust auto compact", "change compact percentage", "set auto compact threshold", "configure auto compaction", "configure model settings", or wants to modify the model, effortLevel, or CLAUDE_AUTOCOMPACT_PCT_OVERRIDE settings in Claude Code.
 ---
 
 Configure the default model, thinking effort level, and auto-compact threshold in `~/.claude/settings.json`.
@@ -16,12 +16,21 @@ Three settings in `~/.claude/settings.json` control core Claude Code behavior:
 
 Supported models and their valid effort levels:
 
-| Model | Valid effort levels | Default effort |
-|---|---|---|
-| claude-opus-4-7 | low, medium, high, xhigh, max | xhigh |
-| claude-opus-4-6 | low, medium, high, max | high |
-| claude-sonnet-4-6 | low, medium, high, max | high |
-| claude-haiku-4-5-20251001 | not supported | — |
+| Model | Valid effort levels | Default effort | 1M context |
+|---|---|---|---|
+| claude-opus-4-7 | low, medium, high, xhigh, max | xhigh | yes |
+| claude-opus-4-6 | low, medium, high, max | high | yes |
+| claude-sonnet-4-6 | low, medium, high, max | high | yes |
+| claude-haiku-4-5-20251001 | not supported | — | no |
+
+### 1M Context Window
+
+Opus 4.7, Opus 4.6, and Sonnet 4.6 support a 1 million token context window. To enable it, append `[1m]` to either a model alias or a full model name:
+
+- Aliases: `opus[1m]`, `sonnet[1m]`
+- Full names: `claude-opus-4-7[1m]`, `claude-opus-4-6[1m]`, `claude-sonnet-4-6[1m]`
+
+Claude Code strips the `[1m]` suffix before sending the model ID to the API — it only controls the local context window behavior. On Max, Team, and Enterprise plans, Opus is automatically upgraded to 1M context even without the suffix, but using it makes the setting explicit.
 
 For auto-compact: the default behavior (no setting) triggers compaction at ~95% context capacity. The valid range is 1–83; values above 83 are silently capped internally.
 
@@ -47,25 +56,28 @@ Parse the response and collect a list of the selected settings. Proceed through 
 
 ## Step 4: Update Model (if selected)
 
-Use **AskUserQuestion** to present the following numbered choices:
+Use **AskUserQuestion** to present the following choices:
 
 ```
 1. claude-opus-4-7
-2. claude-opus-4-6
-3. claude-sonnet-4-6
-4. claude-haiku-4-5-20251001
-5. Enter a custom model ID
+2. claude-opus-4-7[1m]     (1M context window)
+3. claude-opus-4-6
+4. claude-opus-4-6[1m]     (1M context window)
+5. claude-sonnet-4-6
+6. claude-sonnet-4-6[1m]   (1M context window)
+7. claude-haiku-4-5-20251001
+8. Enter a custom model ID
 ```
 
 Parse the user's response:
 
-- If 1–4, use the corresponding model ID.
-- If 5, use **AskUserQuestion** to ask for the custom model ID (e.g., `claude-sonnet-4-6`) and use that value exactly.
-- If the user enters a model name matching one of options 1–4, use the corresponding model ID.
+- If 1–7, use the corresponding model ID (including the `[1m]` suffix if selected).
+- If 8, use **AskUserQuestion** to ask for the custom model ID and use that value exactly. Inform the user they can append `[1m]` to any supported model for 1M context.
+- If the user enters a model name matching one of options 1–7, use the corresponding model ID.
 - If the input is empty or unrecognized, inform the user and ask again.
 - If the selected model equals the current setting, note "Already set to that model. No change needed." and skip the write for this field.
 
-Record the chosen model ID as the **target model** for Step 5.
+Record the chosen model ID as the **target model** for Step 5. When determining the base model for effort level validation in Step 5, strip the `[1m]` suffix (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
 
 ## Step 5: Update Effort Level (if selected)
 
@@ -124,7 +136,7 @@ Example partial result after setting all three:
 
 ```json
 {
-  "model": "claude-opus-4-7",
+  "model": "claude-opus-4-7[1m]",
   "effortLevel": "xhigh",
   "env": {
     "EXISTING_KEY": "preserved",
