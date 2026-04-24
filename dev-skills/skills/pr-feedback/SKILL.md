@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-version: 3.0.0
+version: 3.1.0
 description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 ---
 
@@ -32,7 +32,15 @@ Save the full list for consolidation in Step 3.
 
 ## Step 2: Gather External Reviews
 
-Read all other reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
+External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically triggered when the PR is pushed and run in parallel with the self-review. They often take longer to complete than the self-review.
+
+**Wait for external reviewers to finish:**
+
+1. After self-review completes, wait **2 minutes** before checking GitHub. This gives automated reviewers time to post their results.
+2. After waiting, read all reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
+3. If no external reviews exist after waiting, proceed to Step 3 with self-review issues only.
+
+**Never ask the user for input during this step** — do not prompt to add reviewers, wait longer, or confirm before proceeding. This step is fully autonomous.
 
 ## Step 3: Consolidate Issues
 
@@ -87,7 +95,7 @@ After fixes are committed and pushed, return to **Step 1** and run the exact sam
 Specifically:
 - Re-invoke review skills via the Skill tool — do not just scan the diff or skim changes
 - Treat cycle N the same as cycle 1 — same tools, same depth, same rigor
-- External reviewer comments will also be re-read for any new feedback
+- External reviewer comments will also be re-read for any new feedback (no need to wait on subsequent cycles — external reviewers should have finished by now)
 
 Repeat until no new issues are found in Step 3, then proceed to Step 7.
 
