@@ -1,7 +1,7 @@
 ---
 name: gtd-process
-version: 2.1.0
-description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
+version: 3.0.0
+description: This skill should be used when the user asks to "process inbox", "process items", "triage inbox", "clarify inbox", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 ---
 
 Process GTD inbox items into projects or actions. The agent infers categorization, project assignment, priority, time estimate, and due date for each item — then presents a single confirmation for the user to approve or modify.
@@ -39,6 +39,7 @@ Determine the processing mode from the user's message:
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@1pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@2pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@deep"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@agent"
    ```
 6. Fetch existing projects for context:
    ```bash
@@ -53,9 +54,13 @@ For each inbox item, analyze the text and infer:
    - If existing projects were fetched, check if the item relates to any of them
 2. **Project assignment**: If it's a project action, which project does it belong to?
 3. **Action title**: Clean up the inbox text into a clear action title
-4. **Time estimate**: Infer from complexity — @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min)
-5. **Priority**: Infer from urgency cues in the text (default: Medium)
-6. **Due date**: Infer from any time references in the text (default: one week from today)
+4. **Task type**: Is this human-centric or agent-centric?
+   - **Agent-centric indicators**: "generate", "draft", "analyze", "research", "summarize", "review code", "run tests", "scan", "convert", "process" — tasks that produce an artifact the user monitors and checks later
+   - **Human-centric indicators**: phone calls, meetings, physical tasks, decisions requiring real-time judgment
+   - Default to human-centric when ambiguous
+5. **Time estimate** (human-centric only): Infer from complexity — @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min). Skip for agent-centric tasks.
+6. **Priority**: Infer from urgency cues in the text (default: Medium)
+7. **Due date**: Infer from any time references in the text (default: one week from today)
 
 **For new projects**, also infer:
 - Project name: `{CamelCaseSummary}-{YYYYMMDD}`
@@ -63,6 +68,37 @@ For each inbox item, analyze the text and infer:
 
 Present the proposal to the user with a single **AskUserQuestion**: "Confirm or modify this processing:"
 
+**Human-centric example:**
+```
+Item: "Call dentist to schedule appointment"
+
+Proposed:
+  Type: Single Action
+  Task type: Human
+  Action: "Call dentist to schedule appointment"
+  List: @quick (~15 min)
+  Priority: Medium
+  Due: 2026-05-04
+
+Confirm or modify?
+```
+
+**Agent-centric example:**
+```
+Item: "Analyze Q1 sales data and generate summary report"
+
+Proposed:
+  Type: Single Action
+  Task type: Agent
+  Action: "Analyze Q1 sales data and generate summary report"
+  List: @agent
+  Priority: Medium
+  Due: 2026-05-04
+
+Confirm or modify?
+```
+
+**New project example:**
 ```
 Item: "Research vacation flights by end of month"
 
@@ -72,7 +108,7 @@ Proposed:
   Goal: Flights researched and booked
   Priority: Medium
   Due: 2026-03-31
-  First action: "Search flight comparison sites" (@1pomo)
+  First action: "Search flight comparison sites" (@1pomo, Human)
 
 Confirm or modify?
 ```
@@ -97,30 +133,40 @@ Based on the confirmed or modified proposal:
      --notes "Goal: [end goal]" \
      --due "YYYY-MM-DD 17:00"
    ```
-2. Create first action in the appropriate context list:
+2. Create first action in the appropriate context list (use the inferred list from Step 3):
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
-     --list "@1pomo" \
+     --list "<inferred list>" \
      --notes "#{ProjectName-YYYYMMDD}" \
      --priority 5
    ```
+   Use `@agent` if the first action is agent-centric, otherwise use the inferred time-based list (@quick, @1pomo, @2pomo, @deep).
 
-**For project actions:**
+**For project actions (use the inferred list from Step 3):**
 ```bash
 swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Action title" \
-  --list "@1pomo" \
+  --list "<inferred list>" \
   --notes "#{ProjectName-YYYYMMDD}" \
   --priority 5 \
   --due "YYYY-MM-DD 17:00"
 ```
 
-**For single actions:**
+**For single actions (human-centric — use the inferred time-based list):**
 ```bash
 swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Action title" \
-  --list "@1pomo" \
+  --list "<inferred list>" \
+  --priority 5 \
+  --due "YYYY-MM-DD 17:00"
+```
+
+**For single actions (agent-centric):**
+```bash
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
+  --title "Action title" \
+  --list "@agent" \
   --priority 5 \
   --due "YYYY-MM-DD 17:00"
 ```
@@ -139,7 +185,9 @@ Use Edit tool to remove the processed item from inbox.md.
 
 ## Reference
 
-**Context lists:** @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min)
+**Context lists (human):** @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min)
+
+**Context list (agent):** @agent (no duration — async, monitor progress)
 
 **Priority values:** 1=High, 5=Medium, 9=Low, 0=None
 
