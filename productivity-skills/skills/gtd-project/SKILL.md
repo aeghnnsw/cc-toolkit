@@ -1,6 +1,6 @@
 ---
 name: gtd-project
-version: 2.0.0
+version: 3.0.0
 description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking and action management.
 ---
 
@@ -9,10 +9,11 @@ Projects list: "Projects" in macOS Reminders
 Project naming: {CamelCaseSummary}-{YYYYMMDD} (e.g., VacationResearch-20260112)
 Action reference: #{FullProjectName} in notes field
 Project notes: "Goal: [end goal description]"
-Context lists: @quick, @1pomo, @2pomo, @deep
+Human context lists: @quick, @1pomo, @2pomo, @deep
+Agent context list: @agent (no duration, async)
 CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
 
-Key principle: Projects can have multiple parallel actions. Track all actionable tasks that can be worked on independently.
+Key principle: Projects can have multiple parallel actions. Track all actionable tasks that can be worked on independently. Actions are either human-centric (pomodoro-timed) or agent-centric (async, no duration).
 -->
 
 Review and manage GTD projects with infer-and-confirm workflow. The agent analyzes project state, proposes actions, and the user confirms or overrides — minimizing back-and-forth.
@@ -43,6 +44,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@1pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@2pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@deep"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@agent"
    ```
 
 3. Query all open projects:
@@ -52,7 +54,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 
 4. Query all context lists for actions:
    ```bash
-   for context in "@quick" "@1pomo" "@2pomo" "@deep"; do
+   for context in "@quick" "@1pomo" "@2pomo" "@deep" "@agent"; do
      swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "$context"
    done
    ```
@@ -91,9 +93,10 @@ Present all projects sorted by urgency (overdue first, then stalled, then health
 
 3. ✓ VacationResearch-20260112 [High]
    - Goal: Flights and hotel booked for Hawaii trip
-   - Actions (2):
+   - Actions (3):
      • "Research flights to Hawaii" (@1pomo)
      • "Email hotel for rates" (@quick)
+     • "Analyze flight price trends" (@agent) — due 2026-01-20
 
 Which project to work on? [1/2/3/Done]
 ```
@@ -133,14 +136,17 @@ In all cases, the user can override the suggestion by saying "complete project" 
    - User provides action title
 
 2. **Infer all properties from the title text** (same pattern as gtd-process):
-   - **Time estimate**: Infer from complexity. "Email..." → @quick, "Research..." → @1pomo, "Write report..." → @2pomo, "Redesign..." → @deep
+   - **Task type**: Infer human vs agent from text. Agent-centric indicators: "generate", "draft", "analyze", "research", "summarize", "review code", "run tests", "scan", "convert", "process". Default to human-centric when ambiguous.
+   - **Time estimate** (human only): Infer from complexity. "Email..." → @quick, "Research..." → @1pomo, "Write report..." → @2pomo, "Redesign..." → @deep. Skip for agent-centric tasks.
    - **Priority**: Inherit from project priority by default
-   - **Due date**: No due date unless the title implies urgency ("today", "by Friday", "urgent")
+   - **Due date**: No due date unless the title implies urgency ("today", "by Friday", "urgent"). For agent-centric tasks, default to one week from today if no date implied.
 
 3. Present a single proposal for confirmation:
 
+   **Human-centric example:**
    ```
    Action: "Email hotel for rates"
+   → Type: Human
    → List: @quick (~15 min)
    → Priority: High (inherited from project)
    → Due: No due date
@@ -148,9 +154,20 @@ In all cases, the user can override the suggestion by saying "complete project" 
    Confirm? [Yes / Modify / Skip]
    ```
 
+   **Agent-centric example:**
+   ```
+   Action: "Analyze flight price trends"
+   → Type: Agent
+   → List: @agent
+   → Priority: High (inherited from project)
+   → Due: 2026-01-20
+
+   Confirm? [Yes / Modify / Skip]
+   ```
+
    Use **AskUserQuestion**: "Confirm this action?"
    - Options: "Yes", "Modify", "Skip"
-   - If "Modify": ask which property to change, then re-confirm
+   - If "Modify": ask which property to change (includes "Task type"), then re-confirm
    - If "Yes": create the action
    - If "Skip": return to Step 2
 
@@ -208,10 +225,11 @@ In all cases, the user can override the suggestion by saying "complete project" 
 3. **For general edit** (user selected "Edit action"):
    - Show current properties
    - Use **AskUserQuestion**: "What to edit?" with multiSelect
-     - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
+     - Options: "Title", "Task type", "Time estimate", "Priority", "Due date", "Done editing"
    - For each selected property, gather the new value:
      - Title: ask for new title text
-     - Time estimate: options "Quick", "1 Pomodoro", "2 Pomodoros", "Deep" (maps to @quick, @1pomo, @2pomo, @deep)
+     - Task type: options "Human", "Agent". Switching to agent moves task to @agent and removes time estimate. Switching to human requires selecting a time estimate.
+     - Time estimate (human only): options "Quick", "1 Pomodoro", "2 Pomodoros", "Deep" (maps to @quick, @1pomo, @2pomo, @deep)
      - Priority: options "High", "Medium", "Low", "None" (maps to 1, 5, 9, 0)
      - Due date: options "No due date", "Today", "Tomorrow", "This week", "Custom date"
 
@@ -280,12 +298,13 @@ Projects completed: 1
 
 ## Reference: Context Lists
 
-| List | Time Estimate |
-|------|---------------|
-| @quick | Quick tasks (< 25 min) |
-| @1pomo | 1 Pomodoro (25 min) |
-| @2pomo | 2 Pomodoros (50 min) |
-| @deep | Deep focus (3+ pomodoros) |
+| List | Type | Time Estimate |
+|------|------|---------------|
+| @quick | Human | Quick tasks (< 25 min) |
+| @1pomo | Human | 1 Pomodoro (25 min) |
+| @2pomo | Human | 2 Pomodoros (50 min) |
+| @deep | Human | Deep focus (3+ pomodoros) |
+| @agent | Agent | N/A (async, monitor progress) |
 
 ## Reference: Priority Values
 
