@@ -62,7 +62,7 @@ Agent track (new):
 ```
 ## Your Agenda (until [Event] at [Time])
 
-### Focus Task
+### Focus Tasks
 [Start] - [End]  [Task A] (@1pomo) #[Project]
 [Start] - [End]  Break
 [Start] - [End]  Buffer before [Event]
@@ -126,7 +126,7 @@ Proposed:
   Due: 2026-05-04
 ```
 
-**Step 4 (Execute):** Same CLI commands, targeting `@agent` list for agent tasks.
+**Step 4 (Execute):** CLI templates use `<inferred list>` placeholder — use `@agent` for agent-centric tasks, otherwise the inferred time-based list (@quick, @1pomo, @2pomo, @deep).
 
 ### gtd-project
 
