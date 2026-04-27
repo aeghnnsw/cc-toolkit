@@ -1,7 +1,7 @@
 ---
 name: gtd-next
 version: 3.0.0
-description: This skill should be used when the user asks "what should I work on next?", "plan my next block", "generate an agenda", "what's next?", or wants calendar-aware task selection and time-blocked agenda generation for the GTD Engage step.
+description: This skill should be used when the user asks "what should I work on next?", "plan my next block", "generate an agenda", "what's next?", "dispatch agent tasks", or wants calendar-aware task selection, time-blocked agenda generation, and parallel agent task dispatch for the GTD Engage step.
 ---
 
 <!--
@@ -120,7 +120,7 @@ Select up to 3 agent tasks from the top of the ranked `@agent` list. No time-fit
 ```
 ## Your Agenda (until [Event] at [Time])
 
-### Focus Task
+### Focus Tasks
 [Start Time] - [End Time]  [Task A] (@quick) #[ProjectName]
 [Start Time] - [End Time]  [Task B] (@1pomo)
 [Start Time] - [End Time]  Break

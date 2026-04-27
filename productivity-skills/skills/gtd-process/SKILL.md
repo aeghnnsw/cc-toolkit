@@ -1,7 +1,7 @@
 ---
 name: gtd-process
 version: 3.0.0
-description: This skill should be used when the user asks to "process inbox", "process items", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
+description: This skill should be used when the user asks to "process inbox", "process items", "triage inbox", "clarify inbox", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 ---
 
 Process GTD inbox items into projects or actions. The agent infers categorization, project assignment, priority, time estimate, and due date for each item — then presents a single confirmation for the user to approve or modify.
@@ -133,30 +133,31 @@ Based on the confirmed or modified proposal:
      --notes "Goal: [end goal]" \
      --due "YYYY-MM-DD 17:00"
    ```
-2. Create first action in the appropriate context list:
+2. Create first action in the appropriate context list (use the inferred list from Step 3):
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
      --title "Action title" \
-     --list "@1pomo" \
+     --list "<inferred list>" \
      --notes "#{ProjectName-YYYYMMDD}" \
      --priority 5
    ```
+   Use `@agent` if the first action is agent-centric, otherwise use the inferred time-based list (@quick, @1pomo, @2pomo, @deep).
 
-**For project actions:**
+**For project actions (use the inferred list from Step 3):**
 ```bash
 swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Action title" \
-  --list "@1pomo" \
+  --list "<inferred list>" \
   --notes "#{ProjectName-YYYYMMDD}" \
   --priority 5 \
   --due "YYYY-MM-DD 17:00"
 ```
 
-**For single actions (human-centric):**
+**For single actions (human-centric — use the inferred time-based list):**
 ```bash
 swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --title "Action title" \
-  --list "@1pomo" \
+  --list "<inferred list>" \
   --priority 5 \
   --due "YYYY-MM-DD 17:00"
 ```

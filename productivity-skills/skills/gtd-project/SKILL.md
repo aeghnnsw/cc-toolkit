@@ -1,7 +1,7 @@
 ---
 name: gtd-project
 version: 3.0.0
-description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking and action management.
+description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "add agent task", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking, action management, and agent-centric task assignment.
 ---
 
 <!--
@@ -246,6 +246,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
      --priority 5 \
      --due "2026-01-15 17:00"
    ```
+   If the create command fails after deletion, immediately retry with the same parameters. Report the original action details to the user so they can manually recover if needed.
 
 5. Report: "Updated action '[title]'"
 
