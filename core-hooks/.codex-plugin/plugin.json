@@ -1,0 +1,6 @@
+{
+  "name": "core-hooks",
+  "description": "Core safety and workflow hooks",
+  "version": "1.0.6",
+  "hooks": "./hooks/hooks.codex.json"
+}
