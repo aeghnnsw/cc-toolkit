@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 def get_shell_command(tool_name, tool_input):
+    if not isinstance(tool_input, dict):
+        return ''
     if tool_name == 'Bash':
         return tool_input.get('command', '')
     if tool_name == 'exec_command':

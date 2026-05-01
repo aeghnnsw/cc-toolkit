@@ -16,8 +16,9 @@ def run_hook(payload):
         input=json.dumps(payload),
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
+    assert result.returncode == 0, f"Hook failed (exit {result.returncode}): {result.stderr}"
     return json.loads(result.stdout)
 
 

@@ -17,6 +17,8 @@ VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
 
 
 def get_shell_command(tool_name, tool_input):
+    if not isinstance(tool_input, dict):
+        return ""
     if tool_name == "Bash":
         return tool_input.get("command", "")
     if tool_name == "exec_command":
@@ -74,7 +76,6 @@ def main():
 
     command = get_shell_command(tool_name, tool_input)
     if command:
-
         if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
             response = {
                 "systemMessage": "BLOCKED: Use 'git add <filename>' with specific file names instead of 'git add .', 'git add -A', or 'git add --all' for precise change control.",
