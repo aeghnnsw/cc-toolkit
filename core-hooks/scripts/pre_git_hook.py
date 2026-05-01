@@ -16,6 +16,14 @@ import sys
 VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
 
 
+def get_shell_command(tool_name, tool_input):
+    if tool_name == "Bash":
+        return tool_input.get("command", "")
+    if tool_name == "exec_command":
+        return tool_input.get("cmd", "")
+    return ""
+
+
 def extract_branch_name(command):
     # [^\s;|&]+ instead of \S+ to stop at shell metacharacters (; && || |)
     m = re.search(r'git checkout -b\s+([^\s;|&]+)', command)
@@ -64,8 +72,8 @@ def main():
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
+    command = get_shell_command(tool_name, tool_input)
+    if command:
 
         if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
             response = {

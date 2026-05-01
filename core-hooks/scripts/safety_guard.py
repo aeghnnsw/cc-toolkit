@@ -8,6 +8,15 @@ import sys
 import re
 from pathlib import Path
 
+
+def get_shell_command(tool_name, tool_input):
+    if tool_name == 'Bash':
+        return tool_input.get('command', '')
+    if tool_name == 'exec_command':
+        return tool_input.get('cmd', '')
+    return ''
+
+
 def is_dangerous_rm_command(command):
     """
     Selective detection of dangerous rm commands.
@@ -64,15 +73,13 @@ def main():
         tool_name = input_data.get('tool_name', '')
         tool_input = input_data.get('tool_input', {})
 
-        # Check for dangerous rm -rf commands
-        if tool_name == 'Bash':
-            command = tool_input.get('command', '')
+        command = get_shell_command(tool_name, tool_input)
 
-            # Block dangerous rm commands while allowing explicit removals
-            if is_dangerous_rm_command(command):
-                print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
-                print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
-                sys.exit(2)  # Exit code 2 blocks tool call and shows error to Claude
+        # Block dangerous rm commands while allowing explicit removals
+        if command and is_dangerous_rm_command(command):
+            print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
+            print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
+            sys.exit(2)  # Exit code 2 blocks tool call and shows error to Claude/Codex
 
         # Ensure log directory exists
         log_dir = Path.cwd() / 'logs'
