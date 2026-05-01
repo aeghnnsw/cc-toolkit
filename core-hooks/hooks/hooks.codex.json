@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/safety_guard.py"
+            "command": "uv run --no-project ${PLUGIN_ROOT}/scripts/safety_guard.py"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/pre_git_hook.py"
+            "command": "uv run --no-project ${PLUGIN_ROOT}/scripts/pre_git_hook.py"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/post_tool_use.py"
+            "command": "uv run --no-project ${PLUGIN_ROOT}/scripts/post_tool_use.py"
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py --success"
+            "command": "uv run --no-project ${PLUGIN_ROOT}/scripts/system_notification.py --success"
           }
         ]
       }
