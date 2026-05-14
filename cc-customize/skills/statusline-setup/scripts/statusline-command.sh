@@ -5,6 +5,7 @@ INPUT=$(cat)
 
 # Parse JSON once
 MODEL=$(echo "$INPUT" | jq -r '.model.display_name // .model.id // "Claude"')
+EFFORT=$(echo "$INPUT" | jq -r '.effort.level // empty')
 CW=$(echo "$INPUT" | jq -c '.context_window // null')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
 
@@ -66,8 +67,12 @@ if [ "$CW" != "null" ] && [ -n "$CW" ]; then
   PERCENT=$(echo "$CW" | jq -r '.used_percentage // 0' | awk '{printf "%d", $1}')
 fi
 
-# Line 1: Model | Project git:(branch*)
-LINE1="${DIM}[${RST}${MODEL}${DIM}]${RST}"
+# Line 1: Model[· effort] | Project git:(branch*)
+if [ -n "$EFFORT" ]; then
+  LINE1="${DIM}[${RST}${MODEL}${DIM} · ${RST}${EFFORT}${DIM}]${RST}"
+else
+  LINE1="${DIM}[${RST}${MODEL}${DIM}]${RST}"
+fi
 if [ -n "$PROJECT" ]; then
   LINE1+=" ${DIM}│${RST} ${PROJECT}"
 fi
@@ -139,19 +144,21 @@ fi
 printf "\n"
 
 # Line 3: Token breakdown + cost
+# in/cw/cr/out are non-overlapping components of the current context window
+# (in = fresh input only; total_input_tokens = in + cw + cr per Claude Code docs)
 if [ "$CW" != "null" ] && [ -n "$CW" ]; then
-  TOTAL_INPUT=$(echo "$CW" | jq -r '.total_input_tokens // 0')
-  TOTAL_OUTPUT=$(echo "$CW" | jq -r '.total_output_tokens // 0')
+  IN_TOKENS=$(echo "$CW" | jq -r '.current_usage.input_tokens // 0')
+  OUT_TOKENS=$(echo "$CW" | jq -r '.current_usage.output_tokens // 0')
   CACHE_WRITE=$(echo "$CW" | jq -r '.current_usage.cache_creation_input_tokens // 0')
   CACHE_READ=$(echo "$CW" | jq -r '.current_usage.cache_read_input_tokens // 0')
 
-  if [ "$TOTAL_INPUT" -gt 0 ] || [ "$TOTAL_OUTPUT" -gt 0 ]; then
-    IN_FMT=$(format_k "$TOTAL_INPUT")
-    OUT_FMT=$(format_k "$TOTAL_OUTPUT")
+  if [ "$IN_TOKENS" -gt 0 ] || [ "$OUT_TOKENS" -gt 0 ]; then
+    IN_FMT=$(format_k "$IN_TOKENS")
+    OUT_FMT=$(format_k "$OUT_TOKENS")
     CW_FMT=$(format_k "$CACHE_WRITE")
     CR_FMT=$(format_k "$CACHE_READ")
 
-    # Cost from Claude Code's built-in calculation
+    # Cost from Claude Code's built-in client-side estimate
     COST=$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0' | awk '{printf "%.2f", $1}')
 
     printf "  ${DIM}in:${RST}%s ${DIM}cw:${RST}%s ${DIM}cr:${RST}%s ${DIM}out:${RST}%s ${DIM}│${RST} \$%s\n" \

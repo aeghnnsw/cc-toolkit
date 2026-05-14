@@ -10,9 +10,9 @@ Install and configure a custom Claude Code statusline that shows model info, git
 
 The statusline displays 3 lines:
 
-1. **Model + Project + Git** — `[Opus 4.6] │ my-project git:(main*)`
+1. **Model[·Effort] + Project + Git** — `[Opus 4.7 · high] │ my-project git:(main*)` (effort level shown when the model supports it)
 2. **Usage bars** — Context, 5-hour rate limit, and 7-day rate limit with color-coded progress bars and reset countdowns
-3. **Token breakdown + cost** — Input, cache-write, cache-read, output tokens with session cost from Claude Code
+3. **Token breakdown + cost** — Fresh input, cache-write, cache-read, output tokens (non-overlapping components of the current context window) with session cost from Claude Code
 
 ## Prerequisites
 
