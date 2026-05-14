@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-version: 3.1.0
+version: 3.2.0
 description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 ---
 
@@ -34,13 +34,15 @@ Save the full list for consolidation in Step 3.
 
 External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically triggered when the PR is pushed and run in parallel with the self-review. They often take longer to complete than the self-review.
 
-**Wait for external reviewers to finish:**
+**Wait via a background-scheduled delay, then read comments:**
 
-1. After self-review completes, wait **2 minutes** before checking GitHub. This gives automated reviewers time to post their results.
-2. After waiting, read all reviewer comments on the PR — including review comments, inline comments, and general PR comments. Extract actionable feedback items.
-3. If no external reviews exist after waiting, proceed to Step 3 with self-review issues only.
+1. After self-review completes, fire a 2-minute background wait. Use the Bash tool with `run_in_background: true` and the command `sleep 120`. The harness will notify when it completes — do not poll, do not run a foreground `sleep`, do not invoke any other tool while waiting.
 
-**Never ask the user for input during this step** — do not prompt to add reviewers, wait longer, or confirm before proceeding. This step is fully autonomous.
+2. After the notification, read all reviewer comments on the PR — review summaries, inline review comments, and general PR comments. Extract actionable feedback items.
+
+3. **If no external reviews exist after the wait, proceed to Step 3 with self-review issues only.** Do not extend the wait. Do not ask the user. The Step 6 loop will catch any late-arriving comments in a subsequent cycle — that's by design.
+
+**Never ask the user for input during this step.** Not to wait longer, not to confirm, not to add reviewers. The full step is autonomous.
 
 ## Step 3: Consolidate Issues
 
