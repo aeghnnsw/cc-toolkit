@@ -29,7 +29,7 @@ External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically
 
 **Wait via a background-scheduled delay, then read comments:**
 
-1. After self-review completes, fire a 2-minute background wait. Use the Bash tool with `run_in_background: true` and the command `sleep 120`. The harness will notify when it completes — do not poll, do not run a foreground `sleep`, do not invoke any other tool while waiting.
+1. After self-review completes, schedule a 2-minute background wait. Use the Bash tool with `run_in_background: true` and the command `sleep 120`. End your turn after firing — the harness will notify when the wait completes. Do not poll, do not run a foreground `sleep`, do not chain other tool calls in the same turn to check on the wait.
 
 2. After the notification, read all reviewer comments on the PR — review summaries, inline review comments, and general PR comments. Extract actionable feedback items.
 
