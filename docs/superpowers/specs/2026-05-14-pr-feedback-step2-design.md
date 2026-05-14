@@ -66,7 +66,7 @@ self-review. They often take longer to complete than the self-review.
 not to confirm, not to add reviewers. The full step is autonomous.
 ```
 
-The bullet 1 wording was refined during code review (see commit `aa43798`) for control-flow clarity: explicit "end your turn after firing" and narrower "do not chain other tool calls in the same turn to check on the wait" replace the original "do not invoke any other tool while waiting" (which over-restricted adjacent tools and implied an active waiting state inconsistent with the harness's notification model).
+The bullet 1 wording was refined during code review for control-flow clarity: explicit "end your turn after firing" and narrower "do not chain other tool calls in the same turn to check on the wait" replace the original "do not invoke any other tool while waiting", which over-restricted adjacent tools and implied an active waiting state inconsistent with the harness's notification model.
 
 ## Out of Scope
 

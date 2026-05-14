@@ -18,7 +18,7 @@
 - Modify: `dev-skills/skills/pr-feedback/SKILL.md` (frontmatter line 3; Step 2 body lines 33–43)
 - Modify: `dev-skills/.claude-plugin/plugin.json` (version field line 4)
 
-- [ ] **Step 1: Replace the Step 2 body in SKILL.md**
+- [x] **Step 1: Replace the Step 2 body in SKILL.md**
 
 Open `dev-skills/skills/pr-feedback/SKILL.md`. Replace the existing Step 2 block (the section header `## Step 2: Gather External Reviews` and the lines up to but not including `## Step 3: Consolidate Issues`) with this exact text:
 
@@ -41,7 +41,7 @@ External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically
 
 Preserve the blank line between this section and `## Step 3: Consolidate Issues`.
 
-- [ ] **Step 2: Bump the skill frontmatter version**
+- [x] **Step 2: Bump the skill frontmatter version**
 
 In the same file `dev-skills/skills/pr-feedback/SKILL.md`, change frontmatter line 3:
 
@@ -55,7 +55,7 @@ to:
 version: 3.2.0
 ```
 
-- [ ] **Step 3: Bump the plugin manifest version**
+- [x] **Step 3: Bump the plugin manifest version**
 
 Edit `dev-skills/.claude-plugin/plugin.json`. Change:
 
@@ -69,7 +69,7 @@ to:
 "version": "3.5.0"
 ```
 
-- [ ] **Step 4: Verify the diff**
+- [x] **Step 4: Verify the diff**
 
 Run:
 
@@ -84,7 +84,7 @@ Expected output:
 
 If anything outside the intended scope changed, fix before committing.
 
-- [ ] **Step 5: Sanity-check against the failure modes**
+- [x] **Step 5: Sanity-check against the failure modes**
 
 Re-read the rewritten Step 2 and answer each question; all three must be "yes":
 - Does it prescribe a specific mechanism (Bash + `run_in_background: true` + `sleep 120`)? — defeats "hangs / skips".
@@ -93,7 +93,7 @@ Re-read the rewritten Step 2 and answer each question; all three must be "yes":
 
 If any answer is no, return to Step 1 of this task and revise.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add dev-skills/skills/pr-feedback/SKILL.md dev-skills/.claude-plugin/plugin.json
@@ -106,15 +106,15 @@ git commit -m "Redesign pr-feedback Step 2 wait mechanism"
 
 **Files:** None (git/gh operations only)
 
-- [ ] **Step 1: Push the branch**
+- [x] **Step 1: Push the branch**
 
 ```bash
 git push -u origin bugfix-pr-feedback-step2
 ```
 
-The project's branch-naming hook requires a `bugfix-` prefix, which this branch already satisfies.
+The project's branch-naming hook requires one of the approved prefixes (`feat-`, `bugfix-`, `doc-`, `refactor-`, `chore-`, `test-`); this branch already satisfies that with `bugfix-`.
 
-- [ ] **Step 2: Open the PR**
+- [x] **Step 2: Open the PR**
 
 ```bash
 gh pr create --title "Redesign pr-feedback Step 2 wait mechanism" --body "$(cat <<'EOF'
@@ -131,7 +131,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 3: Confirm PR URL**
+- [x] **Step 3: Confirm PR URL**
 
 The `gh pr create` command prints the PR URL on success. Note it for the next phase (pr-feedback cycle).
 
