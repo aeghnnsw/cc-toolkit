@@ -152,7 +152,7 @@ if [ "$CW" != "null" ] && [ -n "$CW" ]; then
   CACHE_WRITE=$(echo "$CW" | jq -r '.current_usage.cache_creation_input_tokens // 0')
   CACHE_READ=$(echo "$CW" | jq -r '.current_usage.cache_read_input_tokens // 0')
 
-  if [ "$IN_TOKENS" -gt 0 ] || [ "$OUT_TOKENS" -gt 0 ]; then
+  if [ "$IN_TOKENS" -gt 0 ] || [ "$OUT_TOKENS" -gt 0 ] || [ "$CACHE_WRITE" -gt 0 ] || [ "$CACHE_READ" -gt 0 ]; then
     IN_FMT=$(format_k "$IN_TOKENS")
     OUT_FMT=$(format_k "$OUT_TOKENS")
     CW_FMT=$(format_k "$CACHE_WRITE")

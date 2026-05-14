@@ -48,6 +48,10 @@ Read `~/.claude/settings.json`, then set the `statusLine` field to the following
 
 Inform the user that the statusline is configured. Changes take effect on the next Claude Code session (restart required).
 
+## Updating
+
+To install changes from a new plugin version, re-run Step 1 above.
+
 ## Uninstall
 
 To remove the statusline, delete the `statusLine` field from `~/.claude/settings.json` and remove `~/.claude/statusline-command.sh`.
