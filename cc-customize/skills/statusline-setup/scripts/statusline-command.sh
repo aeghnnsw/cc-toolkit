@@ -144,8 +144,8 @@ fi
 printf "\n"
 
 # Line 3: Token breakdown + cost
-# in/cw/cr/out are non-overlapping components from current_usage.
-# Per Claude Code docs: total_input_tokens = in + cw + cr; total_output_tokens = out.
+# All four counts (in/cw/cr/out) are sourced from current_usage — non-overlapping.
+# Docs equivalence: total_input_tokens = in+cw+cr; total_output_tokens = out.
 if [ "$CW" != "null" ] && [ -n "$CW" ]; then
   IN_TOKENS=$(echo "$CW" | jq -r '.current_usage.input_tokens // 0')
   OUT_TOKENS=$(echo "$CW" | jq -r '.current_usage.output_tokens // 0')
