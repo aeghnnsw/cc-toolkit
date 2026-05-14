@@ -1,6 +1,6 @@
 ---
 name: statusline-setup
-version: 1.1.0
+version: 1.2.0
 description: This skill should be used when the user asks to "set up statusline", "configure statusline", "install statusline", "set up status bar", or wants to configure the Claude Code statusline with model info, git status, context/rate-limit bars, and token cost tracking.
 ---
 
@@ -10,9 +10,9 @@ Install and configure a custom Claude Code statusline that shows model info, git
 
 The statusline displays 3 lines:
 
-1. **Model + Project + Git** — `[Opus 4.6] │ my-project git:(main*)`
+1. **Model[·Effort] + Project + Git** — `[Opus 4.7 · high] │ my-project git:(main*)`. Effort is omitted when the model doesn't expose it: `[Opus 4.7] │ my-project git:(main*)`.
 2. **Usage bars** — Context, 5-hour rate limit, and 7-day rate limit with color-coded progress bars and reset countdowns
-3. **Token breakdown + cost** — Input, cache-write, cache-read, output tokens with session cost from Claude Code
+3. **Token breakdown + cost** — Fresh input, cache-write, cache-read, output tokens (non-overlapping components of the current context window) with session cost from Claude Code
 
 ## Prerequisites
 
@@ -47,6 +47,10 @@ Read `~/.claude/settings.json`, then set the `statusLine` field to the following
 ### Step 3: Verify
 
 Inform the user that the statusline is configured. Changes take effect on the next Claude Code session (restart required).
+
+## Updating
+
+To install changes from a new plugin version, re-run Step 1 above.
 
 ## Uninstall
 
