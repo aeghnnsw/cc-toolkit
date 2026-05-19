@@ -1,6 +1,6 @@
 ---
 name: gtd-process
-version: 3.0.0
+version: 3.1.0
 description: This skill should be used when the user asks to "process inbox", "process items", "triage inbox", "clarify inbox", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 ---
 
@@ -14,12 +14,9 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 
 ## Step 1: Determine Processing Mode
 
-Determine the processing mode from the user's message:
+Default: **process all items** sequentially until the inbox is empty or the user selects "Stop" on the per-item confirmation.
 
-| User Intent | Behavior |
-|-------------|----------|
-| No qualifier or single item | Process the first inbox item, then exit |
-| "process all", "process everything" | Process all items sequentially until inbox is empty |
+Only switch to single-item mode if the user explicitly asks for it (e.g. "just one item", "single item", "process the first one"). In that case, process the first item and exit after Step 5.
 
 ## Step 2: Read Inbox and Gather Context
 
@@ -113,11 +110,12 @@ Proposed:
 Confirm or modify?
 ```
 
-Options: "Confirm", "Modify", "Skip"
+Options: "Confirm", "Modify", "Skip", "Stop"
 
 - **Confirm**: Execute the proposed processing (create project/action via CLI)
 - **Modify**: User provides corrections, then execute with modifications
 - **Skip**: Leave item in inbox, move to next
+- **Stop**: Leave current item in inbox and exit the processing loop
 
 ## Step 4: Execute Processing
 
@@ -179,9 +177,12 @@ Use Edit tool to remove the processed item from inbox.md.
 
 ## Step 6: Continue or Exit
 
-**Single item mode:** Show summary and exit.
+Exit (show summary of processed items) when any of these are true:
+- User selected "Stop" in Step 3
+- Inbox is now empty
+- Single-item mode was requested in Step 1 and the first item is done
 
-**Process all mode:** Automatically continue to the next item (return to Step 3). Repeat until inbox is empty, then show summary and exit.
+Otherwise, automatically continue to the next item (return to Step 3). Do **not** ask the user whether to continue — only stop on explicit "Stop" or empty inbox.
 
 ## Reference
 
