@@ -1,6 +1,6 @@
 ---
 name: gtd-process
-version: 3.0.0
+version: 3.1.0
 description: This skill should be used when the user asks to "process inbox", "process items", "triage inbox", "clarify inbox", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
 ---
 
@@ -14,12 +14,9 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 
 ## Step 1: Determine Processing Mode
 
-Determine the processing mode from the user's message:
+Default: **process all items** sequentially until the inbox is empty, every item has been presented this session, or the user selects "Stop" on the per-item confirmation.
 
-| User Intent | Behavior |
-|-------------|----------|
-| No qualifier or single item | Process the first inbox item, then exit |
-| "process all", "process everything" | Process all items sequentially until inbox is empty |
+Only switch to single-item mode if the user explicitly asks for it (e.g. "just one item", "single item", "process the first one" — non-exhaustive). In that case, process the first item and exit via Step 6.
 
 ## Step 2: Read Inbox and Gather Context
 
@@ -113,11 +110,14 @@ Proposed:
 Confirm or modify?
 ```
 
-Options: "Confirm", "Modify", "Skip"
+Options: "Confirm", "Modify", "Skip", "Stop"
 
-- **Confirm**: Execute the proposed processing (create project/action via CLI)
-- **Modify**: User provides corrections, then execute with modifications
-- **Skip**: Leave item in inbox, move to next
+- **Confirm**: Execute the proposed processing (create project/action via CLI), then continue
+- **Modify**: User provides corrections, then execute with modifications, then continue
+- **Skip**: Leave item in inbox, advance to the next unpresented item
+- **Stop**: Leave current item in inbox and exit the processing loop entirely — unlike Skip, no further items are presented
+
+For Skip and Stop, do not perform Step 4 or Step 5 — proceed directly to Step 6.
 
 ## Step 4: Execute Processing
 
@@ -179,9 +179,13 @@ Use Edit tool to remove the processed item from inbox.md.
 
 ## Step 6: Continue or Exit
 
-**Single item mode:** Show summary and exit.
+Track which inbox items have been presented in this session (by their original text). Exit (show summary of processed items) when any of these are true:
+- User selected "Stop" in Step 3
+- Inbox is empty
+- Every item currently in the inbox has already been presented this session (each was either processed or skipped) — this prevents an infinite loop when the user skips every item
+- Single-item mode was requested in Step 1 and the first item is done
 
-**Process all mode:** Automatically continue to the next item (return to Step 3). Repeat until inbox is empty, then show summary and exit.
+Otherwise, return to **Step 2** to refresh the inbox contents and the existing-projects context (Step 4 may have created a new project), then propose the next unpresented item in Step 3. Do **not** ask the user whether to continue.
 
 ## Reference
 
