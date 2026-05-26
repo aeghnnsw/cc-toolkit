@@ -90,6 +90,82 @@ class PreGitHookTests(unittest.TestCase):
                 "tool_input": {"command": 'gh pr edit 1 --body "Fix typo in README"'},
             }
         )
+        # Advisory message fires, but the operation is not denied.
+        self.assertNotIn("hookSpecificOutput", response)
+        self.assertIn("Contribution Guidelines", response.get("systemMessage", ""))
+
+    def test_blocks_attribution_despite_spaces_and_global_flags(self):
+        # The guard must survive extra whitespace and gh global flags placed
+        # before the `pr` subcommand (e.g. `gh -R owner/repo pr edit`).
+        for command in [
+            'gh  pr  edit 1 --body "Generated with Claude Code"',
+            'gh -R owner/repo pr edit 1 --body "Generated with Claude Code"',
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_blocks_attribution_in_gh_pr_review(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'gh pr review 1 --comment --body "Generated with Claude Code"'},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_blocks_attribution_in_compound_edit_then_merge(self):
+        # A merge advisory must not short-circuit the attribution deny when both
+        # appear in one compound command.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'gh pr edit 1 --body "Generated with Claude Code" && gh pr merge 1'},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    # --- #104 regressions: rename, tabs, worktree in compound commands ---
+
+    def test_rename_to_invalid_branch_is_blocked(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -m old-name badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_rename_to_valid_branch_is_allowed(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -m old-name feat-42-new"},
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+
+    def test_tab_separator_is_still_detected(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git switch -c\tbadname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_worktree_add_in_compound_uses_path_not_next_token(self):
+        # Before the fix, the separator before the branch group matched the
+        # newline and captured "git" from the next command. Now the worktree's
+        # own path basename is used, so a valid prefix is allowed.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git worktree add ../trees/feat-99-x\ngit status"},
+            }
+        )
         self.assertNotIn("hookSpecificOutput", response)
 
     def test_codex_hooks_match_exec_command_for_git_guard(self):
