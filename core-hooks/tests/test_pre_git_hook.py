@@ -107,6 +107,18 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
 
+    def test_clean_git_commit_gets_advisory(self):
+        # The other half of is_contribution_cmd: a clean commit is allowed with
+        # the advisory, not denied or silently passed.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'git commit -m "Fix typo in README"'},
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+        self.assertIn("Contribution Guidelines", response.get("systemMessage", ""))
+
     def test_blocks_attribution_in_gh_pr_review(self):
         response = run_hook(
             {

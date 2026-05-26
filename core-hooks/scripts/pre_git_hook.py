@@ -118,7 +118,7 @@ def main():
         # AI attribution is a hard block. Check it before the advisory handlers
         # below so a compound command (e.g. `gh pr edit ... && gh pr merge`)
         # cannot short-circuit the deny via an earlier advisory exit.
-        is_contribution_cmd = "git commit" in command or PR_CONTRIBUTION_RE.search(command)
+        is_contribution_cmd = bool("git commit" in command or PR_CONTRIBUTION_RE.search(command))
         if is_contribution_cmd:
             for pattern in ATTRIBUTION_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
