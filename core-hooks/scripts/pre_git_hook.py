@@ -27,12 +27,14 @@ def get_shell_command(tool_name, tool_input):
 
 
 def extract_branch_name(command):
-    # [^\s;|&]+ instead of \S+ to stop at shell metacharacters (; && || |)
-    m = re.search(r'git checkout -b\s+([^\s;|&]+)', command)
+    # [^\s;|&]+ instead of \S+ to stop at shell metacharacters (; && || |).
+    # [ \t]+ (not \s+) for separators so a newline cannot pull in the next
+    # command's first token as a false branch name (see issues #104/#105).
+    m = re.search(r'git checkout -b[ \t]+([^\s;|&]+)', command)
     if m:
         return m.group(1)
 
-    m = re.search(r'git switch -c\s+([^\s;|&]+)', command)
+    m = re.search(r'git switch -c[ \t]+([^\s;|&]+)', command)
     if m:
         return m.group(1)
 
@@ -49,17 +51,17 @@ def extract_branch_name(command):
         return None
 
     # Rename/copy: short flags (-m/-M/-c/-C) and long flags (--move/--copy)
-    m = re.search(r'git branch\s+(?:-[mMcC]|--move|--copy)\s+[^\s;|&]+\s+([^\s;|&]+)', command)
+    m = re.search(r'git branch[ \t]+(?:-[mMcC]|--move|--copy)[ \t]+[^\s;|&]+[ \t]+([^\s;|&]+)', command)
     if m:
         return m.group(1)
-    m = re.search(r'git branch\s+(?:-[mMcC]|--move|--copy)\s+([^\s;|&]+)', command)
+    m = re.search(r'git branch[ \t]+(?:-[mMcC]|--move|--copy)[ \t]+([^\s;|&]+)', command)
     if m:
         return m.group(1)
 
     # Bare creation — skip read-only/delete flags
     if re.search(r'git branch\s+(-[ladDvrV]|--list|--all|--delete|--remotes)', command):
         return None
-    m = re.search(r'git branch\s+(?!-)([^\s;|&]+)', command)
+    m = re.search(r'git branch[ \t]+(?!-)([^\s;|&]+)', command)
     if m:
         return m.group(1)
 
@@ -115,7 +117,7 @@ def main():
             print(json.dumps(response))
             sys.exit(0)
 
-        elif "git commit" in command or "gh pr create" in command:
+        elif "git commit" in command or re.search(r'\bgh pr (?:create|edit|comment)\b', command):
             attribution_patterns = [
                 # Claude Code
                 r'Generated (?:with|by) \[?Claude Code\]?',
@@ -143,7 +145,7 @@ def main():
                     sys.exit(0)
 
             response = {
-                "systemMessage": "Commit Guidelines: Keep messages concise and accurate. Avoid AI attribution in commit messages or PR descriptions."
+                "systemMessage": "Contribution Guidelines: Keep messages concise and accurate. Avoid AI attribution in commit messages or PR descriptions/comments."
             }
             print(json.dumps(response))
             sys.exit(0)
