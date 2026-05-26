@@ -151,6 +151,8 @@ class PreGitHookTests(unittest.TestCase):
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
 
     def test_rename_to_valid_branch_is_allowed(self):
+        # A valid branch name emits the "good practice" advisory (non-empty
+        # JSON, no deny), so run_hook is safe here — the path is not silent.
         response = run_hook(
             {
                 "tool_name": "Bash",
@@ -171,7 +173,9 @@ class PreGitHookTests(unittest.TestCase):
     def test_worktree_add_in_compound_uses_path_not_next_token(self):
         # Before the fix, the separator before the branch group matched the
         # newline and captured "git" from the next command. Now the worktree's
-        # own path basename is used, so a valid prefix is allowed.
+        # own path basename is used, so a valid prefix is allowed. The basename
+        # is valid, so the hook emits the advisory (non-empty JSON) — run_hook
+        # is safe here.
         response = run_hook(
             {
                 "tool_name": "Bash",

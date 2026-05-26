@@ -83,7 +83,7 @@ def extract_branch_name(command):
     # Note: this matches the flag anywhere in the command string, so a listing/
     # delete invocation can mask a later real creation in a compound command
     # (e.g. "git branch -l; git branch badname"). A complete fix needs
-    # per-command parsing; tracked as a follow-up.
+    # per-command parsing; tracked in issue #107.
     if re.search(r'git branch[ \t]+(-[ladDvrV]|--list|--all|--delete|--remotes)', command):
         return None
     m = re.search(r'git branch[ \t]+(?!-)([^\s;|&]+)', command)
