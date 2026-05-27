@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 import sys
@@ -8,6 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pre_git_hook.py"
 CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
+
+
+def load_hook_module():
+    spec = importlib.util.spec_from_file_location("pre_git_hook", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_hook_raw(payload):
@@ -180,6 +188,46 @@ class PreGitHookTests(unittest.TestCase):
             {
                 "tool_name": "Bash",
                 "tool_input": {"command": "git worktree add ../trees/feat-99-x\ngit status"},
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+
+    # --- Issue #107: per-command parsing of compound commands ---
+
+    def test_split_commands_is_quote_aware(self):
+        split = load_hook_module().split_commands
+        self.assertEqual(split("git branch -l; git branch x"), ["git branch -l", " git branch x"])
+        self.assertEqual(split("a && b | c"), ["a ", " b ", " c"])
+        # A separator inside quotes must not create a new segment.
+        self.assertEqual(split('git commit -m "a; b"'), ['git commit -m "a; b"'])
+
+    def test_listing_then_invalid_creation_in_compound_is_blocked(self):
+        # The read-only listing must not mask the later invalid creation.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -l; git branch badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_valid_then_invalid_creation_in_compound_is_blocked(self):
+        # An earlier valid creation must not mask a later invalid one.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git checkout -b feat-1-a && git checkout -b badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_two_valid_creations_in_compound_are_allowed(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git checkout -b feat-1-a && git checkout -b feat-2-b"},
             }
         )
         self.assertNotIn("hookSpecificOutput", response)

@@ -47,6 +47,34 @@ def get_shell_command(tool_name, tool_input):
     return ""
 
 
+def split_commands(command):
+    """Split a shell command line into its individual commands.
+
+    Splits on the unquoted control operators `;`, `&`, `|` and newlines (so
+    `&&`, `||` and pipelines all break a command boundary). Quote-aware, so a
+    separator inside '...' or "..." (e.g. a commit message or PR body) does not
+    create a spurious segment. This is a heuristic, not a full shell parser.
+    """
+    segments = []
+    buf = []
+    quote = None
+    for ch in command:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+        elif ch in ("'", '"'):
+            quote = ch
+            buf.append(ch)
+        elif ch in (';', '&', '|', '\n'):
+            segments.append(''.join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    segments.append(''.join(buf))
+    return [seg for seg in segments if seg.strip()]
+
+
 def extract_branch_name(command):
     # [^\s;|&]+ instead of \S+ to stop at shell metacharacters (; && || |).
     # [ \t]+ (not \s+) for separators so a newline cannot pull in the next
@@ -79,16 +107,36 @@ def extract_branch_name(command):
     if m:
         return m.group(1)
 
-    # Bare creation — skip read-only/delete flags.
-    # Note: this matches the flag anywhere in the command string, so a listing/
-    # delete invocation can mask a later real creation in a compound command
-    # (e.g. "git branch -l; git branch badname"). A complete fix needs
-    # per-command parsing; tracked in issue #107.
+    # Bare creation — skip read-only/delete flags. Callers pass one command at a
+    # time (see split_commands / check_branch_names), so a listing/delete here
+    # cannot mask a real creation elsewhere in a compound command.
     if re.search(r'git branch[ \t]+(-[ladDvrV]|--list|--all|--delete|--remotes)', command):
         return None
     m = re.search(r'git branch[ \t]+(?!-)([^\s;|&]+)', command)
     if m:
         return m.group(1)
+
+
+def check_branch_names(command):
+    """Inspect every sub-command for a branch being created.
+
+    Evaluating each command separately stops an invalid creation from being
+    masked by a read-only/delete invocation or an earlier valid creation in the
+    same compound command (issue #107). Returns (invalid_name, saw_valid_name):
+    the first invalid-prefix branch found (or None) and whether any valid branch
+    name was seen.
+    """
+    invalid = None
+    saw_valid = False
+    for segment in split_commands(command):
+        name = extract_branch_name(segment)
+        if not name:
+            continue
+        if any(name.startswith(p) for p in VALID_PREFIXES):
+            saw_valid = True
+        elif invalid is None:
+            invalid = name
+    return invalid, saw_valid
 
 
 def main():
@@ -133,20 +181,20 @@ def main():
                     print(json.dumps(response))
                     sys.exit(0)
 
-        branch_name = extract_branch_name(command)
-        if branch_name:
-            if not any(branch_name.startswith(p) for p in VALID_PREFIXES):
-                response = {
-                    "systemMessage": f"Branch name '{branch_name}' is invalid. Use only these prefixes: {', '.join(VALID_PREFIXES)}",
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
-                    }
+        invalid_branch, valid_branch = check_branch_names(command)
+        if invalid_branch:
+            response = {
+                "systemMessage": f"Branch name '{invalid_branch}' is invalid. Use only these prefixes: {', '.join(VALID_PREFIXES)}",
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
                 }
-                print(json.dumps(response))
-                sys.exit(0)
+            }
+            print(json.dumps(response))
+            sys.exit(0)
 
+        if valid_branch:
             response = {
                 "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
             }
