@@ -51,14 +51,32 @@ def split_commands(command):
     """Split a shell command line into its individual commands.
 
     Splits on the unquoted control operators `;`, `&`, `|` and newlines (so
-    `&&`, `||` and pipelines all break a command boundary). Quote-aware, so a
-    separator inside '...' or "..." (e.g. a commit message or PR body) does not
-    create a spurious segment. This is a heuristic, not a full shell parser.
+    `&&`, `||` and pipelines all break a command boundary). Quote- and
+    escape-aware: a separator inside '...' or "..." (e.g. a commit message or
+    PR body) does not create a spurious segment, and a backslash-escaped quote
+    does not prematurely close the surrounding string. `&` splits only as a
+    control operator, not when it is part of a redirection token such as
+    `2>&1` or `&>file`. This is a heuristic, not a full shell parser.
+
+    Returned segments are stripped of surrounding whitespace.
     """
     segments = []
     buf = []
     quote = None
-    for ch in command:
+    escaped = False
+    for i, ch in enumerate(command):
+        if escaped:
+            buf.append(ch)
+            escaped = False
+            continue
+        if ch == '\\' and quote != "'":
+            # A backslash escapes the next char everywhere except inside single
+            # quotes, where bash treats it literally. Without this, an escaped
+            # quote desyncs quote state and a later separator can be swallowed
+            # into one segment, re-masking an invalid branch creation (#107).
+            escaped = True
+            buf.append(ch)
+            continue
         if quote:
             buf.append(ch)
             if ch == quote:
@@ -66,13 +84,18 @@ def split_commands(command):
         elif ch in ("'", '"'):
             quote = ch
             buf.append(ch)
-        elif ch in (';', '&', '|', '\n'):
+        elif ch in (';', '|', '\n'):
+            segments.append(''.join(buf))
+            buf = []
+        elif ch == '&' and command[i - 1:i] != '>' and command[i + 1:i + 2] != '>':
+            # `&` is a boundary only as a control operator (`&`, `&&`). Adjacent
+            # to `>` it is part of a redirection (`2>&1`, `&>file`), not a split.
             segments.append(''.join(buf))
             buf = []
         else:
             buf.append(ch)
     segments.append(''.join(buf))
-    return [seg for seg in segments if seg.strip()]
+    return [seg.strip() for seg in segments if seg.strip()]
 
 
 def extract_branch_name(command):
@@ -181,7 +204,7 @@ def main():
                     print(json.dumps(response))
                     sys.exit(0)
 
-        invalid_branch, valid_branch = check_branch_names(command)
+        invalid_branch, saw_valid_branch = check_branch_names(command)
         if invalid_branch:
             response = {
                 "systemMessage": f"Branch name '{invalid_branch}' is invalid. Use only these prefixes: {', '.join(VALID_PREFIXES)}",
@@ -194,7 +217,7 @@ def main():
             print(json.dumps(response))
             sys.exit(0)
 
-        if valid_branch:
+        if saw_valid_branch:
             response = {
                 "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
             }
