@@ -251,6 +251,18 @@ class PreGitHookTests(unittest.TestCase):
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("badname", response["systemMessage"])
 
+    def test_line_continuation_does_not_mask_invalid_branch(self):
+        # A backslash-newline continuation must not join two commands into one
+        # segment, which would let a later valid creation mask the invalid one.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch bad \\\ngit checkout -b feat-1-x"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("bad", response["systemMessage"])
+
     def test_first_invalid_branch_is_reported(self):
         # When several invalid branches appear, the first is surfaced; the
         # command is denied regardless of how many follow.

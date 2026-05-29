@@ -69,11 +69,15 @@ def split_commands(command):
             buf.append(ch)
             escaped = False
             continue
-        if ch == '\\' and quote != "'":
+        if ch == '\\' and quote != "'" and command[i + 1:i + 2] != '\n':
             # A backslash escapes the next char everywhere except inside single
             # quotes, where bash treats it literally. Without this, an escaped
             # quote desyncs quote state and a later separator can be swallowed
             # into one segment, re-masking an invalid branch creation (#107).
+            # Exception: a line-continuation (\ + newline) is NOT escaped, so the
+            # newline still splits. Bash would join the lines, but each segment
+            # must stay one command — joining could let a creation hide behind a
+            # neighbor (check_branch_names only reads the first verb per segment).
             escaped = True
             buf.append(ch)
             continue
