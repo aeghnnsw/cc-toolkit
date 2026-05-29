@@ -275,6 +275,17 @@ class PreGitHookTests(unittest.TestCase):
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("bad1", response["systemMessage"])
 
+    def test_logical_or_separates_commands(self):
+        # `||` splits on each `|`, so an invalid creation after it is caught.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -l || git branch badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
     def test_redirection_ampersand_does_not_mask_branch_creation(self):
         # `&` in a redirection (2>&1, &>file) is not a command boundary, so an
         # invalid creation with redirected output is still caught.
