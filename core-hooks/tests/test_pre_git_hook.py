@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 import sys
@@ -8,6 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pre_git_hook.py"
 CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
+
+
+def load_hook_module():
+    spec = importlib.util.spec_from_file_location("pre_git_hook", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_hook_raw(payload):
@@ -183,6 +191,114 @@ class PreGitHookTests(unittest.TestCase):
             }
         )
         self.assertNotIn("hookSpecificOutput", response)
+
+    # --- Issue #107: per-command parsing of compound commands ---
+
+    def test_split_commands_is_quote_aware(self):
+        split = load_hook_module().split_commands
+        # Segments are returned stripped of surrounding whitespace.
+        self.assertEqual(split("git branch -l; git branch x"), ["git branch -l", "git branch x"])
+        self.assertEqual(split("a && b | c"), ["a", "b", "c"])
+        # A separator inside double or single quotes must not create a segment.
+        self.assertEqual(split('git commit -m "a; b"'), ['git commit -m "a; b"'])
+        self.assertEqual(split("git commit -m 'a; b'"), ["git commit -m 'a; b'"])
+        # A backslash-escaped quote must not desync quote state.
+        self.assertEqual(split('git commit -m "a\\"b"; ls'), ['git commit -m "a\\"b"', 'ls'])
+        # `&` inside a redirection token is not a command boundary.
+        self.assertEqual(split("git status 2>&1"), ["git status 2>&1"])
+        self.assertEqual(split("git checkout -b feat-1-x &>log"), ["git checkout -b feat-1-x &>log"])
+
+    def test_listing_then_invalid_creation_in_compound_is_blocked(self):
+        # The read-only listing must not mask the later invalid creation.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -l; git branch badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_valid_then_invalid_creation_in_compound_is_blocked(self):
+        # An earlier valid creation must not mask a later invalid one.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git checkout -b feat-1-a && git checkout -b badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_two_valid_creations_in_compound_are_allowed(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git checkout -b feat-1-a && git checkout -b feat-2-b"},
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+
+    def test_escaped_quote_does_not_mask_invalid_branch(self):
+        # An escaped quote in a commit message must not desync the splitter and
+        # swallow a later invalid creation into a read-only segment (#107).
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'git commit -m "a\\"b" ; git branch -l ; git branch badname'},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_line_continuation_does_not_mask_invalid_branch(self):
+        # A backslash-newline continuation must not join two commands into one
+        # segment, which would let a later valid creation mask the invalid one.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch bad \\\ngit checkout -b feat-1-x"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("bad", response["systemMessage"])
+
+    def test_first_invalid_branch_is_reported(self):
+        # When several invalid branches appear, the first is surfaced; the
+        # command is denied regardless of how many follow.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch bad1 && git branch bad2"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("bad1", response["systemMessage"])
+
+    def test_logical_or_separates_commands(self):
+        # `||` splits on each `|`, so an invalid creation after it is caught.
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git branch -l || git branch badname"},
+            }
+        )
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("badname", response["systemMessage"])
+
+    def test_redirection_ampersand_does_not_mask_branch_creation(self):
+        # `&` in a redirection (2>&1, &>file) is not a command boundary, so an
+        # invalid creation with redirected output is still caught.
+        for command in [
+            "git checkout -b badname 2>&1",
+            "git checkout -b badname &>log",
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+                self.assertIn("badname", response["systemMessage"])
 
     def test_codex_hooks_match_exec_command_for_git_guard(self):
         hooks = json.loads(CODEX_HOOKS.read_text())
