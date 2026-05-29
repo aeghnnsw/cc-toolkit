@@ -68,7 +68,7 @@ Present the rationale and a concrete plan; apply only after the user approves.
 
 ### 5. Record history in the CHANGELOG
 
-For each **substantive** change, append a dated entry to a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing).
+For each **substantive** change, append an entry under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing).
 
 - **Substantive** = a change in meaning, described behavior, instructions, or facts.
 - **Not substantive** = wording, formatting, typo, or reordering — do not log these.
