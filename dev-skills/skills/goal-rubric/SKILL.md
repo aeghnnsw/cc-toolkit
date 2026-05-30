@@ -69,3 +69,11 @@ Then render the condition for the target tool (ask which if unclear; default **C
 
 - **Claude `/goal`** — a single condition string (≤4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
 - **Codex `/goal`** — frame it as: what to achieve / what not to change / how to validate / when to stop.
+
+## Before you finish — self-check
+
+- [ ] Every criterion is pass/fail (no scores, no "mostly").
+- [ ] Every criterion's proof would actually appear in the agent's output.
+- [ ] No criterion needs the grader to run a command or open a file.
+- [ ] Criteria do not overlap.
+- [ ] There is a stop clause.
