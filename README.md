@@ -66,6 +66,7 @@ Development workflow automation and systematic problem-solving.
 **Skills:**
 - **problem-solving-cycle**: Systematic development workflow from brainstorming to PR merge, including issue creation, branch management, and cleanup
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
+- **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 
 ### Creator Skills (`creator-skills`)
 Scientific content creation for figures and presentations.
