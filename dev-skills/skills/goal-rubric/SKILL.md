@@ -38,13 +38,13 @@ Apply these rules. Rules 1–3 and 6 are per-criterion; rules 4–5 are about th
 5. Criteria are independent — no two overlap or double-count.
 6. Every criterion is binary; "done" = all pass.
 
-Overlay: each criterion must be **transcript-observable** (provable from the agent's surfaced output) and **small-model-judgeable** (atomic, unambiguous).
+In addition, each criterion must be **transcript-observable** (provable from the agent's surfaced output) and **small-model-judgeable** (atomic, unambiguous).
 
 ## Workflow
 
 1. **Take the goal.** Get the one-line goal from the user.
 2. **Inspect the repo (read-only).** Look at test config, build/lint commands, and file layout to infer the measurable end states and the exact commands/artifacts that prove them. Do not modify anything.
-3. **Draft the binary rubric.** Write the independent criteria (end state + check + constraint each) and the stop clause, applying every rule above.
+3. **Draft the binary rubric.** Write the independent criteria (end state + check, plus a constraint where one applies) and the stop clause, applying every rule above.
 4. **Ask only about gaps.** Ask the user targeted questions ONLY for what inspection could not settle — e.g. "which command proves the feature works?", "any files that must not change?", "what turn or time cap?". Never re-ask what the repo already answered. Keep it to the minimum.
 5. **Finalize.** Save the rubric file and render the `/goal` condition.
 

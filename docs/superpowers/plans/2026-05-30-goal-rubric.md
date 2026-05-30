@@ -34,6 +34,7 @@ Create `dev-skills/skills/goal-rubric/SKILL.md` with exactly this content (this 
 ````markdown
 ---
 name: goal-rubric
+version: 1.0.0
 description: Draft a binary (pass/fail) rubric and a ready-to-paste completion condition for a Claude Code or Codex /goal command. Use when the user wants to write or design a rubric, success criteria, acceptance criteria, or a "done"/completion condition for /goal, or when a /goal loop will not close because its criteria are not measurable.
 ---
 
@@ -41,16 +42,16 @@ description: Draft a binary (pass/fail) rubric and a ready-to-paste completion c
 
 Turn a one-line goal into a **binary rubric** a `/goal` grader can check against, then render it into a ready-to-paste `/goal` condition.
 
-A `/goal` loop runs an agent turn-by-turn; after each turn a separate small/fast grader model decides whether to stop. The loop only closes when the completion condition is genuinely checkable. This skill produces a rubric that is.
+A `/goal` loop runs an agent turn-by-turn; after each turn a separate small/fast grader model decides whether to stop. The loop only closes when the completion condition is genuinely checkable. This skill produces a rubric that is checkable.
 ````
 
 - [ ] **Step 2: Verify the frontmatter is well-formed**
 
 Run:
 ```bash
-grep -nE "^(name|description):" dev-skills/skills/goal-rubric/SKILL.md
+grep -nE "^(name|version|description):" dev-skills/skills/goal-rubric/SKILL.md
 ```
-Expected: two lines — `2:name: goal-rubric` and `3:description: ...`. The file must open with `---` on line 1 and close the frontmatter block with a second `---` before `# Goal Rubric`.
+Expected: three lines — `2:name: goal-rubric`, `3:version: 1.0.0`, and `4:description: ...`. The file must open with `---` on line 1 and close the frontmatter block with a second `---` before `# Goal Rubric`.
 
 - [ ] **Step 3: Verify no manifest changes are required**
 
@@ -99,16 +100,16 @@ The rubric is a set of independent **pass/fail** criteria joined by AND — the 
 
 Plus one overall **stop clause** — a turn or time cap (e.g. "or stop after 20 turns").
 
-Apply these rules to every criterion:
+Apply these rules. Rules 1–3 and 6 are per-criterion; rules 4–5 are about the rubric as a whole:
 
 1. Names a measurable end state.
 2. States the check that proves it.
-3. Captures any guardrail/constraint that must hold.
-4. The rubric has a stop/budget clause.
+3. Captures any guardrail or constraint that must hold (when one applies).
+4. The rubric has a stop clause.
 5. Criteria are independent — no two overlap or double-count.
 6. Every criterion is binary; "done" = all pass.
 
-Overlay: each criterion must be **transcript-observable** (provable from the agent's surfaced output) and **small-model-judgeable** (atomic, unambiguous).
+In addition, each criterion must be **transcript-observable** (provable from the agent's surfaced output) and **small-model-judgeable** (atomic, unambiguous).
 ````
 
 - [ ] **Step 2: Verify both section headings are present**
@@ -151,7 +152,7 @@ Append exactly this content to the end of `dev-skills/skills/goal-rubric/SKILL.m
 
 1. **Take the goal.** Get the one-line goal from the user.
 2. **Inspect the repo (read-only).** Look at test config, build/lint commands, and file layout to infer the measurable end states and the exact commands/artifacts that prove them. Do not modify anything.
-3. **Draft the binary rubric.** Write the independent criteria (end state + check + constraint each) and the stop clause, applying every rule above.
+3. **Draft the binary rubric.** Write the independent criteria (end state + check, plus a constraint where one applies) and the stop clause, applying every rule above.
 4. **Ask only about gaps.** Ask the user targeted questions ONLY for what inspection could not settle — e.g. "which command proves the feature works?", "any files that must not change?", "what turn or time cap?". Never re-ask what the repo already answered. Keep it to the minimum.
 5. **Finalize.** Save the rubric file and render the `/goal` condition.
 
@@ -163,19 +164,19 @@ Save the rubric to `./goal-rubric-<slug>.md` in the working directory (let the u
 # Goal rubric: <goal one-liner>
 
 ## Criteria (all must pass)
-1. <name> — End state: <observable signal>. Check: <how it is proven in the transcript>. Constraint: <what must not change>.
+1. <name> — End state: <observable signal>. Check: <how it is proven in the transcript>. Constraint (if any): <what must not change>.
 2. ...
 
 ## Stop clause
 <turn or time cap>
 
 ## /goal condition (<tool>)
-<the rendered condition, in a fenced block>
+<the rendered condition — one string for Claude, or the four-part framing for Codex — in a fenced block>
 ```
 
 Then render the condition for the target tool (ask which if unclear; default **Claude**):
 
-- **Claude `/goal`** — a single condition string (≤4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
+- **Claude `/goal`** — a single condition string (keep it within the `/goal` length limit — around 4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
 - **Codex `/goal`** — frame it as: what to achieve / what not to change / how to validate / when to stop.
 ````
 
@@ -217,6 +218,7 @@ Append exactly this content to the end of `dev-skills/skills/goal-rubric/SKILL.m
 
 ## Before you finish — self-check
 
+- [ ] Every criterion names a measurable end state and the check that proves it.
 - [ ] Every criterion is pass/fail (no scores, no "mostly").
 - [ ] Every criterion's proof would actually appear in the agent's output.
 - [ ] No criterion needs the grader to run a command or open a file.
