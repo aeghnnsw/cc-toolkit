@@ -71,20 +71,33 @@ Key mechanics verified:
   preserving Codex's own context. `resume` supports `--json` and `-o` but
   **not** `-s` or `-C` — it inherits the original session's sandbox and cwd.
 
+**Session id (pinned empirically):** the first JSONL event is
+`{"type":"thread.started","thread_id":"<uuid>"}`. Capture `thread_id` from that
+line; `codex exec resume <thread_id>` continues the session. Fallback if capture
+fails: `codex exec resume --last`.
+
+**Every codex call is wrapped in `timeout`.** Testing showed a single broken
+Codex hook can send `codex exec` into a near-infinite emit loop (it answered
+correctly, then repeated a hook-failure message 45+ times). A per-call wall-clock
+cap (default **180s**) is mandatory so one bad call cannot hang the skill. A
+timeout counts as a failed call (see Error handling).
+
 Patterns:
 
 First turn (kickoff):
 ```
-codex exec --json -s read-only -C "$REPO" -o "$DIR/codex_msg.txt" "$PROMPT" \
+timeout 180 codex exec --json -s read-only -C "$REPO" \
+  -o "$DIR/codex_msg.txt" "$PROMPT" \
   > "$DIR/codex_events.jsonl" 2> "$DIR/codex_err.log"
 ```
 - Read Codex's reply from `$DIR/codex_msg.txt`.
-- Capture the session id from `$DIR/codex_events.jsonl`.
-- Fallback if id capture fails: use `codex exec resume --last` on later turns.
+- Capture the thread id: first line of `$DIR/codex_events.jsonl` of type
+  `thread.started`, field `thread_id`.
 
 Later turns:
 ```
-codex exec resume "$SESSION_ID" --json -o "$DIR/codex_msg.txt" "$PROMPT" \
+timeout 180 codex exec resume "$THREAD_ID" --json \
+  -o "$DIR/codex_msg.txt" "$PROMPT" \
   > "$DIR/codex_events.jsonl" 2> "$DIR/codex_err.log"
 ```
 
@@ -92,15 +105,16 @@ Working files live under a per-run temp dir (e.g. `$CLAUDE_JOB_DIR/tmp` when set
 else a `mktemp -d`). The `codex_msg.txt` files double as the raw transcript the
 user can open.
 
-**To verify during implementation:** the exact JSONL field carrying the session
-id (e.g. `session_id` / `thread_id`). Pin it by running one kickoff call and
-inspecting `codex_events.jsonl`. Until pinned, the `resume --last` fallback works.
-
 ## Turn protocol
 
-1. **Preflight** — `command -v codex`. If missing or unauthenticated, stop with a
-   one-line install/auth hint. No Claude-only fallback (the skill is pointless
-   without Codex).
+1. **Preflight** — confirm `command -v codex`, then run a **real smoke call**
+   (`timeout 60 codex exec --json -s read-only -C "$REPO" -o smoke.txt "Reply
+   with exactly: ok"`). The smoke call catches a broken environment that
+   `command -v` cannot — missing/failed Codex hooks, auth problems, sandbox
+   refusals. If codex is missing, the smoke call fails/times out, or `smoke.txt`
+   doesn't contain the expected reply, stop with a one-line diagnosis (e.g.
+   "Codex hooks are failing — check `~/.codex` plugin cache") plus a fix hint.
+   No Claude-only fallback (the skill is pointless without Codex).
 2. **Kickoff** — Claude writes its honest initial position on the goal (claim +
    reasoning). Sends goal + position + critic instructions to Codex (first call).
 3. **Round** — Claude reads Codex's objections. For each objection it either
@@ -123,8 +137,9 @@ inspecting `codex_events.jsonl`. Until pinned, the `resume --last` fallback work
 - **Round cap** — default **6 rounds** (one round = one Claude↔Codex exchange).
   On cap, any live disagreements are carried into the conclusion as explicitly
   unresolved.
-- **Error** — a codex call fails → retry once → if it still fails, conclude with
-  what exists and state that the discussion was cut short.
+- **Error** — a codex call fails or times out (non-zero exit, including the
+  `timeout` 124 code) → retry once → if it still fails, conclude with what exists
+  and state that the discussion was cut short.
 
 ## Conclusion output
 
@@ -157,6 +172,7 @@ Final status line: `Converged after N rounds` or
 | Setting | Default |
 |---|---|
 | Round cap | 6 |
+| Per-call timeout | 180s (60s for preflight smoke call) |
 | Codex sandbox | `read-only`, repo as cwd |
 | Conclusion | always saved + shown in chat |
 | Codex stance | adversarial critic (every turn) |
