@@ -148,9 +148,14 @@ user can open.
 
 ## Convergence & stop conditions
 
-- **Converged** — Codex replies `NO FURTHER OBJECTIONS`, or its latest reply only
-  restates points Claude has already addressed (no new substantive objection).
-  Judged against Codex's own words, not Claude's preference.
+- **Converged** — either (a) Codex replies `NO FURTHER OBJECTIONS` / only restates
+  addressed points, or (b) **goal convergence**: the goal question has a stable
+  answer and Codex's new objections have drifted to out-of-scope refinements.
+  Dogfooding showed an always-adversarial critic essentially never says "no
+  further objections" — it keeps surfacing deeper edge cases — so without (b)
+  every discussion would run to the round cap. Judge against Codex's own words
+  (it often signals the core is settled); record accepted out-of-scope
+  refinements in the conclusion.
 - **Round cap** — default **6 rounds** (one round = one Claude↔Codex exchange).
   On cap, any live disagreements are carried into the conclusion as explicitly
   unresolved.

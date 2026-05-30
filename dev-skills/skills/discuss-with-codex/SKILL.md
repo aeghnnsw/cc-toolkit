@@ -153,9 +153,18 @@ cat "$DIR/msg.txt"
 
 ## Stop conditions
 
-- **Converged** — Codex's reply contains `NO FURTHER OBJECTIONS`, or it only
-  restates points you have already addressed (no new substantive objection).
-  Judge this against Codex's actual words, not your preference.
+- **Converged** — any of:
+  - Codex replies `NO FURTHER OBJECTIONS`, or only restates points you have
+    already addressed (no new substantive objection); or
+  - **Goal convergence** — the original goal question now has a stable answer and
+    Codex's new objections have drifted to out-of-scope refinements (deeper
+    implementation details, adjacent APIs, edge cases that don't change the
+    answer to the goal). An always-adversarial critic will keep finding *some*
+    new edge case forever, so do not wait for it to run dry on a tangent.
+  Judge against Codex's actual words, not your preference — only call goal
+  convergence when the goal is genuinely settled (often Codex itself signals it,
+  e.g. "the core question is solid"), not merely because you want to stop. Record
+  the accepted out-of-scope refinements in the conclusion.
 - **Round cap** — 6 rounds reached. Carry any live disagreements into the
   conclusion as explicitly unresolved.
 - **Error** — a codex call exits non-zero or times out (exit code 124 = timed
