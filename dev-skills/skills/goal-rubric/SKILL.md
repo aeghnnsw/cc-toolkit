@@ -38,3 +38,34 @@ Apply these rules to every criterion:
 6. Every criterion is binary; "done" = all pass.
 
 Overlay: each criterion must be **transcript-observable** (provable from the agent's surfaced output) and **small-model-judgeable** (atomic, unambiguous).
+
+## Workflow
+
+1. **Take the goal.** Get the one-line goal from the user.
+2. **Inspect the repo (read-only).** Look at test config, build/lint commands, and file layout to infer the measurable end states and the exact commands/artifacts that prove them. Do not modify anything.
+3. **Draft the binary rubric.** Write the independent criteria (end state + check + constraint each) and the stop clause, applying every rule above.
+4. **Ask only about gaps.** Ask the user targeted questions ONLY for what inspection could not settle — e.g. "which command proves the feature works?", "any files that must not change?", "what turn or time cap?". Never re-ask what the repo already answered. Keep it to the minimum.
+5. **Finalize.** Save the rubric file and render the `/goal` condition.
+
+## Output
+
+Save the rubric to `./goal-rubric-<slug>.md` in the working directory (let the user override the path). Use this structure:
+
+```
+# Goal rubric: <goal one-liner>
+
+## Criteria (all must pass)
+1. <name> — End state: <observable signal>. Check: <how it is proven in the transcript>. Constraint: <what must not change>.
+2. ...
+
+## Stop clause
+<turn or time cap>
+
+## /goal condition (<tool>)
+<the rendered condition, in a fenced block>
+```
+
+Then render the condition for the target tool (ask which if unclear; default **Claude**):
+
+- **Claude `/goal`** — a single condition string (≤4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
+- **Codex `/goal`** — frame it as: what to achieve / what not to change / how to validate / when to stop.
