@@ -1,5 +1,6 @@
 ---
 name: goal-rubric
+version: 1.0.0
 description: Draft a binary (pass/fail) rubric and a ready-to-paste completion condition for a Claude Code or Codex /goal command. Use when the user wants to write or design a rubric, success criteria, acceptance criteria, or a "done"/completion condition for /goal, or when a /goal loop will not close because its criteria are not measurable.
 ---
 
@@ -7,7 +8,7 @@ description: Draft a binary (pass/fail) rubric and a ready-to-paste completion c
 
 Turn a one-line goal into a **binary rubric** a `/goal` grader can check against, then render it into a ready-to-paste `/goal` condition.
 
-A `/goal` loop runs an agent turn-by-turn; after each turn a separate small/fast grader model decides whether to stop. The loop only closes when the completion condition is genuinely checkable. This skill produces a rubric that is.
+A `/goal` loop runs an agent turn-by-turn; after each turn a separate small/fast grader model decides whether to stop. The loop only closes when the completion condition is genuinely checkable. This skill produces a rubric that is checkable.
 
 ## How the grader works (why these rules exist)
 
@@ -28,12 +29,12 @@ The rubric is a set of independent **pass/fail** criteria joined by AND — the 
 
 Plus one overall **stop clause** — a turn or time cap (e.g. "or stop after 20 turns").
 
-Apply these rules to every criterion:
+Apply these rules. Rules 1–3 and 6 are per-criterion; rules 4–5 are about the rubric as a whole:
 
 1. Names a measurable end state.
 2. States the check that proves it.
-3. Captures any guardrail/constraint that must hold.
-4. The rubric has a stop/budget clause.
+3. Captures any guardrail or constraint that must hold (when one applies).
+4. The rubric has a stop clause.
 5. Criteria are independent — no two overlap or double-count.
 6. Every criterion is binary; "done" = all pass.
 
@@ -55,23 +56,24 @@ Save the rubric to `./goal-rubric-<slug>.md` in the working directory (let the u
 # Goal rubric: <goal one-liner>
 
 ## Criteria (all must pass)
-1. <name> — End state: <observable signal>. Check: <how it is proven in the transcript>. Constraint: <what must not change>.
+1. <name> — End state: <observable signal>. Check: <how it is proven in the transcript>. Constraint (if any): <what must not change>.
 2. ...
 
 ## Stop clause
 <turn or time cap>
 
 ## /goal condition (<tool>)
-<the rendered condition, in a fenced block>
+<the rendered condition — one string for Claude, or the four-part framing for Codex — in a fenced block>
 ```
 
 Then render the condition for the target tool (ask which if unclear; default **Claude**):
 
-- **Claude `/goal`** — a single condition string (≤4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
+- **Claude `/goal`** — a single condition string (keep it within the `/goal` length limit — around 4,000 chars) phrased so the proof appears in the transcript, e.g. `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
 - **Codex `/goal`** — frame it as: what to achieve / what not to change / how to validate / when to stop.
 
 ## Before you finish — self-check
 
+- [ ] Every criterion names a measurable end state and the check that proves it.
 - [ ] Every criterion is pass/fail (no scores, no "mostly").
 - [ ] Every criterion's proof would actually appear in the agent's output.
 - [ ] No criterion needs the grader to run a command or open a file.

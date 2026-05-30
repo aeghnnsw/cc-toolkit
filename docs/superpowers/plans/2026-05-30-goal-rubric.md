@@ -10,7 +10,7 @@
 
 **Reference:** Design spec at `docs/superpowers/specs/2026-05-30-goal-rubric-design.md`.
 
-**Note on commits:** All commands assume the working directory is the worktree root `/Users/steven/Projects/cc-skills/.claude/worktrees/feat-goal-rubric` on branch `feat-goal-rubric`. Per the user's global instructions, commit messages carry NO "created by Claude Code" / co-author attribution.
+**Note on commits:** Run all commands from the repository worktree root, on the `feat-goal-rubric` branch. Keep commit messages concise and free of AI-tool attribution.
 
 ---
 
