@@ -6,7 +6,9 @@
 
 **Architecture:** Single-file procedural skill (`SKILL.md`). Claude is one debater and the harness; it shells out to `codex exec` / `codex exec resume` for an always-adversarial, read-only critic. Conversational state lives in each model's own session (Codex via `thread_id` resume), so the "harness" is a simple loop, not a phase machine. Every codex call is wrapped in `timeout`.
 
-**Tech Stack:** Markdown skill (`SKILL.md` with YAML frontmatter), Codex CLI (`codex exec`, v0.135.0), bash, `jq`-free JSONL parsing via `grep`/`sed`.
+**Tech Stack:** Markdown skill (`SKILL.md` with YAML frontmatter), Codex CLI (`codex exec`, v0.135.0), bash, `jq`-free JSONL parsing via `grep`/`sed`, portable timeout (`timeout`/`gtimeout`/`perl` fallback), stdin pinned to `/dev/null`.
+
+**Verified on real CLI (2026-05-30):** kickoff (clean `ok`, exit 0), `thread_id` capture from the `thread.started` event, and `resume` retaining context. Three live-testing findings are baked into the SKILL.md below: (a) macOS has no `timeout`; (b) `codex exec` blocks on stdin unless given `</dev/null`; (c) the one-time hook-loop was a transient `1.0.7→1.0.10` upgrade race that self-healed.
 
 **Spec:** `docs/superpowers/specs/2026-05-30-discuss-with-codex-design.md`
 
@@ -80,6 +82,16 @@ a single shell script: composing each rebuttal is your job.
 DIR="$(mktemp -d)"                      # transcript + working files
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 echo "workdir: $DIR"; echo "repo: $REPO"
+
+# Portable per-call timeout. macOS has no `timeout`; perl ships at /usr/bin/perl.
+# Also forces child stdin to /dev/null — codex blocks on stdin otherwise.
+codex_to() {                            # usage: codex_to <seconds> <cmd...>
+  local s="$1"; shift
+  if command -v timeout  >/dev/null 2>&1; then timeout  "$s" "$@" </dev/null
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$s" "$@" </dev/null
+  else perl -e 'my $t=shift; my $p=fork; if(!$p){open(STDIN,"<","/dev/null");exec @ARGV;exit 127} eval{local $SIG{ALRM}=sub{die};alarm $t;waitpid($p,0);alarm 0}; if($@){kill "TERM",$p;exit 124} exit($?>>8)' "$s" "$@"
+  fi
+}
 ```
 
 ## Step 0 — Preflight (mandatory)
@@ -89,7 +101,7 @@ A real smoke call catches broken Codex environments that `command -v` cannot
 
 ```bash
 command -v codex >/dev/null || { echo "codex CLI not found — install it first"; exit 1; }
-timeout 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
+codex_to 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
   "Reply with exactly: ok" > "$DIR/smoke.jsonl" 2> "$DIR/smoke.err"
 echo "exit=$?"
 grep -qi "ok" "$DIR/smoke.txt" 2>/dev/null && echo "SMOKE OK" || { echo "SMOKE FAILED"; tail -5 "$DIR/smoke.err"; }
@@ -125,7 +137,7 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
-timeout 180 codex exec --json -s read-only -C "$REPO" \
+codex_to 180 codex exec --json -s read-only -C "$REPO" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 echo "exit=$?"
@@ -168,7 +180,7 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
-timeout 180 codex exec resume "$THREAD_ID" --json \
+codex_to 180 codex exec resume "$THREAD_ID" --json \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 echo "exit=$?"
@@ -241,13 +253,16 @@ Expected: all six lines print `OK`.
 Run:
 ```bash
 F=dev-skills/skills/discuss-with-codex/SKILL.md
-grep -qF 'timeout 180 codex exec --json -s read-only -C "$REPO" \' "$F" && echo "OK kickoff call"
-grep -qF 'timeout 180 codex exec resume "$THREAD_ID" --json \' "$F" && echo "OK resume call"
+grep -qF 'codex_to()' "$F" && echo "OK timeout helper defined"
+grep -qF 'open(STDIN,"<","/dev/null")' "$F" && echo "OK stdin redirect in helper"
+grep -qF 'codex_to 180 codex exec --json -s read-only -C "$REPO" \' "$F" && echo "OK kickoff call"
+grep -qF 'codex_to 180 codex exec resume "$THREAD_ID" --json \' "$F" && echo "OK resume call"
 grep -qF "grep -m1 '\"type\":\"thread.started\"'" "$F" && echo "OK thread_id capture"
-grep -qF 'timeout 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \' "$F" && echo "OK smoke call"
+grep -qF 'codex_to 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \' "$F" && echo "OK smoke call"
 ```
-Expected: all four `OK ...` lines print. This confirms the exact command templates
-(timeout wrappers, read-only sandbox, thread_id capture) survived authoring intact.
+Expected: all six `OK ...` lines print. This confirms the command templates
+(portable timeout helper, stdin redirect, read-only sandbox, thread_id capture)
+survived authoring intact.
 
 - [ ] **Step 5: Commit**
 
@@ -332,10 +347,11 @@ git commit -m "Document discuss-with-codex in README"
 
 ## Task 4: Live end-to-end verification
 
-**Precondition:** the user's Codex environment must be healthy. The known blocker
-(2026-05-30) is a core-hooks plugin version mismatch in `~/.codex` that sent
-`codex exec` into an emit loop. Confirm the preflight smoke call passes before
-running this task.
+**Precondition:** the user's Codex environment must be healthy. A one-time
+hook-loop on 2026-05-30 was traced to a transient `core-hooks` `1.0.7→1.0.10`
+upgrade race in `~/.codex` and has since self-healed (verified: clean smoke +
+resume). Still, always confirm the preflight smoke call passes before running
+this task — it is the cheap guard against any future environment breakage.
 
 **Files:** none modified (manual run).
 
@@ -344,8 +360,10 @@ running this task.
 Run:
 ```bash
 DIR="$(mktemp -d)"; REPO="$(git rev-parse --show-toplevel)"
-timeout 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
-  "Reply with exactly: ok" > "$DIR/smoke.jsonl" 2> "$DIR/smoke.err"
+# Portable timeout + stdin /dev/null (macOS has no `timeout`; codex blocks on stdin).
+perl -e 'my $t=shift; my $p=fork; if(!$p){open(STDIN,"<","/dev/null");exec @ARGV;exit 127} eval{local $SIG{ALRM}=sub{die};alarm $t;waitpid($p,0);alarm 0}; if($@){kill "TERM",$p;exit 124} exit($?>>8)' \
+  60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" "Reply with exactly: ok" \
+  > "$DIR/smoke.jsonl" 2> "$DIR/smoke.err"
 echo "exit=$?"; grep -qi ok "$DIR/smoke.txt" && echo "SMOKE OK" || { echo "SMOKE FAILED"; tail -5 "$DIR/smoke.err"; }
 ```
 Expected: `exit=0` and `SMOKE OK`. If `SMOKE FAILED`, STOP and fix the Codex
@@ -390,7 +408,7 @@ Expected: no staged conclusion file remains.
 - Truth-seeking asymmetry → Task 1 Overview + critic block.
 - Preflight smoke call → Task 1 Step 0; Task 4 Step 1.
 - `thread_id` capture + resume → Task 1 Steps 1-2.
-- Per-call `timeout` (180s / 60s smoke) → Task 1 all codex calls.
+- Portable per-call timeout (180s / 60s smoke) + stdin `</dev/null` → Task 1 `codex_to` helper, all codex calls.
 - Adversarial critic block every turn → Task 1 kickoff + loop prompts.
 - Stop: converged / round cap 6 / error-retry-once → Task 1 Stop conditions.
 - Conclusion always saved + shown → Task 1 Step 3.

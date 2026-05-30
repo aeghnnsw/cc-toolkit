@@ -76,17 +76,34 @@ Key mechanics verified:
 line; `codex exec resume <thread_id>` continues the session. Fallback if capture
 fails: `codex exec resume --last`.
 
-**Every codex call is wrapped in `timeout`.** Testing showed a single broken
-Codex hook can send `codex exec` into a near-infinite emit loop (it answered
-correctly, then repeated a hook-failure message 45+ times). A per-call wall-clock
-cap (default **180s**) is mandatory so one bad call cannot hang the skill. A
-timeout counts as a failed call (see Error handling).
+**Two invocation requirements discovered by live testing — both mandatory:**
+
+1. **Redirect stdin from `/dev/null`.** Even with a prompt argument, `codex exec`
+   prints `Reading additional input from stdin...` and blocks forever waiting for
+   stdin EOF when stdin is an open pipe. Every call must use `< /dev/null`.
+2. **Wrap every call in a portable timeout.** `timeout` is **not installed on
+   macOS** (`command not found`), and a broken Codex hook can send `codex exec`
+   into a near-infinite emit loop (observed: 45+ repeats of a hook-failure
+   message). Prefer `timeout`/`gtimeout`; fall back to a `perl` alarm (perl ships
+   at `/usr/bin/perl`). Default cap **180s** (60s for the preflight smoke call).
+   A timeout (exit 124) counts as a failed call (see Error handling).
+
+Helper (defined once at run start):
+```bash
+codex_to() {                      # usage: codex_to <seconds> <cmd...>
+  local s="$1"; shift
+  if command -v timeout  >/dev/null 2>&1; then timeout  "$s" "$@" </dev/null
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$s" "$@" </dev/null
+  else perl -e 'my $t=shift; my $p=fork; if(!$p){open(STDIN,"<","/dev/null");exec @ARGV;exit 127} eval{local $SIG{ALRM}=sub{die};alarm $t;waitpid($p,0);alarm 0}; if($@){kill "TERM",$p;exit 124} exit($?>>8)' "$s" "$@"
+  fi
+}
+```
 
 Patterns:
 
 First turn (kickoff):
 ```
-timeout 180 codex exec --json -s read-only -C "$REPO" \
+codex_to 180 codex exec --json -s read-only -C "$REPO" \
   -o "$DIR/codex_msg.txt" "$PROMPT" \
   > "$DIR/codex_events.jsonl" 2> "$DIR/codex_err.log"
 ```
@@ -96,7 +113,7 @@ timeout 180 codex exec --json -s read-only -C "$REPO" \
 
 Later turns:
 ```
-timeout 180 codex exec resume "$THREAD_ID" --json \
+codex_to 180 codex exec resume "$THREAD_ID" --json \
   -o "$DIR/codex_msg.txt" "$PROMPT" \
   > "$DIR/codex_events.jsonl" 2> "$DIR/codex_err.log"
 ```
@@ -108,7 +125,7 @@ user can open.
 ## Turn protocol
 
 1. **Preflight** — confirm `command -v codex`, then run a **real smoke call**
-   (`timeout 60 codex exec --json -s read-only -C "$REPO" -o smoke.txt "Reply
+   (`codex_to 60 codex exec --json -s read-only -C "$REPO" -o smoke.txt "Reply
    with exactly: ok"`). The smoke call catches a broken environment that
    `command -v` cannot — missing/failed Codex hooks, auth problems, sandbox
    refusals. If codex is missing, the smoke call fails/times out, or `smoke.txt`
@@ -172,7 +189,8 @@ Final status line: `Converged after N rounds` or
 | Setting | Default |
 |---|---|
 | Round cap | 6 |
-| Per-call timeout | 180s (60s for preflight smoke call) |
+| Per-call timeout | 180s (60s smoke) via `codex_to` portable wrapper |
+| Codex stdin | always `< /dev/null` (else codex blocks) |
 | Codex sandbox | `read-only`, repo as cwd |
 | Conclusion | always saved + shown in chat |
 | Codex stance | adversarial critic (every turn) |
