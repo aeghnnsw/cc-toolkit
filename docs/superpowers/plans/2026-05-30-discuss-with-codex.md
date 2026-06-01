@@ -117,7 +117,9 @@ Do not fall back to a Claude-only discussion — this skill is pointless without
 1. Form your **honest initial position** on the goal (claim + reasoning). Show it
    to the user.
 2. Build the kickoff prompt: the goal, your position, and the critic block.
-3. Send it (first call sets sandbox + cwd):
+3. Send it. **Only this first call carries `-s`/`-C`** — they configure the
+   session. Later `codex exec resume` calls inherit sandbox and cwd from the
+   session and will error if you pass `-s`/`-C` again.
 
 ```bash
 PROMPT="GOAL:
@@ -140,15 +142,23 @@ CRITIC
 codex_to 180 codex exec --json -s read-only -C "$REPO" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
-echo "exit=$?"
+status=$?
+echo "exit=$status"
 
-THREAD_ID=$(grep -m1 '"type":"thread.started"' "$DIR/events.jsonl" \
-  | sed -E 's/.*"thread_id":"([^"]+)".*/\1/')
+THREAD_ID=$(sed -nE '/"type"[[:space:]]*:[[:space:]]*"thread\.started"/s/.*"thread_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$DIR/events.jsonl" | head -n1)
 echo "thread_id=$THREAD_ID"
 cat "$DIR/msg.txt"
 ```
 
-If `THREAD_ID` is empty, use `codex exec resume --last` in later turns instead.
+Branch on the two failure classes:
+
+- **`status` is non-zero (124 = timed out)** — the call failed transiently.
+  Follow the **Error** stop condition (retry the kickoff once; if it still
+  fails, conclude with what exists and state the discussion was cut short).
+- **`status` is zero but `THREAD_ID` is empty** — the call succeeded yet did
+  not emit a `thread.started` event, which means the event shape changed.
+  **STOP** and report the last lines of `$DIR/err.log` and
+  `$DIR/events.jsonl`; do not fall back to the `--last` form.
 
 ## Step 2 — Discussion loop (repeat until a stop condition)
 
@@ -180,6 +190,9 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
+# NOTE: do NOT pass -s/-C to `codex exec resume`. Sandbox and cwd are bound to
+# the session at kickoff and `resume` rejects those flags. Always use the
+# explicit THREAD_ID form captured in Step 1.
 codex_to 180 codex exec resume "$THREAD_ID" --json \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
@@ -257,12 +270,17 @@ grep -qF 'codex_to()' "$F" && echo "OK timeout helper defined"
 grep -qF 'open(STDIN,"<","/dev/null")' "$F" && echo "OK stdin redirect in helper"
 grep -qF 'codex_to 180 codex exec --json -s read-only -C "$REPO" \' "$F" && echo "OK kickoff call"
 grep -qF 'codex_to 180 codex exec resume "$THREAD_ID" --json \' "$F" && echo "OK resume call"
-grep -qF "grep -m1 '\"type\":\"thread.started\"'" "$F" && echo "OK thread_id capture"
+grep -qE 'sed -nE .*"thread\\\.started"' "$F" && echo "OK thread_id capture (single-sed, tolerant)"
 grep -qF 'codex_to 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \' "$F" && echo "OK smoke call"
+# Invariants protecting the resume-flag/empty-THREAD_ID fix (issue #113):
+grep -qF 'codex exec resume --last' "$F" && echo "FAIL --last fallback present" || echo "OK no --last fallback"
+grep -qF '# NOTE: do NOT pass -s/-C to' "$F" && echo "OK Step 2 NOTE present" || echo "FAIL Step 2 NOTE missing"
+grep -qF 'Only this first call carries' "$F" && echo "OK Step 1 asymmetry prose present" || echo "FAIL Step 1 asymmetry prose missing"
+grep -qF 'sed -nE' "$F" && echo "OK tolerant thread_id parser" || echo "FAIL parser not whitespace-tolerant"
+grep -qF 'status=$?' "$F" && echo "OK kickoff exit status captured" || echo "FAIL kickoff exit status not captured"
 ```
-Expected: all six `OK ...` lines print. This confirms the command templates
-(portable timeout helper, stdin redirect, read-only sandbox, thread_id capture)
-survived authoring intact.
+Expected: all `OK ...` lines print, no `FAIL` lines. This confirms the command
+templates survived authoring AND the resume-flag invariants are locked in.
 
 - [ ] **Step 5: Commit**
 

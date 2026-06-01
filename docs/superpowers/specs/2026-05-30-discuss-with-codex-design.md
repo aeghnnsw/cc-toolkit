@@ -73,8 +73,18 @@ Key mechanics verified:
 
 **Session id (pinned empirically):** the first JSONL event is
 `{"type":"thread.started","thread_id":"<uuid>"}`. Capture `thread_id` from that
-line; `codex exec resume <thread_id>` continues the session. Fallback if capture
-fails: `codex exec resume --last`.
+line with a whitespace-tolerant pattern; `codex exec resume <thread_id>`
+continues the session. Branch on the two failure classes — these are
+**different stop conditions, not one**:
+
+- **Non-zero kickoff exit (124 = timed out)** — transient call failure.
+  Follow the **Error** rule below (retry once, then conclude cut-short).
+- **Zero exit but no parseable `thread.started`** — the call returned
+  without the expected event, meaning the event shape changed. **Stop**
+  and report `err.log` / `events.jsonl`.
+
+Never fall back to the `--last` form: it could silently attach to an
+unrelated prior session on disk.
 
 **Two invocation requirements discovered by live testing — both mandatory:**
 

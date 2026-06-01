@@ -106,17 +106,23 @@ CRITIC
 codex_to 180 codex exec --json -s read-only -C "$REPO" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
-echo "exit=$?"
+status=$?
+echo "exit=$status"
 
-THREAD_ID=$(grep -m1 '"type":"thread.started"' "$DIR/events.jsonl" \
-  | sed -E 's/.*"thread_id":"([^"]+)".*/\1/')
+THREAD_ID=$(sed -nE '/"type"[[:space:]]*:[[:space:]]*"thread\.started"/s/.*"thread_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$DIR/events.jsonl" | head -n1)
 echo "thread_id=$THREAD_ID"
 cat "$DIR/msg.txt"
 ```
 
-If `THREAD_ID` is empty, **STOP** — the kickoff did not produce a `thread.started`
-event, which means the call failed or the event shape changed. Report the last
-lines of `$DIR/err.log` and `$DIR/events.jsonl`; do not proceed.
+Branch on the two failure classes:
+
+- **`status` is non-zero (124 = timed out)** — the call failed transiently.
+  Follow the **Error** stop condition (retry the kickoff once; if it still
+  fails, conclude with what exists and state the discussion was cut short).
+- **`status` is zero but `THREAD_ID` is empty** — the call succeeded yet did
+  not emit a `thread.started` event, which means the event shape changed.
+  **STOP** and report the last lines of `$DIR/err.log` and
+  `$DIR/events.jsonl`; do not fall back to the `--last` form.
 
 ## Step 2 — Discussion loop (repeat until a stop condition)
 
