@@ -81,7 +81,9 @@ Do not fall back to a Claude-only discussion — this skill is pointless without
 1. Form your **honest initial position** on the goal (claim + reasoning). Show it
    to the user.
 2. Build the kickoff prompt: the goal, your position, and the critic block.
-3. Send it (first call sets sandbox + cwd):
+3. Send it. **Only this first call carries `-s`/`-C`** — they configure the
+   session. Later `codex exec resume` calls inherit sandbox and cwd from the
+   session and will error if you pass `-s`/`-C` again.
 
 ```bash
 PROMPT="GOAL:
@@ -112,7 +114,9 @@ echo "thread_id=$THREAD_ID"
 cat "$DIR/msg.txt"
 ```
 
-If `THREAD_ID` is empty, use `codex exec resume --last` in later turns instead.
+If `THREAD_ID` is empty, **STOP** — the kickoff did not produce a `thread.started`
+event, which means the call failed or the event shape changed. Report the last
+lines of `$DIR/err.log` and `$DIR/events.jsonl`; do not proceed.
 
 ## Step 2 — Discussion loop (repeat until a stop condition)
 
@@ -144,6 +148,9 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
+# NOTE: do NOT pass -s/-C to `codex exec resume`. Sandbox and cwd are bound to
+# the session at kickoff and `resume` rejects those flags. Always use the
+# explicit THREAD_ID form captured in Step 1.
 codex_to 180 codex exec resume "$THREAD_ID" --json \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
