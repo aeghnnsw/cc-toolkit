@@ -64,17 +64,29 @@ Key mechanics verified:
 - `codex exec [PROMPT]` runs non-interactively and prints the final message.
 - `-o, --output-last-message <FILE>` writes exactly the agent's final message to
   a file — read Codex's reply from here, no log scraping.
-- `--json` prints JSONL events to stdout, including the session id.
+- `--json` prints JSONL events to stdout, including the session's `thread_id`.
 - `-s, --sandbox read-only` and `-C, --cd <DIR>` set the sandbox and working
   root **on the first call only**.
-- `codex exec resume <SESSION_ID> [PROMPT]` continues the same session,
+- `codex exec resume <THREAD_ID> [PROMPT]` continues the same session,
   preserving Codex's own context. `resume` supports `--json` and `-o` but
   **not** `-s` or `-C` — it inherits the original session's sandbox and cwd.
 
-**Session id (pinned empirically):** the first JSONL event is
-`{"type":"thread.started","thread_id":"<uuid>"}`. Capture `thread_id` from that
-line; `codex exec resume <thread_id>` continues the session. Fallback if capture
-fails: `codex exec resume --last`.
+**Thread id (pinned empirically — this is what the codex CLI elsewhere calls
+the "session id"):** the first JSONL event is
+`{"type":"thread.started","thread_id":"<uuid>"}` — one JSON object per line, so
+a `sed` pattern that operates per-line captures it reliably. Extract
+`thread_id` from that line with a whitespace-tolerant pattern;
+`codex exec resume <thread_id>` continues the session. Branch on the two failure classes — these are
+**different stop conditions, not one**:
+
+- **Non-zero kickoff exit (124 = timed out)** — transient call failure.
+  Follow the **Error** rule below (retry once, then conclude cut-short).
+- **Zero exit but no parseable `thread.started`** — the call returned
+  without the expected event, meaning the event shape changed. **Stop**
+  and report `err.log` / `events.jsonl`.
+
+Never fall back to the `--last` form: it could silently attach to an
+unrelated prior session on disk.
 
 **Two invocation requirements discovered by live testing — both mandatory:**
 
