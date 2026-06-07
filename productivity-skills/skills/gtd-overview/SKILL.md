@@ -16,7 +16,7 @@ CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
 Key principle: Read-only overview. Display projects with nested actions, then standalone actions, then a summary. No modifications, no questions — direct user to /gtd-project or /gtd-process for changes.
 -->
 
-Display a complete read-only overview of the GTD system: every open project with its linked actions nested underneath, followed by all standalone actions not linked to any project. No interaction required — gather, group, and display.
+Display a complete read-only overview of the GTD system: every open project with its linked actions nested underneath, followed by all standalone actions not linked to any project.
 
 ## CLI Tool
 
@@ -28,24 +28,16 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
 
 ## Step 1: Gather Data
 
-1. Query all open projects:
+1. Query all incomplete reminders across every list in a single call (omitting the list argument returns all lists):
    ```bash
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
+   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete
    ```
+   Each returned reminder carries a `list` field. Keep only rows from the GTD lists — "Projects" for projects and @quick, @1pomo, @2pomo, @deep, @agent for actions — and ignore rows from any other list. A missing list simply contributes no rows; do not create lists in this read-only skill.
 
-2. Query all context lists for actions:
-   ```bash
-   for context in "@quick" "@1pomo" "@2pomo" "@deep" "@agent"; do
-     swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "$context"
-   done
-   ```
-
-3. Query overdue reminders (uses Apple's datetime-aware overdue detection):
+2. Query overdue reminders (uses Apple's datetime-aware overdue detection):
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders overdue
    ```
-
-If a context list does not exist, treat it as empty — do not create lists in this read-only skill.
 
 ## Step 2: Group Actions
 
@@ -100,11 +92,7 @@ Projects: 3 (1 overdue, 1 stalled, 1 healthy)
 Project actions: 4 | Standalone actions: 3 | Overdue: 2
 ```
 
-Formatting rules:
-- Show priority in brackets only when set (High/Medium/Low; omit None)
-- Show due date only when set; mark overdue items with `— OVERDUE (due YYYY-MM-DD)`
-- Omit empty context-list groups in the standalone section
-- If there are orphaned actions, add an `## Orphaned Actions` section after standalone actions, listing each with its dangling `#{ProjectName}` reference
+If there are orphaned actions, add an `## Orphaned Actions` section after standalone actions, listing each with its dangling `#{ProjectName}` reference.
 
 Empty states:
 - No projects and no actions: "GTD system is empty. Use /gtd-inbox to capture items and /gtd-process to organize them."
@@ -117,8 +105,6 @@ After the overview, append one line pointing to follow-up skills based on what w
 - Overdue or stalled projects → "Run /gtd-project to reschedule overdue actions or add next actions."
 - Orphaned actions → "Orphaned actions reference completed projects — run /gtd-project to clean up."
 - Otherwise → "Run /gtd-next to pick what to work on."
-
-Do not perform any modifications in this skill.
 
 ## Guidelines
 
