@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.2.0] - 2026-06-07
+
+### Added
+- gtd-overview skill (v1.0.0): read-only listing of all projects with their actions plus standalone actions
+
 ## [4.3.0] - 2026-03-26
 
 ### Changed

@@ -102,6 +102,11 @@ Personal productivity automation using macOS Calendar and Reminders.
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
 - **reminder-manager**: Manage macOS Reminders via EventKit CLI
+- **gtd-inbox**: Capture thoughts and tasks into the GTD inbox
+- **gtd-process**: Process inbox items into projects or actions
+- **gtd-project**: Review and manage GTD projects and their actions
+- **gtd-next**: Calendar-aware task selection and time-blocked agendas
+- **gtd-overview**: Read-only listing of all projects with their actions plus standalone actions
 
 ### PyMOL Skills (`pymol-skills`)
 PyMOL molecular visualization control via MCP server.
