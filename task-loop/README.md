@@ -33,8 +33,9 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    `directions.md` (steering), the logs directory, `.gitignore`, and the `loop:in-progress`
    label.
 3. **`run-cycle`** — the orchestrator: under built-in `/loop` (self-paced), it computes the
-   dependency-ordered task frontier, spawns one `cycle-worker` teammate per ready task,
-   validates + merges their PRs, and stops on a scheduled drain-signal (not an iteration cap).
+   dependency-ordered task frontier, spawns one `cycle-worker` teammate per ready task, and
+   validates + merges their PRs. It **prompts for a run duration (default 24h)** and schedules a
+   graceful stop via the built-in `schedule` skill (a drain-signal, not an iteration cap).
 
 ## Prerequisites
 

@@ -50,7 +50,17 @@ Before starting, verify and stop with guidance if any fails:
 3. **Lease:** acquire the single-coordinator lease in `orchestrator-state.json`; if a live lease
    is held by another instance, exit (do not run two orchestrators).
 4. **Team:** create the agent team you will spawn `cycle-worker` teammates into.
-5. **Start `/loop` self-paced** and run the orchestrator turn (below / `references/`).
+5. **Schedule the graceful stop (prompt for the duration).** Before starting the loop, **ask the
+   user** how long it should run before winding down — *"How long should the loop run before a
+   graceful stop? (default: 24 hours)"* — accepting a duration or an absolute time, and
+   **default to 24 hours** if they don't specify. This is an **interactive prompt, not a
+   command-line argument**. Then use Claude's built-in **`schedule`** skill to create a
+   **one-time** scheduled run at `now + <duration>` whose task is to **atomically write**
+   `.claude/task-loop/stop-request.json` (temp file + `mv`). Record the scheduled stop time in
+   `orchestrator-state.json`. When the loop observes the flag it **drains** (no new dispatch;
+   in-flight workers finish their current cycle) and exits via the two-phase quiescence — a
+   graceful stop, not a hard kill. (To run longer or stop sooner, re-schedule via `schedule`.)
+6. **Start `/loop` self-paced** and run the orchestrator turn (below / `references/`).
 
 ## The orchestrator turn (high level)
 
@@ -110,6 +120,6 @@ when set, else the installed `task-loop/scripts/`):
 - Design rationale: `docs/superpowers/specs/2026-06-13-task-loop-plugin-design.md` (§7, §8, §11,
   §12) and the two conclusions (`…-cycle-loop-mechanism-conclusion.md`,
   `…-living-proposal-ownership-conclusion.md`).
-- Run it bounded: drive the orchestrator under `/loop` self-paced; set the stop time with a
-  scheduled writer of `.claude/task-loop/stop-request.json` (see the Phase 0 spike for the
-  available primitive).
+- Run it bounded: it always runs under `/loop` self-paced and is **always** bounded by a
+  scheduled graceful stop — Setup step 5 prompts for a duration (**default 24 hours**) and uses
+  the built-in `schedule` skill to write `.claude/task-loop/stop-request.json` at that time.
