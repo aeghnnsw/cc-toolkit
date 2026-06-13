@@ -73,8 +73,11 @@ def assign_seq(events: list, last_seq: int):
 
 def unacknowledged_uuids(fresh_inbox: list, emitted_control_events: list) -> list:
     """uuids of fresh inbox events that did NOT receive a source-tagged control
-    event (the 'at least one' half of the exactly-one invariant). A non-empty
-    result means dedupe would break on cold resume."""
+    event (the 'at least one' half of the exactly-one invariant). The CALLER
+    decides whether a non-empty result is a problem: the orchestrator acks every
+    PLAN_FINDING in the drain (a leftover there *would* break cold-resume dedupe),
+    but a MERGE_REQUEST is legitimately *pending* until the merge gate decides it,
+    so its uuid stays unacked (and pins the issue scan floor) by design."""
     acked = {
         e.get("source_uuid")
         for e in emitted_control_events

@@ -61,8 +61,11 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    (`control_log.replay`). On resume, take over a stale lease and rebuild from GitHub.
 2. **Stop check:** if `.claude/task-loop/stop-request.json` exists → enter `draining`.
 3. **Event-drain & ingest:** read each task issue's comments at/after its scan floor, dedupe by
-   UUID, **process findings before merge requests**, emit a source-tagged `CONTROL_EVENT` for
-   each ingested inbox event, and advance per-issue scan checkpoints.
+   UUID, **process findings before merge requests**. Ack a fresh `PLAN_FINDING` here (one
+   `PLAN_FINDING_RECORDED`); a fresh `MERGE_REQUEST` is **not** acked here — it is collected as a
+   *pending decision* acked only by the merge gate (§6). Advance a per-issue scan checkpoint only
+   through a fully-acked prefix, so a pending merge request pins the floor and is re-ingested
+   until decided.
 4. **Replan barrier:** read `directions.md` (highest priority); if a finding invalidated a
    hypothesis, **materialize** a new `plan_revision` (merge the proposal-update PR to `master`,
    then emit `PLAN_REVISION_BUMP`), recompute the frontier, and halt dispatch of the stale

@@ -58,7 +58,8 @@ task-loop/
 │   ├── create-cycle/SKILL.md
 │   │   └── assets/task-loop-skeleton.md    # generic per-task playbook the generator fills in
 │   │   └── assets/directions-template.md   # steering-file scaffold
-│   └── run-cycle/SKILL.md                  # (pending) + assets/orchestrator-loop reference
+│   └── run-cycle/SKILL.md
+│       └── references/orchestrator-loop.md  # orchestrator state machine + coordination protocol
 └── agents/
     └── cycle-worker.md
 ```
@@ -146,13 +147,13 @@ a generic skeleton + project specifics, and scaffold the rest.
 The worker's per-task playbook (generalized from METBG's 11 steps; project specifics
 stripped to the create-cycle fills). A worker runs this **once** for its assigned task:
 
-1. **Recover & anchor** — read the issue's `RECOVERY` control events (resume or
-   abandon); read `directions.md`; re-read the referenced docs at the current
-   `plan_revision`.
+1. **Recover & anchor** — read the issue body's `RECOVERY` ledger (a worker-maintained
+   state machine, **not** a control event) and resume by its `status`, or abandon; read
+   `directions.md`; re-read the referenced docs at the current `plan_revision`.
 2. **Confirm task** — the orchestrator already chose/scoped it; validate scope and the
    `spawned_plan_revision`.
 3. **Issue & branch** — confirm issue; branch from fresh master into the worker's **own
-   git worktree**; open the `RECOVERY` control-event thread + `NNN_<task>_log.md`.
+   git worktree**; open the `RECOVERY` ledger (issue body) + `NNN_<task>_log.md`.
 4. **Rubric** — `goal-rubric` → binary rubric → finalize via a `discuss-with-codex`
    pass → write `NNN_<task>_rubric.md` and post to the issue.
 5. **Spec → plan → implement** — `brainstorming` (autonomous: decline user gates → route
@@ -170,7 +171,7 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
    `Plan-Revision: N` + task ID; **`discuss-with-codex` adversarial PR review until no
    blocking issues**.
 10. **Request merge & hand off** — re-check `plan_revision` validity; post a
-    `MERGE_REQUEST` control event (PR head SHA, revision) and **go idle. The worker does
+    `MERGE_REQUEST` *inbox* event (PR head SHA, revision) and **go idle. The worker does
     NOT merge.** If its revision was invalidated at any phase boundary, it marks itself
     `stale_revision_blocked` and shuts down without merging.
 11. *(Finalization — set `RECOVERY: complete`, evidence into the log — happens after the
@@ -345,8 +346,8 @@ definition in the generated `task-loop.md` *RECOVERY ledger*.)
 - Higher token cost; one team at a time.
 
 ## 13. Marketplace / packaging
-- New `task-loop/.claude-plugin/plugin.json` (name `task-loop`, version `0.1.0`).
-- Add a `task-loop` entry to root `.claude-plugin/marketplace.json`.
+- New `task-loop/.claude-plugin/plugin.json` (name `task-loop`; version tracked in the manifest).
+- Add a `task-loop` entry to root `.claude-plugin/marketplace.json` (bump its `metadata.version`).
 - New `task-loop/README.md` documenting the a→b→c workflow + enablement.
 - `problem-solving-cycle` is left unchanged.
 

@@ -76,7 +76,8 @@ The `specify-aims` and `create-cycle` skills do **not** require Agent Teams.
 task-loop/
 ├── skills/
 │   ├── specify-aims/     # step a: author the proposal (Charter + Roadmap)
-│   └── create-cycle/     # step b: render task-loop.md + scaffolding
+│   ├── create-cycle/     # step b: render task-loop.md + scaffolding
+│   └── run-cycle/        # step c: the orchestrator (state machine in references/)
 ├── agents/
 │   └── cycle-worker.md   # the per-task executor (Agent-Teams teammate)
 ├── scripts/
