@@ -30,5 +30,22 @@ class TestReadComments(unittest.TestCase):
         self.assertIn("--json", captured["args"])
 
 
+class TestPostComment(unittest.TestCase):
+    def test_posts_body_via_stdin_to_issue(self):
+        captured = {}
+
+        def fake_runner(args, input_text=None):
+            captured["args"] = args
+            captured["input_text"] = input_text
+            return ""
+
+        gh_store.post_comment(42, "hello body", runner=fake_runner)
+        self.assertIn("42", captured["args"])
+        self.assertIn("comment", captured["args"])
+        # Body must be passed via --body-file - to avoid attribution-hook issues.
+        self.assertIn("--body-file", captured["args"])
+        self.assertEqual(captured["input_text"], "hello body")
+
+
 if __name__ == "__main__":
     unittest.main()
