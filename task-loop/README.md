@@ -89,9 +89,10 @@ task-loop/
 
 - ✅ **Control protocol** (`control_log.py`, `gh_store.py`) — single-sequencer log, UUID
   dedupe, checkpoint-based scan floor, schema validation; 45 unit tests.
-- ✅ **`specify-aims`**, **`create-cycle`** skills, **`cycle-worker`** agent.
-- ⬜ **`run-cycle`** orchestrator — gated on an interactive Phase 0 spike that validates the
-  Agent-Teams / `/loop` / stop-signal primitives.
+- ✅ **`specify-aims`**, **`create-cycle`**, **`run-cycle`** skills + **`cycle-worker`** agent.
+- ⚠️ **Phase 0 spike** — `run-cycle` is built against the documented Agent-Teams / `/loop` /
+  stop-signal contract; validate those primitives with
+  `docs/superpowers/plans/2026-06-13-task-loop-phase0-spike.md` before an unattended run.
 
 Design and rationale: `docs/superpowers/specs/2026-06-13-task-loop-plugin-design.md` and the
-two `discuss-with-codex` conclusions alongside it.
+`discuss-with-codex` conclusions alongside it.
