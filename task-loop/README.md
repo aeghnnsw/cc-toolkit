@@ -44,9 +44,10 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
   `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
-**Run the `preflight` skill once per machine** to verify all of these are loadable (it reports
-needed / installed / missing) and to enable Agent Teams (below) — it's a standalone check, not
-a step in the a→b→c workflow.
+**Run the `preflight` skill** to check two scopes: that these skills are loadable in your
+**session** (re-run it per task-loop session — it reports installed / owner-unverified /
+missing) and that **Agent Teams is enabled on your machine** (a one-time `settings.json` write,
+below). It's a standalone check, not a step in the a→b→c workflow.
 
 ## Enablement (orchestrator)
 
