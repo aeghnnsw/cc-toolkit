@@ -62,5 +62,110 @@ class TestAssignSeq(unittest.TestCase):
         self.assertEqual(new_last, 5)
 
 
+class TestReplay(unittest.TestCase):
+    def _events(self):
+        # Valid log: revision materialized (proposal_sha), task created on issue 12,
+        # dispatched, merge granted from inbox uuid u1 (comment 111 on issue 12).
+        return [
+            {"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+             "plan_revision": 1, "proposal_sha": "deadbeef", "ts": "t"},
+            {"kind": "control", "seq": 2, "type": "TASK_CREATED", "task_id": "T1",
+             "plan_revision": 1, "issue_number": 12, "ts": "t"},
+            {"kind": "control", "seq": 3, "type": "TASK_DISPATCHED", "task_id": "T1",
+             "plan_revision": 1, "ts": "t"},
+            {"kind": "control", "seq": 4, "type": "MERGE_GRANTED", "task_id": "T1",
+             "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
+             "source_comment_id": 111, "source_uuid": "u1", "ts": "t"},
+        ]
+
+    def test_folds_to_expected_state(self):
+        state = control_log.replay(self._events())
+        self.assertEqual(state["current_plan_revision"], 1)
+        self.assertEqual(state["current_proposal_sha"], "deadbeef")
+        self.assertEqual(state["last_seq"], 4)
+        self.assertEqual(state["tasks"]["T1"]["status"], "merged")
+        self.assertEqual(state["tasks"]["T1"]["issue_number"], 12)
+        self.assertEqual(state["tasks"]["T1"]["pr_head_sha"], "abc")
+
+    def test_reconstructs_seen_uuids_and_watermark(self):
+        # Cold-resume idempotency state is rebuilt from the log alone.
+        state = control_log.replay(self._events())
+        self.assertEqual(state["seen_source_uuids"], {"u1"})
+        self.assertEqual(state["source_uuid_to_seq"]["u1"], 4)
+        self.assertEqual(state["last_ingested_comment_id_by_issue"][12], 111)
+
+    def test_task_issue_discovery_without_inbox_events(self):
+        # A task created+dispatched but no inbox-derived events: issue 12 must still be
+        # scannable on cold resume (watermark initialized to 0), and a fresh uuid is new.
+        events = [
+            {"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+             "plan_revision": 1, "proposal_sha": "deadbeef", "ts": "t"},
+            {"kind": "control", "seq": 2, "type": "TASK_CREATED", "task_id": "T1",
+             "plan_revision": 1, "issue_number": 12, "ts": "t"},
+            {"kind": "control", "seq": 3, "type": "TASK_DISPATCHED", "task_id": "T1",
+             "plan_revision": 1, "ts": "t"},
+        ]
+        state = control_log.replay(events)
+        self.assertEqual(state["last_ingested_comment_id_by_issue"][12], 0)
+        inbox = [{"kind": "inbox", "uuid": "u9", "task_id": "T1",
+                  "spawned_plan_revision": 1, "type": "MERGE_REQUEST",
+                  "pr_head_sha": "z", "ts": "t"}]
+        fresh = control_log.filter_new_inbox(inbox, seen_uuids=state["seen_source_uuids"])
+        self.assertEqual([e["uuid"] for e in fresh], ["u9"])
+
+    def test_revision_bump_updates_current(self):
+        events = self._events() + [
+            {"kind": "control", "seq": 5, "type": "PLAN_REVISION_BUMP",
+             "plan_revision": 2, "proposal_sha": "cafe", "ts": "t"},
+            {"kind": "control", "seq": 6, "type": "TASK_CREATED", "task_id": "T2",
+             "plan_revision": 2, "issue_number": 13, "ts": "t"},
+            {"kind": "control", "seq": 7, "type": "TASK_STALE", "task_id": "T2",
+             "plan_revision": 2, "ts": "t"},
+        ]
+        state = control_log.replay(events)
+        self.assertEqual(state["current_plan_revision"], 2)
+        self.assertEqual(state["tasks"]["T2"]["status"], "stale")
+
+    def test_replay_is_idempotent(self):
+        events = self._events()
+        self.assertEqual(control_log.replay(events), control_log.replay(events))
+
+    def test_raises_on_seq_gap(self):
+        events = [{"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+                   "plan_revision": 1, "proposal_sha": "x", "ts": "t"},
+                  {"kind": "control", "seq": 3, "type": "TASK_CREATED", "task_id": "T1",
+                   "plan_revision": 1, "issue_number": 12, "ts": "t"}]
+        with self.assertRaises(ValueError):
+            control_log.replay(events)
+
+    def test_raises_on_duplicate_seq(self):
+        events = [{"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+                   "plan_revision": 1, "proposal_sha": "x", "ts": "t"},
+                  {"kind": "control", "seq": 1, "type": "TASK_CREATED", "task_id": "T1",
+                   "plan_revision": 1, "issue_number": 12, "ts": "t"}]
+        with self.assertRaises(ValueError):
+            control_log.replay(events)
+
+    def test_revision_bump_requires_proposal_sha(self):
+        events = [{"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+                   "plan_revision": 1, "ts": "t"}]
+        with self.assertRaises(ValueError):
+            control_log.replay(events)
+
+    def test_merge_granted_requires_pr_head_sha(self):
+        events = [{"kind": "control", "seq": 1, "type": "MERGE_GRANTED", "task_id": "T1",
+                   "plan_revision": 1, "source_issue": 12, "source_comment_id": 111,
+                   "source_uuid": "u1", "ts": "t"}]
+        with self.assertRaises(ValueError):
+            control_log.replay(events)
+
+    def test_merge_granted_requires_source_uuid(self):
+        events = [{"kind": "control", "seq": 1, "type": "MERGE_GRANTED", "task_id": "T1",
+                   "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
+                   "source_comment_id": 111, "ts": "t"}]
+        with self.assertRaises(ValueError):
+            control_log.replay(events)
+
+
 if __name__ == "__main__":
     unittest.main()
