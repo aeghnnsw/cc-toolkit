@@ -1,5 +1,5 @@
 {
   "name": "task-loop",
-  "description": "Autonomous, orchestrated cycle-driven development (control protocol + specify-aims/create-cycle skills).",
-  "version": "0.2.0"
+  "description": "Autonomous, orchestrated cycle-driven development: control protocol, specify-aims/create-cycle skills, and the cycle-worker agent (run-cycle orchestrator pending).",
+  "version": "0.3.0"
 }
