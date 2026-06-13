@@ -31,8 +31,6 @@ are in **`references/orchestrator-loop.md`** — read it before driving the loop
 ## Preconditions (fail fast)
 
 Before starting, verify and stop with guidance if any fails:
-- **Agent Teams enabled:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` and Claude Code ≥ v2.1.32.
-- **Prerequisite plugins** installed: `superpowers` and `dev-skills` (workers need them).
 - **Scaffolding present:** `docs/task-loop/proposal.md`, `docs/task-loop/task-loop.md`,
   `docs/task-loop/directions.md`, and the `loop:in-progress` label exist.
 - **`gh` authenticated** with write access to issues and PRs.

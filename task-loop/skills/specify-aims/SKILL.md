@@ -46,11 +46,6 @@ frontmatter is the narrative copy.
 
 ## Process
 
-### 0. Preflight: verify prerequisites
-This skill invokes `superpowers:brainstorming` and `dev-skills:discuss-with-codex`. Confirm
-both prerequisite plugins are available and **fail fast** with install guidance if either is
-missing, before starting.
-
 ### 1. Explore the project
 Read the repo: existing docs, README, prior art, and the user's stated direction. Note what
 exists and what "done" might plausibly mean.

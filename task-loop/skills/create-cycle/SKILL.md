@@ -38,14 +38,6 @@ and (b) render them into the skeleton, then scaffold the rest.
 
 ## Process
 
-### 0. Preflight: verify prerequisites
-Confirm the required prerequisite plugins are available before rendering, and **fail fast**
-with install guidance if not: `dev-skills` (`discuss-with-codex`, `goal-rubric`, `doc-update`,
-`step-workflow`) and `superpowers` (`brainstorming`, `writing-plans`,
-`test-driven-development`, `verification-before-completion`, `using-git-worktrees`,
-`finishing-a-development-branch`) — the rendered playbook depends on all of them. Also confirm
-`docs/task-loop/proposal.md` exists (else direct the user to `specify-aims` first).
-
 ### 1. Read the proposal
 Read `docs/task-loop/proposal.md`. The Charter's Aim + Success criteria become the
 **north star**; the Roadmap stages + hypotheses inform what tasks will look like. If the
