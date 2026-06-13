@@ -31,5 +31,22 @@ class TestFormatParse(unittest.TestCase):
         self.assertEqual(control_log.parse_events("just a comment"), [])
 
 
+class TestFilterNewInbox(unittest.TestCase):
+    def _ev(self, uuid):
+        return {"kind": "inbox", "uuid": uuid, "task_id": "T1",
+                "spawned_plan_revision": 1, "type": "PLAN_FINDING",
+                "ts": "2026-06-13T00:00:00Z"}
+
+    def test_drops_seen_uuids_preserves_order(self):
+        events = [self._ev("a"), self._ev("b"), self._ev("c")]
+        fresh = control_log.filter_new_inbox(events, seen_uuids={"b"})
+        self.assertEqual([e["uuid"] for e in fresh], ["a", "c"])
+
+    def test_dedupes_repeats_within_batch(self):
+        events = [self._ev("a"), self._ev("a"), self._ev("b")]
+        fresh = control_log.filter_new_inbox(events, seen_uuids=set())
+        self.assertEqual([e["uuid"] for e in fresh], ["a", "b"])
+
+
 if __name__ == "__main__":
     unittest.main()
