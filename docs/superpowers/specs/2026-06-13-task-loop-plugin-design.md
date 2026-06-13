@@ -1,0 +1,281 @@
+# Design — `task-loop` plugin (autonomous, orchestrated cycle-driven development)
+
+**Status:** design (brainstorming output)
+**Branch:** `feat-cycle-driven-dev`
+**Companion deliberations:**
+- `2026-06-13-cycle-loop-mechanism-conclusion.md` (loop driver + termination)
+- `2026-06-13-living-proposal-ownership-conclusion.md` (proposal ownership + split-brain)
+
+## 1. Overview
+
+`task-loop` generalizes the METBG "study loop" — a proven autonomous, resumable
+development loop (issue → branch → binary rubric → spec → plan → TDD → verify → PR →
+squash-merge, one self-contained increment per cycle, recoverable from a cold context)
+— into a **reusable, project-agnostic** Claude Code plugin.
+
+It changes the execution model from METBG's single coordinator to an
+**orchestrator + worker-team** model:
+
+- The **main agent is an orchestrator** (Agent-Teams team lead). It does **all
+  high-level planning and dispatching**, owns the proposal, and is the **sole
+  integrator** (only agent that merges).
+- **Worker teammates** each execute **exactly one task's cycle** in their own git
+  worktree, then hand off the PR. One teammate per task.
+
+The suite is three skills run in order plus one worker agent:
+
+```
+a. /specify-aims  → docs/task-loop/proposal.md     (goal + rough stages; living research spine)
+b. /create-cycle  → docs/task-loop/task-loop.md     (per-task playbook referencing all docs)
+c. /run-cycle     → orchestrator: /loop self-paced + Agent Team + drain-on-signal
+                    cycle-worker (agent): executes one task's cycle
+```
+
+### Goals
+- Reuse METBG's durability/resumability discipline on **any** project.
+- Make the orchestrator a pure planner/dispatcher/integrator; keep workers single-task.
+- Drive decisions by `discuss-with-codex` deliberation, not by pausing for the user.
+- Survive cold resume from durable state alone (git + GitHub + numbered records).
+
+### Non-goals
+- Not a replacement for `problem-solving-cycle` (kept as the lightweight manual flow).
+- No external watchdog process in v1 (deferred; see §12).
+- Not a general project-management tool — it drives *implementation* against a proposal.
+
+## 2. Plugin structure
+
+```
+task-loop/
+├── .claude-plugin/plugin.json          # name: task-loop, version, description
+├── README.md                           # what it is + the a→b→c workflow + enablement
+├── skills/
+│   ├── specify-aims/SKILL.md
+│   ├── create-cycle/SKILL.md
+│   │   └── references/cycle-skeleton.md # generic playbook the generator fills in
+│   └── run-cycle/SKILL.md
+│   │   └── references/orchestrator-loop.md  # state machine + coordination protocol
+└── agents/
+    └── cycle-worker.md
+```
+
+Plus a root `.claude-plugin/marketplace.json` entry pointing at `./task-loop`.
+
+**Reused (not copied)** — invoked via the Skill tool at runtime:
+`dev-skills:discuss-with-codex`, `dev-skills:goal-rubric`, `dev-skills:doc-update`,
+`dev-skills:step-workflow`, and superpowers `brainstorming`, `writing-plans`,
+`test-driven-development`, `verification-before-completion`, `using-git-worktrees`,
+`finishing-a-development-branch`.
+
+## 3. Project artifacts and authority
+
+Created in the **target project** (not the plugin):
+
+| Path | Lifetime | Writer | Role |
+|---|---|---|---|
+| `docs/task-loop/proposal.md` | durable (git) | `specify-aims` (initial); **orchestrator only** thereafter | charter (aims/success/non-goals, human-gated) + roadmap (stages + hypothesis ledger, orchestrator-authored PRs). **Not** the live coordination primitive. |
+| `docs/task-loop/task-loop.md` | durable (git) | create-cycle | the per-task playbook each worker reads |
+| `docs/task-loop/directions.md` | durable (git) | human | steering channel, read first each planning round |
+| `docs/task-loop/logs/NNN_<task>_rubric.md` | durable (git) | worker | binary acceptance criteria (orchestrator↔worker "done" interface) |
+| `docs/task-loop/logs/NNN_<task>_log.md` | durable (git) | worker | decision record: task, steering, codex dispositions, rubric evidence, follow-ups |
+| GitHub issues — **append-only control events** | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
+| `.claude/task-loop/orchestrator-state.json` | runtime (gitignored) | **orchestrator only** | private fast cache (lease, `plan_revision`, ready/active/blocked); rebuilt from GitHub on resume |
+| `.claude/task-loop/stop-request.json` | runtime (gitignored) | scheduled stop job only | atomic stop signal (temp-file + rename) |
+
+> Note: the playbook lives at `docs/task-loop/task-loop.md` (grouped layout). The slight
+> name echo is intentional — the dir is the namespace, the file is the playbook.
+
+## 4. `specify-aims` skill (step a)
+
+**Purpose.** Initialize the living research spine: a combined proposal+implementation
+doc. "It does not need to be perfect, but must be clear about the goal and roughly the
+stages/phases."
+
+**Process.**
+1. Explore the project (repo state, existing docs, the user's stated direction).
+2. **Brainstorm with the user** to extract: the north-star goal, what *done* looks like
+   (success criteria), constraints, non-goals, and the rough stages/phases.
+3. Use `discuss-with-codex` **proactively** to pressure-test the aims and the stage
+   decomposition (is the goal falsifiable? are stages ordered by real dependency? what's
+   the riskiest hypothesis?).
+4. Write `docs/task-loop/proposal.md` with two zones:
+   - **Charter** — aims, success criteria, constraints, non-goals (stable; human-gated).
+   - **Roadmap** — stages/phases, each with its purpose, rough acceptance, and a
+     **hypothesis ledger** (`open` / `validated` / `rejected`).
+   - Frontmatter carries `plan_revision: 1`.
+5. Commit on its own branch + PR (the proposal is durable git state).
+
+**Output.** A clear, intentionally-imperfect proposal that the loop will refine.
+
+## 5. `create-cycle` skill (step b)
+
+**Purpose.** Generate the **project-specific** `docs/task-loop/task-loop.md` playbook from
+a generic skeleton + project specifics, and scaffold the rest.
+
+**Process.**
+1. Read `proposal.md`. Auto-detect what it can: test command, lint, git hooks (branch
+   prefixes, attribution rules, protected master), whether a code skeleton exists.
+2. **Interview** the user for the project-specific fills, finalizing fuzzy ones with
+   `discuss-with-codex`:
+   - the source-of-truth docs `task-loop.md` must reference (proposal + **any others**),
+   - domain correctness contracts / invariants (not optional polish),
+   - what "tested" means beyond smoke tests (analytic limits, golden values, …),
+   - a bootstrap note if the repo has no code yet.
+3. Render `task-loop.md` = the **generic cycle skeleton** (§6) + a project-specifics
+   section (north-star, referenced docs, contracts, test conventions, branch/hook rules).
+4. Scaffold `docs/task-loop/directions.md`, `docs/task-loop/logs/`, ensure `.gitignore`
+   covers `.claude/task-loop/` runtime state + `/goal` scratch, and create the
+   `loop:in-progress` GitHub label.
+5. Commit via branch + PR.
+
+## 6. The generic cycle skeleton (what every `task-loop.md` inherits)
+
+The worker's per-task playbook (generalized from METBG's 11 steps; project specifics
+stripped to the create-cycle fills). A worker runs this **once** for its assigned task:
+
+1. **Recover & anchor** — read the issue's `RECOVERY` control events (resume or
+   abandon); read `directions.md`; re-read the referenced docs at the current
+   `plan_revision`.
+2. **Confirm task** — the orchestrator already chose/scoped it; validate scope and the
+   `spawned_plan_revision`.
+3. **Issue & branch** — confirm issue; branch from fresh master into the worker's **own
+   git worktree**; open the `RECOVERY` control-event thread + `NNN_<task>_log.md`.
+4. **Rubric** — `goal-rubric` → binary rubric → finalize via a `discuss-with-codex`
+   pass → write `NNN_<task>_rubric.md` and post to the issue.
+5. **Spec → plan → implement** — `brainstorming` (autonomous: decline user gates → route
+   open questions to `discuss-with-codex`) → spec → `writing-plans` → **TDD**. Long
+   compute → background; intra-task parallelism → `Workflow`/inline subagents (never a
+   sub-team).
+6. **Verify** — run every rubric item, capture real output
+   (`verification-before-completion`).
+7. **Reconcile** — compare results to the plan/proposal. If a fact invalidates a
+   hypothesis, record a `PLAN_FINDING` control event + file an issue. **Never edit
+   `proposal.md`.**
+8. **Doc-update** — `doc-update` affected docs to current truth.
+9. **Open PR & review** — commit (clean text, `-F`, explicit paths); open PR with
+   `Plan-Revision: N` + task ID; **`discuss-with-codex` adversarial PR review until no
+   blocking issues**.
+10. **Request merge & hand off** — re-check `plan_revision` validity; post a
+    `MERGE_REQUEST` control event (PR head SHA, revision) and **go idle. The worker does
+    NOT merge.** If its revision was invalidated at any phase boundary, it marks itself
+    `stale_revision_blocked` and shuts down without merging.
+11. *(Finalization — set `RECOVERY: complete`, evidence into the log — happens after the
+    orchestrator merges; the worker records what it can before handoff.)*
+
+**Generic operating principles** (constant across projects): deliberate-with-codex
+instead of asking the user; never let long jobs block (background + `Monitor`/
+`ScheduleWakeup`); small increments / one PR; evidence before done; tests first; durable
+resumable state; `step-workflow` numbered file naming.
+
+## 7. `run-cycle` skill + orchestrator (step c)
+
+Human entry point. Starts the orchestrator under **built-in `/loop` self-paced** (per the
+loop-mechanism conclusion — **not** ralph, **not** a blocking Stop hook), creates the
+Agent Team, and runs the state machine. A small `schedule`/`CronCreate` helper
+(documented here) sets the stop time by writing `stop-request.json` atomically.
+
+### State machine (each `/loop` turn)
+- **acquire/heartbeat lease** in `orchestrator-state.json`; on resume detect a stale lease
+  and rebuild fast state from the GitHub append-only log.
+- **check `stop-request.json` first** → if set, go to `draining`.
+- `dispatching` — read `directions.md` + repo + GitHub; run the **replan barrier** (§8);
+  `TaskCreate` ready tasks with dependency edges; spawn **one `cycle-worker` per ready
+  task** (capped to frontier width).
+- `waiting` — wait on automatic teammate idle notifications.
+- `idle` — frontier empty, nothing active, **no** stop signal → long `ScheduleWakeup`/
+  `Monitor`; **does not exit** (continuous service).
+- `draining` — stop signal observed → no new dispatch; let active workers finish, bounded
+  by `drain_deadline_at`; past the deadline, mark overdue workers `orphaned_acknowledged`
+  (non-destructive — record worktree/issue/PR pointers; **no abrupt kill**).
+- `exiting_pending` → record the pre-exit audit, `ScheduleWakeup` a 60–120 s cooldown.
+- `exiting` → re-run the audit from scratch; if still clean, stop rescheduling; else revert
+  to `dispatching`/`waiting`.
+
+**Pre-exit audit** (agent-run, recorded with real command outputs): `ready == 0`,
+`active == 0`, `blocked == acknowledged`, `unmerged == 0`.
+
+### Merge (orchestrator-only)
+On a `MERGE_REQUEST`, the orchestrator performs **one atomic validate-then-act**:
+run the **pre-merge event-drain barrier** (§8), re-read `current_plan_revision` + the
+task's compatibility + CI/review state, then `gh pr merge --squash --delete-branch
+--match-head-commit <validated SHA>`. If invalid → `MERGE_DENIED` + mark task stale + tell
+the worker to shut down / rescope. If the orchestrator is dead/draining, nothing merges
+(stalled merge ≫ stale merge); the PR + `RECOVERY` persist for resume.
+
+## 8. Coordination & correctness model
+
+(Full rationale in the proposal-ownership conclusion. Invariants:)
+
+- **Append-only control-event log on GitHub issues** is the authoritative cross-agent
+  state. Worker events: `PLAN_FINDING`, `MERGE_REQUEST`. Orchestrator events:
+  `PLAN_REVISION_BUMP`, `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `MERGE_GRANTED`,
+  `MERGE_DENIED` — each with task ID, revision, affected hypotheses, PR head SHA, and a
+  **sequence number**. **Labels are a derived human index only.** The **Agent-Teams
+  mailbox is notification-only**.
+- **Revision lease**: every task carries `spawned_plan_revision`. Invalidation is scoped
+  to the affected subgraph via explicitly declared `depends_on_tasks` /
+  `depends_on_hypotheses`; if blast radius is unclear → **broad freeze**.
+  (`proposal.md`'s frontmatter records the last roadmap revision *committed to git* — the
+  durable narrative, which may lag; the **authoritative live `current_plan_revision`** is
+  the GitHub control-event log, cached in `orchestrator-state.json`.)
+- **Replan barrier** (before dispatch): ingest findings, bump `plan_revision` on
+  invalidation, recompute frontier, halt stale dependent dispatch.
+- **Pre-merge event-drain barrier**: fetch all issue events since the **sync watermark**,
+  drain mailbox, **ingest findings before merge requests** in the batch, recompute
+  invalidations, advance watermark; deny/hold on sync failure / ambiguity / any
+  unclassified plan-affecting finding.
+- **Head-SHA-bound merge**: merge only the exact validated SHA.
+
+## 9. `cycle-worker` agent
+
+Subagent definition referenced by `agentType` when the orchestrator spawns a teammate.
+- **System prompt:** "Execute exactly one task's cycle by following
+  `docs/task-loop/task-loop.md`. Deliberate with `discuss-with-codex` at rubric / open
+  design questions / PR review. Never edit `proposal.md`. Never merge — open the PR,
+  re-check your `plan_revision`, post `MERGE_REQUEST`, and go idle. Record durable state
+  as control events + your `NNN_*` records."
+- **Tools:** full dev set (Bash, Read, Edit, Write, git/gh via Bash, Skill, Workflow).
+- Note: a teammate ignores the agent def's `skills:`/`mcpServers:` frontmatter but loads
+  skills from project/user settings, so it can invoke `discuss-with-codex` etc.
+
+## 10. `discuss-with-codex` usage policy (your item 7)
+- **Worker:** rubric finalization (step 4), every open design question (replacing user
+  prompts, step 5), adversarial PR review (step 9, every PR).
+- **Orchestrator:** task selection / "are these two tasks truly independent?" /
+  dependency ordering; resolving conflicting worker outcomes; proposal roadmap changes.
+
+## 11. Durable state & recovery
+A fresh agent on clean `master` recovers from: git `master`, the GitHub append-only
+control-event log + per-task `RECOVERY`, open PRs, and `docs/task-loop/logs/`. The
+orchestrator rebuilds `orchestrator-state.json` (incl. `current_plan_revision` and the
+ready/active/blocked sets) from the GitHub log. Ephemeral Agent-Teams state (teammates,
+`~/.claude/tasks/`) is **not** relied upon — the orchestrator respawns workers for
+still-open tasks. The planning step is idempotent.
+
+## 12. Agent Teams enablement & constraints
+- Requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (settings.json) and Claude Code
+  ≥ v2.1.32. `run-cycle` checks/documents this and fails fast with guidance if unset.
+- Teammates are ephemeral (no `/resume` survival; task list wiped on session end) →
+  handled by §11.
+- No nested teams → intra-task parallelism via `Workflow`/inline subagents only.
+- Higher token cost; one team at a time.
+
+## 13. Marketplace / packaging
+- New `task-loop/.claude-plugin/plugin.json` (name `task-loop`, version `0.1.0`).
+- Add a `task-loop` entry to root `.claude-plugin/marketplace.json`.
+- New `task-loop/README.md` documenting the a→b→c workflow + enablement.
+- `problem-solving-cycle` is left unchanged.
+
+## 14. Coverage of the original 8 requirements
+1 → `create-cycle` generates `task-loop.md`. 2 → `cycle-worker` agent runs the cycle.
+3 → orchestrator does all planning/dispatch via the Agent-Teams dependency DAG.
+4 → `run-cycle` = `/loop` self-paced + scheduled drain-on-signal (reinterpreted from
+"ralph + max-iterations" per the loop-mechanism conclusion). 5 → `docs/task-loop/logs/`
+two files per task. 6 → cycle step 5 uses `brainstorming` + `writing-plans`. 7 → §10.
+8 → one teammate per task via Agent Teams.
+
+## 15. Open / deferred (for the implementation plan)
+- Merge-queue throughput when many PRs land together.
+- Worktree cleanup after orchestrator-merge.
+- Sync-watermark storage (last-processed event seq# per issue).
+- Exact control-event comment schema (machine-parseable format).
+- External watchdog (YAGNI v1).
