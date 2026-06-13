@@ -75,7 +75,8 @@ package `superpowers`. The suite invokes skills from two **required prerequisite
 plugins** that the user must have installed:
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
+  `verification-before-completion`, `finishing-a-development-branch`. (Worker worktree isolation is
+  automatic via the `cycle-worker` agent's `isolation: worktree`, not `using-git-worktrees`.)
 
 `README.md` declares these prerequisites explicitly. `run-cycle` and `create-cycle`
 **fail fast** with install guidance if a required skill is unavailable (rather than
@@ -90,8 +91,7 @@ Created in the **target project** (not the plugin):
 | `docs/task-loop/proposal.md` | durable (git) | `specify-aims` (initial); **orchestrator only** thereafter | charter (aims/success/non-goals, human-gated) + roadmap (stages + hypothesis ledger, orchestrator-authored PRs). **Not** the live coordination primitive. |
 | `docs/task-loop/task-loop.md` | durable (git) | create-cycle | the per-task playbook each worker reads |
 | `docs/task-loop/directions.md` | durable (git) | human | steering channel, read first each planning round |
-| `docs/task-loop/logs/NNN_<task>_rubric.md` | durable (git) | worker | binary acceptance criteria (orchestrator↔worker "done" interface) |
-| `docs/task-loop/logs/NNN_<task>_log.md` | durable (git) | worker | decision record: task, steering, codex dispositions, rubric evidence, follow-ups |
+| `docs/task-loop/logs/<NNN>_<task>.md` | durable (git) | worker | one per-cycle record with a **Rubric** section (binary acceptance — the orchestrator↔worker "done" interface, also posted to the issue) and a **Decision log** section (task, steering, codex dispositions, rubric evidence, follow-ups). `<NNN>` = zero-padded iteration index from `001`, orchestrator-assigned |
 | GitHub control issue — **comments** (append-only control events) | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
 | GitHub control issue — **body runtime header** | durable (remote) | **orchestrator only** (sole writer) | the single mutable runtime cell: `lease`/`heartbeat`, **`stop_at`**, `watchdog_schedule_id`, `stop_schedule_id`, advisory `phase`. **No local files** — `plan_revision`/ready/active/blocked are rebuilt from the comment log on every turn |
 
@@ -151,10 +151,14 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
    `directions.md`; re-read the referenced docs at the current `plan_revision`.
 2. **Confirm task** — the orchestrator already chose/scoped it; validate scope and the
    `spawned_plan_revision`.
-3. **Issue & branch** — confirm issue; branch from fresh master into the worker's **own
-   git worktree**; open the `RECOVERY` ledger (issue body) + `NNN_<task>_log.md`.
+3. **Issue & branch** — confirm issue; the worker **already runs in its own git worktree**
+   (the `cycle-worker` agent declares `isolation: worktree`, so isolation is automatic — it does
+   **not** create one), so just adopt/create the deterministic branch from fresh master; open the
+   `RECOVERY` ledger (issue body) + the per-cycle record `<NNN>_<task>.md` (`NNN` = the
+   orchestrator-assigned iteration index, zero-padded from `001`).
 4. **Rubric** — `goal-rubric` → binary rubric → finalize via a `discuss-with-codex`
-   pass → write `NNN_<task>_rubric.md` and post to the issue.
+   pass → write **and commit** it into the **Rubric** section of `<NNN>_<task>.md` and post to the
+   issue (the record is git-tracked).
 5. **Spec → plan → implement** — `brainstorming` (autonomous: decline user gates → route
    open questions to `discuss-with-codex`) → spec → `writing-plans` → **TDD**. Long
    compute → background; intra-task parallelism → `Workflow`/inline subagents (never a

@@ -32,7 +32,10 @@ and (b) render them into the skeleton, then scaffold the rest.
   `assets/task-loop-skeleton.md`).
 - `docs/task-loop/directions.md` — the human steering file (from
   `assets/directions-template.md`).
-- `docs/task-loop/logs/` — the per-task decision-record directory (with a `.gitkeep`).
+- `docs/task-loop/logs/` — the iteration-indexed record directory (with a `.gitkeep`). Each cycle
+  writes **one git-tracked record** `<NNN>_<task>.md` with a **Rubric** section (binary acceptance)
+  and a **Decision log** section (decisions + evidence), where `<NNN>` is a zero-padded iteration
+  index from `001` (orchestrator-assigned; see the skeleton's operating principle 8).
 - `.gitignore` entry for `goal-rubric-*.md` scratch (the loop keeps **no** local runtime state — all
   of it lives in the GitHub control issue).
 - The `loop:in-progress` GitHub label (`gh label create loop:in-progress`).

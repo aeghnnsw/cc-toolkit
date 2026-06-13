@@ -118,11 +118,17 @@ For each known task issue (every `tasks[*].issue_number`):
   - Ensure its GitHub task issue exists (`gh issue create`, label `loop:in-progress`).
   - Emit `TASK_CREATED{task_id, plan_revision, issue_number}` and `TASK_DISPATCHED{task_id,
     plan_revision}`.
+  - Assign the task's **iteration index** `NNN` — a zero-padded 3-digit counter from `001`,
+    monotonic across the loop, assigned once at `TASK_CREATED` and **reused on every re-dispatch**
+    of the same task (carry it on `TASK_CREATED`; on recovery rebuild it from the control log /
+    `docs/task-loop/logs/`). It names the worker's `NNN_<task>.md` per-cycle record.
   - Spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with a prompt carrying
-    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, a fresh `attempt_id`, the
-    **deterministic branch name** (e.g. `<type>-<issue>-<task>`), and the task scope. Record its id
-    in `active_worker_ids`. On a respawn, reuse the deterministic branch so the worker adopts any
-    existing remote branch/PR rather than opening a duplicate (see *Recovery*).
+    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, a fresh `attempt_id`, `iteration=NNN`,
+    the **deterministic branch name** (e.g. `<type>-<issue>-<task>`), and the task scope. Record its
+    id in `active_worker_ids`. The teammate declares `isolation: worktree`, so the harness gives it
+    its **own** worktree automatically — do not ask it to create one. On a respawn, reuse the
+    deterministic branch + `iteration` so the worker adopts any existing remote branch/PR rather
+    than opening a duplicate (see *Recovery*).
 
 ### 6. Merge (sole integrator, on a pending `MERGE_REQUEST`)
 A `MERGE_REQUEST` is pending (un-acked) from §3. This step is the **only** place it is acked,
@@ -147,7 +153,7 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
   re-drain and re-validate (the worker will have minted a fresh attempt UUID).
 - Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}`. If invalid, emit
   `MERGE_DENIED{... source_*}` + `TASK_STALE`, and message the worker to stop/rescope.
-- After merge, set the task's `RECOVERY` / `NNN_log.md` to complete and remove the worker from
+- After merge, set the task's `RECOVERY` / `NNN_<task>.md` record to complete and remove the worker from
   `active_worker_ids`.
 
 ### 7. Wait / idle / exit

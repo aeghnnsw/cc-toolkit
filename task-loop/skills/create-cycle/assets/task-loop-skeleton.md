@@ -37,6 +37,15 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
    files numbered (`NN_name.ext`) under its feature folder.
 7. **One reviewable unit.** The task is one PR. If it is too big to review in one sitting,
    split it and file the remainder as follow-up issues.
+8. **Per-cycle record & iteration index.** Each cycle writes **one** git-tracked record at
+   `docs/task-loop/logs/<NNN>_<task>.md` with two sections: a **Rubric** (binary acceptance, written
+   in step 4) and a **Decision log** (decisions + evidence, opened in step 3 and finalized in step
+   11). `<NNN>` is the **iteration index** the orchestrator passed in your spawn prompt — a
+   zero-padded 3-digit counter starting at `001` that tracks cycles **chronologically** (one index
+   per task, reused if you are re-dispatched). Create the file in step 3, fill its Rubric in step 4
+   (and also **post the rubric to the issue** as the acceptance interface), keep appending the
+   Decision log through the cycle, and **commit it with your implementation** — it is durable git
+   state, part of your PR. Never skip the Rubric section.
 
 ## The cycle
 
@@ -55,23 +64,30 @@ The orchestrator already chose and scoped this task and passed `task_id`,
 `spawned_plan_revision`, and the task issue number in the spawn prompt. Validate the scope
 against the issue; confirm `spawned_plan_revision` matches the proposal on `master`.
 
-### 3. Branch into an isolated worktree
-Use `superpowers:using-git-worktrees`. Branch from fresh `master` using the **deterministic branch
-name the orchestrator passed** (stable per task, so a respawn reuses it rather than forking a
-duplicate): `git checkout master && git pull && git checkout -B <deterministic-branch>` (prefix
-from {{BRANCH_PREFIXES}}). Open the decision record `docs/task-loop/logs/NNN_<task>_log.md` with
-frontmatter `status: in_progress`, `task`, `issue`, `branch`, `attempt_id`, `spawned_plan_revision`,
-and write the initial **`RECOVERY` block** to the issue body: `status=in_progress`,
-`resume_from=<step>`, `branch`, `attempt_id`, `spawned_plan_revision`, `dirty_tree_expected=yes`.
-Local pre-PR WIP is **disposable** (not recoverable off-machine) — durability begins at the first
-push (step 9).
+### 3. Create your task branch (you are already in an isolated worktree)
+Your `cycle-worker` agent declares `isolation: worktree`, so the harness **already placed you in
+your own worktree** branched from fresh `master`. **Do not create another** (no
+`using-git-worktrees`, no `git worktree add`) — that nests a redundant tree. Use the
+**deterministic branch name the orchestrator passed** (stable per task, so a respawn reuses it
+rather than forking a duplicate): `git fetch origin`, then **adopt** the remote branch if it
+already exists (`git checkout -B <deterministic-branch> origin/<deterministic-branch>`), else
+create it from the worktree's fresh base (`git checkout -B <deterministic-branch>`) — prefix from
+{{BRANCH_PREFIXES}}. Open the per-cycle record `docs/task-loop/logs/<NNN>_<task>.md` (`<NNN>` =
+the **iteration index** from your spawn prompt, zero-padded from `001`; see operating principle 8)
+with frontmatter `status: in_progress`, `iteration`, `task`, `issue`, `branch`, `attempt_id`,
+`spawned_plan_revision` and an empty **Rubric** + **Decision log** section, and write the initial
+**`RECOVERY` block** to the issue body:
+`status=in_progress`, `resume_from=<step>`, `branch`, `attempt_id`, `spawned_plan_revision`,
+`dirty_tree_expected=yes`. Local pre-PR WIP is **disposable** (not recoverable off-machine) —
+durability begins at the first push (step 9).
 
 ### 4. Define the rubric (binary)
 Use `dev-skills:goal-rubric` to draft a binary pass/fail rubric (each item a test name, a
 numeric tolerance, a gate verdict, or an artifact path). **Finalize it via a
 `discuss-with-codex` pass** so it is neither under- nor over-scoped — do not skip this even
-when it looks obvious. Write the durable rubric to `docs/task-loop/logs/NNN_<task>_rubric.md`
-and post it to the issue as acceptance criteria.
+when it looks obvious. Write the durable rubric into the **Rubric section** of
+`docs/task-loop/logs/<NNN>_<task>.md` (the per-cycle record — see operating principle 8), **commit
+it** (it is git-tracked, not scratch), and post the same rubric to the issue as acceptance criteria.
 
 ### 5. Spec → plan → implement
 - Invoke `superpowers:brainstorming` to design — but **decline its user-question and
@@ -128,7 +144,8 @@ the fix (new head), and start a **new** attempt with a **new** `uuid` — never 
 different head.
 
 ### 11. Finalize the record
-Update `docs/task-loop/logs/NNN_<task>_log.md`: task chosen, steering consumed, contracts
+Finalize the **Decision log** section of `docs/task-loop/logs/<NNN>_<task>.md`: task chosen,
+steering consumed, contracts
 honored, rubric items + pass/fail evidence, Codex dispositions (objections + how each
 resolved), run records for any background jobs, follow-ups filed, and what's next. The
 orchestrator sets the record to `status: complete` after it merges.
