@@ -36,6 +36,10 @@
     {
       "name": "cc-customize",
       "source": "./cc-customize"
+    },
+    {
+      "name": "task-loop",
+      "source": "./task-loop"
     }
   ]
 }
