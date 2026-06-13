@@ -167,5 +167,45 @@ class TestReplay(unittest.TestCase):
             control_log.replay(events)
 
 
+class TestEndToEnd(unittest.TestCase):
+    def test_ingest_emit_replay_and_cold_resume_dedupe(self):
+        # Worker posts the same MERGE_REQUEST twice (uuid u1) on its task issue 12.
+        inbox = [
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
+        ]
+        seeded = [
+            {"kind": "control", "seq": 1, "type": "PLAN_REVISION_BUMP",
+             "plan_revision": 1, "proposal_sha": "deadbeef", "ts": "t"},
+            {"kind": "control", "seq": 2, "type": "TASK_CREATED", "task_id": "T1",
+             "plan_revision": 1, "issue_number": 12, "ts": "t"},
+            {"kind": "control", "seq": 3, "type": "TASK_DISPATCHED", "task_id": "T1",
+             "plan_revision": 1, "ts": "t"},
+        ]
+        state = control_log.replay(seeded)
+        # Dedupe uses the set reconstructed from the log (empty so far) -> one fresh.
+        fresh = control_log.filter_new_inbox(inbox, seen_uuids=state["seen_source_uuids"])
+        self.assertEqual(len(fresh), 1)
+        # Orchestrator grants the merge, stamping source provenance from the inbox event.
+        decision = {"kind": "control", "type": "MERGE_GRANTED", "task_id": "T1",
+                    "plan_revision": 1, "pr_head_sha": fresh[0]["pr_head_sha"],
+                    "source_issue": 12, "source_comment_id": 111,
+                    "source_uuid": fresh[0]["uuid"], "ts": "t"}
+        stamped, new_last = control_log.assign_seq([decision], state["last_seq"])
+        self.assertEqual(stamped[0]["seq"], 4)
+        final = control_log.replay(seeded + stamped)
+        self.assertEqual(final["tasks"]["T1"]["status"], "merged")
+        self.assertEqual(final["last_seq"], 4)
+        # COLD RESUME: a fresh orchestrator replays the log and re-reads issue 12's same
+        # comment (uuid u1). It must ingest NOTHING new — the dedupe invariant.
+        resumed = control_log.replay(seeded + stamped)
+        re_fresh = control_log.filter_new_inbox(
+            inbox, seen_uuids=resumed["seen_source_uuids"])
+        self.assertEqual(re_fresh, [])
+        self.assertEqual(resumed["last_ingested_comment_id_by_issue"][12], 111)
+
+
 if __name__ == "__main__":
     unittest.main()
