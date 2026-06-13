@@ -67,20 +67,31 @@ For each known task issue (every `tasks[*].issue_number`):
 - Parse inbox events: `inbox = [e for (_i,_t,b) in window for e in control_log.parse_events(b)
   if e.get("kind")=="inbox"]`; `fresh = control_log.filter_new_inbox(inbox, state["seen_source_uuids"])`.
 - **Process `PLAN_FINDING` before `MERGE_REQUEST`** within the batch (findings can invalidate a
-  pending merge). For each fresh inbox event, **emit exactly one source-tagged control event**
-  (see §Emitting), carrying `source_issue`, `source_comment_id` (the gh comment node-id),
-  `source_comment_ts` (the comment's `createdAt`), and `source_uuid` (= the inbox `uuid`).
-  Verify completeness with `control_log.unacknowledged_uuids(fresh, emitted)` — it must be empty.
-- **Advance the scan floor** for each issue: once every comment with `createdAt <= T` on that
-  issue has exactly one source-tagged control event, emit
-  `INBOX_SCAN_CHECKPOINT{issue_number, through_ts: T}`. Never checkpoint past an un-acked comment.
+  pending merge).
+- **Ack findings here; defer merge requests.** A fresh `PLAN_FINDING` is acked **in this step**
+  with exactly one `PLAN_FINDING_RECORDED` (carrying `source_issue`, `source_comment_id` = the gh
+  comment node-id, `source_comment_ts` = the comment's `createdAt`, `source_uuid` = the inbox
+  `uuid`). A fresh `MERGE_REQUEST` is **not** acked here — it is a *pending decision* acked only
+  by the merge gate (§6, `MERGE_GRANTED`/`MERGE_DENIED`), because the only legal source-tagged
+  events for it are merge *outcomes*. `control_log.unacknowledged_uuids(fresh, emitted)` is used
+  to **list the pending merge requests**, not as a must-be-empty gate. (Findings must fully ack;
+  merge requests legitimately remain pending.)
+- **Advance the scan floor** for each issue only through a **fully-acked prefix**: emit
+  `INBOX_SCAN_CHECKPOINT{issue_number, through_ts: T}` only when every comment with
+  `createdAt <= T` on that issue has exactly one source-tagged control event. An un-acked
+  (pending) `MERGE_REQUEST` therefore **pins the floor before it**, so it is re-ingested
+  (re-read + `filter_new_inbox`) every turn until the merge gate decides it — which is the
+  intended behavior, not a leak.
 
 ### 4. Replan barrier (before any dispatch)
 - Read `docs/task-loop/directions.md` first — human steering overrides the default heuristic.
 - If an ingested `PLAN_FINDING` invalidates a hypothesis: pressure-test with
-  `dev-skills:discuss-with-codex`; if confirmed, **materialize** the new revision —
-  author + `gh pr merge` the proposal-update PR to `master` (orchestrator is the sole editor of
-  `proposal.md`), then emit `PLAN_REVISION_BUMP{plan_revision: N, proposal_sha: <merged SHA>}`.
+  `dev-skills:discuss-with-codex`; if confirmed, **materialize** the new revision. Use a
+  **deterministic proposal-bump branch** (e.g. `chore-plan-revision-<N>`) so the side effect is
+  reconcilable: if that PR is **already merged to `master` by the orchestrator** (crash-after-
+  merge), just emit `PLAN_REVISION_BUMP{plan_revision: N, proposal_sha: <merged SHA>}`; otherwise
+  author it, `gh pr merge` it (orchestrator is the sole editor of `proposal.md`), then emit the
+  bump. Never emit the bump before the proposal PR is on `master`.
 - Recompute the dependency frontier from the Roadmap + declared `depends_on_tasks` /
   `depends_on_hypotheses`. Mark every task in the invalidated subgraph `TASK_STALE` and **halt
   its dispatch**. If a finding's blast radius can't be mapped confidently, **freeze broadly**.
@@ -96,8 +107,21 @@ For each known task issue (every `tasks[*].issue_number`):
     `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, and the task scope. Record its id
     in `active_worker_ids`.
 
-### 6. Merge (sole integrator, on a `MERGE_REQUEST`)
-A `MERGE_REQUEST` was ingested in §3. Merge only after that drain, atomically:
+### 6. Merge (sole integrator, on a pending `MERGE_REQUEST`)
+A `MERGE_REQUEST` is pending (un-acked) from §3. This step is the **only** place it is acked,
+and a `MERGE_GRANTED`/`MERGE_DENIED` is emitted **only after the outcome is durable** — never a
+pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order:
+- **Inspect PR state first** (`gh pr view <N> --json state,mergedAt,mergedBy,headRefOid`).
+  - **Already merged by this orchestrator** at the recorded head (`mergedBy` == the orchestrator's
+    own identity **and** `headRefOid`/merge commit == the validated `pr_head_sha`): a prior turn
+    merged it and crashed before logging → just emit `MERGE_GRANTED` (reconcile).
+  - **Already merged by anyone else** (human / auto-merge / merge queue / workflow): this is an
+    **out-of-protocol merge** — do **not** certify it as `MERGE_GRANTED` (that would launder a
+    merge that never passed the gates). **Halt and escalate to the user** (a human-only blocker);
+    see the repo-settings precondition in `SKILL.md` that should make this impossible.
+  - **Closed/superseded**, or the worker has minted a newer attempt UUID for a different head
+    (the pending one is stale): emit `MERGE_DENIED` for the stale request.
+  - **Open** → validate, then merge:
 - Re-confirm the task is **revision-compatible** (`spawned_plan_revision == current_plan_revision`
   or explicitly `TASK_REVISION_COMPATIBLE`) and not `TASK_STALE`.
 - Confirm CI/review state and that the worker's Codex PR review had no blocking issues.

@@ -216,6 +216,18 @@ task's compatibility + CI/review state, then `gh pr merge --squash --delete-bran
 the worker to shut down / rescope. If the orchestrator is dead/draining, nothing merges
 (stalled merge ≫ stale merge); the PR + `RECOVERY` persist for resume.
 
+The `MERGE_REQUEST` inbox event is **not** acked during the event-drain (its only legal
+source-tagged events are merge *outcomes*); it is a *pending decision* that pins the issue's
+scan floor until this gate emits `MERGE_GRANTED`/`MERGE_DENIED` **after** the outcome is durable.
+The gate is **crash-safe by reconciliation**: it inspects PR state first and, if a PR is already
+merged, certifies `MERGE_GRANTED` only when `mergedBy` is the orchestrator's own identity at the
+recorded head (a crash-after-merge); a PR merged by **anyone else** is an out-of-protocol merge —
+**halt and escalate**, never launder it as authorized. A repo-settings precondition (disable
+auto-merge / merge queue; restrict merge permission to the orchestrator) makes that case
+impossible. Revision materialization uses the same reconciliation: a deterministic proposal-bump
+PR, with `PLAN_REVISION_BUMP` emitted only after it is on `master` (and reconcilable if a crash
+landed it first).
+
 ## 8. Coordination & correctness model
 
 (Full rationale in the proposal-ownership conclusion. Invariants:)

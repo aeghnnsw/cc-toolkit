@@ -36,6 +36,11 @@ Before starting, verify and stop with guidance if any fails:
 - **Scaffolding present:** `docs/task-loop/proposal.md`, `docs/task-loop/task-loop.md`,
   `docs/task-loop/directions.md`, and the `loop:in-progress` label exist.
 - **`gh` authenticated** with write access to issues and PRs.
+- **No out-of-protocol merges:** the orchestrator is the *sole integrator*, so task-loop PRs must
+  not be mergeable by anything else — **disable auto-merge and any merge queue**, and restrict
+  merge permission to the orchestrator's own identity. (The merge gate also verifies `mergedBy`
+  provenance and **halts** if it ever finds a task-loop PR merged by someone else, rather than
+  laundering it as authorized — but settings should prevent that case.)
 
 ## Setup (run once at the start of a run)
 
