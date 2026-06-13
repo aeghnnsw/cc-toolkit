@@ -64,7 +64,9 @@ because the lease loser exits — but two near-simultaneous writers are possible
 ### 1. Lease & rebuild
 - Read the **control-issue body header**. If a **live** lease (`expires_at` in the future) is owned
   by a different instance → exit (never two orchestrators). Else acquire/refresh the lease by
-  writing the header (`owner`, `expires_at = now + TTL`, `heartbeat = now`).
+  writing the header (`owner`, `expires_at = now + TTL`, `heartbeat = now`), then **re-read the
+  header and confirm you still own it** before any side effect (the **write-then-re-read fence**;
+  GitHub gives no atomic CAS, so this is how a lease loser detects it lost and exits).
 - On resume / stale lease (`expires_at` past, or `phase: exiting` without a clean prior audit):
   take over, then **rebuild fast state from the control issue** (replay the comment log, above).
   There is no local cache to distrust — fast state is always reconstructed from GitHub.
@@ -117,8 +119,10 @@ For each known task issue (every `tasks[*].issue_number`):
   - Emit `TASK_CREATED{task_id, plan_revision, issue_number}` and `TASK_DISPATCHED{task_id,
     plan_revision}`.
   - Spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with a prompt carrying
-    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, and the task scope. Record its id
-    in `active_worker_ids`.
+    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, a fresh `attempt_id`, the
+    **deterministic branch name** (e.g. `<type>-<issue>-<task>`), and the task scope. Record its id
+    in `active_worker_ids`. On a respawn, reuse the deterministic branch so the worker adopts any
+    existing remote branch/PR rather than opening a duplicate (see *Recovery*).
 
 ### 6. Merge (sole integrator, on a pending `MERGE_REQUEST`)
 A `MERGE_REQUEST` is pending (un-acked) from §3. This step is the **only** place it is acked,
@@ -178,6 +182,16 @@ stamped, new_last = control_log.assign_seq([{
 gh_store.post_comment(CONTROL_ISSUE, control_log.format_event(stamped[0]))
 ```
 
+**Check-then-append guard (required).** Immediately before posting, **re-read the comment log and
+confirm its true max `seq` is still `state["last_seq"]`** — only then `assign_seq` + post. If a
+higher `seq` has appeared, a competing sequencer exists: re-ingest, recompute, retry; if it
+persists you have lost the lease → **exit**. Together with the write-then-re-read lease fence (§1),
+this is the single-sequencer guarantee under GitHub's non-CAS body writes — a vanishingly-small
+TOCTOU window between the re-read and the append remains and is accepted (the watchdog only acts on
+an already-stale heartbeat, so two live orchestrators are rare by construction). If `replay` ever
+raises on a seq gap/dup or duplicate `source_uuid`, that is **detectable corruption → halt and
+escalate to a human**, never continue.
+
 Event types — **orchestrator-originated** (no source): `TASK_CREATED` (carries `issue_number`),
 `TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`), `TASK_STALE`,
 `TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries `issue_number` + `through_ts`).
@@ -195,12 +209,25 @@ acknowledged` (every blocked/stale task has a follow-up), `unmerged == 0` (no op
 
 ## Recovery (cold resume)
 
-A fresh orchestrator on clean `master` rebuilds entirely from: the control issue (replay →
+A fresh orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay →
 revision, dedupe set, scan floors, task statuses), per-task `RECOVERY` ledgers (issue bodies),
-open PRs, and `docs/task-loop/logs/`. Ephemeral teammates and `~/.claude/tasks/` are **not**
-relied upon — respawn `cycle-worker`s for still-open tasks. A worker found in `pr_open` /
-`merge_requesting` (via its `RECOVERY`) is *ready but unannounced*: drive it to merge. The
-planning step is idempotent — the same frontier is recomputed and only missing workers respawn.
+open PRs, and `docs/task-loop/logs/`. Ephemeral teammates and `~/.claude/tasks/` are **not** relied
+upon, and because teammates die with the lead's session a crashed loop 1 leaves **no surviving
+workers** — so respawn is safe. Respawn follows **one rule, the GitHub-visible-artifact line:**
+
+- **No remote branch and no PR** for a dispatched task → any work was local-only pre-PR WIP, which
+  is **disposable**: abandon it and **re-dispatch a fresh attempt** (new `attempt_id`) from clean
+  `master`. At most one in-flight task's un-pushed WIP is lost and simply redone — zero correctness
+  loss. This is what makes "resume from any session / clean checkout" honest.
+- **A remote branch and/or PR exists** (recorded as `attempt_id` + head SHA in the `RECOVERY`
+  ledger) → **adopt** it via GitHub and drive it to merge. A worker in `pr_open` /
+  `merge_requesting` is *ready but unannounced*.
+
+Dispatch uses **deterministic per-task branch/worktree naming** + an `attempt_id`, so re-dispatch
+and adoption are idempotent: a respawned worker that finds the branch/PR already present adopts or
+aborts — it never opens a second PR. Local-worktree adoption is **only a same-machine
+optimization**, never a correctness requirement. The planning step is idempotent — the same
+frontier is recomputed and only missing workers respawn.
 
 ## Deliberate with Codex
 

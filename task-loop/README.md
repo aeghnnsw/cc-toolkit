@@ -34,10 +34,10 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    label.
 3. **`run-cycle`** — the orchestrator: each turn it computes the dependency-ordered task frontier,
    spawns one `cycle-worker` teammate per ready task, and validates + merges their PRs. It runs as
-   **three built-in scheduler jobs (no local files)** — the running loop, a watchdog that resubmits
-   it if it dies, and a one-time stop — coordinating purely through the GitHub control issue, and it
-   **prompts for a run duration (default 24h)**, self-bounding on that stop time (a graceful drain,
-   not an iteration cap).
+   a **live `/loop` lead plus two scheduler guard jobs (no local files)** — a watchdog that detects
+   the lead's death and alerts (unattended auto-relaunch needs a tested local supervisor) and a
+   one-time stop — coordinating purely through the GitHub control issue, and it **prompts for a run
+   duration (default 24h)**, self-bounding on that stop time (a graceful drain, not an iteration cap).
 
 ## Prerequisites
 

@@ -41,11 +41,14 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
 ## The cycle
 
 ### 1. Recover & anchor
-Read this task issue's **`RECOVERY` block** (see *RECOVERY ledger* below) and **resume by its
-`status`** if an attempt was interrupted, or explicitly abandon it (delete the branch, note the
-reason) before starting fresh. Read `docs/task-loop/directions.md` first (human steering,
-highest priority). Re-read the source-of-truth docs at the **current `plan_revision`** (the
-value in `docs/task-loop/proposal.md` frontmatter on `master`).
+Read this task issue's **`RECOVERY` block** (see *RECOVERY ledger* below) and resume by the
+**GitHub-visible-artifact rule**: if a **remote branch and/or PR exists** (the ledger carries
+`attempt_id` + `pr_head_sha`), **adopt** it and resume by `status`; if there is **no remote branch
+and no PR**, any prior work was local-only pre-PR WIP and is **disposable** — abandon it (note the
+reason) and start a fresh attempt from clean `master`. Never depend on adopting a local worktree
+from another machine/session. Read `docs/task-loop/directions.md` first (human steering, highest
+priority). Re-read the source-of-truth docs at the **current `plan_revision`** (the value in
+`docs/task-loop/proposal.md` frontmatter on `master`).
 
 ### 2. Confirm the task
 The orchestrator already chose and scoped this task and passed `task_id`,
@@ -53,12 +56,15 @@ The orchestrator already chose and scoped this task and passed `task_id`,
 against the issue; confirm `spawned_plan_revision` matches the proposal on `master`.
 
 ### 3. Branch into an isolated worktree
-Use `superpowers:using-git-worktrees`. Branch from fresh `master`:
-`git checkout master && git pull && git checkout -b <prefix>-<short-slug>` (prefix from
-{{BRANCH_PREFIXES}}). Open the decision record `docs/task-loop/logs/NNN_<task>_log.md` with
-frontmatter `status: in_progress`, `task`, `issue`, `branch`, `spawned_plan_revision`, and
-write the initial **`RECOVERY` block** to the issue body: `status=in_progress`,
-`resume_from=<step>`, `branch`, `spawned_plan_revision`, `dirty_tree_expected=yes`.
+Use `superpowers:using-git-worktrees`. Branch from fresh `master` using the **deterministic branch
+name the orchestrator passed** (stable per task, so a respawn reuses it rather than forking a
+duplicate): `git checkout master && git pull && git checkout -B <deterministic-branch>` (prefix
+from {{BRANCH_PREFIXES}}). Open the decision record `docs/task-loop/logs/NNN_<task>_log.md` with
+frontmatter `status: in_progress`, `task`, `issue`, `branch`, `attempt_id`, `spawned_plan_revision`,
+and write the initial **`RECOVERY` block** to the issue body: `status=in_progress`,
+`resume_from=<step>`, `branch`, `attempt_id`, `spawned_plan_revision`, `dirty_tree_expected=yes`.
+Local pre-PR WIP is **disposable** (not recoverable off-machine) — durability begins at the first
+push (step 9).
 
 ### 4. Define the rubric (binary)
 Use `dev-skills:goal-rubric` to draft a binary pass/fail rubric (each item a test name, a

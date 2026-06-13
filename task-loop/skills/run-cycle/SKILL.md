@@ -40,28 +40,42 @@ Before starting, verify and stop with guidance if any fails:
   provenance and **halts** if it ever finds a task-loop PR merged by someone else, rather than
   laundering it as authorized — but settings should prevent that case.)
 
-## Control plane — three built-in loop jobs (no local files)
+## Control plane — one live loop + two guard jobs (no local files)
 
-`run-cycle` runs as **three cooperating jobs created with the built-in scheduler** — a running
-loop cannot reliably police its own death, so two sibling jobs guard and bound it. **No local
-files**: all coordination state lives in GitHub (the single control issue), and the schedule
-handles live in the scheduler itself, recorded in the control-issue body.
+`run-cycle` runs as **three cooperating jobs** — a running loop cannot reliably police its own
+death, so two sibling guard jobs bound and watch it. **No local files**: all coordination state
+lives in GitHub (the single control issue); schedule handles live in the scheduler itself,
+recorded in the control-issue body.
 
-1. **Running loop (loop 1)** — the orchestrator job: each turn it **heartbeats its lease into the
-   control-issue body**, replays the control-issue comment log to rebuild fast state, plans →
-   dispatches → merges, and **self-bounds on `stop_at`**. It loops (re-wakes) until `stop_at`.
-2. **Watchdog loop (loop 3)** — a **recurring** built-in job **every 30 min**: it reads the
-   control-issue body; if loop 1's `heartbeat` is stale (it crashed/exited) **and `now < stop_at`**,
-   it **resubmits loop 1** (which resumes from GitHub). The `now < stop_at` guard ensures it never
-   resurrects the run after an intentional stop.
-3. **Stop loop (loop 2)** — a **one-time** built-in job at `stop_at`: it reads the control-issue
-   body for `watchdog_schedule_id`, **cancels the watchdog (loop 3) first** (so it can't resurrect
-   the run), then confirms loop 1 has drained. The clean teardown of loops 1 **and** 3.
+1. **Running loop (loop 1)** — a **live `/loop` Agent-Teams lead session** (the orchestrator),
+   **not** a scheduler job. Each turn it **heartbeats its lease into the control-issue body**,
+   replays the control-issue comment log to rebuild fast state, plans → dispatches → merges, and
+   **self-bounds on `stop_at`**. Teammate idle notifications are a **within-session latency
+   optimization, not part of correctness** — correctness rests entirely on GitHub replay +
+   idempotent respawn (see `references/`).
+2. **Watchdog (loop 3)** — a **recurring scheduler job every 30 min**. It reads the control-issue
+   body; if loop 1's `heartbeat` is stale **and `now < stop_at`**, loop 1 is presumed dead:
+   - **Tier 0 (always — the guaranteed floor): detect + alert.** Post a **plain non-control
+     comment** (no `task-loop-event` fence — invisible to the sequencer) plus a push notification
+     "orchestrator down, resume needed." Recovery is then a clean **manual `/run-cycle`** (it
+     rebuilds 100% from GitHub — that is the payoff of no-local-files).
+   - **Tier 1 (only if a tested local supervisor is configured): unattended auto-relaunch.** A
+     dead `/loop` session cannot relaunch itself and a cloud routine cannot spawn local Agent-Teams
+     teammates, so true auto-resurrection needs a **named local supervisor** (OS launchd/cron, or
+     a verified locally-running job) with a tested launch template (repo cwd, `CLAUDE_CODE_
+     EXPERIMENTAL_AGENT_TEAMS=1`, plugin loaded, `gh` authed, `/run-cycle` under `/loop`, log
+     capture). That is **setup/config, not runtime state**, but it is a real precondition — the
+     Phase-0 spike must validate it before any unattended-resurrection claim. Absent it, the
+     watchdog stays at Tier 0.
+   The `now < stop_at` guard ensures neither tier resurrects the run after an intentional stop.
+3. **Stop (loop 2)** — a **one-time scheduler job at `stop_at`**. It reads the control-issue body
+   for `watchdog_schedule_id`, **cancels the watchdog (loop 3) first** (so it can't resurrect the
+   run), then confirms loop 1 has drained. The clean teardown of loops 1 **and** 3.
 
-So loop 3 keeps loop 1 alive through crashes; loop 2 tears down loops 1 **and** 3 at `stop_at`.
-All three are built-in scheduler jobs; their handles (`watchdog_schedule_id`, `stop_schedule_id`)
-are recorded in the **control-issue body runtime header** (the orchestrator is its sole writer) so
-loop 2 can cancel loop 3 — **no `orchestrator-state.json`, no flag file, nothing on local disk.**
+The two guard jobs (2 & 3) and any Tier-1 relaunch must run in the **same local environment**
+where Agent Teams is enabled. Their handles (`watchdog_schedule_id`, `stop_schedule_id`) live in
+the **control-issue body runtime header** (orchestrator is its sole writer) so loop 2 can cancel
+loop 3 — **no `orchestrator-state.json`, no flag file, nothing on local disk.**
 
 ## Setup
 
@@ -78,9 +92,10 @@ crash). Detect which **first**, and keep **all** state in GitHub — no local fi
    schedule handles, this is a **resubmit/resume** — **skip the duration prompt and schedule
    creation** (steps 4–6); the loops already exist. Otherwise it is a **fresh start**.
 2. **Lease:** read the header `lease`. If a **live** lease (`expires_at` in the future) is owned by
-   a different instance → **exit** (never two orchestrators). Else write the header with your
-   `lease` (`owner`, `expires_at = now + TTL`, `heartbeat = now`). This is the only single-
-   coordinator guard — no local lock file.
+   a different instance → **exit** (never two orchestrators). Else claim it: write the header with
+   your `lease` (`owner`, `expires_at = now + TTL`, `heartbeat = now`), then **re-read and confirm
+   you still own it** before any side effect (the **write-then-re-read fence** — GitHub has no
+   atomic CAS). This is the only single-coordinator guard — no local lock file.
 3. **Team:** create the agent team you spawn `cycle-worker` teammates into (recreated on a
    resubmit, since teammates are ephemeral).
 4. *(fresh only)* **Run duration (prompt for it).** **Ask the user** *"How long should the loop run
@@ -88,8 +103,10 @@ crash). Detect which **first**, and keep **all** state in GitHub — no local fi
    24 hours**. An **interactive prompt, not a command-line argument**. Write the absolute `stop_at`
    (UTC) into the body header.
 5. *(fresh only)* **Create the watchdog (loop 3)** with the built-in scheduler: a recurring job
-   **every 30 min** that resubmits `run-cycle` when the header `heartbeat` is stale and
-   `now < stop_at`. Write its handle into the header as `watchdog_schedule_id`.
+   **every 30 min** that, when the header `heartbeat` is stale and `now < stop_at`, **detects +
+   alerts** (Tier 0: a plain non-control comment + push notification) and — only if a tested local
+   supervisor is configured — auto-relaunches `run-cycle` (Tier 1). Write its handle into the header
+   as `watchdog_schedule_id`. (See *Control plane* for the Tier-0/Tier-1 launcher contract.)
 6. *(fresh only)* **Create the stop (loop 2)** with the built-in scheduler: a one-time job at
    `stop_at` that reads `watchdog_schedule_id` from the header, **cancels it**, then confirms loop 1
    has drained. Write its handle into the header as `stop_schedule_id`.

@@ -185,11 +185,13 @@ resumable state; `step-workflow` numbered file naming.
 
 Human entry point. Starts the orchestrator under **built-in `/loop` self-paced** (per the
 loop-mechanism conclusion — **not** ralph, **not** a blocking Stop hook), creates the
-Agent Team, and runs the state machine. It runs as **three built-in scheduler jobs — no local
-files** (see the run-cycle skill's *Control plane*): the running loop (1) self-bounds on a prompted
-`stop_at` (default 24 h); a **watchdog** (3, every 30 min) resubmits loop 1 if it dies before
-`stop_at`; a one-time **stop** (2) at `stop_at` cancels the watchdog and confirms loop 1 has
-drained. All three coordinate purely through the GitHub control issue.
+Agent Team, and runs the state machine. It runs as **a live `/loop` lead plus two scheduler guard
+jobs — no local files** (see the run-cycle skill's *Control plane*): loop 1 is a live `/loop`
+Agent-Teams lead that self-bounds on a prompted `stop_at` (default 24 h); a **watchdog** (3, every
+30 min) **detects** the lead's death and **alerts** (Tier 0, a plain non-control comment + push
+notification), with unattended auto-relaunch (Tier 1) gated on a tested local supervisor; a one-time
+**stop** (2) at `stop_at` cancels the watchdog and confirms loop 1 has drained. All three coordinate
+purely through the GitHub control issue.
 
 ### State machine (each `/loop` turn)
 - **acquire/heartbeat lease** in the **control-issue body runtime header** (sole writer: the
