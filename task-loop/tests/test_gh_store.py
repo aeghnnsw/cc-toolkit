@@ -10,11 +10,11 @@ SPEC.loader.exec_module(gh_store)
 
 
 class TestReadComments(unittest.TestCase):
-    def test_parses_gh_json_into_id_body_pairs(self):
+    def test_parses_gh_json_into_id_ts_body_triples(self):
         fake_payload = json.dumps({
             "comments": [
-                {"id": 11, "body": "first"},
-                {"id": 22, "body": "second"},
+                {"id": "IC_a", "createdAt": "2026-06-13T01:00:00Z", "body": "first"},
+                {"id": "IC_b", "createdAt": "2026-06-13T02:00:00Z", "body": "second"},
             ]
         })
         captured = {}
@@ -24,10 +24,27 @@ class TestReadComments(unittest.TestCase):
             return fake_payload
 
         comments = gh_store.read_comments(42, runner=fake_runner)
-        self.assertEqual(comments, [(11, "first"), (22, "second")])
-        # Confirms it called gh for issue 42 with JSON output.
+        self.assertEqual(comments, [
+            ("IC_a", "2026-06-13T01:00:00Z", "first"),
+            ("IC_b", "2026-06-13T02:00:00Z", "second"),
+        ])
         self.assertIn("42", captured["args"])
         self.assertIn("--json", captured["args"])
+
+    def test_sorts_oldest_first_by_created_at(self):
+        # gh may return any order; read_comments must guarantee oldest-first.
+        fake_payload = json.dumps({
+            "comments": [
+                {"id": "IC_b", "createdAt": "2026-06-13T02:00:00Z", "body": "second"},
+                {"id": "IC_a", "createdAt": "2026-06-13T01:00:00Z", "body": "first"},
+            ]
+        })
+        comments = gh_store.read_comments(42, runner=lambda args: fake_payload)
+        self.assertEqual([c[2] for c in comments], ["first", "second"])
+
+    def test_missing_comments_key_returns_empty(self):
+        comments = gh_store.read_comments(42, runner=lambda args: json.dumps({}))
+        self.assertEqual(comments, [])
 
 
 class TestPostComment(unittest.TestCase):

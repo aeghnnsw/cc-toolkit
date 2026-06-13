@@ -1,14 +1,27 @@
 """Pure, deterministic control-protocol logic for the task-loop plugin.
 
 No I/O. GitHub access lives in gh_store.py. Stdlib only.
+
+Idempotency invariant (orchestrator discipline; mechanically checkable via
+`unacknowledged_uuids`): every ingested worker inbox event MUST produce exactly
+one *source-tagged* control event (one carrying `source_uuid`). Replying to a
+MERGE_REQUEST with a bare, untagged TASK_STALE / TASK_REVISION_COMPATIBLE breaks
+cold-resume dedupe, because that uuid would never be recorded in the log and the
+same inbox comment would be re-ingested after a crash. Use MERGE_GRANTED /
+MERGE_DENIED (both source-tagged) to answer a MERGE_REQUEST.
+
+Watermark: `last_ingested_comment_ts_by_issue` keys on the GitHub comment
+`createdAt` (ISO-8601 string), NOT the comment `id`. The `id` returned by
+`gh issue view --json comments` is an opaque GraphQL node-ID string that is
+neither an integer nor chronologically ordered, so it cannot be a `max()`
+watermark. The UUID dedupe set (`seen_source_uuids`) is the authoritative
+idempotency mechanism; the timestamp watermark is only a scan optimization.
 """
 import json
 import re
 
 EVENT_FENCE = "task-loop-event"
-_FENCE_RE = re.compile(
-    r"```" + EVENT_FENCE + r"\s*\n(.*?)\n```", re.DOTALL
-)
+_FENCE_RE = re.compile(r"```" + EVENT_FENCE + r"\s*\n(.*?)\n```", re.DOTALL)
 
 
 def format_event(event: dict) -> str:
@@ -48,6 +61,19 @@ def assign_seq(events: list, last_seq: int):
     return stamped, seq
 
 
+def unacknowledged_uuids(fresh_inbox: list, emitted_control_events: list) -> list:
+    """uuids of fresh inbox events that did NOT receive a source-tagged control
+    event. A non-empty result means the dedupe invariant would break on cold
+    resume — the orchestrator must emit exactly one source-tagged control event
+    per ingested inbox uuid before it relies on the log for recovery."""
+    acked = {
+        e.get("source_uuid")
+        for e in emitted_control_events
+        if e.get("source_uuid")
+    }
+    return [e["uuid"] for e in fresh_inbox if e["uuid"] not in acked]
+
+
 _STATUS_BY_TYPE = {
     "TASK_CREATED": "ready",
     "TASK_DISPATCHED": "active",
@@ -58,19 +84,19 @@ _STATUS_BY_TYPE = {
 }
 
 # Required fields per control-event type (beyond kind/seq/type/ts).
+_SOURCE_FIELDS = ("source_issue", "source_comment_id", "source_comment_ts",
+                  "source_uuid")
 _REQUIRED_FIELDS = {
     "PLAN_REVISION_BUMP": ("plan_revision", "proposal_sha"),
     "TASK_CREATED": ("task_id", "plan_revision", "issue_number"),
     "TASK_DISPATCHED": ("task_id", "plan_revision"),
     "TASK_STALE": ("task_id", "plan_revision"),
     "TASK_REVISION_COMPATIBLE": ("task_id", "plan_revision"),
-    "MERGE_GRANTED": ("task_id", "plan_revision", "pr_head_sha",
-                      "source_issue", "source_comment_id", "source_uuid"),
-    "MERGE_DENIED": ("task_id", "plan_revision", "pr_head_sha",
-                     "source_issue", "source_comment_id", "source_uuid"),
-    "PLAN_FINDING_RECORDED": ("task_id", "source_issue", "source_comment_id",
-                              "source_uuid"),
+    "MERGE_GRANTED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
+    "MERGE_DENIED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
+    "PLAN_FINDING_RECORDED": ("task_id",) + _SOURCE_FIELDS,
 }
+_INT_FIELDS = ("plan_revision", "issue_number")
 
 
 def _validate(event):
@@ -80,17 +106,29 @@ def _validate(event):
     etype = event.get("type")
     if etype not in _REQUIRED_FIELDS:
         raise ValueError("unknown control event type: %r" % (etype,))
+    seq = event.get("seq")
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 1:
+        raise ValueError("control event has invalid seq: %r" % (seq,))
     if "ts" not in event:
-        raise ValueError("control event missing ts at seq=%r" % (event.get("seq"),))
-    for field in _REQUIRED_FIELDS[etype]:
+        raise ValueError("control event missing ts at seq=%r" % (seq,))
+    required = _REQUIRED_FIELDS[etype]
+    for field in required:
         if event.get(field) in (None, ""):
             raise ValueError("%s missing required field %r" % (etype, field))
+    for intf in _INT_FIELDS:
+        if intf in required:
+            val = event.get(intf)
+            if isinstance(val, bool) or not isinstance(val, int):
+                raise ValueError("%s.%s must be an int, got %r" % (etype, intf, val))
 
 
 def replay(control_events: list) -> dict:
     """Fold seq-ordered control events into recoverable fast state. Pure; raises
-    ValueError on a seq gap/duplicate or a schema violation. Reconstructs the dedupe
-    set and per-issue scan watermark FROM THE LOG, so a cold resume is exact."""
+    ValueError on a schema violation or a seq gap/duplicate. Reconstructs the
+    dedupe set and per-issue scan watermark FROM THE LOG, so a cold resume is
+    exact."""
+    for event in control_events:
+        _validate(event)
     events = sorted(control_events, key=lambda e: e["seq"])
     state = {
         "current_plan_revision": 0,
@@ -99,7 +137,7 @@ def replay(control_events: list) -> dict:
         "tasks": {},
         "seen_source_uuids": set(),
         "source_uuid_to_seq": {},
-        "last_ingested_comment_id_by_issue": {},
+        "last_ingested_comment_ts_by_issue": {},
     }
     expected = 0
     for event in events:
@@ -109,7 +147,6 @@ def replay(control_events: list) -> dict:
                 "non-contiguous control log: expected seq %d, got %d"
                 % (expected, event["seq"])
             )
-        _validate(event)
         etype = event["type"]
         if etype == "PLAN_REVISION_BUMP":
             state["current_plan_revision"] = event["plan_revision"]
@@ -126,9 +163,9 @@ def replay(control_events: list) -> dict:
             if etype == "TASK_CREATED":
                 task["issue_number"] = event["issue_number"]
                 # Discover the task issue so a cold resume scans it even before any
-                # inbox event has been ingested from it.
-                state["last_ingested_comment_id_by_issue"].setdefault(
-                    event["issue_number"], 0
+                # inbox event has been ingested from it ("" sorts before any ts).
+                state["last_ingested_comment_ts_by_issue"].setdefault(
+                    event["issue_number"], ""
                 )
             if event.get("pr_head_sha"):
                 task["pr_head_sha"] = event["pr_head_sha"]
@@ -137,9 +174,9 @@ def replay(control_events: list) -> dict:
             state["seen_source_uuids"].add(event["source_uuid"])
             state["source_uuid_to_seq"][event["source_uuid"]] = event["seq"]
             issue = event["source_issue"]
-            prev = state["last_ingested_comment_id_by_issue"].get(issue, 0)
-            state["last_ingested_comment_id_by_issue"][issue] = max(
-                prev, event["source_comment_id"]
+            prev = state["last_ingested_comment_ts_by_issue"].get(issue, "")
+            state["last_ingested_comment_ts_by_issue"][issue] = max(
+                prev, event["source_comment_ts"]
             )
         state["last_seq"] = event["seq"]
     return state

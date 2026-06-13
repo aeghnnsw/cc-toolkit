@@ -10,6 +10,8 @@
 
 **Scope:** This plan delivers Phase 0 (a throwaway spike + findings note) and Phase 1 (the tested control-protocol library + gh adapter). It does **not** build the skills/agent/orchestrator prose — those are Phase 2+, each its own plan (see "Follow-on plans"), because their exact steps depend on Phase 0's findings about the real primitives.
 
+> **Execution note (2026-06-13):** Phase 1 shipped standalone; the **interactive Phase 0 spike was deferred** (it needs a live `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` session). This is safe precisely because Phase 1 has *zero* dependency on the Agent-Teams/`/loop` primitives — so the plugin-registration step that Phase 0 Task 0.2 would have done was performed in Phase 1 Task 1.8 instead.
+
 **Spec:** `docs/superpowers/specs/2026-06-13-task-loop-plugin-design.md` (§8 control protocol, §16 phasing).
 
 ---

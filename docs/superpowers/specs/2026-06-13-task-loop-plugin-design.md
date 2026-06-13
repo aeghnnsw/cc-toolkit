@@ -155,7 +155,8 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
 6. **Verify** — run every rubric item, capture real output
    (`verification-before-completion`).
 7. **Reconcile** — compare results to the plan/proposal. If a fact invalidates a
-   hypothesis, record a `PLAN_FINDING` control event + file an issue. **Never edit
+   hypothesis, post a `PLAN_FINDING` *inbox* event (the orchestrator records the
+   corresponding `PLAN_FINDING_RECORDED` control event) + file an issue. **Never edit
    `proposal.md`.**
 8. **Doc-update** — `doc-update` affected docs to current truth.
 9. **Open PR & review** — commit (clean text, `-F`, explicit paths); open PR with
@@ -223,14 +224,26 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
   `MERGE_REQUEST`) `pr_head_sha`.
 - The orchestrator **ingests** inbox events across task issues and **emits normalized
   `CONTROL_EVENT` comments on the control issue** with a monotonic integer `seq` it alone
-  assigns. Orchestrator event types: `PLAN_REVISION_BUMP`, `TASK_STALE`,
-  `TASK_REVISION_COMPATIBLE`, `MERGE_GRANTED`, `MERGE_DENIED`. **Idempotency:** each
-  ingested inbox `uuid` maps to exactly one `CONTROL_EVENT` (dedupe on `uuid`).
+  assigns. Control event types are two families:
+  - *orchestrator-originated* (no source provenance): `TASK_CREATED` (carries the task's
+    `issue_number`), `TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`),
+    `TASK_STALE`, `TASK_REVISION_COMPATIBLE`;
+  - *inbox-derived* (carry `source_issue` / `source_comment_id` / `source_comment_ts` /
+    `source_uuid`): `MERGE_GRANTED`, `MERGE_DENIED` (answer a `MERGE_REQUEST`),
+    `PLAN_FINDING_RECORDED` (records an ingested `PLAN_FINDING`).
+- **Idempotency invariant:** every ingested inbox `uuid` maps to **exactly one
+  source-tagged** control event (dedupe on `uuid`). Answering a `MERGE_REQUEST` with a
+  *bare, untagged* `TASK_STALE`/`TASK_REVISION_COMPATIBLE` would drop the `uuid` and cause
+  re-ingestion on cold resume — so a `MERGE_REQUEST` is always answered with
+  `MERGE_GRANTED`/`MERGE_DENIED`. (`control_log.unacknowledged_uuids` checks this.)
 - **Total order = `seq` on the control issue.** A single sequencer means no tie-breaks.
-- **Watermark:** `{last_ingested_comment_id per task issue, last_emitted_seq}`, persisted
-  in `orchestrator-state.json` *and* fully recoverable by re-scanning the control issue.
-- **Replay:** rebuild fast state by reading control-issue events `seq 0..N`. (Snapshot
-  compaction is a later optimization — see §15.)
+- **Watermark:** `{last_ingested_comment_ts per task issue, last_emitted_seq}`. The
+  per-issue key is the GitHub comment **`createdAt`** (ISO-8601), *not* the comment `id`
+  (gh returns `id` as an opaque, non-chronological node-ID string). The UUID dedupe set is
+  the authoritative idempotency mechanism; the timestamp watermark is only a scan
+  optimization. Persisted in `orchestrator-state.json` *and* fully recoverable by replay.
+- **Replay:** rebuild fast state (incl. the dedupe set and per-issue watermark) by reading
+  control-issue events `seq 0..N`. (Snapshot compaction is a later optimization — see §15.)
 - **Labels are a derived human index only.** The **Agent-Teams mailbox is
   notification-only** (never independent truth), so cold resume reconstructs from GitHub.
 - *Schema, idempotency, ordering, watermark, replay, and recovery have unit/integration
@@ -309,6 +322,10 @@ two files per task. 6 → cycle step 5 uses `brainstorming` + `writing-plans`. 7
 - Merge-queue throughput when many PRs land together.
 - Worktree cleanup after orchestrator-merge.
 - Control-log **snapshot compaction** (bound replay cost as the log grows).
+- **Comment pagination** in `gh_store.read_comments`: a long-running control issue can
+  exceed a single `gh issue view --json comments` page; pagination must be handled before
+  any real multi-day run, or a long log could be silently truncated (a *correctness* risk,
+  separate from snapshot compaction). Phase 2 prerequisite.
 - External watchdog (YAGNI v1).
 
 ## 16. Implementation phasing (de-risk unproven primitives first)

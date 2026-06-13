@@ -12,10 +12,16 @@ def _default_runner(args: list, input_text=None) -> str:
 
 
 def read_comments(issue_number, runner=_default_runner) -> list:
-    """Return [(comment_id, body), ...] for an issue, oldest first."""
-    out = runner(["issue", "view", str(issue_number), "--json", "comments"])
+    """Return [(comment_id, created_at, body), ...] for an issue, sorted
+    oldest-first by `createdAt`. `comment_id` is gh's opaque node-ID string and
+    is carried for audit/reference only; chronological ordering and the scan
+    watermark use `created_at` (ISO-8601), which sorts correctly as a string."""
+    out = runner(["issue", "view", str(issue_number),
+                  "--json", "comments"])
     data = json.loads(out)
-    return [(c["id"], c["body"]) for c in data.get("comments", [])]
+    comments = sorted(data.get("comments", []),
+                      key=lambda c: c.get("createdAt", ""))
+    return [(c["id"], c.get("createdAt", ""), c["body"]) for c in comments]
 
 
 def post_comment(issue_number, body: str, runner=_default_runner) -> None:
