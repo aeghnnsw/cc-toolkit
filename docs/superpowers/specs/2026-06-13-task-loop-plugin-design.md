@@ -60,11 +60,18 @@ task-loop/
 
 Plus a root `.claude-plugin/marketplace.json` entry pointing at `./task-loop`.
 
-**Reused (not copied)** — invoked via the Skill tool at runtime:
-`dev-skills:discuss-with-codex`, `dev-skills:goal-rubric`, `dev-skills:doc-update`,
-`dev-skills:step-workflow`, and superpowers `brainstorming`, `writing-plans`,
-`test-driven-development`, `verification-before-completion`, `using-git-worktrees`,
-`finishing-a-development-branch`.
+### Dependency contract (required prerequisites — not assumptions)
+This repo's `marketplace.json` registers `dev-skills`, `core-hooks`, `creator-skills`,
+`doc-skills`, `productivity-skills`, `pymol-skills`, `cc-customize` — it does **not**
+package `superpowers`. The suite invokes skills from two **required prerequisite
+plugins** that the user must have installed:
+- **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
+- **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
+  `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
+
+`README.md` declares these prerequisites explicitly. `run-cycle` and `create-cycle`
+**fail fast** with install guidance if a required skill is unavailable (rather than
+half-running and erroring at the first missing `Skill` call).
 
 ## 3. Project artifacts and authority
 
@@ -205,12 +212,30 @@ the worker to shut down / rescope. If the orchestrator is dead/draining, nothing
 
 (Full rationale in the proposal-ownership conclusion. Invariants:)
 
-- **Append-only control-event log on GitHub issues** is the authoritative cross-agent
-  state. Worker events: `PLAN_FINDING`, `MERGE_REQUEST`. Orchestrator events:
-  `PLAN_REVISION_BUMP`, `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `MERGE_GRANTED`,
-  `MERGE_DENIED` — each with task ID, revision, affected hypotheses, PR head SHA, and a
-  **sequence number**. **Labels are a derived human index only.** The **Agent-Teams
-  mailbox is notification-only**.
+### Control protocol (single-sequencer — the correctness core, built first)
+There is **one canonical ordered log per project: a single pinned GitHub "control
+issue."** The orchestrator is the **only writer** of the ordered log; workers never
+assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered stream).
+
+- **Worker inbox events** are *unsequenced* comments on the worker's **own task issue**,
+  each a fenced JSON block tagged with a client-generated `uuid`, `task_id`,
+  `spawned_plan_revision`, event type (`PLAN_FINDING`, `MERGE_REQUEST`), and (for
+  `MERGE_REQUEST`) `pr_head_sha`.
+- The orchestrator **ingests** inbox events across task issues and **emits normalized
+  `CONTROL_EVENT` comments on the control issue** with a monotonic integer `seq` it alone
+  assigns. Orchestrator event types: `PLAN_REVISION_BUMP`, `TASK_STALE`,
+  `TASK_REVISION_COMPATIBLE`, `MERGE_GRANTED`, `MERGE_DENIED`. **Idempotency:** each
+  ingested inbox `uuid` maps to exactly one `CONTROL_EVENT` (dedupe on `uuid`).
+- **Total order = `seq` on the control issue.** A single sequencer means no tie-breaks.
+- **Watermark:** `{last_ingested_comment_id per task issue, last_emitted_seq}`, persisted
+  in `orchestrator-state.json` *and* fully recoverable by re-scanning the control issue.
+- **Replay:** rebuild fast state by reading control-issue events `seq 0..N`. (Snapshot
+  compaction is a later optimization — see §15.)
+- **Labels are a derived human index only.** The **Agent-Teams mailbox is
+  notification-only** (never independent truth), so cold resume reconstructs from GitHub.
+- *Schema, idempotency, ordering, watermark, replay, and recovery have unit/integration
+  tests — this protocol is implementation Phase 1 (§16), built and tested before any skill
+  workflow.*
 - **Revision lease**: every task carries `spawned_plan_revision`. Invalidation is scoped
   to the affected subgraph via explicitly declared `depends_on_tasks` /
   `depends_on_hypotheses`; if blast radius is unclear → **broad freeze**.
@@ -219,6 +244,13 @@ the worker to shut down / rescope. If the orchestrator is dead/draining, nothing
   the GitHub control-event log, cached in `orchestrator-state.json`.)
 - **Replan barrier** (before dispatch): ingest findings, bump `plan_revision` on
   invalidation, recompute frontier, halt stale dependent dispatch.
+- **Revision materialization** (no revision without a materialized plan): a
+  `plan_revision` bump to N is **final only once the orchestrator has merged the
+  proposal-update PR for N to `master`** (it is the sole integrator, so this is its own
+  fast PR). The replan barrier writes+merges `proposal.md`@N **before dispatching any task
+  at N**; the `PLAN_REVISION_BUMP` event carries the proposal commit SHA at N. A worker
+  spawned at N therefore anchors to `proposal.md`@`master`, which is guaranteed to read N.
+  In-flight workers at N−1 are handled by the revision lease + merge gate.
 - **Pre-merge event-drain barrier**: fetch all issue events since the **sync watermark**,
   drain mailbox, **ingest findings before merge requests** in the batch, recompute
   invalidations, advance watermark; deny/hold on sync failure / ambiguity / any
@@ -273,9 +305,32 @@ still-open tasks. The planning step is idempotent.
 two files per task. 6 → cycle step 5 uses `brainstorming` + `writing-plans`. 7 → §10.
 8 → one teammate per task via Agent Teams.
 
-## 15. Open / deferred (for the implementation plan)
+## 15. Open / deferred (for later, not v1 blockers)
 - Merge-queue throughput when many PRs land together.
 - Worktree cleanup after orchestrator-merge.
-- Sync-watermark storage (last-processed event seq# per issue).
-- Exact control-event comment schema (machine-parseable format).
+- Control-log **snapshot compaction** (bound replay cost as the log grows).
 - External watchdog (YAGNI v1).
+
+## 16. Implementation phasing (de-risk unproven primitives first)
+The riskiest parts are the **experimental Agent-Teams primitives** and the **control
+protocol**, not the skill prose. Build bottom-up so a later phase never rests on an
+unproven lower one:
+
+- **Phase 0 — primitive spike (throwaway, runnable).** Prove the Claude Code primitive
+  contract before building on it. Checks:
+  - `run-cycle` can require/enter `/loop` in the intended way.
+  - a plugin-packaged `agents/cycle-worker.md` resolves as the teammate `agentType`.
+  - the lead can spawn exactly one worker, pass task/revision/issue metadata, and receive
+    an idle/completion notification.
+  - `ScheduleWakeup` works from the lead inside `/loop`.
+  - the stop-signal writer has an actual primitive; if `CronCreate`/`schedule` is
+    unavailable/unsuitable, document the fallback (background scheduled shell job).
+  - required worker skill dependencies (§2) can be detected, or fail clearly when missing.
+  Phase 0 output is a short findings note; if a primitive can't be made to work, the
+  design adapts here before any real build.
+- **Phase 1 — control protocol** (§8): control issue, UUID inbox events, orchestrator
+  sequencer, JSON schema, watermark, replay, idempotency — with tests. Buildable and
+  testable **without** Agent Teams (simulate workers by posting inbox comments).
+- **Phase 2+ — skills & agent** on top: `specify-aims`, `create-cycle` (+ generated
+  `task-loop.md` skeleton), `cycle-worker`, then `run-cycle`'s orchestrator state machine,
+  then packaging (plugin.json, marketplace entry, README).
