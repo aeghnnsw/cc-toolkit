@@ -118,14 +118,15 @@ def _bump(seq=1, rev=1, sha="deadbeef"):
             "plan_revision": rev, "proposal_sha": sha, "ts": "t"}
 
 
-def _created(seq, task="T1", issue=12, rev=1):
+def _created(seq, task="T1", issue=12, rev=1, iteration=1):
     return {"kind": "control", "seq": seq, "type": "TASK_CREATED", "task_id": task,
-            "plan_revision": rev, "issue_number": issue, "ts": "t"}
+            "plan_revision": rev, "issue_number": issue, "iteration": iteration,
+            "ts": "t"}
 
 
-def _dispatched(seq, task="T1", rev=1):
+def _dispatched(seq, task="T1", rev=1, attempt="att-1"):
     return {"kind": "control", "seq": seq, "type": "TASK_DISPATCHED",
-            "task_id": task, "plan_revision": rev, "ts": "t"}
+            "task_id": task, "plan_revision": rev, "attempt_id": attempt, "ts": "t"}
 
 
 def _checkpoint(seq, issue=12, through=TS_A):
@@ -150,6 +151,37 @@ class TestReplay(unittest.TestCase):
         state = control_log.replay(self._events())
         self.assertEqual(state["seen_source_uuids"], {"u1"})
         self.assertEqual(state["source_uuid_to_seq"]["u1"], 4)
+
+    def test_cold_replay_preserves_iteration(self):
+        # The per-task iteration index must survive a cold replay (it is NOT
+        # reconstructed from docs/task-loop/logs/, which is audit-only).
+        state = control_log.replay([_bump(1), _created(2, iteration=7)])
+        self.assertEqual(state["tasks"]["T1"]["iteration"], 7)
+
+    def test_task_created_requires_iteration(self):
+        bad = _created(2)
+        del bad["iteration"]
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), bad])
+
+    def test_task_created_non_int_iteration_raises(self):
+        bad = _created(2, iteration="001")  # string would not compare/sort as int
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), bad])
+
+    def test_dispatch_stores_current_attempt_id_latest_wins(self):
+        # attempt_id is the durable single-flight ownership token; a re-dispatch
+        # supersedes the prior attempt (latest TASK_DISPATCHED wins).
+        events = [_bump(1), _created(2), _dispatched(3, attempt="att-A"),
+                  _dispatched(4, attempt="att-B")]
+        state = control_log.replay(events)
+        self.assertEqual(state["tasks"]["T1"]["current_attempt_id"], "att-B")
+
+    def test_task_dispatched_requires_attempt_id(self):
+        bad = _dispatched(3)
+        del bad["attempt_id"]
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2), bad])
 
     def test_acked_event_does_not_advance_scan_floor(self):
         # A merge ack must NOT move the floor (only checkpoints do).

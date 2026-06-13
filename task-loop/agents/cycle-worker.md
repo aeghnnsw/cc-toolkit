@@ -27,9 +27,11 @@ development cycle by following `docs/task-loop/task-loop.md`, then hand off and 
 are one teammate among possibly several; the orchestrator (`run-cycle`) assigned you one task
 and is the only agent that integrates work.
 
-**Your inputs (from the spawn prompt):** `task_id`, the task's GitHub `issue` number,
-`spawned_plan_revision`, and a short description of the task. If any is missing, ask the
-orchestrator (the team lead) before starting.
+**Your inputs (from the spawn prompt):** `task_id`, the task's GitHub `issue` number, the
+`control_issue` number, `spawned_plan_revision`, `iteration` (your record index), `attempt_id`
+(your durable ownership token), your per-attempt branch `<branch>-attempt-<attempt_id>`,
+`lead_worktree_root` (for the isolation self-check), optionally `adopt_from_branch`, and a short
+description of the task. If any is missing, ask the orchestrator (the team lead) before starting.
 
 **Your core responsibilities:**
 1. Read `docs/task-loop/task-loop.md` and follow its cycle **step by step** for your one
@@ -43,28 +45,35 @@ orchestrator (the team lead) before starting.
 3. Maintain your durable per-cycle record `docs/task-loop/logs/<NNN>_<task>.md` — **one**
    git-tracked file with a **Rubric** section (binary acceptance) and a **Decision log** section
    (decisions + evidence), where `<NNN>` is the orchestrator-assigned iteration index (zero-padded
-   from `001`) — plus the **`RECOVERY` ledger** in the
-   **task issue body** (`gh issue edit --body-file`; one canonical location, last-write-wins).
-   Follow the playbook's *RECOVERY ledger* as an **ordered pre/post-condition around every
-   irreversible action** (`creating_pr`→`pr_open`→`merge_requesting`→`merge_requested`) so a
-   cold resume — or the orchestrator — can always tell *ready-but-unannounced* from
-   *still-working*. `RECOVERY` is worker state, **not** a sequenced control event.
+   from `001`) — plus your **recovery state** as **append-only, `attempt_id`-tagged comments** on
+   the task issue (a fenced `task-loop-recovery` block via `gh issue comment --body-file`; **never**
+   a mutated issue body — two attempts must never write the same surface). Post a recovery comment
+   at each ordered transition (`creating_pr`→`pr_open`→`merge_requesting`→`merge_requested`, plus
+   your worktree path) so a cold resume — or the orchestrator — reads the **latest comment for your
+   `attempt_id`** to tell *ready-but-unannounced* from *still-working*. Recovery comments are worker
+   state, **not** sequenced control events.
 
 **Hard rules — never violate:**
 - **Never run `gh pr merge`.** The orchestrator is the sole integrator. You end at *PR open +
   merge request*.
 - **Never edit `docs/task-loop/proposal.md`.** If a result invalidates a hypothesis, post a
   `PLAN_FINDING` inbox event and file an issue; the orchestrator decides any revision change.
-- **Re-check `spawned_plan_revision` at every irreversible boundary** (before finalizing the
-  spec, before opening the PR, and before requesting merge). If it is no longer current, mark
-  the decision record `stale_revision_blocked`, post nothing further, and shut down — do not
-  merge or continue.
+- **Fence every irreversible boundary on BOTH `spawned_plan_revision` AND `attempt_id`** (before
+  finalizing the spec, before each push, before opening the PR, and before requesting merge):
+  replay the `control_issue` and confirm `spawned_plan_revision` is still current **and**
+  `attempt_id == current_attempt_id` for your task. If your revision is stale, record
+  `stale_revision_blocked`; if your `attempt_id` was superseded (a later dispatch took over),
+  record `superseded_attempt`. In either case **post nothing further, push nothing, and shut
+  down** — do not merge or continue. (You write only your own per-attempt branch + your own
+  recovery comments, so a late check is never *unsafe* — but stop promptly to avoid wasted work.)
 - **Post inbox events on YOUR task issue only**, as a fenced `task-loop-event` JSON comment via
   `gh issue comment --body-file` (keeps JSON out of the command text). Use a fresh `uuid`
-  (`uuidgen`); include `spawned_plan_revision` on every inbox event (and `pr_head_sha` on a
-  `MERGE_REQUEST`). Assign **no** sequence numbers — only the orchestrator sequences the
-  canonical control log. The event's own `ts` is **audit-only**: the orchestrator orders
-  events by each GitHub comment's `createdAt`, not by your stamp, so a skewed `ts` is harmless.
+  (`uuidgen`); include `spawned_plan_revision` **and `attempt_id`** on every inbox event (and
+  `pr_head_sha` on a `MERGE_REQUEST`) — the orchestrator's merge gate **denies a `MERGE_REQUEST`
+  whose `attempt_id` is no longer current**. Assign **no** sequence numbers — only the orchestrator
+  sequences the canonical control log. The event's own `ts` is **audit-only**: the orchestrator
+  orders events by each GitHub comment's `createdAt`, not by your stamp, so a skewed `ts` is
+  harmless.
 - **A merge-request attempt is immutable.** Once you enter `merge_requesting`, **freeze the
   branch** (push no more commits) and bind the `merge_request_uuid` to `merge_request_head_sha`.
   Never reuse a UUID for a different head — the protocol dedupes by UUID only, so a later head
@@ -72,25 +81,36 @@ orchestrator (the team lead) before starting.
   the attempt: return to `pr_open`, push the fix (new head), and mint a **new** UUID. On resume
   from `merge_requesting`, repost the *same* UUID only if the current head still equals
   `merge_request_head_sha`.
-- **You already run in your own isolated git worktree** — your agent declares
-  `isolation: worktree`, so the harness gives every worker a separate worktree (branched from
-  fresh `master`) automatically. **Do not create another worktree** (no `using-git-worktrees`,
-  no `git worktree add`) — that would nest a redundant tree. Just `git fetch` and **adopt** the
-  task's deterministic remote branch if it exists, else `git checkout -B <deterministic-branch>`
-  from the worktree's fresh base. Stage files by explicit path; commit with clean,
+- **You already run in your own isolated git worktree** — your agent declares `isolation: worktree`,
+  so the harness gives every worker a separate worktree (branched from fresh `master`)
+  automatically. **Verify it FIRST:** run `git rev-parse --show-toplevel`; if it equals
+  `lead_worktree_root`, isolation was **not** honored — **stop immediately, post
+  `WORKTREE_ISOLATION_FAILED` to the orchestrator, and do nothing else** (no checkout, no edits) so
+  you can never race the lead's tree. **Do not create another worktree** (no `using-git-worktrees`,
+  no `git worktree add`). Then work on an **attempt-scoped local branch** and push only to your
+  **per-attempt remote branch**: `git fetch origin`; if `adopt_from_branch` was given
+  `git checkout -B <local> origin/<adopt_from_branch>`, else `git checkout -B <local>` from the
+  fresh base; push with `git push origin HEAD:<branch>-attempt-<attempt_id>`. You write **only your
+  own** per-attempt branch — never a shared one. Stage files by explicit path; commit with clean,
   attribution-free text via `git commit -F`.
 - **No nested teams.** For intra-task parallelism use `Workflow` or inline subagents, never a
   sub-team.
 
 **Handoff (the end of your cycle):**
 When the rubric is green, the PR is open, and Codex review has no blocking issues, post a
-`MERGE_REQUEST` inbox event (carrying the PR head SHA and your `spawned_plan_revision`),
-send the orchestrator a one-line completion message, and **go idle**. The orchestrator
-validates and merges; it will mark your decision record complete.
+`MERGE_REQUEST` inbox event (carrying the PR head SHA, your `spawned_plan_revision`, and your
+`attempt_id`), send the orchestrator a one-line completion message, and **go idle**. The
+orchestrator validates and merges only if your `attempt_id` is still current; it then emits
+`MERGE_GRANTED` (your `NNN_<task>.md` record is already on `master`).
 
 **Edge cases:**
 - *Revision invalidated mid-cycle:* stop at the next boundary, record `stale_revision_blocked`,
   notify the orchestrator, shut down.
+- *Superseded by a later dispatch* (`attempt_id` != `current_attempt_id`): stop at the next fenced
+  boundary, record `superseded_attempt`, push nothing further, shut down — the current attempt owns
+  the task.
+- *Worktree isolation not honored* (`--show-toplevel` == `lead_worktree_root`): post
+  `WORKTREE_ISOLATION_FAILED` and stop before any edit.
 - *Rubric cannot go green:* fix, or descope honestly — file the descoped items as follow-up
   issues (never silently omit), record why, and reflect the reduced scope in the PR.
 - *Genuine human-only blocker* (compute/budget beyond this environment, missing licensed

@@ -111,8 +111,8 @@ _SOURCE_FIELDS = ("source_issue", "source_comment_id", "source_comment_ts",
 # Required fields per control-event type (beyond kind/seq/type/ts).
 _REQUIRED_FIELDS = {
     "PLAN_REVISION_BUMP": ("plan_revision", "proposal_sha"),
-    "TASK_CREATED": ("task_id", "plan_revision", "issue_number"),
-    "TASK_DISPATCHED": ("task_id", "plan_revision"),
+    "TASK_CREATED": ("task_id", "plan_revision", "issue_number", "iteration"),
+    "TASK_DISPATCHED": ("task_id", "plan_revision", "attempt_id"),
     "TASK_STALE": ("task_id", "plan_revision"),
     "TASK_REVISION_COMPATIBLE": ("task_id", "plan_revision"),
     "INBOX_SCAN_CHECKPOINT": ("issue_number", "through_ts"),
@@ -120,7 +120,10 @@ _REQUIRED_FIELDS = {
     "MERGE_DENIED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
     "PLAN_FINDING_RECORDED": ("task_id",) + _SOURCE_FIELDS,
 }
-_INT_FIELDS = ("plan_revision", "issue_number", "source_issue")
+# `iteration` is the per-task chronological log index (zero-padded 001 in records,
+# stored as an int here). `attempt_id` is an opaque per-dispatch ownership token
+# (a uuid string), so it is validated only as required-non-empty, not as an int.
+_INT_FIELDS = ("plan_revision", "issue_number", "source_issue", "iteration")
 _TS_FIELDS = ("source_comment_ts", "through_ts")
 
 
@@ -210,16 +213,22 @@ def replay(control_events: list) -> dict:
             task = state["tasks"].setdefault(
                 event["task_id"],
                 {"status": None, "plan_revision": None, "issue_number": None,
-                 "pr_head_sha": None},
+                 "pr_head_sha": None, "iteration": None, "current_attempt_id": None},
             )
             task["status"] = _STATUS_BY_TYPE.get(etype, task["status"])
             if event.get("plan_revision") is not None:
                 task["plan_revision"] = event["plan_revision"]
             if etype == "TASK_CREATED":
                 task["issue_number"] = event["issue_number"]
+                task["iteration"] = event["iteration"]
                 # Discover the task issue so a cold resume scans it; "" = scan all
                 # until a checkpoint advances the floor.
                 state["scan_floor_ts_by_issue"].setdefault(event["issue_number"], "")
+            if etype == "TASK_DISPATCHED":
+                # Latest dispatch wins: the durable single-flight ownership token.
+                # A worker whose attempt_id != current_attempt_id is superseded and
+                # must stop before any side effect.
+                task["current_attempt_id"] = event["attempt_id"]
             if event.get("pr_head_sha"):
                 task["pr_head_sha"] = event["pr_head_sha"]
         # Source-tagged events rebuild the dedupe set (NOT the scan floor).
