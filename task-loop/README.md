@@ -34,8 +34,9 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    label.
 3. **`run-cycle`** — the orchestrator: under built-in `/loop` (self-paced), it computes the
    dependency-ordered task frontier, spawns one `cycle-worker` teammate per ready task, and
-   validates + merges their PRs. It **prompts for a run duration (default 24h)** and schedules a
-   graceful stop via the built-in `schedule` skill (a drain-signal, not an iteration cap).
+   validates + merges their PRs. It runs as **three coordinated loops** — the running loop, a
+   watchdog that resubmits it if it dies, and a one-time stop — and **prompts for a run duration
+   (default 24h)**, self-bounding on that stop time (a graceful drain, not an iteration cap).
 
 ## Prerequisites
 

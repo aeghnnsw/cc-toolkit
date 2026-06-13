@@ -30,17 +30,25 @@ lease — never the source of truth. Shape:
   "current_plan_revision": 0,
   "active_worker_ids": [],
   "next_wake_reason": "",
-  "drain_deadline_at": null
+  "stop_at": "<utc>",
+  "drain_deadline_at": null,
+  "watchdog_schedule_id": null,
+  "stop_schedule_id": null
 }
 ```
 
+The lease `heartbeat` is refreshed every turn; the **watchdog** (loop 3) treats a stale
+`heartbeat`/`expires_at` as "the running loop died" and resubmits it. `stop_at` is the
+self-bound graceful-stop time; `watchdog_schedule_id`/`stop_schedule_id` are the built-in
+`schedule` handles for loops 3 and 2 (so they can be cancelled). See *Control plane*.
+
 ## State machine
 
-- **dispatching** — ready work exists, no stop signal → create tasks + spawn workers.
+- **dispatching** — ready work exists, `stop_at` not reached → create tasks + spawn workers.
 - **waiting** — active workers exist → wait on automatic teammate idle notifications.
-- **idle** — no ready work, no active workers, no stop signal → long `ScheduleWakeup` (e.g.
-  1200–1800 s); **do not exit** (continuous service).
-- **draining** — `stop-request.json` observed → no new dispatch; wait for active workers, bounded
+- **idle** — no ready work, no active workers, `stop_at` not reached → long `ScheduleWakeup`
+  (capped so it never sleeps past `stop_at`); **do not exit** (continuous service).
+- **draining** — clock reached `stop_at` → no new dispatch; wait for active workers, bounded
   by `drain_deadline_at`.
 - **exiting_pending** — drain complete → record the pre-exit audit, `ScheduleWakeup` a 60–120 s
   cooldown.
@@ -58,7 +66,8 @@ lease — never the source of truth. Shape:
   cache.
 
 ### 2. Stop check
-- If `.claude/task-loop/stop-request.json` exists → set `phase: draining`.
+- If the clock has reached `stop_at` → set `phase: draining`. (The orchestrator self-bounds; it
+  also caps each `ScheduleWakeup` so it wakes by `stop_at` to drain on time.)
 
 ### 3. Event-drain & ingest (also the pre-merge barrier)
 For each known task issue (every `tasks[*].issue_number`):
@@ -136,7 +145,8 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
 ### 7. Wait / idle / exit
 - **Active workers exist** → `waiting`: rely on automatic idle notifications; set a long
   `ScheduleWakeup` fallback. Drop `active_worker_ids` entries as workers report and are merged.
-- **Frontier empty, none active, no stop signal** → `idle`: long `ScheduleWakeup`; **do not exit**.
+- **Frontier empty, none active, `stop_at` not reached** → `idle`: long `ScheduleWakeup` (capped
+  to wake by `stop_at`); **do not exit**.
 - **draining** → dispatch nothing; wait for active workers until `drain_deadline_at`; past the
   deadline, mark overdue workers `orphaned_acknowledged` (record worktree/issue/PR pointers — no
   abrupt kill) and proceed.

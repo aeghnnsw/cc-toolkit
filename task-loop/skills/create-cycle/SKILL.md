@@ -79,7 +79,7 @@ proposal).
 ### 5. Scaffold the rest
 - Copy `assets/directions-template.md` to `docs/task-loop/directions.md`.
 - Create `docs/task-loop/logs/.gitkeep`.
-- Add `.gitignore` entries: `.claude/task-loop/` (runtime lease + stop-request) and any
+- Add `.gitignore` entries: `.claude/task-loop/` (runtime lease + orchestrator state) and any
   `goal-rubric-*.md` scratch.
 - Create the label: `gh label create loop:in-progress` (ignore "already exists").
 

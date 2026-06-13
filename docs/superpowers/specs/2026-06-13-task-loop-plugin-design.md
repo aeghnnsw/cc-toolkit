@@ -93,8 +93,7 @@ Created in the **target project** (not the plugin):
 | `docs/task-loop/logs/NNN_<task>_rubric.md` | durable (git) | worker | binary acceptance criteria (orchestrator↔worker "done" interface) |
 | `docs/task-loop/logs/NNN_<task>_log.md` | durable (git) | worker | decision record: task, steering, codex dispositions, rubric evidence, follow-ups |
 | GitHub issues — **append-only control events** | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
-| `.claude/task-loop/orchestrator-state.json` | runtime (gitignored) | **orchestrator only** | private fast cache (lease, `plan_revision`, ready/active/blocked); rebuilt from GitHub on resume |
-| `.claude/task-loop/stop-request.json` | runtime (gitignored) | scheduled stop job only | atomic stop signal (temp-file + rename) |
+| `.claude/task-loop/orchestrator-state.json` | runtime (gitignored) | **orchestrator only** | private fast cache (lease/heartbeat, `plan_revision`, ready/active/blocked, **`stop_at`**, schedule handles); rebuilt from GitHub on resume |
 
 > Note: the playbook lives at `docs/task-loop/task-loop.md` (grouped layout). The slight
 > name echo is intentional — the dir is the namespace, the file is the playbook.
@@ -186,13 +185,16 @@ resumable state; `step-workflow` numbered file naming.
 
 Human entry point. Starts the orchestrator under **built-in `/loop` self-paced** (per the
 loop-mechanism conclusion — **not** ralph, **not** a blocking Stop hook), creates the
-Agent Team, and runs the state machine. A small `schedule`/`CronCreate` helper
-(documented here) sets the stop time by writing `stop-request.json` atomically.
+Agent Team, and runs the state machine. It runs as **three coordinated loops** (see the
+run-cycle skill's *Control plane*): the running loop (1) self-bounds on a prompted `stop_at`
+(default 24 h); a built-in-`schedule` **watchdog** (3, every 30 min) resubmits loop 1 if it dies
+before `stop_at`; a built-in-`schedule` one-time **stop** (2) at `stop_at` cancels the watchdog
+and confirms loop 1 has drained.
 
 ### State machine (each `/loop` turn)
 - **acquire/heartbeat lease** in `orchestrator-state.json`; on resume detect a stale lease
   and rebuild fast state from the GitHub append-only log.
-- **check `stop-request.json` first** → if set, go to `draining`.
+- **check `stop_at` first** → if the clock has reached it, go to `draining`.
 - `dispatching` — read `directions.md` + repo + GitHub; run the **replan barrier** (§8);
   `TaskCreate` ready tasks with dependency edges; spawn **one `cycle-worker` per ready
   task** (capped to frontier width).

@@ -40,34 +40,65 @@ Before starting, verify and stop with guidance if any fails:
   provenance and **halts** if it ever finds a task-loop PR merged by someone else, rather than
   laundering it as authorized — but settings should prevent that case.)
 
-## Setup (run once at the start of a run)
+## Control plane — three coordinated loops
 
+`run-cycle` runs as **three** cooperating loops, because a running loop cannot reliably police
+its own death:
+
+1. **Running loop (loop 1)** — *this* session under built-in `/loop` self-paced: it drives the
+   orchestrator turn (plan → dispatch → merge), **heartbeats its lease every turn**, and
+   self-bounds on `stop_at`.
+2. **Stop loop (loop 2)** — a **one-time** scheduled job (built-in `schedule`) at `stop_at`. It
+   **cancels the watchdog (loop 3) first** (so it can't resurrect the run after an intentional
+   stop), then confirms loop 1 is draining. The clean teardown.
+3. **Watchdog loop (loop 3)** — a **recurring** scheduled job (built-in `schedule`) **every
+   30 minutes**: if loop 1's lease `heartbeat` is stale (it crashed/exited) **and
+   `now < stop_at`**, it **resubmits loop 1** (re-invokes `run-cycle`, which resumes from durable
+   state). The `now < stop_at` guard is a second safety so it never resurrects after the stop.
+
+So loop 3 keeps loop 1 alive through crashes; loop 2 tears down loops 1 **and** 3 at `stop_at`.
+Loops 2 & 3 are created via the built-in `schedule`; their handles live in
+`orchestrator-state.json` (`stop_schedule_id`, `watchdog_schedule_id`) so loop 2 can cancel
+loop 3.
+
+## Setup
+
+`run-cycle` is invoked two ways — a **fresh start** (you) or a **resubmit** (loop 3, after a
+crash). Detect which **first**:
+
+0. **Fresh vs resubmit:** read `orchestrator-state.json`. If it already holds a valid `stop_at`
+   **and** schedule handles, this is a **resubmit/resume** — **skip the duration prompt and the
+   schedule creation** (steps 5–7); the loops already exist. Otherwise it is a **fresh start**.
 1. **Control issue:** find the project's single pinned control issue (labelled
    `task-loop:control`), or create it if absent (`gh issue create`, then pin + label). Its body
    names the project; all sequenced `CONTROL_EVENT` comments live here.
-2. **Runtime dir:** ensure `.claude/task-loop/` exists (gitignored) for
-   `orchestrator-state.json` (the lease + fast-state cache) and `stop-request.json`.
+2. **Runtime dir:** ensure `.claude/task-loop/` exists (gitignored) for `orchestrator-state.json`.
 3. **Lease:** acquire the single-coordinator lease in `orchestrator-state.json`; if a live lease
    is held by another instance, exit (do not run two orchestrators).
-4. **Team:** create the agent team you will spawn `cycle-worker` teammates into.
-5. **Schedule the graceful stop (prompt for the duration).** Before starting the loop, **ask the
-   user** how long it should run before winding down — *"How long should the loop run before a
-   graceful stop? (default: 24 hours)"* — accepting a duration or an absolute time, and
-   **default to 24 hours** if they don't specify. This is an **interactive prompt, not a
-   command-line argument**. Then use Claude's built-in **`schedule`** skill to create a
-   **one-time** scheduled run at `now + <duration>` whose task is to **atomically write**
-   `.claude/task-loop/stop-request.json` (temp file + `mv`). Record the scheduled stop time in
-   `orchestrator-state.json`. When the loop observes the flag it **drains** (no new dispatch;
-   in-flight workers finish their current cycle) and exits via the two-phase quiescence — a
-   graceful stop, not a hard kill. (To run longer or stop sooner, re-schedule via `schedule`.)
-6. **Start `/loop` self-paced** and run the orchestrator turn (below / `references/`).
+4. **Team:** create the agent team you will spawn `cycle-worker` teammates into (recreated on a
+   resubmit, since teammates are ephemeral).
+5. *(fresh only)* **Run duration (prompt for it).** **Ask the user** how long it should run —
+   *"How long should the loop run before a graceful stop? (default: 24 hours)"* — accepting a
+   duration or an absolute time, **default 24 hours**. This is an **interactive prompt, not a
+   command-line argument**. Record the absolute `stop_at` (UTC) in `orchestrator-state.json`.
+6. *(fresh only)* **Create the watchdog (loop 3)** with the built-in `schedule`: a recurring job
+   **every 30 min** that resubmits `run-cycle` when loop 1's lease `heartbeat` is stale and
+   `now < stop_at`. Store its handle as `watchdog_schedule_id`.
+7. *(fresh only)* **Create the stop (loop 2)** with the built-in `schedule`: a one-time job at
+   `stop_at` that **cancels `watchdog_schedule_id`** then confirms loop 1 has drained. Store its
+   handle as `stop_schedule_id`.
+8. **Start `/loop` self-paced** (loop 1) and run the orchestrator turn (below / `references/`).
+   It self-bounds: each turn it compares the clock to `stop_at` and caps its `ScheduleWakeup` so
+   it wakes by `stop_at` to drain — so the run stops even if loop 2 fails. (To run longer or stop
+   sooner, edit `stop_at`.)
 
 ## The orchestrator turn (high level)
 
 Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 1. **Lease & rebuild:** refresh the lease; rebuild fast state by replaying the control issue
    (`control_log.replay`). On resume, take over a stale lease and rebuild from GitHub.
-2. **Stop check:** if `.claude/task-loop/stop-request.json` exists → enter `draining`.
+2. **Stop check:** if the clock has reached `stop_at` (from `orchestrator-state.json`) → enter
+   `draining`.
 3. **Event-drain & ingest:** read each task issue's comments at/after its scan floor, dedupe by
    UUID, **process findings before merge requests**. Ack a fresh `PLAN_FINDING` here (one
    `PLAN_FINDING_RECORDED`); a fresh `MERGE_REQUEST` is **not** acked here — it is collected as a
@@ -121,5 +152,6 @@ when set, else the installed `task-loop/scripts/`):
   §12) and the two conclusions (`…-cycle-loop-mechanism-conclusion.md`,
   `…-living-proposal-ownership-conclusion.md`).
 - Run it bounded: it always runs under `/loop` self-paced and is **always** bounded by a
-  scheduled graceful stop — Setup step 5 prompts for a duration (**default 24 hours**) and uses
-  the built-in `schedule` skill to write `.claude/task-loop/stop-request.json` at that time.
+  graceful stop time — Setup step 5 prompts for a duration (**default 24 hours**) and records an
+  absolute `stop_at`; the orchestrator self-bounds via the built-in `ScheduleWakeup` (no flag
+  file, no external stopper) and drains + exits when it reaches `stop_at`.
