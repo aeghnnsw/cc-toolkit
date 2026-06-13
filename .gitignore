@@ -1,5 +1,12 @@
 logs/
 trees/
 
+# Python caches
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
 # Compiled binaries (build from source)
 productivity-skills/scripts/productivity-cli

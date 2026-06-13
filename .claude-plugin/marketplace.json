@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Unified Claude Code plugin marketplace for development workflows, scientific content creation, and document processing",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "plugins": [
     {
@@ -36,6 +36,10 @@
     {
       "name": "cc-customize",
       "source": "./cc-customize"
+    },
+    {
+      "name": "task-loop",
+      "source": "./task-loop"
     }
   ]
 }
