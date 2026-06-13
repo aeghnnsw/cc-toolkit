@@ -35,3 +35,14 @@ def filter_new_inbox(inbox_events: list, seen_uuids) -> list:
         seen.add(uuid)
         fresh.append(event)
     return fresh
+
+
+def assign_seq(events: list, last_seq: int):
+    """Stamp each event with a monotonically increasing integer `seq` starting
+    at last_seq+1. Returns (stamped_events, new_last_seq). Does not mutate input."""
+    stamped = []
+    seq = last_seq
+    for event in events:
+        seq += 1
+        stamped.append({**event, "seq": seq})
+    return stamped, seq

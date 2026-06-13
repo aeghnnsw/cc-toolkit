@@ -48,5 +48,19 @@ class TestFilterNewInbox(unittest.TestCase):
         self.assertEqual([e["uuid"] for e in fresh], ["a", "b"])
 
 
+class TestAssignSeq(unittest.TestCase):
+    def test_assigns_increasing_seq_from_last(self):
+        events = [{"type": "TASK_CREATED", "task_id": "T1"},
+                  {"type": "TASK_CREATED", "task_id": "T2"}]
+        stamped, new_last = control_log.assign_seq(events, last_seq=5)
+        self.assertEqual([e["seq"] for e in stamped], [6, 7])
+        self.assertEqual(new_last, 7)
+
+    def test_empty_is_noop(self):
+        stamped, new_last = control_log.assign_seq([], last_seq=5)
+        self.assertEqual(stamped, [])
+        self.assertEqual(new_last, 5)
+
+
 if __name__ == "__main__":
     unittest.main()
