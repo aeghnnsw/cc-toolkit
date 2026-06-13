@@ -227,23 +227,34 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
   assigns. Control event types are two families:
   - *orchestrator-originated* (no source provenance): `TASK_CREATED` (carries the task's
     `issue_number`), `TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`),
-    `TASK_STALE`, `TASK_REVISION_COMPATIBLE`;
+    `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries
+    `issue_number` + `through_ts`);
   - *inbox-derived* (carry `source_issue` / `source_comment_id` / `source_comment_ts` /
     `source_uuid`): `MERGE_GRANTED`, `MERGE_DENIED` (answer a `MERGE_REQUEST`),
     `PLAN_FINDING_RECORDED` (records an ingested `PLAN_FINDING`).
-- **Idempotency invariant:** every ingested inbox `uuid` maps to **exactly one
-  source-tagged** control event (dedupe on `uuid`). Answering a `MERGE_REQUEST` with a
+- **Idempotency invariant (exactly one):** every ingested inbox `uuid` maps to **exactly
+  one source-tagged** control event. *At least one:* answering a `MERGE_REQUEST` with a
   *bare, untagged* `TASK_STALE`/`TASK_REVISION_COMPATIBLE` would drop the `uuid` and cause
-  re-ingestion on cold resume — so a `MERGE_REQUEST` is always answered with
-  `MERGE_GRANTED`/`MERGE_DENIED`. (`control_log.unacknowledged_uuids` checks this.)
+  re-ingestion — so a `MERGE_REQUEST` is always answered with `MERGE_GRANTED`/`MERGE_DENIED`
+  (`control_log.unacknowledged_uuids` checks this). *At most one:* `replay` raises on a
+  duplicate `source_uuid`.
 - **Total order = `seq` on the control issue.** A single sequencer means no tie-breaks.
-- **Watermark:** `{last_ingested_comment_ts per task issue, last_emitted_seq}`. The
-  per-issue key is the GitHub comment **`createdAt`** (ISO-8601), *not* the comment `id`
-  (gh returns `id` as an opaque, non-chronological node-ID string). The UUID dedupe set is
-  the authoritative idempotency mechanism; the timestamp watermark is only a scan
-  optimization. Persisted in `orchestrator-state.json` *and* fully recoverable by replay.
-- **Replay:** rebuild fast state (incl. the dedupe set and per-issue watermark) by reading
-  control-issue events `seq 0..N`. (Snapshot compaction is a later optimization — see §15.)
+- **Dedupe vs. scan floor are decoupled.** The authoritative idempotency mechanism is
+  `seen_source_uuids`, rebuilt from source-tagged events in any order. The per-issue
+  **scan floor** (`scan_floor_ts_by_issue`) is a *separate* optimization advanced **only**
+  by explicit `INBOX_SCAN_CHECKPOINT{issue_number, through_ts}` events — never by an acked
+  comment timestamp. (Acks can arrive out of timestamp order — the pre-merge barrier acks
+  findings before merge requests — so `max(acked_ts)` is *not* a valid floor; a crash
+  between an out-of-order ack and its earlier-timestamp sibling would skip the sibling.)
+  The orchestrator emits a checkpoint through `T` for an issue **only after** every comment
+  with `createdAt <= T` on that issue has exactly one source-tagged event; a crash before
+  the checkpoint leaves the old floor, so an **inclusive** rescan
+  (`comments_at_or_after_watermark`, `createdAt >= floor`) + UUID dedupe recovers safely.
+  Timestamps are GitHub canonical UTC `YYYY-MM-DDTHH:MM:SSZ` (no fractional seconds, so
+  lexical `>=` is chronological).
+- **Replay:** rebuild fast state (dedupe set + per-issue scan floor + task/issue map) by
+  reading control-issue events `seq 0..N`. (Snapshot compaction is a later optimization —
+  see §15.)
 - **Labels are a derived human index only.** The **Agent-Teams mailbox is
   notification-only** (never independent truth), so cold resume reconstructs from GitHub.
 - *Schema, idempotency, ordering, watermark, replay, and recovery have unit/integration

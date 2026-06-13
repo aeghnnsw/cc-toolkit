@@ -2,26 +2,36 @@
 
 No I/O. GitHub access lives in gh_store.py. Stdlib only.
 
-Idempotency invariant (orchestrator discipline; mechanically checkable via
-`unacknowledged_uuids`): every ingested worker inbox event MUST produce exactly
-one *source-tagged* control event (one carrying `source_uuid`). Replying to a
-MERGE_REQUEST with a bare, untagged TASK_STALE / TASK_REVISION_COMPATIBLE breaks
-cold-resume dedupe, because that uuid would never be recorded in the log and the
-same inbox comment would be re-ingested after a crash. Use MERGE_GRANTED /
-MERGE_DENIED (both source-tagged) to answer a MERGE_REQUEST.
+Two state primitives, deliberately decoupled:
 
-Watermark: `last_ingested_comment_ts_by_issue` keys on the GitHub comment
-`createdAt` (ISO-8601 string), NOT the comment `id`. The `id` returned by
-`gh issue view --json comments` is an opaque GraphQL node-ID string that is
-neither an integer nor chronologically ordered, so it cannot be a `max()`
-watermark. The UUID dedupe set (`seen_source_uuids`) is the authoritative
-idempotency mechanism; the timestamp watermark is only a scan optimization.
+* **Dedupe (authoritative).** `seen_source_uuids` is rebuilt from the
+  *source-tagged* control events (MERGE_GRANTED / MERGE_DENIED /
+  PLAN_FINDING_RECORDED) in any order. Every ingested worker inbox event MUST
+  produce exactly one source-tagged control event: at-least-one is checked at
+  emit time by `unacknowledged_uuids`; at-most-one is enforced by `replay`
+  raising on a duplicate `source_uuid`.
+
+* **Scan floor (optimization).** `scan_floor_ts_by_issue` is advanced ONLY by
+  explicit `INBOX_SCAN_CHECKPOINT{issue_number, through_ts}` events — never by an
+  acked comment timestamp. This avoids the prefix hole: the pre-merge barrier may
+  ack a later-timestamp finding before an earlier-timestamp merge request, so
+  `max(acked_ts)` is not a valid floor. The orchestrator (Phase 2) emits a
+  checkpoint through `T` for an issue ONLY after every comment with
+  `createdAt <= T` on that issue has exactly one source-tagged control event; a
+  crash before the checkpoint leaves the old floor, so an inclusive rescan
+  (`comments_at_or_after_watermark`, `>=`) plus UUID dedupe recovers safely.
+
+Timestamps (`source_comment_ts`, `through_ts`) are GitHub canonical UTC,
+`YYYY-MM-DDTHH:MM:SSZ` with NO fractional seconds, so lexical `>=` is
+chronological (a fractional form like `...00.100Z` sorts before `...00Z`).
 """
+import datetime
 import json
 import re
 
 EVENT_FENCE = "task-loop-event"
 _FENCE_RE = re.compile(r"```" + EVENT_FENCE + r"\s*\n(.*?)\n```", re.DOTALL)
+_TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # GitHub canonical UTC, second granularity
 
 
 def format_event(event: dict) -> str:
@@ -63,15 +73,25 @@ def assign_seq(events: list, last_seq: int):
 
 def unacknowledged_uuids(fresh_inbox: list, emitted_control_events: list) -> list:
     """uuids of fresh inbox events that did NOT receive a source-tagged control
-    event. A non-empty result means the dedupe invariant would break on cold
-    resume — the orchestrator must emit exactly one source-tagged control event
-    per ingested inbox uuid before it relies on the log for recovery."""
+    event (the 'at least one' half of the exactly-one invariant). A non-empty
+    result means dedupe would break on cold resume."""
     acked = {
         e.get("source_uuid")
         for e in emitted_control_events
         if e.get("source_uuid")
     }
     return [e["uuid"] for e in fresh_inbox if e["uuid"] not in acked]
+
+
+def comments_at_or_after_watermark(comments: list, watermark_ts: str) -> list:
+    """Inclusive scan floor: keep comments whose created_at is >= watermark_ts
+    (or all of them when the floor is empty). `comments` are (id, created_at,
+    body) triples from gh_store.read_comments. The `>=` (not `>`) is required so
+    that same-second comments at the boundary are not skipped; the caller then
+    UUID-dedupes the result against `seen_source_uuids`."""
+    if not watermark_ts:
+        return list(comments)
+    return [c for c in comments if c[1] >= watermark_ts]
 
 
 _STATUS_BY_TYPE = {
@@ -83,20 +103,34 @@ _STATUS_BY_TYPE = {
     "TASK_REVISION_COMPATIBLE": "active",
 }
 
-# Required fields per control-event type (beyond kind/seq/type/ts).
 _SOURCE_FIELDS = ("source_issue", "source_comment_id", "source_comment_ts",
                   "source_uuid")
+# Required fields per control-event type (beyond kind/seq/type/ts).
 _REQUIRED_FIELDS = {
     "PLAN_REVISION_BUMP": ("plan_revision", "proposal_sha"),
     "TASK_CREATED": ("task_id", "plan_revision", "issue_number"),
     "TASK_DISPATCHED": ("task_id", "plan_revision"),
     "TASK_STALE": ("task_id", "plan_revision"),
     "TASK_REVISION_COMPATIBLE": ("task_id", "plan_revision"),
+    "INBOX_SCAN_CHECKPOINT": ("issue_number", "through_ts"),
     "MERGE_GRANTED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
     "MERGE_DENIED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
     "PLAN_FINDING_RECORDED": ("task_id",) + _SOURCE_FIELDS,
 }
-_INT_FIELDS = ("plan_revision", "issue_number")
+_INT_FIELDS = ("plan_revision", "issue_number", "source_issue")
+_TS_FIELDS = ("source_comment_ts", "through_ts")
+
+
+def _is_canonical_utc(value) -> bool:
+    """True iff value is canonical UTC `YYYY-MM-DDTHH:MM:SSZ` (no fractional
+    seconds, no offset), validated for range as well as shape."""
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.datetime.strptime(value, _TS_FORMAT)
+        return True
+    except ValueError:
+        return False
 
 
 def _validate(event):
@@ -120,13 +154,19 @@ def _validate(event):
             val = event.get(intf)
             if isinstance(val, bool) or not isinstance(val, int):
                 raise ValueError("%s.%s must be an int, got %r" % (etype, intf, val))
+    for tsf in _TS_FIELDS:
+        if tsf in required and not _is_canonical_utc(event.get(tsf)):
+            raise ValueError(
+                "%s.%s must be canonical UTC YYYY-MM-DDTHH:MM:SSZ, got %r"
+                % (etype, tsf, event.get(tsf))
+            )
 
 
 def replay(control_events: list) -> dict:
     """Fold seq-ordered control events into recoverable fast state. Pure; raises
-    ValueError on a schema violation or a seq gap/duplicate. Reconstructs the
-    dedupe set and per-issue scan watermark FROM THE LOG, so a cold resume is
-    exact."""
+    ValueError on a schema violation, a seq gap/duplicate, a duplicate
+    `source_uuid`, or a checkpoint for an unknown / regressing issue. Rebuilds the
+    dedupe set and per-issue scan floor FROM THE LOG, so a cold resume is exact."""
     for event in control_events:
         _validate(event)
     events = sorted(control_events, key=lambda e: e["seq"])
@@ -137,7 +177,7 @@ def replay(control_events: list) -> dict:
         "tasks": {},
         "seen_source_uuids": set(),
         "source_uuid_to_seq": {},
-        "last_ingested_comment_ts_by_issue": {},
+        "scan_floor_ts_by_issue": {},
     }
     expected = 0
     for event in events:
@@ -151,6 +191,18 @@ def replay(control_events: list) -> dict:
         if etype == "PLAN_REVISION_BUMP":
             state["current_plan_revision"] = event["plan_revision"]
             state["current_proposal_sha"] = event["proposal_sha"]
+        elif etype == "INBOX_SCAN_CHECKPOINT":
+            issue = event["issue_number"]
+            if issue not in state["scan_floor_ts_by_issue"]:
+                raise ValueError(
+                    "checkpoint for unestablished issue %r (no TASK_CREATED)" % (issue,)
+                )
+            through = event["through_ts"]
+            if through < state["scan_floor_ts_by_issue"][issue]:
+                raise ValueError(
+                    "checkpoint through_ts regresses for issue %r" % (issue,)
+                )
+            state["scan_floor_ts_by_issue"][issue] = through
         else:
             task = state["tasks"].setdefault(
                 event["task_id"],
@@ -162,21 +214,17 @@ def replay(control_events: list) -> dict:
                 task["plan_revision"] = event["plan_revision"]
             if etype == "TASK_CREATED":
                 task["issue_number"] = event["issue_number"]
-                # Discover the task issue so a cold resume scans it even before any
-                # inbox event has been ingested from it ("" sorts before any ts).
-                state["last_ingested_comment_ts_by_issue"].setdefault(
-                    event["issue_number"], ""
-                )
+                # Discover the task issue so a cold resume scans it; "" = scan all
+                # until a checkpoint advances the floor.
+                state["scan_floor_ts_by_issue"].setdefault(event["issue_number"], "")
             if event.get("pr_head_sha"):
                 task["pr_head_sha"] = event["pr_head_sha"]
-        # Inbox-derived events carry source provenance -> rebuild dedupe + watermark.
+        # Source-tagged events rebuild the dedupe set (NOT the scan floor).
         if event.get("source_uuid"):
-            state["seen_source_uuids"].add(event["source_uuid"])
-            state["source_uuid_to_seq"][event["source_uuid"]] = event["seq"]
-            issue = event["source_issue"]
-            prev = state["last_ingested_comment_ts_by_issue"].get(issue, "")
-            state["last_ingested_comment_ts_by_issue"][issue] = max(
-                prev, event["source_comment_ts"]
-            )
+            uuid = event["source_uuid"]
+            if uuid in state["seen_source_uuids"]:
+                raise ValueError("duplicate source_uuid in control log: %r" % (uuid,))
+            state["seen_source_uuids"].add(uuid)
+            state["source_uuid_to_seq"][uuid] = event["seq"]
         state["last_seq"] = event["seq"]
     return state
