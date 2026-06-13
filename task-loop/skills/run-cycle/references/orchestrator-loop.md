@@ -20,16 +20,15 @@ state = control_log.replay(events)
 #    plan_revision,pr_head_sha}}, seen_source_uuids, source_uuid_to_seq, scan_floor_ts_by_issue
 ```
 
-`orchestrator-state.json` (in `.claude/task-loop/`, gitignored) is a **cache** of this plus the
-lease — never the source of truth. Shape:
+**No local files.** The only mutable runtime cell is the **control-issue body runtime header** — a
+fenced ` ```task-loop-runtime ` JSON block the orchestrator (loop 1) is the **sole writer** of.
+Everything else is the append-only comment log (replayed above) or live session memory; nothing is
+written to local disk. Header shape:
 
 ```json
 {
-  "lease": {"owner": "<id>", "started_at": "<utc>", "expires_at": "<utc>", "heartbeat": "<utc>"},
+  "lease": {"owner": "<id>", "expires_at": "<utc>", "heartbeat": "<utc>"},
   "phase": "dispatching|waiting|idle|draining|exiting_pending|exiting",
-  "current_plan_revision": 0,
-  "active_worker_ids": [],
-  "next_wake_reason": "",
   "stop_at": "<utc>",
   "drain_deadline_at": null,
   "watchdog_schedule_id": null,
@@ -37,10 +36,15 @@ lease — never the source of truth. Shape:
 }
 ```
 
-The lease `heartbeat` is refreshed every turn; the **watchdog** (loop 3) treats a stale
-`heartbeat`/`expires_at` as "the running loop died" and resubmits it. `stop_at` is the
-self-bound graceful-stop time; `watchdog_schedule_id`/`stop_schedule_id` are the built-in
-`schedule` handles for loops 3 and 2 (so they can be cancelled). See *Control plane*.
+`phase`/`current_plan_revision`/`active_worker_ids` are **derived** (rebuilt by `replay` + session
+memory) — the header only persists what a *sibling job* must read: the `lease` heartbeat, `stop_at`,
+and the two schedule handles. The lease `heartbeat` is refreshed every turn (a `gh issue edit` of
+the body); the **watchdog** (loop 3) reads the header and treats a stale `heartbeat`/`expires_at` as
+"the running loop died" and resubmits it. `stop_at` is the self-bound graceful-stop time;
+`watchdog_schedule_id`/`stop_schedule_id` are the built-in scheduler handles for loops 3 and 2 (so
+loop 2 can cancel loop 3). See *Control plane*. Body writes are last-writer-wins, which is safe
+because the lease loser exits — but two near-simultaneous writers are possible, so the lease is a
+**soft** single-coordinator guard, not an atomic CAS.
 
 ## State machine
 
@@ -58,12 +62,12 @@ self-bound graceful-stop time; `watchdog_schedule_id`/`stop_schedule_id` are the
 ## Per-turn algorithm
 
 ### 1. Lease & rebuild
-- Read `orchestrator-state.json`. If a **live** lease (`expires_at` in the future) is owned by a
-  different instance → exit (never two orchestrators). Else acquire/refresh the lease
-  (`owner`, `started_at`, `expires_at = now + TTL`, `heartbeat = now`).
+- Read the **control-issue body header**. If a **live** lease (`expires_at` in the future) is owned
+  by a different instance → exit (never two orchestrators). Else acquire/refresh the lease by
+  writing the header (`owner`, `expires_at = now + TTL`, `heartbeat = now`).
 - On resume / stale lease (`expires_at` past, or `phase: exiting` without a clean prior audit):
-  take over, then **rebuild fast state from the control issue** (above). Do not trust a stale
-  cache.
+  take over, then **rebuild fast state from the control issue** (replay the comment log, above).
+  There is no local cache to distrust — fast state is always reconstructed from GitHub.
 
 ### 2. Stop check
 - If the clock has reached `stop_at` → set `phase: draining`. (The orchestrator self-bounds; it
@@ -156,7 +160,9 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
   Anything changed → revert to `dispatching`/`waiting`.
 
 ### 8. Heartbeat
-Refresh the lease `heartbeat`/`expires_at` and persist the `orchestrator-state.json` cache.
+Refresh the lease `heartbeat`/`expires_at` (and advisory `phase`/`stop_at`/schedule handles) by
+writing the **control-issue body header** (`gh issue edit`). This is the only durable write of the
+turn besides the appended `CONTROL_EVENT` comments — there is no local cache to persist.
 
 ## Emitting control events
 

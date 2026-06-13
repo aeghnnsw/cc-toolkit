@@ -92,8 +92,8 @@ Created in the **target project** (not the plugin):
 | `docs/task-loop/directions.md` | durable (git) | human | steering channel, read first each planning round |
 | `docs/task-loop/logs/NNN_<task>_rubric.md` | durable (git) | worker | binary acceptance criteria (orchestrator↔worker "done" interface) |
 | `docs/task-loop/logs/NNN_<task>_log.md` | durable (git) | worker | decision record: task, steering, codex dispositions, rubric evidence, follow-ups |
-| GitHub issues — **append-only control events** | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
-| `.claude/task-loop/orchestrator-state.json` | runtime (gitignored) | **orchestrator only** | private fast cache (lease/heartbeat, `plan_revision`, ready/active/blocked, **`stop_at`**, schedule handles); rebuilt from GitHub on resume |
+| GitHub control issue — **comments** (append-only control events) | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
+| GitHub control issue — **body runtime header** | durable (remote) | **orchestrator only** (sole writer) | the single mutable runtime cell: `lease`/`heartbeat`, **`stop_at`**, `watchdog_schedule_id`, `stop_schedule_id`, advisory `phase`. **No local files** — `plan_revision`/ready/active/blocked are rebuilt from the comment log on every turn |
 
 > Note: the playbook lives at `docs/task-loop/task-loop.md` (grouped layout). The slight
 > name echo is intentional — the dir is the namespace, the file is the playbook.
@@ -137,8 +137,8 @@ a generic skeleton + project specifics, and scaffold the rest.
 3. Render `task-loop.md` = the **generic cycle skeleton** (§6) + a project-specifics
    section (north-star, referenced docs, contracts, test conventions, branch/hook rules).
 4. Scaffold `docs/task-loop/directions.md`, `docs/task-loop/logs/`, ensure `.gitignore`
-   covers `.claude/task-loop/` runtime state + `/goal` scratch, and create the
-   `loop:in-progress` GitHub label.
+   covers `/goal` scratch (the loop keeps **no** local runtime state — it lives in the GitHub
+   control issue), and create the `loop:in-progress` GitHub label.
 5. Commit via branch + PR.
 
 ## 6. The generic cycle skeleton (what every `task-loop.md` inherits)
@@ -185,15 +185,16 @@ resumable state; `step-workflow` numbered file naming.
 
 Human entry point. Starts the orchestrator under **built-in `/loop` self-paced** (per the
 loop-mechanism conclusion — **not** ralph, **not** a blocking Stop hook), creates the
-Agent Team, and runs the state machine. It runs as **three coordinated loops** (see the
-run-cycle skill's *Control plane*): the running loop (1) self-bounds on a prompted `stop_at`
-(default 24 h); a built-in-`schedule` **watchdog** (3, every 30 min) resubmits loop 1 if it dies
-before `stop_at`; a built-in-`schedule` one-time **stop** (2) at `stop_at` cancels the watchdog
-and confirms loop 1 has drained.
+Agent Team, and runs the state machine. It runs as **three built-in scheduler jobs — no local
+files** (see the run-cycle skill's *Control plane*): the running loop (1) self-bounds on a prompted
+`stop_at` (default 24 h); a **watchdog** (3, every 30 min) resubmits loop 1 if it dies before
+`stop_at`; a one-time **stop** (2) at `stop_at` cancels the watchdog and confirms loop 1 has
+drained. All three coordinate purely through the GitHub control issue.
 
 ### State machine (each `/loop` turn)
-- **acquire/heartbeat lease** in `orchestrator-state.json`; on resume detect a stale lease
-  and rebuild fast state from the GitHub append-only log.
+- **acquire/heartbeat lease** in the **control-issue body runtime header** (sole writer: the
+  orchestrator); on resume detect a stale lease and rebuild fast state from the GitHub append-only
+  comment log.
 - **check `stop_at` first** → if the clock has reached it, go to `draining`.
 - `dispatching` — read `directions.md` + repo + GitHub; run the **replan barrier** (§8);
   `TaskCreate` ready tasks with dependency edges; spawn **one `cycle-worker` per ready
@@ -287,7 +288,7 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
   `depends_on_hypotheses`; if blast radius is unclear → **broad freeze**.
   (`proposal.md`'s frontmatter records the last roadmap revision *committed to git* — the
   durable narrative, which may lag; the **authoritative live `current_plan_revision`** is
-  the GitHub control-event log, cached in `orchestrator-state.json`.)
+  derived by replaying the GitHub control-event log — it is **not** persisted locally.)
 - **Replan barrier** (before dispatch): ingest findings, bump `plan_revision` on
   invalidation, recompute frontier, halt stale dependent dispatch.
 - **Revision materialization** (no revision without a materialized plan): a
@@ -324,10 +325,11 @@ Subagent definition referenced by `agentType` when the orchestrator spawns a tea
 ## 11. Durable state & recovery
 A fresh agent on clean `master` recovers from: git `master`, the GitHub append-only
 control-event log + per-task `RECOVERY`, open PRs, and `docs/task-loop/logs/`. The
-orchestrator rebuilds `orchestrator-state.json` (incl. `current_plan_revision` and the
-ready/active/blocked sets) from the GitHub log. Ephemeral Agent-Teams state (teammates,
-`~/.claude/tasks/`) is **not** relied upon — the orchestrator respawns workers for
-still-open tasks. The planning step is idempotent.
+orchestrator rebuilds its fast state (incl. `current_plan_revision` and the
+ready/active/blocked sets) **in memory** by replaying the GitHub control-event log — there is no
+local state file to restore, only the control-issue body header (lease + `stop_at` + schedule
+handles). Ephemeral Agent-Teams state (teammates, `~/.claude/tasks/`) is **not** relied upon — the
+orchestrator respawns workers for still-open tasks. The planning step is idempotent.
 
 **Per-task recovery (the `RECOVERY` ledger).** A worker's progress through irreversible actions
 is a state machine recorded in its **task-issue body** (`gh issue edit`, last-write-wins):
