@@ -47,9 +47,13 @@ status: active
 
 ## Hypothesis ledger
 
+> The **canonical roll-up** of every `Hx.y` declared inline under the stages above. Every
+> inline hypothesis must appear here; this table is authoritative for status. The orchestrator
+> updates `Status` as findings land.
+
 | ID | Statement | Status | Evidence / disposition |
 |------|-----------|--------|------------------------|
 | H1.1 | <falsifiable assumption> | open | |
 | H2.1 | <falsifiable assumption> | open | |
 
-<status ∈ {open, validated, rejected}; the orchestrator updates this as findings land>
+<status ∈ {open, validated, rejected}>

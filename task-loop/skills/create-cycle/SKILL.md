@@ -33,10 +33,18 @@ and (b) render them into the skeleton, then scaffold the rest.
 - `docs/task-loop/directions.md` — the human steering file (from
   `assets/directions-template.md`).
 - `docs/task-loop/logs/` — the per-task decision-record directory (with a `.gitkeep`).
-- `.gitignore` entries for runtime state (`.claude/task-loop/`) and any `/goal` scratch.
+- `.gitignore` entries for runtime state (`.claude/task-loop/`) and `goal-rubric-*.md` scratch.
 - The `loop:in-progress` GitHub label (`gh label create loop:in-progress`).
 
 ## Process
+
+### 0. Preflight: verify prerequisites
+Confirm the required prerequisite plugins are available before rendering, and **fail fast**
+with install guidance if not: `dev-skills` (`discuss-with-codex`, `goal-rubric`, `doc-update`,
+`step-workflow`) and `superpowers` (`brainstorming`, `writing-plans`,
+`test-driven-development`, `verification-before-completion`, `using-git-worktrees`,
+`finishing-a-development-branch`) — the rendered playbook depends on all of them. Also confirm
+`docs/task-loop/proposal.md` exists (else direct the user to `specify-aims` first).
 
 ### 1. Read the proposal
 Read `docs/task-loop/proposal.md`. The Charter's Aim + Success criteria become the
@@ -67,11 +75,14 @@ ambiguous answers with `dev-skills:discuss-with-codex`:
 - The **north star** phrasing → `{{NORTH_STAR}}` (from the Charter).
 
 ### 4. Render the playbook
-Copy `assets/task-loop-skeleton.md` to `docs/task-loop/task-loop.md` and replace every
-`{{PLACEHOLDER}}` with the discovered/interviewed values. Leave the generic cycle steps and
-operating principles intact — they are deliberately project-agnostic. Do **not** weaken the
-worker's control-protocol obligations (post `MERGE_REQUEST`/`PLAN_FINDING` inbox events;
-never merge; never edit the proposal).
+Copy `assets/task-loop-skeleton.md` to `docs/task-loop/task-loop.md` and replace **every**
+occurrence of each `{{PLACEHOLDER}}` (some appear twice — e.g. `{{CONTRACTS}}` and
+`{{TEST_CONVENTIONS}}` recur in the operating principles). For an absent fill — e.g. no
+bootstrap needed when a code skeleton already exists — write `n/a` or remove that bullet;
+never leave a raw `{{...}}`. Leave the generic cycle steps and operating principles intact —
+they are deliberately project-agnostic. Do **not** weaken the worker's control-protocol
+obligations (post `MERGE_REQUEST`/`PLAN_FINDING` inbox events; never merge; never edit the
+proposal).
 
 ### 5. Scaffold the rest
 - Copy `assets/directions-template.md` to `docs/task-loop/directions.md`.

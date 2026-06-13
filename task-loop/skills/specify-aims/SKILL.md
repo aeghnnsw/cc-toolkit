@@ -40,10 +40,16 @@ Two zones with different change bars (scaffold in `assets/proposal-template.md`)
   (`open` / `validated` / `rejected`). The orchestrator updates this zone as the project
   progresses.
 
-Frontmatter carries `plan_revision: 1` — the materialized revision counter the control
-protocol keys on.
+Frontmatter carries `plan_revision: 1` — the durable roadmap revision *committed to git*. The
+authoritative *live* counter lives in the control-event log (and may run ahead of this); the
+frontmatter is the narrative copy.
 
 ## Process
+
+### 0. Preflight: verify prerequisites
+This skill invokes `superpowers:brainstorming` and `dev-skills:discuss-with-codex`. Confirm
+both prerequisite plugins are available and **fail fast** with install guidance if either is
+missing, before starting.
 
 ### 1. Explore the project
 Read the repo: existing docs, README, prior art, and the user's stated direction. Note what
@@ -76,14 +82,16 @@ genuine position and let Codex attack:
 Fold the conclusions into the proposal; record any unresolved tension in the relevant stage.
 
 ### 5. Write the proposal
-Copy `assets/proposal-template.md` to `docs/task-loop/proposal.md` and fill it in. Write
+Create `docs/task-loop/` if it does not exist (this is the first file there). Copy
+`assets/proposal-template.md` to `docs/task-loop/proposal.md` and fill it in. Write
 current-truth prose only (no "previously…"). Set frontmatter `plan_revision: 1`,
 `status: active`.
 
 ### 6. Commit on a branch + PR
 The proposal is durable git state. Create a branch, commit `docs/task-loop/proposal.md`, and
-open a PR with clean, attribution-free text. After this PR, the proposal is owned by the
-orchestrator — direct human/agent edits stop here.
+open a PR with clean, attribution-free text. After this, the proposal is the project's durable
+spine: **once the loop is running**, only the orchestrator edits it (via `run-cycle`). Until
+then, re-run `specify-aims` to revise it.
 
 ## Key principles
 

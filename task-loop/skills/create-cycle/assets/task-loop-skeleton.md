@@ -41,9 +41,13 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
 ## The cycle
 
 ### 1. Recover & anchor
-Read the task issue's control comments for a `RECOVERY` block (resume or abandon an
-interrupted attempt). Read `docs/task-loop/directions.md` first (human steering, highest
-priority). Re-read the source-of-truth docs at the **current `plan_revision`** (the value in
+Read this task issue's **`RECOVERY` block** — a worker-maintained block in the issue body (or a
+pinned comment) recording `status` / `resume_from` / `branch` / `pr` / `dirty_tree_expected` /
+`spawned_plan_revision`. If it shows an interrupted attempt, resume at `resume_from` or
+explicitly abandon it (delete the branch, note the reason) before continuing. `RECOVERY` is
+worker state, **not** a sequenced control event (those are orchestrator-only, on the control
+issue). Read `docs/task-loop/directions.md` first (human steering, highest priority). Re-read
+the source-of-truth docs at the **current `plan_revision`** (the value in
 `docs/task-loop/proposal.md` frontmatter on `master`).
 
 ### 2. Confirm the task
@@ -100,11 +104,13 @@ the review with `superpowers:receiving-code-review` rigor; fix or rebut each poi
 until no blocking issues.
 
 ### 10. Request merge — do NOT merge
-Re-check that `spawned_plan_revision` is still current (the orchestrator may have invalidated
-it). If still valid, post a **`MERGE_REQUEST` inbox event** to the task issue carrying the PR
-head SHA and `spawned_plan_revision`, then **go idle**. The **orchestrator** validates and
-merges (it is the sole integrator). If the revision was invalidated at any phase boundary,
-mark the decision record `stale_revision_blocked`, post nothing, and shut down.
+Re-check `spawned_plan_revision` validity at **every irreversible boundary** — before
+finalizing the spec (step 5), before opening the PR (step 9), and before requesting merge here
+— because the orchestrator may have invalidated it. If still valid, post a **`MERGE_REQUEST`
+inbox event** to the task issue carrying the PR head SHA and `spawned_plan_revision`, then **go
+idle**. The **orchestrator** validates and merges (it is the sole integrator). If the revision
+was invalidated at any of those boundaries, mark the decision record `stale_revision_blocked`,
+post nothing further, and shut down.
 
 ### 11. Finalize the record
 Update `docs/task-loop/logs/NNN_<task>_log.md`: task chosen, steering consumed, contracts
@@ -132,12 +138,16 @@ gh issue comment <task_issue> --body-file <path-to-event-file>
 
 - `MERGE_REQUEST` — step 10 (carries `pr_head_sha`). The orchestrator answers with a
   `MERGE_GRANTED`/`MERGE_DENIED` control event on the control issue.
-- `PLAN_FINDING` — step 7, when a fact invalidates a hypothesis (omit `pr_head_sha`).
+- `PLAN_FINDING` — step 7, when a fact invalidates a hypothesis. Same shape **minus**
+  `pr_head_sha` (still include `kind`, `uuid`, `task_id`, `spawned_plan_revision`,
+  `type: "PLAN_FINDING"`, `ts`).
 
-Each inbox event needs a fresh `uuid` (e.g. `uuidgen`) and a canonical-UTC `ts`
-(`date -u +%Y-%m-%dT%H:%M:%SZ`). The worker assigns **no sequence numbers** — only the
-orchestrator sequences the canonical control log. (The orchestrator parses these with the
-plugin's `control_log` helpers; the worker only needs to post the fenced JSON.)
+Each inbox event needs a fresh `uuid` (e.g. `uuidgen`) and a `ts`
+(`date -u +%Y-%m-%dT%H:%M:%SZ`). The `ts` is **audit-only** — the orchestrator orders events by
+each GitHub comment's `createdAt`, not by this stamp — so a skewed `ts` is harmless. The worker
+assigns **no sequence numbers**; only the orchestrator sequences the canonical control log. (The
+orchestrator parses these with the plugin's `control_log` helpers; the worker only posts the
+fenced JSON.)
 
 ## Stop conditions (escalate to the user — rare)
 Only genuinely human-only blockers: compute/budget beyond this environment, external/licensed

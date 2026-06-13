@@ -46,17 +46,24 @@ c. /run-cycle     → orchestrator: /loop self-paced + Agent Team + drain-on-sig
 
 ```
 task-loop/
-├── .claude-plugin/plugin.json          # name: task-loop, version, description
-├── README.md                           # what it is + the a→b→c workflow + enablement
+├── .claude-plugin/plugin.json              # name: task-loop, version, description
+├── README.md                               # what it is + the a→b→c workflow + enablement
+├── scripts/                                # control protocol (Phase 1)
+│   ├── control_log.py                      # pure single-sequencer log: dedupe, replay, checkpoints
+│   └── gh_store.py                         # thin gh adapter (read/post issue comments)
+├── tests/                                  # stdlib unittest for the protocol
 ├── skills/
 │   ├── specify-aims/SKILL.md
+│   │   └── assets/proposal-template.md     # two-zone Charter+Roadmap scaffold
 │   ├── create-cycle/SKILL.md
-│   │   └── references/cycle-skeleton.md # generic playbook the generator fills in
-│   └── run-cycle/SKILL.md
-│   │   └── references/orchestrator-loop.md  # state machine + coordination protocol
+│   │   └── assets/task-loop-skeleton.md    # generic per-task playbook the generator fills in
+│   │   └── assets/directions-template.md   # steering-file scaffold
+│   └── run-cycle/SKILL.md                  # (pending) + assets/orchestrator-loop reference
 └── agents/
     └── cycle-worker.md
 ```
+*(Generated artifacts live under `assets/`, not `references/` — they are scaffolds copied into
+the target project, not docs loaded into context.)*
 
 Plus a root `.claude-plugin/marketplace.json` entry pointing at `./task-loop`.
 
