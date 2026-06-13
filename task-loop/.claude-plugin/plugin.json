@@ -1,5 +1,5 @@
 {
   "name": "task-loop",
-  "description": "Autonomous, orchestrated cycle-driven development (foundation: control protocol).",
-  "version": "0.1.0"
+  "description": "Autonomous, orchestrated cycle-driven development (control protocol + specify-aims/create-cycle skills).",
+  "version": "0.2.0"
 }
