@@ -17,7 +17,8 @@ events = [e for (_id, _ts, body) in raw for e in control_log.parse_events(body)
           if e.get("kind") == "control"]
 state = control_log.replay(events)
 # -> current_plan_revision, current_proposal_sha, last_seq, tasks{task_id:{status,issue_number,
-#    plan_revision,pr_head_sha}}, seen_source_uuids, source_uuid_to_seq, scan_floor_ts_by_issue
+#    plan_revision,pr_head_sha,iteration,current_attempt_id}}, seen_source_uuids,
+#    source_uuid_to_seq, scan_floor_ts_by_issue
 ```
 
 **No local files.** The only mutable runtime cell is the **control-issue body runtime header** — a
@@ -236,7 +237,8 @@ acknowledged` (every blocked/stale task has a follow-up), `unmerged == 0` (no op
 
 A fresh orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay →
 revision, dedupe set, scan floors, task statuses, **`iteration`**, **`current_attempt_id`**), the
-per-task **append-only recovery comments** (the latest for each task's `current_attempt_id`), open
+per-task **append-only recovery comments** (read via `control_log.latest_recovery(comments,
+current_attempt_id)`), open
 PRs, and `docs/task-loop/logs/` (audit only). Ephemeral teammates and `~/.claude/tasks/` are **not**
 relied upon. Because teammates die with the lead's session a crashed loop 1 *usually* leaves no
 surviving workers — but a watchdog **false-positive** (lead alive, heartbeat merely stale) can spawn

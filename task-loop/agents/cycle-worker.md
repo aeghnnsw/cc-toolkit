@@ -5,15 +5,15 @@ description: Use this agent when the task-loop orchestrator (run-cycle) needs to
 <example>
 Context: The run-cycle orchestrator has computed the ready task frontier and is dispatching work.
 user: "(orchestrator) Dispatch task T7 (issue #42, spawned_plan_revision 3): build Stage 2 endpoints."
-assistant: "I'll spawn a teammate using the cycle-worker agent type with the prompt 'task_id=T7 issue=42 spawned_plan_revision=3 — build Stage 2 endpoints per the Roadmap', and wait for its idle/completion notification."
-<commentary>The orchestrator assigns exactly one task per worker; the cycle-worker runs that single task's full cycle and reports back without merging.</commentary>
+assistant: "I'll spawn a teammate using the cycle-worker agent type, passing task_id=T7, issue=42, control_issue=#5, spawned_plan_revision=3, iteration=007, a fresh attempt_id, the per-attempt branch feat-42-T7-attempt-<id>, and lead_worktree_root — then wait for its idle/completion notification."
+<commentary>The orchestrator assigns exactly one task per worker, carrying the iteration index + the durable attempt_id; the cycle-worker runs that single task's full cycle in its own isolated worktree and reports back without merging.</commentary>
 </example>
 
 <example>
 Context: A previous worker's PR was merged, unblocking a dependent task in the shared task list.
 user: "(orchestrator) Task T9 is now unblocked; assign it."
-assistant: "I'll spawn a cycle-worker teammate for T9 with its task_id, issue number, and current plan_revision."
-<commentary>Each unblocked task gets its own fresh cycle-worker; the orchestrator passes the task_id, issue number, and current spawned_plan_revision, and the worker isolates its work in a git worktree and posts a MERGE_REQUEST inbox event when done.</commentary>
+assistant: "I'll spawn a cycle-worker teammate for T9, passing its task_id, issue number, control_issue, current spawned_plan_revision, iteration index, a fresh attempt_id, its per-attempt branch, and lead_worktree_root."
+<commentary>Each unblocked task gets its own fresh cycle-worker; the worker runs in its own auto-provided git worktree (isolation: worktree), pushes only its per-attempt branch, and posts a MERGE_REQUEST inbox event (carrying attempt_id) when done.</commentary>
 </example>
 
 model: inherit
@@ -89,10 +89,11 @@ description of the task. If any is missing, ask the orchestrator (the team lead)
   you can never race the lead's tree. **Do not create another worktree** (no `using-git-worktrees`,
   no `git worktree add`). Then work on an **attempt-scoped local branch** and push only to your
   **per-attempt remote branch**: `git fetch origin`; if `adopt_from_branch` was given
-  `git checkout -B <local> origin/<adopt_from_branch>`, else `git checkout -B <local>` from the
-  fresh base; push with `git push origin HEAD:<branch>-attempt-<attempt_id>`. You write **only your
-  own** per-attempt branch — never a shared one. Stage files by explicit path; commit with clean,
-  attribution-free text via `git commit -F`.
+  `git checkout -B <local> origin/<adopt_from_branch>`, else `git checkout -B <local> origin/master`
+  (the fresh base); push with `git push origin HEAD:<branch>-attempt-<attempt_id>` and open the PR
+  with an **explicit head** (`gh pr create --head <branch>-attempt-<attempt_id> --base master ...`),
+  never letting `gh` infer it. You write **only your own** per-attempt branch — never a shared one.
+  Stage files by explicit path; commit with clean, attribution-free text via `git commit -F`.
 - **No nested teams.** For intra-task parallelism use `Workflow` or inline subagents, never a
   sub-team.
 

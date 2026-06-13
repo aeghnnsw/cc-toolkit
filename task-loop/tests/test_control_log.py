@@ -252,12 +252,32 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(control_log.replay(events)["tasks"]["T1"]["status"], "active")
 
     def test_plan_finding_recorded_dedupe_and_status(self):
-        events = [{"kind": "control", "seq": 1, "type": "PLAN_FINDING_RECORDED",
+        events = [_bump(1), _created(2),
+                  {"kind": "control", "seq": 3, "type": "PLAN_FINDING_RECORDED",
                    "task_id": "T1", "source_issue": 12, "source_comment_id": "IC",
                    "source_comment_ts": TS_EARLY, "source_uuid": "uf", "ts": "t"}]
         state = control_log.replay(events)
         self.assertEqual(state["seen_source_uuids"], {"uf"})
-        self.assertIsNone(state["tasks"]["T1"]["status"])
+        # PLAN_FINDING_RECORDED does not change task status (stays "ready").
+        self.assertEqual(state["tasks"]["T1"]["status"], "ready")
+
+    def test_non_string_attempt_id_raises(self):
+        bad = _dispatched(3, attempt=7)  # int, not an opaque uuid string
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2), bad])
+
+    def test_dispatch_before_create_raises(self):
+        # TASK_DISPATCHED with no prior TASK_CREATED would yield an active task
+        # with issue_number=None / iteration=None — reject it.
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _dispatched(2)])
+
+    def test_duplicate_task_created_raises(self):
+        # iteration/issue_number are assigned once; a second TASK_CREATED for the
+        # same task_id must not overwrite them.
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2, iteration=1),
+                                _created(3, iteration=9)])
 
     def test_plan_finding_recorded_requires_source_uuid(self):
         events = [{"kind": "control", "seq": 1, "type": "PLAN_FINDING_RECORDED",
@@ -344,6 +364,36 @@ class TestReplay(unittest.TestCase):
         del bad["source_uuid"]
         with self.assertRaises(ValueError):
             control_log.replay([bad])
+
+
+class TestRecoveryComments(unittest.TestCase):
+    def test_format_parse_round_trip(self):
+        rec = {"attempt_id": "att-1", "status": "pr_open", "pr": "#42",
+               "pr_head_sha": "abc"}
+        body = control_log.format_recovery(rec)
+        self.assertIn("```task-loop-recovery", body)
+        self.assertEqual(control_log.parse_recovery(body), [rec])
+
+    def test_parse_recovery_ignores_event_fences(self):
+        # A task-loop-event block must NOT be parsed as a recovery record.
+        ev = control_log.format_event({"kind": "inbox", "uuid": "u1"})
+        self.assertEqual(control_log.parse_recovery(ev), [])
+
+    def test_latest_recovery_picks_last_for_attempt(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "in_progress"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        self.assertEqual(control_log.latest_recovery([c1, c2], "A")["status"], "pr_open")
+
+    def test_latest_recovery_ignores_other_attempts(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "B", "status": "merge_requested"}))
+        # A later comment for a DIFFERENT attempt must not shadow A's record.
+        self.assertEqual(control_log.latest_recovery([c1, c2], "A")["status"], "pr_open")
+        self.assertIsNone(control_log.latest_recovery([c1, c2], "C"))
 
 
 class TestEndToEnd(unittest.TestCase):

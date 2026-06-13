@@ -132,10 +132,13 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    then emit `PLAN_REVISION_BUMP`), recompute the frontier, and halt dispatch of the stale
    subgraph.
 5. **Dispatch** (unless draining): for each ready task (deps satisfied, not active,
-   revision-compatible), up to the frontier-width cap, emit `TASK_CREATED`/`TASK_DISPATCHED` and
-   spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with `task_id`, the task
-   issue number, `spawned_plan_revision` (= current), and the scope.
-6. **Merge** (sole integrator): on a revision-compatible `MERGE_REQUEST`, validate against the
+   revision-compatible), up to the frontier-width cap, emit `TASK_CREATED{…, iteration}` (first time
+   only) + `TASK_DISPATCHED{…, attempt_id}` (every dispatch) and spawn **one** `cycle-worker`
+   teammate (`agentType: cycle-worker`) with `task_id`, the task issue number, `control_issue`,
+   `spawned_plan_revision` (= current), `iteration`, a fresh `attempt_id`, the per-attempt branch
+   `<branch>-attempt-<attempt_id>`, `lead_worktree_root`, and the scope.
+6. **Merge** (sole integrator): on a `MERGE_REQUEST` that is **attempt-current** (`attempt_id ==
+   current_attempt_id`, else `MERGE_DENIED`) and revision-compatible, validate against the
    freshly-drained state and `gh pr merge --squash --delete-branch --match-head-commit <SHA>`;
    emit `MERGE_GRANTED` (or `MERGE_DENIED` + `TASK_STALE`).
 7. **Wait / idle / exit:** wait on teammate idle notifications while workers are active; **idle**
@@ -163,7 +166,8 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 The control protocol is implemented in the plugin's `scripts/` (`${CLAUDE_PLUGIN_ROOT}/scripts`
 when set, else the installed `task-loop/scripts/`):
 `control_log` (`format_event`, `parse_events`, `filter_new_inbox`, `assign_seq`,
-`unacknowledged_uuids`, `comments_at_or_after_watermark`, `replay`) and `gh_store`
+`unacknowledged_uuids`, `comments_at_or_after_watermark`, `replay`; plus `parse_recovery` /
+`latest_recovery` for reading a worker's per-attempt recovery comments) and `gh_store`
 (`read_comments`, `post_comment`). Use them — do not re-derive sequencing/dedupe/replay by hand.
 
 ## Additional resources

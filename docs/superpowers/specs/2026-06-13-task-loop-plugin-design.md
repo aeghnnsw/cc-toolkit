@@ -180,8 +180,9 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
     `MERGE_REQUEST` *inbox* event (PR head SHA, revision) and **go idle. The worker does
     NOT merge.** If its revision was invalidated at any phase boundary, it marks itself
     `stale_revision_blocked` and shuts down without merging.
-11. *(Finalization — set `RECOVERY: complete`, evidence into the log — happens after the
-    orchestrator merges; the worker records what it can before handoff.)*
+11. *(Finalization — the orchestrator emits `MERGE_GRANTED` after it merges; the worker's
+    `<NNN>_<task>.md` record is already on `master`. The worker records what it can before
+    handoff.)*
 
 **Generic operating principles** (constant across projects): deliberate-with-codex
 instead of asking the user; never let long jobs block (background + `Monitor`/
@@ -227,7 +228,7 @@ run the **pre-merge event-drain barrier** (§8), re-read `current_plan_revision`
 task's compatibility + CI/review state, then `gh pr merge --squash --delete-branch
 --match-head-commit <validated SHA>`. If invalid → `MERGE_DENIED` + mark task stale + tell
 the worker to shut down / rescope. If the orchestrator is dead/draining, nothing merges
-(stalled merge ≫ stale merge); the PR + `RECOVERY` persist for resume.
+(stalled merge ≫ stale merge); the PR + the worker's recovery comments persist for resume.
 
 The `MERGE_REQUEST` inbox event is **not** acked during the event-drain (its only legal
 source-tagged events are merge *outcomes*); it is a *pending decision* that pins the issue's
@@ -335,7 +336,7 @@ Subagent definition referenced by `agentType` when the orchestrator spawns a tea
 
 ## 11. Durable state & recovery
 A fresh agent on clean `master` recovers from: git `master`, the GitHub append-only
-control-event log + per-task `RECOVERY`, open PRs, and `docs/task-loop/logs/`. The
+control-event log + per-task recovery comments, open PRs, and `docs/task-loop/logs/`. The
 orchestrator rebuilds its fast state (incl. `current_plan_revision` and the
 ready/active/blocked sets) **in memory** by replaying the GitHub control-event log — there is no
 local state file to restore, only the control-issue body header (lease + `stop_at` + schedule

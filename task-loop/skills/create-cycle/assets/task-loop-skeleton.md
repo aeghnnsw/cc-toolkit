@@ -75,7 +75,7 @@ honored — **stop and post `WORKTREE_ISOLATION_FAILED`**, do nothing else (no c
 an **attempt-scoped local branch** and bind it to your **per-attempt remote branch**
 `<branch>-attempt-<attempt_id>` (so two attempts never write the same ref): `git fetch origin`; if
 `adopt_from_branch` was given, `git checkout -B <local> origin/<adopt_from_branch>`, else
-`git checkout -B <local>` from the fresh base (prefix from {{BRANCH_PREFIXES}}). Open the per-cycle
+`git checkout -B <local> origin/master` (the fresh base; prefix from {{BRANCH_PREFIXES}}). Open the per-cycle
 record `docs/task-loop/logs/<NNN>_<task>.md` (`<NNN>` = the iteration index from your spawn prompt,
 zero-padded from `001`; see operating principle 8) with frontmatter `status: in_progress`,
 `iteration`, `task`, `issue`, `branch`, `attempt_id`, `spawned_plan_revision` and empty **Rubric** +
@@ -122,8 +122,9 @@ history to `docs/CHANGELOG.md`. Commit doc updates **with** the implementation.
 Commit with clean, attribution-free text (write the message to a file, `git commit -F`; stage
 files by explicit path). **Before `gh pr create`**, post a `task-loop-recovery` comment
 `status=creating_pr, head_sha=<commit>`. **Push to YOUR per-attempt branch**
-(`git push origin HEAD:<branch>-attempt-<attempt_id>`) and open the PR **from it** with a clean
-body file (`gh pr create --body-file`), titled clearly, linking the issue, listing the rubric with
+(`git push origin HEAD:<branch>-attempt-<attempt_id>`) and open the PR **from it with an explicit
+head**: `gh pr create --head <branch>-attempt-<attempt_id> --base master --body-file <body>`
+(never let `gh` infer the head) — titled clearly, linking the issue, listing the rubric with
 evidence, and carrying `Plan-Revision: <spawned_plan_revision>` + `Attempt: <attempt_id>` lines.
 **Immediately after**, post a recovery comment `status=pr_open, pr=#M, pr_head_sha=<sha>,
 resume_from=pr_review`. **Review the PR adversarially with `discuss-with-codex` — every PR** —
@@ -164,21 +165,24 @@ the task issue (`gh issue comment <task_issue> --body-file <file>`) — **never*
 (two attempts must never write the same surface), and **not** a sequenced control event. Post one at
 each **ordered transition around an irreversible external action**, so the orchestrator (or a cold
 resume) reads the **latest comment for the current `attempt_id`** to tell *ready-but-unannounced*
-from *still-working*. Each is a fenced `task-loop-recovery` JSON block with fields:
+from *still-working*. Each comment body is **exactly one fenced `task-loop-recovery` JSON block**
+(post it with `gh issue comment <task_issue> --body-file <file>` to keep JSON out of the command
+text). Example at `pr_open`:
 
+````markdown
+```task-loop-recovery
+{"attempt_id": "<attempt_id>", "status": "pr_open", "resume_from": "pr_review", "branch": "<branch>-attempt-<attempt_id>", "worktree": "<toplevel>", "spawned_plan_revision": 3, "pr": "#M", "pr_head_sha": "<sha>", "ts": "<YYYY-MM-DDTHH:MM:SSZ>"}
 ```
-status: in_progress | creating_pr | pr_open | merge_requesting | merge_requested | stale_revision_blocked | superseded_attempt | abandoned
-attempt_id: <uuid>                        # which attempt this comment belongs to (ALWAYS)
-resume_from: <step>
-branch: <branch>-attempt-<attempt_id>     # your per-attempt remote branch (never shared)
-worktree: <git rev-parse --show-toplevel> # so the orchestrator can clean it after merge
-spawned_plan_revision: <N>
-head_sha: <commit to be PR'd>             # at creating_pr
-pr: "#M"                                   # at pr_open
-pr_head_sha: <sha>                         # at pr_open; updated on each review push
-merge_request_uuid: <uuid>                # at merge_requesting (immutable, bound to next field)
-merge_request_head_sha: <sha>             # at merge_requesting (== pr_head_sha at attempt time)
-```
+````
+
+Fields: `attempt_id` (**always** — which attempt this comment belongs to); `status` ∈
+`in_progress | creating_pr | pr_open | merge_requesting | merge_requested | stale_revision_blocked |
+superseded_attempt | abandoned`; `resume_from` (step); `branch` (your per-attempt remote branch);
+`worktree` (`git rev-parse --show-toplevel`, so the orchestrator can clean it after merge);
+`spawned_plan_revision`; `head_sha` (at `creating_pr`); `pr` / `pr_head_sha` (at `pr_open`, updated
+on each review push); `merge_request_uuid` + `merge_request_head_sha` (at `merge_requesting`,
+immutable, bound). The orchestrator parses these with `control_log.parse_recovery` /
+`latest_recovery` — the worker only posts the fenced block.
 
 **Immutable merge-request attempt.** A `merge_request_uuid` is bound to `merge_request_head_sha`.
 Once `status=merge_requesting`, **freeze the branch** — push no more commits. Because the control
