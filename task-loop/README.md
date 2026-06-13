@@ -32,10 +32,9 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    generic cycle skeleton plus auto-detected/interviewed project specifics, and scaffold
    `directions.md` (steering), the logs directory, `.gitignore`, and the `loop:in-progress`
    label.
-3. **`run-cycle`** *(in progress — see Status)* — the orchestrator: under built-in `/loop`
-   (self-paced), it computes the dependency-ordered task frontier, spawns one `cycle-worker`
-   teammate per ready task, validates + merges their PRs, and stops on a scheduled
-   drain-signal (not an iteration cap).
+3. **`run-cycle`** — the orchestrator: under built-in `/loop` (self-paced), it computes the
+   dependency-ordered task frontier, spawns one `cycle-worker` teammate per ready task,
+   validates + merges their PRs, and stops on a scheduled drain-signal (not an iteration cap).
 
 ## Prerequisites
 
@@ -45,7 +44,9 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
   `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
-The skills **fail fast** with install guidance if a required dependency is missing.
+**Run the `preflight` skill once per machine** to verify all of these are loadable (it reports
+needed / installed / missing) and to enable Agent Teams (below) — it's a standalone check, not
+a step in the a→b→c workflow.
 
 ## Enablement (orchestrator)
 
@@ -57,7 +58,8 @@ Claude Code ≥ v2.1.32:
 { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
 ```
 
-The `specify-aims` and `create-cycle` skills do **not** require Agent Teams.
+The **`preflight`** skill sets this for you (and reminds you to restart). The `specify-aims` and
+`create-cycle` skills do **not** require Agent Teams.
 
 ## Files this creates in your project
 
@@ -75,6 +77,7 @@ The `specify-aims` and `create-cycle` skills do **not** require Agent Teams.
 ```
 task-loop/
 ├── skills/
+│   ├── preflight/        # standalone: verify required skills + enable Agent Teams (run once)
 │   ├── specify-aims/     # step a: author the proposal (Charter + Roadmap)
 │   ├── create-cycle/     # step b: render task-loop.md + scaffolding
 │   └── run-cycle/        # step c: the orchestrator (state machine in references/)
