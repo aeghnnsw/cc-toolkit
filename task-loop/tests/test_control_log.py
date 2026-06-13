@@ -399,10 +399,10 @@ class TestRecoveryComments(unittest.TestCase):
 class TestEndToEnd(unittest.TestCase):
     def test_ingest_emit_replay_and_cold_resume_dedupe(self):
         inbox = [
-            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "type": "MERGE_REQUEST",
-             "pr_head_sha": "abc", "ts": "t"},
-            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "type": "MERGE_REQUEST",
-             "pr_head_sha": "abc", "ts": "t"},
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "attempt_id": "att-1", "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "attempt_id": "att-1", "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
         ]
         seeded = [_bump(1), _created(2), _dispatched(3)]
         state = control_log.replay(seeded)

@@ -176,10 +176,11 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
 9. **Open PR & review** — commit (clean text, `-F`, explicit paths); open PR with
    `Plan-Revision: N` + task ID; **`discuss-with-codex` adversarial PR review until no
    blocking issues**.
-10. **Request merge & hand off** — re-check `plan_revision` validity; post a
-    `MERGE_REQUEST` *inbox* event (PR head SHA, revision) and **go idle. The worker does
-    NOT merge.** If its revision was invalidated at any phase boundary, it marks itself
-    `stale_revision_blocked` and shuts down without merging.
+10. **Request merge & hand off** — re-check **both `plan_revision` AND `attempt_id`**; post a
+    `MERGE_REQUEST` *inbox* event (PR head SHA, `spawned_plan_revision`, `attempt_id`) and **go
+    idle. The worker does NOT merge.** If its revision was invalidated or its attempt superseded at
+    any phase boundary, it posts a terminal recovery comment (`stale_revision_blocked` /
+    `superseded_attempt`) and shuts down without merging.
 11. *(Finalization — the orchestrator emits `MERGE_GRANTED` after it merges; the worker's
     `<NNN>_<task>.md` record is already on `master`. The worker records what it can before
     handoff.)*
@@ -253,8 +254,8 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
 
 - **Worker inbox events** are *unsequenced* comments on the worker's **own task issue**,
   each a fenced JSON block tagged with a client-generated `uuid`, `task_id`,
-  `spawned_plan_revision`, event type (`PLAN_FINDING`, `MERGE_REQUEST`), and (for
-  `MERGE_REQUEST`) `pr_head_sha`.
+  `spawned_plan_revision`, `attempt_id` (so the merge gate can deny a superseded attempt), event
+  type (`PLAN_FINDING`, `MERGE_REQUEST`), and (for `MERGE_REQUEST`) `pr_head_sha`.
 - The orchestrator **ingests** inbox events across task issues and **emits normalized
   `CONTROL_EVENT` comments on the control issue** with a monotonic integer `seq` it alone
   assigns. Control event types are two families:
@@ -321,9 +322,10 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
 Subagent definition referenced by `agentType` when the orchestrator spawns a teammate.
 - **System prompt:** "Execute exactly one task's cycle by following
   `docs/task-loop/task-loop.md`. Deliberate with `discuss-with-codex` at rubric / open
-  design questions / PR review. Never edit `proposal.md`. Never merge — open the PR,
-  re-check your `plan_revision`, post `MERGE_REQUEST`, and go idle. Record durable state
-  as control events + your `NNN_*` records."
+  design questions / PR review. Never edit `proposal.md`. Never merge — open the PR from your
+  per-attempt branch, re-check both `plan_revision` and `attempt_id`, post a `MERGE_REQUEST`
+  (carrying `attempt_id`), and go idle. Record durable state as `attempt_id`-tagged recovery
+  comments + your `<NNN>_<task>.md` record."
 - **Tools:** full dev set (Bash, Read, Edit, Write, git/gh via Bash, Skill, Workflow).
 - Note: a teammate ignores the agent def's `skills:`/`mcpServers:` frontmatter but loads
   skills from project/user settings, so it can invoke `discuss-with-codex` etc.

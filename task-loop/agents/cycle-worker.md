@@ -61,11 +61,12 @@ description of the task. If any is missing, ask the orchestrator (the team lead)
 - **Fence every irreversible boundary on BOTH `spawned_plan_revision` AND `attempt_id`** (before
   finalizing the spec, before each push, before opening the PR, and before requesting merge):
   replay the `control_issue` and confirm `spawned_plan_revision` is still current **and**
-  `attempt_id == current_attempt_id` for your task. If your revision is stale, record
-  `stale_revision_blocked`; if your `attempt_id` was superseded (a later dispatch took over),
-  record `superseded_attempt`. In either case **post nothing further, push nothing, and shut
-  down** — do not merge or continue. (You write only your own per-attempt branch + your own
-  recovery comments, so a late check is never *unsafe* — but stop promptly to avoid wasted work.)
+  `attempt_id == current_attempt_id` for your task. If either fails, post **exactly one terminal
+  `task-loop-recovery` comment** for this attempt (`status=stale_revision_blocked` for a stale
+  revision, `status=superseded_attempt` for a superseded attempt) — that comment is the durable
+  signal the orchestrator needs — then **push nothing, open no PR, post no inbox event, and shut
+  down**. (You write only your own per-attempt branch + your own recovery comments, so a late check
+  is never *unsafe* — but stop promptly to avoid wasted work.)
 - **Post inbox events on YOUR task issue only**, as a fenced `task-loop-event` JSON comment via
   `gh issue comment --body-file` (keeps JSON out of the command text). Use a fresh `uuid`
   (`uuidgen`); include `spawned_plan_revision` **and `attempt_id`** on every inbox event (and
