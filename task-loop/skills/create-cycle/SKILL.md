@@ -33,18 +33,11 @@ and (b) render them into the skeleton, then scaffold the rest.
 - `docs/task-loop/directions.md` — the human steering file (from
   `assets/directions-template.md`).
 - `docs/task-loop/logs/` — the per-task decision-record directory (with a `.gitkeep`).
-- `.gitignore` entries for runtime state (`.claude/task-loop/`) and `goal-rubric-*.md` scratch.
+- `.gitignore` entry for `goal-rubric-*.md` scratch (the loop keeps **no** local runtime state — all
+  of it lives in the GitHub control issue).
 - The `loop:in-progress` GitHub label (`gh label create loop:in-progress`).
 
 ## Process
-
-### 0. Preflight: verify prerequisites
-Confirm the required prerequisite plugins are available before rendering, and **fail fast**
-with install guidance if not: `dev-skills` (`discuss-with-codex`, `goal-rubric`, `doc-update`,
-`step-workflow`) and `superpowers` (`brainstorming`, `writing-plans`,
-`test-driven-development`, `verification-before-completion`, `using-git-worktrees`,
-`finishing-a-development-branch`) — the rendered playbook depends on all of them. Also confirm
-`docs/task-loop/proposal.md` exists (else direct the user to `specify-aims` first).
 
 ### 1. Read the proposal
 Read `docs/task-loop/proposal.md`. The Charter's Aim + Success criteria become the
@@ -87,8 +80,9 @@ proposal).
 ### 5. Scaffold the rest
 - Copy `assets/directions-template.md` to `docs/task-loop/directions.md`.
 - Create `docs/task-loop/logs/.gitkeep`.
-- Add `.gitignore` entries: `.claude/task-loop/` (runtime lease + stop-request) and any
-  `goal-rubric-*.md` scratch.
+- Add a `.gitignore` entry for any `goal-rubric-*.md` scratch. The loop keeps **no** local runtime
+  files (no lease file, no orchestrator state) — the lease/heartbeat, `stop_at`, and schedule
+  handles all live in the GitHub control-issue body; the event log lives in its comments.
 - Create the label: `gh label create loop:in-progress` (ignore "already exists").
 
 ### 6. Commit on a branch + PR

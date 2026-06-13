@@ -20,27 +20,39 @@ state = control_log.replay(events)
 #    plan_revision,pr_head_sha}}, seen_source_uuids, source_uuid_to_seq, scan_floor_ts_by_issue
 ```
 
-`orchestrator-state.json` (in `.claude/task-loop/`, gitignored) is a **cache** of this plus the
-lease — never the source of truth. Shape:
+**No local files.** The only mutable runtime cell is the **control-issue body runtime header** — a
+fenced ` ```task-loop-runtime ` JSON block the orchestrator (loop 1) is the **sole writer** of.
+Everything else is the append-only comment log (replayed above) or live session memory; nothing is
+written to local disk. Header shape:
 
 ```json
 {
-  "lease": {"owner": "<id>", "started_at": "<utc>", "expires_at": "<utc>", "heartbeat": "<utc>"},
+  "lease": {"owner": "<id>", "expires_at": "<utc>", "heartbeat": "<utc>"},
   "phase": "dispatching|waiting|idle|draining|exiting_pending|exiting",
-  "current_plan_revision": 0,
-  "active_worker_ids": [],
-  "next_wake_reason": "",
-  "drain_deadline_at": null
+  "stop_at": "<utc>",
+  "drain_deadline_at": null,
+  "watchdog_schedule_id": null,
+  "stop_schedule_id": null
 }
 ```
 
+`phase`/`current_plan_revision`/`active_worker_ids` are **derived** (rebuilt by `replay` + session
+memory) — the header only persists what a *sibling job* must read: the `lease` heartbeat, `stop_at`,
+and the two schedule handles. The lease `heartbeat` is refreshed every turn (a `gh issue edit` of
+the body); the **watchdog** (loop 3) reads the header and treats a stale `heartbeat`/`expires_at` as
+"the running loop died" and resubmits it. `stop_at` is the self-bound graceful-stop time;
+`watchdog_schedule_id`/`stop_schedule_id` are the built-in scheduler handles for loops 3 and 2 (so
+loop 2 can cancel loop 3). See *Control plane*. Body writes are last-writer-wins, which is safe
+because the lease loser exits — but two near-simultaneous writers are possible, so the lease is a
+**soft** single-coordinator guard, not an atomic CAS.
+
 ## State machine
 
-- **dispatching** — ready work exists, no stop signal → create tasks + spawn workers.
+- **dispatching** — ready work exists, `stop_at` not reached → create tasks + spawn workers.
 - **waiting** — active workers exist → wait on automatic teammate idle notifications.
-- **idle** — no ready work, no active workers, no stop signal → long `ScheduleWakeup` (e.g.
-  1200–1800 s); **do not exit** (continuous service).
-- **draining** — `stop-request.json` observed → no new dispatch; wait for active workers, bounded
+- **idle** — no ready work, no active workers, `stop_at` not reached → long `ScheduleWakeup`
+  (capped so it never sleeps past `stop_at`); **do not exit** (continuous service).
+- **draining** — clock reached `stop_at` → no new dispatch; wait for active workers, bounded
   by `drain_deadline_at`.
 - **exiting_pending** — drain complete → record the pre-exit audit, `ScheduleWakeup` a 60–120 s
   cooldown.
@@ -50,15 +62,18 @@ lease — never the source of truth. Shape:
 ## Per-turn algorithm
 
 ### 1. Lease & rebuild
-- Read `orchestrator-state.json`. If a **live** lease (`expires_at` in the future) is owned by a
-  different instance → exit (never two orchestrators). Else acquire/refresh the lease
-  (`owner`, `started_at`, `expires_at = now + TTL`, `heartbeat = now`).
+- Read the **control-issue body header**. If a **live** lease (`expires_at` in the future) is owned
+  by a different instance → exit (never two orchestrators). Else acquire/refresh the lease by
+  writing the header (`owner`, `expires_at = now + TTL`, `heartbeat = now`), then **re-read the
+  header and confirm you still own it** before any side effect (the **write-then-re-read fence**;
+  GitHub gives no atomic CAS, so this is how a lease loser detects it lost and exits).
 - On resume / stale lease (`expires_at` past, or `phase: exiting` without a clean prior audit):
-  take over, then **rebuild fast state from the control issue** (above). Do not trust a stale
-  cache.
+  take over, then **rebuild fast state from the control issue** (replay the comment log, above).
+  There is no local cache to distrust — fast state is always reconstructed from GitHub.
 
 ### 2. Stop check
-- If `.claude/task-loop/stop-request.json` exists → set `phase: draining`.
+- If the clock has reached `stop_at` → set `phase: draining`. (The orchestrator self-bounds; it
+  also caps each `ScheduleWakeup` so it wakes by `stop_at` to drain on time.)
 
 ### 3. Event-drain & ingest (also the pre-merge barrier)
 For each known task issue (every `tasks[*].issue_number`):
@@ -104,8 +119,10 @@ For each known task issue (every `tasks[*].issue_number`):
   - Emit `TASK_CREATED{task_id, plan_revision, issue_number}` and `TASK_DISPATCHED{task_id,
     plan_revision}`.
   - Spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with a prompt carrying
-    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, and the task scope. Record its id
-    in `active_worker_ids`.
+    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, a fresh `attempt_id`, the
+    **deterministic branch name** (e.g. `<type>-<issue>-<task>`), and the task scope. Record its id
+    in `active_worker_ids`. On a respawn, reuse the deterministic branch so the worker adopts any
+    existing remote branch/PR rather than opening a duplicate (see *Recovery*).
 
 ### 6. Merge (sole integrator, on a pending `MERGE_REQUEST`)
 A `MERGE_REQUEST` is pending (un-acked) from §3. This step is the **only** place it is acked,
@@ -136,7 +153,8 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
 ### 7. Wait / idle / exit
 - **Active workers exist** → `waiting`: rely on automatic idle notifications; set a long
   `ScheduleWakeup` fallback. Drop `active_worker_ids` entries as workers report and are merged.
-- **Frontier empty, none active, no stop signal** → `idle`: long `ScheduleWakeup`; **do not exit**.
+- **Frontier empty, none active, `stop_at` not reached** → `idle`: long `ScheduleWakeup` (capped
+  to wake by `stop_at`); **do not exit**.
 - **draining** → dispatch nothing; wait for active workers until `drain_deadline_at`; past the
   deadline, mark overdue workers `orphaned_acknowledged` (record worktree/issue/PR pointers — no
   abrupt kill) and proceed.
@@ -146,7 +164,9 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
   Anything changed → revert to `dispatching`/`waiting`.
 
 ### 8. Heartbeat
-Refresh the lease `heartbeat`/`expires_at` and persist the `orchestrator-state.json` cache.
+Refresh the lease `heartbeat`/`expires_at` (and advisory `phase`/`stop_at`/schedule handles) by
+writing the **control-issue body header** (`gh issue edit`). This is the only durable write of the
+turn besides the appended `CONTROL_EVENT` comments — there is no local cache to persist.
 
 ## Emitting control events
 
@@ -161,6 +181,16 @@ stamped, new_last = control_log.assign_seq([{
 }], state["last_seq"])
 gh_store.post_comment(CONTROL_ISSUE, control_log.format_event(stamped[0]))
 ```
+
+**Check-then-append guard (required).** Immediately before posting, **re-read the comment log and
+confirm its true max `seq` is still `state["last_seq"]`** — only then `assign_seq` + post. If a
+higher `seq` has appeared, a competing sequencer exists: re-ingest, recompute, retry; if it
+persists you have lost the lease → **exit**. Together with the write-then-re-read lease fence (§1),
+this is the single-sequencer guarantee under GitHub's non-CAS body writes — a vanishingly-small
+TOCTOU window between the re-read and the append remains and is accepted (the watchdog only acts on
+an already-stale heartbeat, so two live orchestrators are rare by construction). If `replay` ever
+raises on a seq gap/dup or duplicate `source_uuid`, that is **detectable corruption → halt and
+escalate to a human**, never continue.
 
 Event types — **orchestrator-originated** (no source): `TASK_CREATED` (carries `issue_number`),
 `TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`), `TASK_STALE`,
@@ -179,12 +209,25 @@ acknowledged` (every blocked/stale task has a follow-up), `unmerged == 0` (no op
 
 ## Recovery (cold resume)
 
-A fresh orchestrator on clean `master` rebuilds entirely from: the control issue (replay →
+A fresh orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay →
 revision, dedupe set, scan floors, task statuses), per-task `RECOVERY` ledgers (issue bodies),
-open PRs, and `docs/task-loop/logs/`. Ephemeral teammates and `~/.claude/tasks/` are **not**
-relied upon — respawn `cycle-worker`s for still-open tasks. A worker found in `pr_open` /
-`merge_requesting` (via its `RECOVERY`) is *ready but unannounced*: drive it to merge. The
-planning step is idempotent — the same frontier is recomputed and only missing workers respawn.
+open PRs, and `docs/task-loop/logs/`. Ephemeral teammates and `~/.claude/tasks/` are **not** relied
+upon, and because teammates die with the lead's session a crashed loop 1 leaves **no surviving
+workers** — so respawn is safe. Respawn follows **one rule, the GitHub-visible-artifact line:**
+
+- **No remote branch and no PR** for a dispatched task → any work was local-only pre-PR WIP, which
+  is **disposable**: abandon it and **re-dispatch a fresh attempt** (new `attempt_id`) from clean
+  `master`. At most one in-flight task's un-pushed WIP is lost and simply redone — zero correctness
+  loss. This is what makes "resume from any session / clean checkout" honest.
+- **A remote branch and/or PR exists** (recorded as `attempt_id` + head SHA in the `RECOVERY`
+  ledger) → **adopt** it via GitHub and drive it to merge. A worker in `pr_open` /
+  `merge_requesting` is *ready but unannounced*.
+
+Dispatch uses **deterministic per-task branch/worktree naming** + an `attempt_id`, so re-dispatch
+and adoption are idempotent: a respawned worker that finds the branch/PR already present adopts or
+aborts — it never opens a second PR. Local-worktree adoption is **only a same-machine
+optimization**, never a correctness requirement. The planning step is idempotent — the same
+frontier is recomputed and only missing workers respawn.
 
 ## Deliberate with Codex
 

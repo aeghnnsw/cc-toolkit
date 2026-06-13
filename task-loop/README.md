@@ -32,9 +32,12 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    generic cycle skeleton plus auto-detected/interviewed project specifics, and scaffold
    `directions.md` (steering), the logs directory, `.gitignore`, and the `loop:in-progress`
    label.
-3. **`run-cycle`** — the orchestrator: under built-in `/loop` (self-paced), it computes the
-   dependency-ordered task frontier, spawns one `cycle-worker` teammate per ready task,
-   validates + merges their PRs, and stops on a scheduled drain-signal (not an iteration cap).
+3. **`run-cycle`** — the orchestrator: each turn it computes the dependency-ordered task frontier,
+   spawns one `cycle-worker` teammate per ready task, and validates + merges their PRs. It runs as
+   a **live `/loop` lead plus two scheduler guard jobs (no local files)** — a watchdog that detects
+   the lead's death and alerts (unattended auto-relaunch needs a tested local supervisor) and a
+   one-time stop — coordinating purely through the GitHub control issue, and it **prompts for a run
+   duration (default 24h)**, self-bounding on that stop time (a graceful drain, not an iteration cap).
 
 ## Prerequisites
 
@@ -70,8 +73,8 @@ The **`preflight`** skill sets this for you (and reminds you to restart). The `s
 | `docs/task-loop/task-loop.md` | `create-cycle` | the per-task playbook each worker follows |
 | `docs/task-loop/directions.md` | you | human steering channel (read first each round) |
 | `docs/task-loop/logs/NNN_<task>_{rubric,log}.md` | worker | binary acceptance + decision/evidence trail |
-| GitHub control issue + per-task issues | orchestrator + workers | append-only control-event log |
-| `.claude/task-loop/*.json` *(gitignored)* | orchestrator / stop job | runtime lease + stop signal |
+| GitHub control issue (comments) + per-task issues | orchestrator + workers | append-only control-event log |
+| GitHub control issue (body runtime header) | orchestrator (sole writer) | lease/heartbeat, `stop_at`, schedule handles — **no local files** |
 
 ## Components
 
