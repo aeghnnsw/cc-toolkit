@@ -314,6 +314,16 @@ ready/active/blocked sets) from the GitHub log. Ephemeral Agent-Teams state (tea
 `~/.claude/tasks/`) is **not** relied upon — the orchestrator respawns workers for
 still-open tasks. The planning step is idempotent.
 
+**Per-task recovery (the `RECOVERY` ledger).** A worker's progress through irreversible actions
+is a state machine recorded in its **task-issue body** (`gh issue edit`, last-write-wins):
+`in_progress → creating_pr → pr_open → merge_requesting → merge_requested`. It is written as an
+ordered pre/post-condition around `gh pr create` and the merge request, so the orchestrator can
+distinguish *ready-but-unannounced* from *still-working* even if the worker died before posting
+its `MERGE_REQUEST`. A merge-request attempt is **immutable**: its `merge_request_uuid` is bound
+to `merge_request_head_sha` and the branch freezes once `merge_requesting` begins — a changed
+head requires a fresh UUID, so the protocol's UUID dedupe can never strand a newer head. (Full
+definition in the generated `task-loop.md` *RECOVERY ledger*.)
+
 ## 12. Agent Teams enablement & constraints
 - Requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (settings.json) and Claude Code
   ≥ v2.1.32. `run-cycle` checks/documents this and fails fast with guidance if unset.

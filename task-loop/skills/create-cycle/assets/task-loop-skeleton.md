@@ -41,14 +41,11 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
 ## The cycle
 
 ### 1. Recover & anchor
-Read this task issue's **`RECOVERY` block** — a worker-maintained block in the issue body (or a
-pinned comment) recording `status` / `resume_from` / `branch` / `pr` / `dirty_tree_expected` /
-`spawned_plan_revision`. If it shows an interrupted attempt, resume at `resume_from` or
-explicitly abandon it (delete the branch, note the reason) before continuing. `RECOVERY` is
-worker state, **not** a sequenced control event (those are orchestrator-only, on the control
-issue). Read `docs/task-loop/directions.md` first (human steering, highest priority). Re-read
-the source-of-truth docs at the **current `plan_revision`** (the value in
-`docs/task-loop/proposal.md` frontmatter on `master`).
+Read this task issue's **`RECOVERY` block** (see *RECOVERY ledger* below) and **resume by its
+`status`** if an attempt was interrupted, or explicitly abandon it (delete the branch, note the
+reason) before starting fresh. Read `docs/task-loop/directions.md` first (human steering,
+highest priority). Re-read the source-of-truth docs at the **current `plan_revision`** (the
+value in `docs/task-loop/proposal.md` frontmatter on `master`).
 
 ### 2. Confirm the task
 The orchestrator already chose and scoped this task and passed `task_id`,
@@ -59,7 +56,9 @@ against the issue; confirm `spawned_plan_revision` matches the proposal on `mast
 Use `superpowers:using-git-worktrees`. Branch from fresh `master`:
 `git checkout master && git pull && git checkout -b <prefix>-<short-slug>` (prefix from
 {{BRANCH_PREFIXES}}). Open the decision record `docs/task-loop/logs/NNN_<task>_log.md` with
-frontmatter `status: in_progress`, `task`, `issue`, `branch`, `spawned_plan_revision`.
+frontmatter `status: in_progress`, `task`, `issue`, `branch`, `spawned_plan_revision`, and
+write the initial **`RECOVERY` block** to the issue body: `status=in_progress`,
+`resume_from=<step>`, `branch`, `spawned_plan_revision`, `dirty_tree_expected=yes`.
 
 ### 4. Define the rubric (binary)
 Use `dev-skills:goal-rubric` to draft a binary pass/fail rubric (each item a test name, a
@@ -96,27 +95,76 @@ history to `docs/CHANGELOG.md`. Commit doc updates **with** the implementation.
 
 ### 9. Open the PR and review with Codex
 Commit with clean, attribution-free text (write the message to a file, `git commit -F`;
-stage files by explicit path). Push and open the PR with a clean body file
-(`gh pr create --body-file`), titled clearly, linking the issue, listing the rubric with
-evidence, and carrying a `Plan-Revision: <spawned_plan_revision>` line. **Review the PR
-adversarially with `discuss-with-codex` — every PR** — feeding Codex the actual diff; treat
-the review with `superpowers:receiving-code-review` rigor; fix or rebut each point; re-review
-until no blocking issues.
+stage files by explicit path). **Before `gh pr create`**, write `RECOVERY: status=creating_pr`
++ `head_sha=<commit>` to the issue body (see *RECOVERY ledger*). Push and open the PR with a
+clean body file (`gh pr create --body-file`), titled clearly, linking the issue, listing the
+rubric with evidence, and carrying a `Plan-Revision: <spawned_plan_revision>` line.
+**Immediately after**, write `RECOVERY: status=pr_open, pr=#M, pr_head_sha=<sha>,
+resume_from=pr_review`. **Review the PR adversarially with `discuss-with-codex` — every PR** —
+feeding Codex the actual diff; treat the review with `superpowers:receiving-code-review` rigor;
+fix or rebut each point; re-review until no blocking issues. Each review push that changes the
+head updates `pr_head_sha` and stays `status=pr_open`.
 
 ### 10. Request merge — do NOT merge
 Re-check `spawned_plan_revision` validity at **every irreversible boundary** — before
 finalizing the spec (step 5), before opening the PR (step 9), and before requesting merge here
-— because the orchestrator may have invalidated it. If still valid, post a **`MERGE_REQUEST`
-inbox event** to the task issue carrying the PR head SHA and `spawned_plan_revision`, then **go
-idle**. The **orchestrator** validates and merges (it is the sole integrator). If the revision
-was invalidated at any of those boundaries, mark the decision record `stale_revision_blocked`,
-post nothing further, and shut down.
+— because the orchestrator may have invalidated it. If invalidated at any boundary, write
+`RECOVERY: status=stale_revision_blocked`, post nothing further, and shut down.
+
+If still valid, request merge as an **immutable attempt** (see *RECOVERY ledger*):
+**freeze the branch** (push no more commits), generate a fresh `merge_request_uuid`, write
+`RECOVERY: status=merge_requesting, merge_request_uuid=<u>, merge_request_head_sha=<current
+pr_head_sha>`, then post the **`MERGE_REQUEST` inbox event** (carrying that `pr_head_sha`,
+`uuid`, and `spawned_plan_revision`), then write `RECOVERY: status=merge_requested` and **go
+idle**. The **orchestrator** validates (head-SHA-bound) and merges — it is the sole integrator.
+If a fix is unavoidable after freezing, the attempt is void: return to `status=pr_open`, push
+the fix (new head), and start a **new** attempt with a **new** `uuid` — never reuse a UUID for a
+different head.
 
 ### 11. Finalize the record
 Update `docs/task-loop/logs/NNN_<task>_log.md`: task chosen, steering consumed, contracts
 honored, rubric items + pass/fail evidence, Codex dispositions (objections + how each
 resolved), run records for any background jobs, follow-ups filed, and what's next. The
 orchestrator sets the record to `status: complete` after it merges.
+
+## RECOVERY ledger (so a dead worker is recoverable)
+
+`RECOVERY` is a fenced block in the **task issue body** (one canonical location, last-write-wins
+via `gh issue edit <task_issue> --body-file <file>`) — **not** a comment and **not** a sequenced
+control event. It is updated as an **ordered pre/post-condition around every irreversible
+external action**, so the orchestrator can always tell *ready-but-unannounced* from
+*still-working*. Fields:
+
+```
+RECOVERY
+status: in_progress | creating_pr | pr_open | merge_requesting | merge_requested | stale_revision_blocked | abandoned
+resume_from: <step>
+branch: <branch>
+spawned_plan_revision: <N>
+head_sha: <commit to be PR'd>           # at creating_pr
+pr: "#M"                                  # at pr_open
+pr_head_sha: <sha>                        # at pr_open; updated on each review push
+merge_request_uuid: <uuid>               # at merge_requesting (immutable, bound to next field)
+merge_request_head_sha: <sha>            # at merge_requesting (== pr_head_sha at attempt time)
+dirty_tree_expected: yes|no
+```
+
+**Immutable merge-request attempt.** A `merge_request_uuid` is bound to `merge_request_head_sha`.
+Once `status=merge_requesting`, **freeze the branch** — push no more commits. Because the
+control protocol dedupes by `uuid` only, a UUID must never be reused for a different head (a
+later head would be stranded behind the already-seen UUID). If a fix is unavoidable, the attempt
+is void: return to `pr_open`, push the fix (new head), and mint a **new** UUID.
+
+**Resume rules** (step 1, by `status`):
+- `in_progress` → resume at `resume_from`.
+- `creating_pr` → check whether a PR already exists for `branch`/`head_sha`
+  (`gh pr list --head <branch>`) before creating one (the post-create write may have been lost).
+- `pr_open` → resume PR review, or proceed to the merge request.
+- `merge_requesting` → if the current PR head **==** `merge_request_head_sha`, **repost the same
+  `merge_request_uuid`** (the orchestrator's UUID dedupe makes the repost a no-op); if the head
+  **differs**, discard that UUID, set `status=pr_open` with the new `pr_head_sha`, and start a
+  fresh attempt.
+- `merge_requested` → done; await the orchestrator's merge.
 
 ## Control-protocol events (how the worker talks to the orchestrator)
 

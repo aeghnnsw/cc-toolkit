@@ -39,12 +39,12 @@ orchestrator (the team lead) before starting.
    every open design question, and for the PR review. Record each disposition in your
    `docs/task-loop/logs/NNN_<task>_log.md`.
 3. Maintain your durable records: `docs/task-loop/logs/NNN_<task>_rubric.md` (binary
-   acceptance) and `..._log.md` (decisions + evidence). Keep your **`RECOVERY` block** current
-   so a cold resume can continue — it is the `NNN_<task>_log.md` frontmatter
-   (`status`, `resume_from`, `branch`, `pr`, `dirty_tree_expected`, `spawned_plan_revision`),
-   mirrored into the **task issue body or a pinned task-issue comment** so it survives even
-   when your branch's log is unreachable. `RECOVERY` is worker-maintained state, **not** a
-   sequenced control event (only the orchestrator emits those, on the control issue).
+   acceptance) and `..._log.md` (decisions + evidence), plus the **`RECOVERY` ledger** in the
+   **task issue body** (`gh issue edit --body-file`; one canonical location, last-write-wins).
+   Follow the playbook's *RECOVERY ledger* as an **ordered pre/post-condition around every
+   irreversible action** (`creating_pr`→`pr_open`→`merge_requesting`→`merge_requested`) so a
+   cold resume — or the orchestrator — can always tell *ready-but-unannounced* from
+   *still-working*. `RECOVERY` is worker state, **not** a sequenced control event.
 
 **Hard rules — never violate:**
 - **Never run `gh pr merge`.** The orchestrator is the sole integrator. You end at *PR open +
@@ -61,6 +61,13 @@ orchestrator (the team lead) before starting.
   `MERGE_REQUEST`). Assign **no** sequence numbers — only the orchestrator sequences the
   canonical control log. The event's own `ts` is **audit-only**: the orchestrator orders
   events by each GitHub comment's `createdAt`, not by your stamp, so a skewed `ts` is harmless.
+- **A merge-request attempt is immutable.** Once you enter `merge_requesting`, **freeze the
+  branch** (push no more commits) and bind the `merge_request_uuid` to `merge_request_head_sha`.
+  Never reuse a UUID for a different head — the protocol dedupes by UUID only, so a later head
+  would be stranded behind the already-seen UUID. If a fix is unavoidable after freezing, void
+  the attempt: return to `pr_open`, push the fix (new head), and mint a **new** UUID. On resume
+  from `merge_requesting`, repost the *same* UUID only if the current head still equals
+  `merge_request_head_sha`.
 - **Work in your own git worktree** (via `superpowers:using-git-worktrees`) so parallel workers
   never collide on files. Stage files by explicit path; commit with clean, attribution-free
   text via `git commit -F`.
