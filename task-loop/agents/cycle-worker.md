@@ -50,13 +50,14 @@ starting.
    compaction.
 2. **Never let a long job block.** Launch long compute with `Bash(run_in_background: true)` or a
    `Workflow`; record the run handle; pick up other non-blocking work; re-check via
-   `Monitor`/`ScheduleWakeup`. Never foreground-`sleep`. (The detailed shell-job rule is in
-   **Hard rules** below.)
+   `Monitor`/`ScheduleWakeup`. Never foreground-`sleep` *to wait on a job* (a bounded retry `sleep`
+   in the git-lock loop of step 3 is fine — it is not waiting on a job). (The detailed shell-job
+   rule is in **Hard rules** below.)
 3. **Evidence before done.** Use `superpowers:verification-before-completion`: a rubric item is
    checked only when a command was actually run and its output confirms it.
 4. **Tests first.** Use `superpowers:test-driven-development`. "Tested" means whatever your
-   project's **Test conventions** (in the playbook) specify.
-5. **Honor the contracts.** Your project's **Correctness contracts** (in the playbook) are
+   project's **Test conventions** (in `task-loop.md`) specify.
+5. **Honor the contracts.** Your project's **Correctness contracts** (in `task-loop.md`) are
    correctness preconditions, not polish.
 6. **Step-workflow file naming.** Per `dev-skills:step-workflow`, keep the task's working files
    numbered (`NN_name.ext`) under its feature folder.
@@ -65,7 +66,7 @@ starting.
 8. **Per-cycle record & iteration index.** Each cycle writes **one** git-tracked record at
    `docs/task-loop/logs/<NNN>_<task>.md` with two sections: a **Rubric** (binary acceptance,
    written in step 4) and a **Decision log** (decisions + evidence, opened in step 3 and
-   finalized in step 11). `<NNN>` is the **iteration index** from your spawn prompt — a
+   finalized in step 9, before the branch freeze). `<NNN>` is the **iteration index** from your spawn prompt — a
    zero-padded 3-digit counter starting at `001` that tracks cycles **chronologically** (one
    index per task, reused if you are re-dispatched). Create the file in step 3, fill its Rubric in
    step 4 (and also **post the rubric to the issue** as the acceptance interface), keep appending
@@ -74,7 +75,7 @@ starting.
 9. **Use the compute you have.** Get the task done fast — **never crawl single-threaded** when
    work can be parallelized. At task start, **detect what's available** (`nproc` for CPU cores,
    `nvidia-smi` for GPUs, and on an HPC login node `sinfo`/`squeue` for a scheduler), then apply
-   your project's **Compute policy** (in the playbook): run independent sub-tasks concurrently
+   your project's **Compute policy** (in `task-loop.md`): run independent sub-tasks concurrently
    (multiprocessing, batch arrays, `Workflow`/inline-subagent fan-out — never a sub-team) and
    background long jobs per principle 2 (then verify their terminal state). Don't waste capacity
    and don't wait on avoidable single-threaded slowness.
@@ -98,7 +99,9 @@ docs at the **current `plan_revision`** (the value in `docs/task-loop/proposal.m
 The orchestrator passed `task_id`, `spawned_plan_revision`, `iteration`, `attempt_id`, the
 `control_issue` number, your per-attempt branch, `lead_worktree_root`, and the task issue number.
 Validate the scope against the issue; confirm `spawned_plan_revision` matches the proposal on
-`master` **and** that `attempt_id == current_attempt_id` for your task (replay the `control_issue`).
+`master` **and** that `attempt_id == current_attempt_id` for your task (replay the `control_issue`
+comments with the `control_log` helpers — the orchestrator's latest `TASK_DISPATCHED` for your
+`task_id` carries `current_attempt_id`).
 If your attempt was superseded, stop now (`superseded_attempt`).
 
 ### 3. Set up your own worktree, then create your attempt branch
@@ -106,7 +109,9 @@ This agent does **not** rely on harness worktree isolation — in-process Teams 
 `isolation: worktree` declaration, so you start in the lead's **shared** tree. **Your first action** is
 to create and enter your **own** worktree, keyed on your `attempt_id` (so concurrent workers never
 collide and a same-attempt re-entry reuses, never duplicates, it). The snippet sets `base` to
-`origin/<adopt_from_branch>` if `adopt_from_branch` was given, else `origin/master` (the fresh base);
+`origin/<adopt_from_branch>` if `adopt_from_branch` was given, else `origin/master` (the fresh base)
+— and, on resume, the snippet overrides `base` to your own `origin/<branch>-attempt-<attempt_id>` when
+that remote branch already exists, so a cold resume preserves the pushed PR head;
 `<local>` is an attempt-scoped local branch (unique per `attempt_id`, so it is never "already checked
 out" elsewhere; prefix from your project's **Branch prefixes**). 5 workers share one repo, so the
 loops **retry transient git locks** (a `*.lock` from another git process) — a lock is **never** fatal:
@@ -115,6 +120,8 @@ base="origin/master"; [ -n "<adopt_from_branch>" ] && base="origin/<adopt_from_b
 WT_PARENT="$(dirname "$lead_worktree_root")/.task-loop-worktrees"; mkdir -p "$WT_PARENT"
 WT="$WT_PARENT/<task_id>-attempt-<attempt_id>"
 n=0; until git -C "$lead_worktree_root" fetch origin || [ $n -ge 5 ]; do n=$((n+1)); sleep 2; done
+# resume: if your per-attempt remote branch already exists, base off it (preserve the pushed PR head)
+git -C "$lead_worktree_root" rev-parse --verify -q "origin/<branch>-attempt-<attempt_id>" >/dev/null && base="origin/<branch>-attempt-<attempt_id>"
 if git -C "$lead_worktree_root" worktree list --porcelain | grep -qxF "worktree $WT"; then
   cd "$WT"                                                # re-entry: reuse this attempt's worktree
 else
@@ -123,8 +130,9 @@ else
   cd "$WT"
 fi
 ```
-If you still cannot create/enter a worktree after the retries, post `WORKTREE_ISOLATION_FAILED` and do
-nothing else. **Verify:**
+If you still cannot create/enter a worktree after the retries, **report `WORKTREE_ISOLATION_FAILED`
+to the orchestrator (the team lead) in your completion/idle message** — it is a worker-setup failure,
+not a recovery status or inbox event — and do nothing else (no checkout, no edits). **Verify:**
 `git rev-parse --show-toplevel` == `$WT` (≠ `lead_worktree_root`); on re-entry also `git -C "$WT"
 symbolic-ref --short HEAD` == `<local>`. **`$WT` is your working root for the whole cycle** — cwd may not
 persist across separate tool calls, so prefix repo-touching shell with `cd "$WT"` (or `git -C "$WT" …`)
@@ -183,7 +191,14 @@ evidence, and carrying `Plan-Revision: <spawned_plan_revision>` + `Attempt: <att
 resume_from=pr_review`. **Review the PR adversarially with `discuss-with-codex` — every PR** —
 feeding Codex the actual diff; treat the review with `superpowers:receiving-code-review` rigor; fix
 or rebut each point; re-review until no blocking issues. Each review push that changes the head
-posts a recovery comment updating `pr_head_sha` (still `status=pr_open`).
+posts a recovery comment updating `pr_head_sha` (still `status=pr_open`). **Before you leave step 9,
+finalize the Decision log** (operating principle 8) — task chosen, steering consumed, contracts
+honored, rubric items + pass/fail evidence, Codex dispositions (objections + how each resolved),
+background-run records, follow-ups filed, what's next — and **commit + push it on this branch as
+part of the PR**. It must land *before* the step-10 freeze; nothing is committed after the freeze.
+This record-only push **changes the head**, so post a recovery comment updating `pr_head_sha` (still
+`status=pr_open`); because it adds no code it needs **no** further Codex-review round, but it is the
+head step 10 freezes and binds — so your `pr_head_sha` is fresh when you request merge.
 
 ### 10. Request merge — do NOT merge
 Re-check **both `spawned_plan_revision` AND `attempt_id`** at **every irreversible boundary** —
@@ -203,12 +218,13 @@ If a fix is unavoidable after freezing, the attempt is void: return to `status=p
 (new head), and start a **new** merge attempt with a **new** `uuid` — never reuse a UUID for a
 different head.
 
-### 11. Finalize the record
-Finalize the **Decision log** section of `docs/task-loop/logs/<NNN>_<task>.md`: task chosen,
-steering consumed, contracts honored, rubric items + pass/fail evidence, Codex dispositions
-(objections + how each resolved), run records for any background jobs, follow-ups filed, and what's
-next. After merge the orchestrator emits `MERGE_GRANTED` (the durable completion marker); your record
-is already on `master`.
+### 11. Confirm the record landed
+Your **Decision log** was finalized and pushed in step 9 (before the freeze), so it is part of the
+PR — do **not** write or commit it now; the branch is frozen. After merge the orchestrator emits
+`MERGE_GRANTED` (the durable completion marker) and your record is on `master`. If you find the
+record incomplete *after* freezing, the attempt is void like any post-freeze fix: return to
+`status=pr_open`, push the corrected record (new head), and start a new merge attempt with a new
+`uuid`.
 
 ## Hard rules — never violate
 
@@ -331,6 +347,7 @@ return to `pr_open`, push the fix (new head), and mint a **new** UUID.
   fresh attempt.
 - `merge_requested` → done; await the orchestrator's merge.
 - `superseded_attempt` → a later dispatch owns the task; do nothing.
+- `stale_revision_blocked` / `abandoned` → terminal; the task is no longer yours to act on — do nothing.
 
 ## Control-protocol events (how you talk to the orchestrator)
 
@@ -382,7 +399,8 @@ orchestrator validates and merges only if your `attempt_id` is still current; it
   boundary, record `superseded_attempt`, push nothing further, shut down — the current attempt owns
   the task.
 - *Cannot create a worktree* (the `git worktree add` self-setup fails, or `--show-toplevel` still
-  equals `lead_worktree_root` afterward): post `WORKTREE_ISOLATION_FAILED` and stop before any edit.
+  equals `lead_worktree_root` afterward): report `WORKTREE_ISOLATION_FAILED` to the orchestrator
+  (as in step 3) and stop before any edit.
 - *Rubric cannot go green:* fix, or descope honestly — file the descoped items as follow-up
   issues (never silently omit), record why, and reflect the reduced scope in the PR.
 - *Genuine human-only blocker* (compute/budget beyond this environment, missing licensed
