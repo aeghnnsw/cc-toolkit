@@ -1,6 +1,6 @@
 ---
 name: run-cycle
-description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "start the task-loop run", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under built-in /loop on a fixed 30-min poll: each turn it computes the dependency-ordered task frontier from a single GitHub control issue, spawns one cycle-worker teammate per ready task, validates and merges their PRs (sole integrator), and terminates by a scheduled drain-signal — not an iteration cap.
+description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "start the task-loop run", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under built-in /loop on a fixed 15-min poll: each turn it computes the dependency-ordered task frontier from a single GitHub control issue, spawns one cycle-worker teammate per ready task, validates and merges their PRs (sole integrator), and terminates by a scheduled drain-signal — not an iteration cap.
 version: 0.1.0
 ---
 
@@ -10,7 +10,7 @@ version: 0.1.0
 
 Third and final step of the task-loop workflow (`specify-aims` → `create-cycle` →
 **`run-cycle`**). It is the **orchestrator**: the main agent, driven by built-in **`/loop`
-on a fixed 30-min poll**, that plans and dispatches work and is the **sole integrator** (the only agent
+on a fixed 15-min poll**, that plans and dispatches work and is the **sole integrator** (the only agent
 that merges). It does **not** run any task's cycle itself — `cycle-worker` teammates do that,
 one per task.
 
@@ -49,7 +49,7 @@ the control-issue body.
 1. **Loop A — the orchestrator** — a **live `/loop` Agent-Teams lead session**, **not** a scheduler
    job. Each turn it refreshes its lease in the control-issue body, replays the control-issue comment
    log to rebuild fast state, **monitors team status → merges → dispatches over the full re-derived
-   frontier (seat-capped at 5)**, and ends with a **fixed `ScheduleWakeup(1800)`** (30 min). It
+   frontier (seat-capped at 5)**, and ends with a **fixed `ScheduleWakeup(900)`** (15 min). It
    **self-bounds on `stop_at`** (the Step-2 stop-check is the sole stop decision) and treats
    `phase: exiting` as a **hard terminal guard**. A fixed poll that re-derives the whole frontier each
    tick makes an *alive-but-stuck* orchestrator structurally impossible *between* turns — which is what
@@ -102,7 +102,7 @@ crash/hang). Detect which **first**, and keep **all** state in GitHub — no loc
    woken turn decides; see *Stop-time control*.)
 6. **Run the orchestrator turn (Loop A)** (below / `references/`). It self-bounds: each turn it
    compares the clock to `stop_at`, caps its next wake so it wakes by `stop_at` to drain — so the run
-   stops even if Loop B never fires — and ends with the fixed 30-min `ScheduleWakeup`. To run longer or
+   stops even if Loop B never fires — and ends with the fixed 15-min `ScheduleWakeup`. To run longer or
    stop sooner, **re-invoke `/run-cycle`** (active stop update: updates `stop_at` and recreates Loop B,
    ~0 latency), or edit `stop_at` in the header (passive: observed within one poll).
 
@@ -148,7 +148,7 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    `attempt_id`, the per-attempt branch `<branch>-attempt-<attempt_id>`, `lead_worktree_root`, and
    the scope.
 7. **Wait / idle / exit:** reached only after §6 has filled every free seat it can. Any non-terminal
-   state schedules the **same fixed `ScheduleWakeup(1800)`** (idle notifications are no longer part of
+   state schedules the **same fixed `ScheduleWakeup(900)`** (idle notifications are no longer part of
    the wake model); **idle** (do **not** exit) when the frontier is empty with no stop signal; when
    draining completes, run the recorded **pre-exit audit** and a **two-phase quiescence exit**
    (cooldown + re-audit) before stopping. `phase: exiting` is a **hard terminal guard** — a stray/late
@@ -169,7 +169,7 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
   seat is free — but a lead never *intentionally* runs >5 (best-effort per-session cap; a manual
   double-start may transiently exceed it, bounded by attempt fencing); selection is
   priority-then-oldest-ready (starvation-free).
-- **Continuous service:** "no ready work" is `idle` (a fixed 30-min wake), never exit. Termination is a
+- **Continuous service:** "no ready work" is `idle` (a fixed 15-min wake), never exit. Termination is a
   scheduled **drain-signal** (the Loop B early-wake + the Step-2 self-bound), with a bounded,
   non-destructive drain (overdue workers → `orphaned_acknowledged`). Death or an intra-turn hang is
   recovered by **manual `/run-cycle` resume** — there is no watchdog.
