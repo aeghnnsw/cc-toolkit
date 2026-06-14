@@ -1,5 +1,15 @@
 # Conclusion — Where do task-loop's general worker rules live?
 
+> **SUPERSEDED (2026-06-14, same day — issue #129).** This conclusion recommended keeping general
+> rules in the rendered playbook (and rejected system-prompt-only). The user subsequently made the
+> opposite call by explicit decision: **all general/project-agnostic worker instructions —
+> including the worktree setup — live in the `cycle-worker` agent contract only; the rendered
+> `task-loop.md` holds only this project's parameters.** Rationale (the user's): general rules then
+> update centrally with the plugin (no re-running `create-cycle` per project) and there is a single
+> copy, so nothing can drift. This was a deliberate user override of the Codex/Claude recommendation
+> below; the analysis is retained for the record, but the placement decision here no longer reflects
+> the implementation.
+
 **Goal:** Should task-loop's general (project-agnostic) worker rules live ONLY in the
 `cycle-worker` agent system prompt, instead of being duplicated into the rendered
 `task-loop.md` playbook (the `create-cycle` skeleton)? Triggered by wanting to add a new
