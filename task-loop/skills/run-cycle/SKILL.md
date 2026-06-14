@@ -1,6 +1,6 @@
 ---
 name: run-cycle
-description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "start the task-loop run", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under built-in /loop (self-paced): each turn it computes the dependency-ordered task frontier from a single GitHub control issue, spawns one cycle-worker teammate per ready task, validates and merges their PRs (sole integrator), and terminates by a scheduled drain-signal — not an iteration cap.
+description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "start the task-loop run", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under built-in /loop on a fixed 30-min poll: each turn it computes the dependency-ordered task frontier from a single GitHub control issue, spawns one cycle-worker teammate per ready task, validates and merges their PRs (sole integrator), and terminates by a scheduled drain-signal — not an iteration cap.
 version: 0.1.0
 ---
 
@@ -10,7 +10,7 @@ version: 0.1.0
 
 Third and final step of the task-loop workflow (`specify-aims` → `create-cycle` →
 **`run-cycle`**). It is the **orchestrator**: the main agent, driven by built-in **`/loop`
-(self-paced)**, that plans and dispatches work and is the **sole integrator** (the only agent
+on a fixed 30-min poll**, that plans and dispatches work and is the **sole integrator** (the only agent
 that merges). It does **not** run any task's cycle itself — `cycle-worker` teammates do that,
 one per task.
 
@@ -40,79 +40,71 @@ Before starting, verify and stop with guidance if any fails:
   provenance and **halts** if it ever finds a task-loop PR merged by someone else, rather than
   laundering it as authorized — but settings should prevent that case.)
 
-## Control plane — one live loop + two guard jobs (no local files)
+## Control plane — one live fixed-interval loop + one stop early-wake (no local files)
 
-`run-cycle` runs as **three cooperating jobs** — a running loop cannot reliably police its own
-death, so two sibling guard jobs bound and watch it. **No local files**: all coordination state
-lives in GitHub (the single control issue); schedule handles live in the scheduler itself,
-recorded in the control-issue body.
+`run-cycle` runs as **two cooperating jobs**. **No local files**: all coordination state lives in
+GitHub (the single control issue); the one schedule handle lives in the scheduler itself, recorded in
+the control-issue body.
 
-1. **Running loop (loop 1)** — a **live `/loop` Agent-Teams lead session** (the orchestrator),
-   **not** a scheduler job. Each turn it **heartbeats its lease into the control-issue body**,
-   replays the control-issue comment log to rebuild fast state, plans → dispatches → merges, and
-   **self-bounds on `stop_at`**. Teammate idle notifications are a **within-session latency
-   optimization, not part of correctness** — correctness rests entirely on GitHub replay +
-   idempotent respawn (see `references/`).
-2. **Watchdog (loop 3)** — a **recurring scheduler job every 30 min**. It reads the control-issue
-   body; if loop 1's `heartbeat` is stale **and `now < stop_at`**, loop 1 is presumed dead:
-   - **Tier 0 (always — the guaranteed floor): detect + alert.** Post a **plain non-control
-     comment** (no `task-loop-event` fence — invisible to the sequencer) plus a push notification
-     "orchestrator down, resume needed." Recovery is then a clean **manual `/run-cycle`** (it
-     rebuilds 100% from GitHub — that is the payoff of no-local-files).
-   - **Tier 1 (only if a tested local supervisor is configured): unattended auto-relaunch.** A
-     dead `/loop` session cannot relaunch itself and a cloud routine cannot spawn local Agent-Teams
-     teammates, so true auto-resurrection needs a **named local supervisor** (OS launchd/cron, or
-     a verified locally-running job) with a tested launch template (repo cwd, `CLAUDE_CODE_
-     EXPERIMENTAL_AGENT_TEAMS=1`, plugin loaded, `gh` authed, `/run-cycle` under `/loop`, log
-     capture). That is **setup/config, not runtime state**, but it is a real precondition — the
-     Phase-0 spike must validate it before any unattended-resurrection claim. Absent it, the
-     watchdog stays at Tier 0.
-   The `now < stop_at` guard ensures neither tier resurrects the run after an intentional stop.
-3. **Stop (loop 2)** — a **one-time scheduler job at `stop_at`**. It reads the control-issue body
-   for `watchdog_schedule_id`, **cancels the watchdog (loop 3) first** (so it can't resurrect the
-   run), then confirms loop 1 has drained. The clean teardown of loops 1 **and** 3.
+1. **Loop A — the orchestrator** — a **live `/loop` Agent-Teams lead session**, **not** a scheduler
+   job. Each turn it refreshes its lease in the control-issue body, replays the control-issue comment
+   log to rebuild fast state, **monitors team status → merges → dispatches over the full re-derived
+   frontier (seat-capped at 5)**, and ends with a **fixed `ScheduleWakeup(1800)`** (30 min). It
+   **self-bounds on `stop_at`** (the Step-2 stop-check is the sole stop decision) and treats
+   `phase: exiting` as a **hard terminal guard**. A fixed poll that re-derives the whole frontier each
+   tick makes an *alive-but-stuck* orchestrator structurally impossible *between* turns — which is what
+   the old watchdog really guarded against. There is **no watchdog**.
+2. **Loop B — the stop early-wake** — a **one-time scheduler job at `stop_at`** that fires into Loop
+   A's own session and **wakes it early** so the woken turn's Step-2 stop-check drains promptly (bounds
+   stop latency to ~0). It does **not** write the header or force exit itself. Its handle
+   (`stop_schedule_id`) lives in the control-issue body so the orchestrator can cancel/recreate it when
+   `stop_at` changes (see `references/` → *Stop-time control*).
 
-The two guard jobs (2 & 3) and any Tier-1 relaunch must run in the **same local environment**
-where Agent Teams is enabled. Their handles (`watchdog_schedule_id`, `stop_schedule_id`) live in
-the **control-issue body runtime header** (orchestrator is its sole writer) so loop 2 can cancel
-loop 3 — **no `orchestrator-state.json`, no flag file, nothing on local disk.**
+**Death / intra-turn-hang recovery is manual `/run-cycle` resume** — it rebuilds 100% from GitHub (the
+payoff of no-local-files), so there is **no in-protocol liveness watch**. This is an accepted reduction
+vs the old watchdog: a fixed poll prevents *inter-turn* under-dispatch, but an *intra-turn* hang
+(mitigated by best-effort command deadlines, not eliminated) or a dead session is recovered by a human
+re-running `/run-cycle`. Loop B runs in the **same local environment** where Agent Teams is enabled.
+**No `orchestrator-state.json`, no flag file, nothing on local disk.**
 
 ## Setup
 
-`run-cycle` is invoked two ways — a **fresh start** (you) or a **resubmit** (loop 3, after a
-crash). Detect which **first**, and keep **all** state in GitHub — no local files:
+`run-cycle` is invoked two ways — a **fresh start** or a **resume** (a human re-running it after a
+crash/hang). Detect which **first**, and keep **all** state in GitHub — no local files:
 
 0. **Control issue:** find the project's single pinned control issue (labelled
    `task-loop:control`), or create it if absent (`gh issue create`, then pin + label). Its
    **comments** are the append-only, sequenced `CONTROL_EVENT` log; its **body** is the mutable
-   **runtime header** — a fenced ` ```task-loop-runtime ` JSON block holding `lease`, `stop_at`,
-   `watchdog_schedule_id`, `stop_schedule_id`, and an advisory `phase`. The orchestrator (loop 1)
-   is the header's **sole writer**; loops 2 & 3 only read it.
-1. **Fresh vs resubmit:** read the body header. If it already holds a valid `stop_at` **and** both
-   schedule handles, this is a **resubmit/resume** — **skip the duration prompt and schedule
-   creation** (steps 4–6); the loops already exist. Otherwise it is a **fresh start**.
-2. **Lease:** read the header `lease`. If a **live** lease (`expires_at` in the future) is owned by
-   a different instance → **exit** (never two orchestrators). Else claim it: write the header with
-   your `lease` (`owner`, `expires_at = now + TTL`, `heartbeat = now`), then **re-read and confirm
-   you still own it** before any side effect (the **write-then-re-read fence** — GitHub has no
-   atomic CAS). This is the only single-coordinator guard — no local lock file.
-3. **Team:** create the agent team you spawn `cycle-worker` teammates into (recreated on a
-   resubmit, since teammates are ephemeral).
+   **runtime header** — a fenced ` ```task-loop-runtime ` JSON block holding `lease`, the turn
+   diagnostics (`last_turn_started_at`/`last_turn_completed_at`/`next_wakeup_at`), `stop_at`,
+   `stop_schedule_id`, and an advisory `phase`. The orchestrator (Loop A) is the header's **sole
+   writer**.
+1. **Fresh vs resume:** read the body header. If it already holds a valid `stop_at` **and**
+   `stop_schedule_id`, this is a **resume** — **skip the duration prompt and Loop B creation** (steps
+   4–5), rebuild from GitHub, and apply the tri-state takeover (`references/` §1). Otherwise it is a
+   **fresh start**.
+2. **Lease:** read the header `lease`. If a **live** lease (`expires_at` in the future) is owned by a
+   different instance → **exit** (never two orchestrators) — unless an explicit human force-takeover is
+   in effect (the header is soft, so force is always available, including over a still-`likely_alive`
+   lead; tri-state resume, `references/` §1). Else claim it: write
+   the header with your `lease` (`owner`, `expires_at = now + TTL`) and the turn diagnostics, then
+   **re-read and confirm you still own it** before any side effect (the **write-then-re-read fence** —
+   GitHub has no atomic CAS). This is the only single-coordinator guard — no local lock file.
+3. **Team:** create the agent team you spawn `cycle-worker` teammates into (recreated on a resume,
+   since teammates are ephemeral).
 4. *(fresh only)* **Run duration (prompt for it).** **Ask the user** *"How long should the loop run
    before a graceful stop? (default: 24 hours)"* — accept a duration or an absolute time, **default
    24 hours**. An **interactive prompt, not a command-line argument**. Write the absolute `stop_at`
    (UTC) into the body header.
-5. *(fresh only)* **Create the watchdog (loop 3)** with the built-in scheduler: a recurring job
-   **every 30 min** that, when the header `heartbeat` is stale and `now < stop_at`, **detects +
-   alerts** (Tier 0: a plain non-control comment + push notification) and — only if a tested local
-   supervisor is configured — auto-relaunches `run-cycle` (Tier 1). Write its handle into the header
-   as `watchdog_schedule_id`. (See *Control plane* for the Tier-0/Tier-1 launcher contract.)
-6. *(fresh only)* **Create the stop (loop 2)** with the built-in scheduler: a one-time job at
-   `stop_at` that reads `watchdog_schedule_id` from the header, **cancels it**, then confirms loop 1
-   has drained. Write its handle into the header as `stop_schedule_id`.
-7. **Run the orchestrator turn (loop 1)** (below / `references/`). It self-bounds: each turn it
-   compares the clock to `stop_at` and caps its next wake so it wakes by `stop_at` to drain — so the
-   run stops even if loop 2 fails. (To run longer or stop sooner, edit `stop_at` in the header.)
+5. *(fresh only)* **Create Loop B — the stop early-wake** with the built-in scheduler: a one-time job
+   at `stop_at` that fires into this session and wakes the orchestrator so its Step-2 stop-check drains
+   promptly. Write its handle into the header as `stop_schedule_id`. (It does **not** force exit — the
+   woken turn decides; see *Stop-time control*.)
+6. **Run the orchestrator turn (Loop A)** (below / `references/`). It self-bounds: each turn it
+   compares the clock to `stop_at`, caps its next wake so it wakes by `stop_at` to drain — so the run
+   stops even if Loop B never fires — and ends with the fixed 30-min `ScheduleWakeup`. To run longer or
+   stop sooner, **re-invoke `/run-cycle`** (active stop update: updates `stop_at` and recreates Loop B,
+   ~0 latency), or edit `stop_at` in the header (passive: observed within one poll).
 
 ## The orchestrator turn (high level)
 
@@ -147,7 +139,7 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    up to **5 concurrent `cycle-worker` teammates** (documented guideline, not enforced) by
    `directions.md` priority, then oldest `ready_since`, then `proposal.md` Roadmap order, reserving ≥1
    seat for the oldest (starvation-free). **Active workers never suppress dispatch, but a lead never
-   *intentionally* exceeds 5 in flight** (best-effort per-session cap; a watchdog false-positive
+   *intentionally* exceeds 5 in flight** (best-effort per-session cap; a manual double-start
    takeover may transiently exceed it, correctness-safe via attempt fencing). **Dispatch** each
    selected task: idempotently create/reuse its `Task-Loop-Task:
    <task_id>`-marked issue, emit `TASK_CREATED{…, iteration}` (first dispatch) + `TASK_DISPATCHED{…,
@@ -155,12 +147,12 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    the task issue number, `control_issue`, `spawned_plan_revision` (= current), `iteration`, a fresh
    `attempt_id`, the per-attempt branch `<branch>-attempt-<attempt_id>`, `lead_worktree_root`, and
    the scope.
-7. **Wait / idle / exit:** reached only after §6 has filled every free seat it can. Teammate **idle
-   notifications are the primary wake**; add a **bounded, jittered** fallback `ScheduleWakeup`
-   (shorter when a capped backlog waits on a freeing seat, never a busy-loop); **idle** (long
-   `ScheduleWakeup`, do **not** exit) only when the frontier is empty with no stop signal; when
+7. **Wait / idle / exit:** reached only after §6 has filled every free seat it can. Any non-terminal
+   state schedules the **same fixed `ScheduleWakeup(1800)`** (idle notifications are no longer part of
+   the wake model); **idle** (do **not** exit) when the frontier is empty with no stop signal; when
    draining completes, run the recorded **pre-exit audit** and a **two-phase quiescence exit**
-   (cooldown + re-audit) before stopping.
+   (cooldown + re-audit) before stopping. `phase: exiting` is a **hard terminal guard** — a stray/late
+   wake re-audits and stops without dispatching.
 
 ## Hard invariants
 
@@ -174,12 +166,13 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 - **Proactive, seat-capped dispatch:** each turn merges completions **first**, then dispatches ready
   tasks into free seats **up to 5 concurrent workers** (documented guideline, not enforced). Active
   workers never suppress dispatch — a task unblocked by a merge is submitted the **same turn** if a
-  seat is free — but a lead never *intentionally* runs >5 (best-effort per-session cap; a watchdog
-  false-positive may transiently exceed it, bounded by attempt fencing); selection is
+  seat is free — but a lead never *intentionally* runs >5 (best-effort per-session cap; a manual
+  double-start may transiently exceed it, bounded by attempt fencing); selection is
   priority-then-oldest-ready (starvation-free).
-- **Continuous service:** "no ready work" is `idle`, never exit. Termination is a scheduled
-  **drain-signal**, with a bounded, non-destructive drain (overdue workers →
-  `orphaned_acknowledged`).
+- **Continuous service:** "no ready work" is `idle` (a fixed 30-min wake), never exit. Termination is a
+  scheduled **drain-signal** (the Loop B early-wake + the Step-2 self-bound), with a bounded,
+  non-destructive drain (overdue workers → `orphaned_acknowledged`). Death or an intra-turn hang is
+  recovered by **manual `/run-cycle` resume** — there is no watchdog.
 - **Labels are a human index only;** the GitHub append-only control-event log is authoritative;
   the Agent-Teams mailbox is notification-only.
 

@@ -410,6 +410,42 @@ class TestRecoveryComments(unittest.TestCase):
         self.assertEqual(control_log.latest_recovery([c1, c2], "A")["status"], "pr_open")
         self.assertIsNone(control_log.latest_recovery([c1, c2], "C"))
 
+    def test_latest_recovery_with_metadata_returns_canonical_created_at(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "in_progress"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        meta = control_log.latest_recovery_with_metadata([c1, c2], "A")
+        self.assertEqual(meta["comment_id"], "IC2")
+        self.assertEqual(meta["created_at"], TS_A)
+        self.assertEqual(meta["recovery"]["status"], "pr_open")
+
+    def test_latest_recovery_with_metadata_ignores_other_attempts(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "B", "status": "merge_requested"}))
+        meta = control_log.latest_recovery_with_metadata([c1, c2], "A")
+        self.assertEqual(meta["comment_id"], "IC1")
+        self.assertEqual(meta["created_at"], TS_EARLY)
+        self.assertEqual(meta["recovery"]["status"], "pr_open")
+
+    def test_latest_recovery_with_metadata_none_when_absent(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        self.assertIsNone(control_log.latest_recovery_with_metadata([c1], "C"))
+
+    def test_latest_recovery_with_metadata_last_block_in_one_comment_wins(self):
+        # Two recovery blocks for attempt A in a single comment body: the LAST wins,
+        # carrying that comment's canonical created_at.
+        body = (control_log.format_recovery({"attempt_id": "A", "status": "in_progress"})
+                + "\n"
+                + control_log.format_recovery({"attempt_id": "A", "status": "merge_requesting"}))
+        meta = control_log.latest_recovery_with_metadata([("IC9", TS_B, body)], "A")
+        self.assertEqual(meta["comment_id"], "IC9")
+        self.assertEqual(meta["created_at"], TS_B)
+        self.assertEqual(meta["recovery"]["status"], "merge_requesting")
+
 
 class TestEndToEnd(unittest.TestCase):
     def test_ingest_emit_replay_and_cold_resume_dedupe(self):

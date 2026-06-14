@@ -77,6 +77,23 @@ def latest_recovery(comments: list, attempt_id):
     return found
 
 
+def latest_recovery_with_metadata(comments: list, attempt_id):
+    """Like `latest_recovery`, but return the GitHub-canonical metadata of the
+    winning comment, or None.
+
+    Returns `{"comment_id": id, "created_at": created_at, "recovery": rec}` for the
+    most recent recovery record tagged with `attempt_id` (LAST match wins, mirroring
+    `latest_recovery`), carrying the comment's canonical `created_at` so the
+    orchestrator's recovery-disposition "hold if recent" gate keys off durable GitHub
+    time, NOT the worker-authored JSON `ts` (skew/spoof-prone) or session memory."""
+    found = None
+    for (cid, created_at, body) in comments:
+        for rec in parse_recovery(body):
+            if rec.get("attempt_id") == attempt_id:
+                found = {"comment_id": cid, "created_at": created_at, "recovery": rec}
+    return found
+
+
 def filter_new_inbox(inbox_events: list, seen_uuids) -> list:
     """Return inbox events whose uuid has not been seen, in order, deduping
     repeats within the batch. `seen_uuids` is any container supporting `in`."""

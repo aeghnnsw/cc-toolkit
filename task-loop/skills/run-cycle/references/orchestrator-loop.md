@@ -22,52 +22,68 @@ state = control_log.replay(events)
 ```
 
 **No local files.** The only mutable runtime cell is the **control-issue body runtime header** — a
-fenced ` ```task-loop-runtime ` JSON block the orchestrator (loop 1) is the **sole writer** of.
+fenced ` ```task-loop-runtime ` JSON block the orchestrator (Loop A) is the **sole writer** of.
 Everything else is the append-only comment log (replayed above) or live session memory; nothing is
 written to local disk. Header shape:
 
 ```json
 {
-  "lease": {"owner": "<id>", "expires_at": "<utc>", "heartbeat": "<utc>"},
+  "lease": {"owner": "<id>", "expires_at": "<utc ~2x poll>"},
+  "last_turn_started_at": "<utc>",
+  "last_turn_completed_at": "<utc>",
+  "next_wakeup_at": "<utc>",
   "phase": "dispatching|waiting|idle|draining|exiting_pending|exiting",
   "stop_at": "<utc>",
   "drain_deadline_at": null,
-  "watchdog_schedule_id": null,
   "stop_schedule_id": null
 }
 ```
 
 `phase`/`current_plan_revision`/`active_worker_ids` are **derived** (rebuilt by `replay` + session
-memory) — the header only persists what a *sibling job* must read: the `lease` heartbeat, `stop_at`,
-and the two schedule handles. The lease `heartbeat` is refreshed every turn (a `gh issue edit` of
-the body); the **watchdog** (loop 3) reads the header and treats a stale `heartbeat`/`expires_at` as
-"the running loop died" and resubmits it. `stop_at` is the self-bound graceful-stop time;
-`watchdog_schedule_id`/`stop_schedule_id` are the built-in scheduler handles for loops 3 and 2 (so
-loop 2 can cancel loop 3). See *Control plane*. Body writes are last-writer-wins, which is safe
-because the lease loser exits — but two near-simultaneous writers are possible, so the lease is a
-**soft** single-coordinator guard, not an atomic CAS.
+memory). The header is **soft, advisory, last-writer-wins**, and the orchestrator is its **sole
+writer** — it persists only the lease plus diagnostics a *human or the resume preflight* reads; **no
+sibling job consumes it** (there is no watchdog). `expires_at` (~2× the 1800 s poll) is the
+single-coordinator TTL: a manual second `/run-cycle` start that finds it in the future exits.
+`last_turn_started_at`/`last_turn_completed_at`/`next_wakeup_at` are **diagnostics** that make a manual
+resume *informed* (sleeping vs hung-mid-turn vs dead) instead of guessing from one TTL — advisory
+inputs, never proof. `stop_at` is the self-bound graceful-stop time; `stop_schedule_id` is the
+scheduler handle the orchestrator uses to cancel/recreate **Loop B** (the stop early-wake) when
+`stop_at` changes. See *Stop-time control*. Because writes are last-writer-wins and GitHub gives no
+atomic CAS, the lease is a **soft** single-coordinator guard (the loser exits on the write-then-re-read
+fence), not an atomic lock.
 
 ## State machine
+
+**Two loops.** **Loop A** is this `/loop` orchestrator; every turn ends with a **fixed
+`ScheduleWakeup(1800)`** (30 min). **Loop B** is a one-time stop early-wake at `stop_at` (see
+*Stop-time control*). There is **no watchdog** — a fixed poll that re-derives the whole frontier each
+tick makes an *alive-but-stuck* orchestrator structurally impossible *between* turns. It does **not**
+cover an *intra-turn hang* (a `gh`/CI/spawn call that never returns before the turn reschedules): wrap
+the orchestrator's own long calls in **best-effort command deadlines** and **reconcile any ambiguous
+side effect on timeout** (re-inspect PR state before rescheduling) so a turn almost always returns to
+schedule its next poll; a genuine hang or a dead session is then handled by **manual `/run-cycle`
+resume** (a documented reduction vs the old watchdog).
 
 **Dispatch is a seat-capped action, not a phase.** Every turn — *after* merging completions (§5) —
 the orchestrator fills every **free worker seat** with a ready task, up to a **fixed cap of 5**
 concurrent `cycle-worker` teammates (5 tasks in flight), **whether or not other workers are still
 active**. It is **proactive** (a task unblocked this turn is dispatched this turn) but **bounded**
-(never more than 5 *intentionally* per lead session — see §6 for the watchdog-false-positive caveat)
-— active workers never suppress dispatch of newly-ready work *as long as a seat is free*. `waiting` is what the orchestrator does *after* it has filled every seat it
-can, not an alternative to dispatching. Re-entering a turn always re-runs merge→dispatch first.
-The 5-seat cap is a **documented guideline in this prompt, not a programmatically enforced limit**.
-The phases:
+(never more than 5 *intentionally* per lead session — see §6 for the manual-double-start caveat) —
+active workers never suppress dispatch of newly-ready work *as long as a seat is free*. `waiting` is
+what the orchestrator does *after* it has filled every seat it can, not an alternative to dispatching.
+Re-entering a turn always re-runs merge→dispatch first. The 5-seat cap is a **documented guideline in
+this prompt, not a programmatically enforced limit**. **`phase: exiting` is a hard terminal guard** (a
+stray/late wake reading a clean `exiting` re-audits and stops without dispatching — §7). The phases:
 
 - **dispatching** — creating tasks + spawning workers for ready tasks this turn. Entered whenever
   any ready task exists and `stop_at` is not reached — **including while other workers are active**
   (a §5 merge or a freed concurrency slot just unblocked it).
-- **waiting** — after filling every free seat, work is in flight. Teammate idle notifications are
-  the **primary** wake; add a **bounded, jittered** fallback `ScheduleWakeup` — shorter only when a
-  capped backlog waits on a freeing seat, never aggressive polling, never a busy-loop (see §7).
-  `waiting` never means "stop dispatching" — the next turn re-runs §5→§6 first.
-- **idle** — no ready work, no active workers, `stop_at` not reached → long `ScheduleWakeup`
-  (capped so it never sleeps past `stop_at`); **do not exit** (continuous service).
+- **waiting** — after filling every free seat, work is in flight → the **fixed `ScheduleWakeup(1800)`**.
+  Idle notifications are **no longer part of the wake model**; every non-terminal phase uses the one
+  fixed cadence. `waiting` never means "stop dispatching" — the next turn re-runs §5→§6 first.
+- **idle** — no ready work, no active workers, `stop_at` not reached → the same **fixed
+  `ScheduleWakeup(1800)`** (capped so it never sleeps past `stop_at`); **do not exit** (continuous
+  service).
 - **draining** — clock reached `stop_at` → no new dispatch; wait for active workers, bounded
   by `drain_deadline_at`.
 - **exiting_pending** — drain complete → record the pre-exit audit, `ScheduleWakeup` a 60–120 s
@@ -79,12 +95,23 @@ The phases:
 
 ### 1. Lease & rebuild
 - Read the **control-issue body header**. If a **live** lease (`expires_at` in the future) is owned
-  by a different instance → exit (never two orchestrators). Else acquire/refresh the lease by
-  writing the header (`owner`, `expires_at = now + TTL`, `heartbeat = now`), then **re-read the
-  header and confirm you still own it** before any side effect (the **write-then-re-read fence**;
-  GitHub gives no atomic CAS, so this is how a lease loser detects it lost and exits).
-- On resume / stale lease (`expires_at` past, or `phase: exiting` without a clean prior audit):
-  take over, then **rebuild fast state from the control issue** (replay the comment log, above).
+  by a different instance → exit (never two orchestrators) — **unless an explicit human
+  force-takeover is in effect** (the header is soft, so force is always available, including over a
+  still-`likely_alive` lease; see the tri-state below). Else acquire/refresh the lease by writing
+  the header (`owner`, `expires_at = now + TTL`, and the turn diagnostics `last_turn_started_at = now`
+  and the `next_wakeup_at` you intend to schedule), then **re-read the header and confirm you still own
+  it** before any side effect (the **write-then-re-read fence**; GitHub gives no atomic CAS, so this is
+  how a lease loser detects it lost and exits).
+- **On resume / stale lease, classify the prior lead from the advisory diagnostics (tri-state):**
+  - **`likely_alive`** — `next_wakeup_at` **and** `expires_at` both in the future → the prior lead is
+    sleeping normally → **default refuse** the takeover, but allow an **explicit human force-takeover**
+    (the header is soft, so this is never an absolute block).
+  - **`likely_dead`** — `now ≫ next_wakeup_at` (the lead missed its wake → hung or dead) or
+    `expires_at` well past → acquire the lease but enter **observe/reconcile first** (do **not** eagerly
+    mint attempts — §6's recovery-disposition substep gates re-dispatch).
+  - The diagnostics are **advisory inputs, never proof** (the header is last-writer-wins and can be
+    stale either way); human force is always available.
+- After takeover, **rebuild fast state from the control issue** (replay the comment log, above).
   There is no local cache to distrust — fast state is always reconstructed from GitHub.
 
 ### 2. Stop check
@@ -177,11 +204,12 @@ abort the turn without merging or emitting. Act in this order:
 
 ### 6. Dispatch — proactive, seat-capped (skip if draining)
 **Lease fence first:** before this batch, **refresh + re-read the lease and re-confirm you still own
-it** — a merge-then-multi-dispatch turn can run long, and a mid-turn stale heartbeat could let the
-watchdog presume the lead dead and spawn a second one (the lease is a *soft* guard, §1/§"Emitting
-control events"). If you've lost it, **abort the turn without emitting**. The per-emit
-check-then-append seq guard still fences every individual `CONTROL_EVENT`; this fence keeps the
-heartbeat fresh across the long turn so the race stays vanishingly rare. Then recompute the frontier
+it** — a merge-then-multi-dispatch turn can run long, and a **manual double-start** (a human
+force-resuming during that long turn) could put a second lead on the same GitHub identity (the lease is
+a *soft* guard, §1/§"Emitting control events"). If you've lost it, **abort the turn without emitting**.
+The per-emit check-then-append seq guard still fences every individual `CONTROL_EVENT`; this fence
+keeps `expires_at` fresh across the long turn so the race stays vanishingly rare. Then recompute the
+frontier
 from the **post-merge** state and dispatch ready tasks into every **free worker seat**, up to the
 **5-seat cap**. **Proactive, not reluctant — but bounded:** do **not** hold a ready task back because
 other workers are still in flight (fill a free seat), and do **not** exceed 5 concurrent workers.
@@ -192,13 +220,34 @@ so **no per-task side effect happens before selection** — only the ≤5 *selec
 keeping the side-effect batch bounded even with hundreds of ready tasks (a 200-ready frontier still
 creates ≤5 issues this turn).
 
+- **Recovery disposition (apply before classifying an `active`-with-no-live-worker task as
+  dispatchable).** Such a task is **not** unconditionally re-dispatched — first inspect its
+  GitHub-visible artifacts for `current_attempt_id` and pick the exact disposition (this **replaces**
+  the old watchdog-era *takeover damping*):
+  - **open PR / `merge_requesting`** (latest recovery for `current_attempt_id`) → **reconcile**: drive
+    it through the §5 merge gate (merge or deny). **Spawn no worker.**
+  - **a per-attempt branch but no PR** → **hold if recent** (gate below); else mint a **new** attempt
+    with `adopt_from_branch` = that branch.
+  - **recovery comments only** (no branch, no PR) → a liveness hint only; **hold if recent**; else mint
+    a **fresh** attempt from clean `master`.
+  - **nothing** (no branch, no PR, no recent recovery) → mint a **fresh** attempt immediately.
+  - **Invariant (unchanged):** never reuse an `attempt_id` or write an existing attempt branch; every
+    re-dispatch mints a fresh `attempt_id` + its own branch, and `adopt_from_branch` only **reads** the
+    old branch.
+  - **"Recent" is a pure function of canonical GitHub time** (not the worker-authored JSON `ts`, not
+    session memory). Let `m = control_log.latest_recovery_with_metadata(comments, current_attempt_id)`.
+    **If `m is None`** (no recovery comment for `current_attempt_id` — e.g. a branch-but-no-PR attempt
+    that pushed before ever reporting) → treat as **not recent** → mint per the table immediately, **no
+    hold**. Otherwise `hold_until = m["created_at"] + 1800 + skew_grace`: if `now < hold_until` →
+    **hold** the task one poll (a merely-late live worker can finish or self-report) and re-evaluate
+    next tick; else mint per the table. Human force overrides any hold.
 - **Dispatchable** = dependencies complete (each dep's `MERGE_GRANTED` is in the log → status
   `merged`), revision-compatible (`spawned_plan_revision` would be the current `plan_revision`), and
   **either** status `ready` (never dispatched) **or** status `active` with **no live worker** for its
-  `current_attempt_id` (an orphaned/crashed attempt — re-dispatched as a *recovery*, branching from
-  `adopt_from_branch`; see *Recovery*). **Exclude** tasks with a **live** worker, `merged`, or
-  `stale`. (Status `active` alone is **not** "in flight" — on a cold resume `active_worker_ids` is
-  empty, so every un-merged dispatched task is a recovery candidate, never stranded.)
+  `current_attempt_id` (an orphaned/crashed attempt — subject to the **recovery disposition** above).
+  **Exclude** tasks with a **live** worker, `merged`, or `stale`. (Status `active` alone is **not** "in
+  flight" — on a cold resume `active_worker_ids` is empty, so every un-merged dispatched task is a
+  recovery candidate, never stranded.)
 - **Aging key (log-derived, zero side effect):** `ready_since(task)` = the seq of its **last
   dependency's `MERGE_GRANTED`** (or `0` for a dependency-free root). It needs **no** per-task event
   or issue, so an unselected task costs **nothing** on GitHub and the key is a pure function of the
@@ -214,19 +263,19 @@ creates ≤5 issues this turn).
   programmatically enforced limit** — a lead never *intentionally* runs more than 5. Tasks beyond the
   cap are simply **not selected** this turn — they remain dispatchable (no issue, no event yet) and
   win a seat as one frees (§7's bounded wake), never abandoned.
-  - **The cap is per-lead-session, not global.** Its one documented breach is a watchdog
-    **false-positive takeover** (a second lead spawns while the first's workers still live, see
-    *Recovery*): the new lead **cannot observe the old lead's teammates** (ephemeral, invisible across
-    sessions), so it may re-dispatch their `active` tasks and transiently run up to ~2× the cap until
-    the superseded attempts hit their merge-gate/lease fences and stop. That overshoot is
-    **correctness-safe** (durable `current_attempt_id` + per-attempt branches mean only one attempt
-    can ever merge) and **transient** — a bounded *cost* overrun, never a broken invariant. A true
-    global cap would need durable per-worker liveness heartbeats; that enforcement machinery is
-    deliberately **out of scope** (the cap is a guideline, not an invariant).
-  - **Takeover damping** (shrinks, does not eliminate, the overshoot): on the **first** turn after
-    taking over a stale lease, defer re-dispatch of `active`-status tasks by one bounded
-    recovery-probe interval before reclassifying them as orphaned — so a merely-stalled prior lead
-    does not instantly get its worker count doubled. Steady-state turns skip the delay.
+  - **The cap is per-lead-session, not global.** Its one documented breach is a **manual double-start
+    takeover** (a human runs `/run-cycle` a second time and force-takes a lease the first lead still
+    holds — the startup lease check normally prevents this): the new lead **cannot observe the old
+    lead's teammates** (ephemeral, invisible across sessions), so it may re-dispatch their `active`
+    tasks and transiently run up to ~2× the cap until the superseded attempts hit their
+    merge-gate/lease fences and stop. That overshoot is **correctness-safe** (durable
+    `current_attempt_id` + per-attempt branches mean only one attempt can ever merge) and **transient**
+    — a bounded *cost* overrun, never a broken invariant. A true global cap would need durable
+    per-worker liveness heartbeats; that enforcement machinery is deliberately **out of scope** (the cap
+    is a guideline, not an invariant).
+  - The **recovery-disposition substep** (reconcile/adopt artifacts, hold-if-recent before minting) is
+    what now caps that cost; it **replaces** the old watchdog-era *takeover damping*. The tri-state
+    resume (§1) further refuses a takeover when the prior lead is diagnosably alive.
 - **Dispatch each selected task** (≤5 — the only GitHub writes of this step):
   - **Idempotent issue creation (crash-safe):** before `gh issue create`, search for an existing
     issue carrying a `Task-Loop-Task: <task_id>` marker line and **reuse it** if found; otherwise
@@ -257,38 +306,56 @@ creates ≤5 issues this turn).
 
 ### 7. Wait / idle / exit
 Reached **only after §6 has filled every free seat it can** — never sleep with a free seat and ready
-work.
-- **Workers active, no capped backlog** → `waiting`: automatic teammate **idle notifications are the
-  primary wake** (a worker reporting done triggers §5→§6 the next turn); add only a **bounded
-  heartbeat-interval fallback** `ScheduleWakeup` **with jitter**. Do **not** poll aggressively —
-  active workers alone are not a reason to wake early.
-- **Ready tasks remain but all 5 seats are full** → `waiting` with a **shorter, still-floored +
-  jittered** fallback wake — a freeing seat also emits an idle notification, so this only backstops a
-  missed one; the next turn re-runs §5→§6 to fill the freed seat. **Never busy-loop:** the floor +
-  idle notifications bound the rate. Drop `active_worker_ids` entries as workers report and are merged.
-- **Deferred recovery candidates exist** (first turn after a stale-lease takeover — §6 takeover
-  damping is holding `active`-status tasks for one recovery-probe interval) → `waiting`: schedule the
-  **bounded recovery-probe wake (jittered)**; **do not `idle` or exit**. These are *not* "frontier
-  empty" — they are damped recovery work, and the very next turn (after the probe interval) §6
-  reclassifies and re-dispatches them. They also fail the pre-exit audit (below), so the loop cannot
-  declare quiescence while recovery is merely deferred.
-- **Frontier empty, none active, `stop_at` not reached** → `idle`: long `ScheduleWakeup` (capped
-  to wake by `stop_at`); **do not exit**.
+work. The wake model is a **pure fixed poll**: every non-terminal state schedules the **same fixed
+`ScheduleWakeup(1800)`** (30 min). Idle notifications are **not** relied upon; whatever a turn finds it
+re-derives from GitHub and handles.
+- **Workers active, a capped backlog, or the frontier empty** (`stop_at` not reached) →
+  `waiting`/`idle`: schedule the **fixed `ScheduleWakeup(1800)`**, capped so it never sleeps past
+  `stop_at`; **do not exit** (continuous service). One cadence for all of these — no jittered fallback,
+  no shorter backlog wake, no recovery-probe wake. A held recovery candidate (§6 "hold if recent") is
+  simply re-evaluated on the next fixed tick. Drop `active_worker_ids` entries as workers report and are
+  merged.
 - **draining** → dispatch nothing; wait for active workers until `drain_deadline_at`; past the
   deadline, mark overdue workers `orphaned_acknowledged` (record worktree/issue/PR pointers — no
   abrupt kill) and proceed.
 - **Drain complete** → `exiting_pending`: run the **pre-exit audit** (below), record real command
   outputs into a decision record, `ScheduleWakeup` a 60–120 s cooldown.
-- **Cooldown wake** → re-run the audit from scratch. Still clean → `exiting`: stop rescheduling.
-  Anything changed → revert to `dispatching`/`waiting`.
+- **Cooldown wake** → re-run the audit from scratch. Still clean → `exiting`: **stop rescheduling**
+  (no further `ScheduleWakeup`). Anything changed → revert to `dispatching`/`waiting`.
+- **Hard terminal guard.** Because the stop early-wake (Loop B) or a stray/late `ScheduleWakeup` can
+  fire after exit, a turn that reads a clean `phase: exiting` at the top **re-audits and stops without
+  dispatching** — a late wake can never re-enter the run; only a changed state reverts to
+  `dispatching`/`waiting`.
 
 ### 8. Heartbeat
-Refresh the lease `heartbeat`/`expires_at` (and advisory `phase`/`stop_at`/schedule handles) by
-writing the **control-issue body header** (`gh issue edit`). This is the only durable write of the
-turn besides the appended `CONTROL_EVENT` comments — there is no local cache to persist. This
-end-of-turn refresh is **in addition to** the intra-turn lease re-reads §5/§6 perform before their
-side-effect groups; together they keep the heartbeat fresh across a long merge-then-multi-dispatch
-turn so a busy lead is never mistaken for a dead one.
+Refresh the lease `expires_at` and the diagnostics (`last_turn_completed_at = now`, and the
+`next_wakeup_at` you are about to schedule) — plus advisory `phase`/`stop_at`/`stop_schedule_id` — by
+writing the **control-issue body header** (`gh issue edit`). This is the only durable write of the turn
+besides the appended `CONTROL_EVENT` comments — there is no local cache to persist. This end-of-turn
+refresh is **in addition to** the intra-turn lease re-reads §5/§6 perform before their side-effect
+groups; together they keep `expires_at` fresh across a long merge-then-multi-dispatch turn so a busy
+lead is never mistaken for a stale one by a *manual* resume (the only remaining second-lead source —
+there is no watchdog).
+
+## Stop-time control (Loop B)
+
+**Loop B** is a one-time scheduled job at `stop_at` that fires **into Loop A's own session** (the
+built-in scheduler enqueues a prompt that runs while the REPL is idle, i.e. between polls). It does
+**not** write the header or force `phase: exiting` itself — it simply **wakes Loop A early**, and that
+turn's **Step 2 stop-check (against the *current* header `stop_at`)** is the sole stop decision. A
+stale early fire is therefore harmless: the woken turn sees `now < stop_at` and continues. Loop B
+carries the `stop_at` (a `stop_generation`) it was created for as **stale-trigger defense**, but Step
+2's check is the real gate. Its value: it **bounds stop latency to ~0** at the scheduled `stop_at`,
+versus the up-to-one-poll lag Loop A's own Step-2 check would otherwise incur.
+
+Changing `stop_at` (run longer / stop sooner) splits into two paths:
+- **Active stop update** — re-invoke `/run-cycle` (resume / stop-now / new `stop_at`): it runs **as the
+  orchestrator**, acquires the lease, updates `stop_at`, **cancels the old Loop B via `stop_schedule_id`
+  and creates a new one** for the new time, then runs Step 2. This is the **only** ~0-latency path for
+  **shortening**, and it is sole-writer-clean.
+- **Passive raw header edit** while Loop A sleeps — allowed but only **eventually observed** (≤ one
+  poll, ~30 min): Loop A recreates Loop B and acts on the new `stop_at` on its next wake. Discouraged
+  (it races the sole-writer model) in favor of the active path.
 
 ## Emitting control events
 
@@ -309,8 +376,9 @@ confirm its true max `seq` is still `state["last_seq"]`** — only then `assign_
 higher `seq` has appeared, a competing sequencer exists: re-ingest, recompute, retry; if it
 persists you have lost the lease → **exit**. Together with the write-then-re-read lease fence (§1),
 this is the single-sequencer guarantee under GitHub's non-CAS body writes — a vanishingly-small
-TOCTOU window between the re-read and the append remains and is accepted (the watchdog only acts on
-an already-stale heartbeat, so two live orchestrators are rare by construction). If `replay` ever
+TOCTOU window between the re-read and the append remains and is accepted (the only second-lead source
+is a *manual* double-start, which the startup lease check normally prevents, so two live orchestrators
+are rare by construction). If `replay` ever
 raises on a seq gap/dup or duplicate `source_uuid`, that is **detectable corruption → halt and
 escalate to a human**, never continue.
 
@@ -326,28 +394,31 @@ checkpoint for an unknown/regressing issue, or a non-canonical timestamp.
 
 Before writing `phase: exiting`, prove with actual command output (`superpowers:verification-
 before-completion`): `ready == 0` (no **dispatchable** tasks — counting any `active`-status task with
-no live worker, i.e. a **deferred recovery candidate**, as dispatchable), `active == 0`
-(`active_worker_ids` empty **and** no `active`-status task in the log awaiting (re-)dispatch, and no
-open `loop:in-progress` without a merged PR), `blocked == acknowledged` (every blocked/stale task has
-a follow-up), `unmerged == 0` (no open PR awaiting a `MERGE_REQUEST`). A damped/deferred recovery
-candidate therefore **fails** this audit — the loop cannot declare quiescence while recovery work is
-merely deferred. Re-run it after the cooldown; only an all-clear second pass permits exit.
+no live worker, i.e. a **recovery candidate** (§6 disposition, including one still inside a
+hold-if-recent window), as dispatchable), `active == 0` (`active_worker_ids` empty **and** no
+`active`-status task in the log awaiting (re-)dispatch, and no open `loop:in-progress` without a merged
+PR), `blocked == acknowledged` (every blocked/stale task has a follow-up), `unmerged == 0` (no open PR
+awaiting a `MERGE_REQUEST`). A held or unreconciled recovery candidate therefore **fails** this audit —
+the loop cannot declare quiescence while recovery work is still pending. Re-run it after the cooldown;
+only an all-clear second pass permits exit.
 
-## Recovery (cold resume)
+## Recovery (cold resume / manual resume)
 
-A fresh orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay →
-revision, dedupe set, scan floors, task statuses, **`iteration`**, **`current_attempt_id`**), the
-per-task **append-only recovery comments** (read via `control_log.latest_recovery(comments,
-current_attempt_id)`), open
-PRs, and `docs/task-loop/logs/` (audit only). Ephemeral teammates and `~/.claude/tasks/` are **not**
-relied upon. Because teammates die with the lead's session a crashed loop 1 *usually* leaves no
-surviving workers — but a watchdog **false-positive** (lead alive, heartbeat merely stale) can spawn
-a second lead while a worker still lives, so safety must **not** depend on that: it comes from the
-durable `current_attempt_id` + **per-attempt branches** (below), with ephemerality only making the
-window rare. Orphaned tasks re-enter through §6's **Dispatchable** rule (status `active` with **no
-live worker** for `current_attempt_id`), so a crashed/resumed task is selected and re-dispatched by
-the same seat-capped frontier — never stranded, never a separate code path. Respawn follows **one
-rule, the GitHub-visible-artifact line:**
+Manual `/run-cycle` resume is the **death/hang recovery path** (there is no watchdog). A fresh
+orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay → revision,
+dedupe set, scan floors, task statuses, **`iteration`**, **`current_attempt_id`**), the per-task
+**append-only recovery comments** (read via `control_log.latest_recovery(comments,
+current_attempt_id)`, with `control_log.latest_recovery_with_metadata` supplying the canonical
+`created_at` for §6's hold-if-recent gate), open PRs, and `docs/task-loop/logs/` (audit only).
+Ephemeral teammates and `~/.claude/tasks/` are **not** relied upon. Because teammates die with the
+lead's session, a dead session *usually* leaves no surviving workers — but a **manual double-start**
+(a human force-resumes a lead that is actually alive) can spawn a second lead while a worker still
+lives, so safety must **not** depend on that: it comes from the durable `current_attempt_id` +
+**per-attempt branches** (below), with ephemerality only making the window rare; the tri-state resume
+(§1) and the recovery-disposition substep (§6) cap the *cost*. Orphaned tasks re-enter through §6's
+**recovery disposition** (status `active` with **no live worker** for `current_attempt_id`), so a
+crashed/resumed task is selected and re-dispatched by the same seat-capped frontier — never stranded,
+never a separate code path. Respawn follows **one rule, the GitHub-visible-artifact line:**
 
 - **No remote branch and no PR** for a dispatched task → any work was local-only pre-PR WIP, which
   is **disposable**: abandon it and **re-dispatch a fresh attempt** (new `attempt_id`) from clean
