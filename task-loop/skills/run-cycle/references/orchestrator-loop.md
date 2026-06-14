@@ -40,7 +40,8 @@ written to local disk. Header shape:
 ```
 
 `phase`/`current_plan_revision`/`active_worker_ids` are **derived** (rebuilt by `replay` + session
-memory). The header is **soft, advisory, last-writer-wins**, and the orchestrator is its **sole
+memory); `active_worker_ids` is the session-memory map `(task_id, attempt_id) → teammate_id` (§6).
+The header is **soft, advisory, last-writer-wins**, and the orchestrator is its **sole
 writer** — it persists only the lease plus diagnostics a *human or the resume preflight* reads; **no
 sibling job consumes it** (there is no watchdog). `expires_at` (~2× the 900 s poll) is the
 single-coordinator TTL: a manual second `/run-cycle` start that finds it in the future exits.
@@ -169,7 +170,8 @@ lease — therefore the only defense is **not merging once the lease is lost**. 
 abort the turn without merging or emitting. Act in this order:
 - **Reject stale attempts first:** if the `MERGE_REQUEST`'s `attempt_id` !=
   `tasks[task_id].current_attempt_id`, the worker was superseded by a later dispatch → emit
-  `MERGE_DENIED` (stale attempt) and stop. A superseded attempt could only have written its own
+  `MERGE_DENIED` (stale attempt), run the **attempt cleanup** below (that superseded `attempt_id` is
+  terminal), and stop. A superseded attempt could only have written its own
   per-attempt branch, so it can never affect the current attempt's branch/PR. (Every worker inbox
   event carries `attempt_id`; this is the gate that makes the durable single-flight token binding.)
   **`MERGE_DENIED` only acks the request — it does NOT stale the task** (`replay` no longer maps
@@ -196,18 +198,29 @@ abort the turn without merging or emitting. Act in this order:
 - Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}` — **exactly once** per
   merged request (it is the durable completion marker, and re-emitting it would duplicate the
   request's `source_uuid`, which `replay` rejects). If invalid, emit `MERGE_DENIED{... source_*}` +
-  `TASK_STALE`, and message the worker to stop/rescope.
-- After that emit, remove the worker from `active_worker_ids` (the worker's `NNN_<task>.md` record
-  is already on `master`). **Worktree cleanup:** the attempt's worktree path is **deterministic**
-  (`$(dirname "$lead_worktree_root")/.task-loop-worktrees/<task_id>-attempt-<attempt_id>`), so derive
-  it even when no recovery comment recorded it. Remove it **only** when the path sits under that
-  `.task-loop-worktrees/` prefix, matches this task/attempt, and is **not** `lead_worktree_root`. On a
-  **merged** attempt the tree is clean → `git worktree remove`. Apply the **same cleanup to any attempt
-  that reaches a terminal non-merged disposition** (superseded, stale, denied, or orphaned past the
-  drain deadline): that attempt is abandoned and its tree may be **dirty**, so force it
-  (`git worktree remove --force`) — its only durable surface was its own per-attempt remote branch, so
-  discarding the local tree loses nothing. The harness no longer auto-cleans worker worktrees, so
-  without this dead attempts would leak them. After removal, `git worktree prune`.
+  `TASK_STALE`, then run the **attempt cleanup** below (the `attempt_id` is now terminal; a rescope is
+  a fresh dispatch, not a message to the idle worker).
+- After that emit, run the **attempt cleanup** (on a merge the worker's `NNN_<task>.md` record is
+  already on `master`, so it loses nothing). It applies to a **terminal** `attempt_id` — keyed on the
+  attempt being terminal, not on "a request was denied," so **skip a `MERGE_DENIED` that only rejects a
+  stale `uuid` within a still-current `attempt_id`** (the worker voided and pushed a new head — same
+  attempt, still working). Two parts:
+  - **Stop the idle teammate.** The worker posts `MERGE_REQUEST` then goes idle — it never
+    self-terminates — so `TaskStop` it by `active_worker_ids[(task_id, attempt_id)]` (the id recorded
+    at dispatch, §6; the attempt key prevents stopping a different, still-working attempt) and drop
+    the entry, or idle teammates pile up past the seat cap. Use `TaskStop`, not a `shutdown_request` —
+    the worker has no `SendMessage` to approve one. Best-effort, after the durable emit: if no id is
+    tracked (a cold-resume reconcile, `active_worker_ids` empty) there is nothing this lead can stop by
+    handle — skip it (the orphaned tree is swept on the next resume, see *Recovery*); a stale
+    `TaskStop` is harmless.
+  - **Remove the worktree.** Its path is deterministic
+    (`$(dirname "$lead_worktree_root")/.task-loop-worktrees/<task_id>-attempt-<attempt_id>`), so derive
+    it even without a recovery comment. Remove it **only** when the path sits under that
+    `.task-loop-worktrees/` prefix, matches this task/attempt, and is **not** `lead_worktree_root`. A
+    **merged** tree is clean → `git worktree remove`; any other terminal attempt (superseded, staled,
+    or orphaned past the drain deadline) may be dirty → `git worktree remove --force` (its only durable
+    surface was its per-attempt remote branch). Then `git worktree prune`. The harness no longer
+    auto-cleans these, so without this dead attempts leak.
 
 ### 6. Dispatch — proactive, seat-capped (skip if draining)
 **Lease fence first:** before this batch, **refresh + re-read the lease and re-confirm you still own
@@ -308,7 +321,9 @@ creates ≤5 issues this turn).
     and — when
     re-dispatching a task that already has a GitHub-visible attempt — `adopt_from_branch=`the latest
     pushed attempt branch (the new attempt branches *from* it; Option-1: local-only pre-PR WIP is
-    disposable). Record its id in `active_worker_ids`. The worker **creates its own git worktree** at
+    disposable). **Record the teammate's returned id as
+    `active_worker_ids[(task_id, attempt_id)] = teammate_id`** so §5's cleanup can `TaskStop` exactly
+    this attempt's teammate, never a different one. The worker **creates its own git worktree** at
     invocation (in-process Teams do **not** honor an `isolation: worktree` declaration) — keyed on its
     `attempt_id`, as a sibling of `lead_worktree_root` — and records that path in a recovery comment for
     your §5 cleanup; it aborts (`WORKTREE_ISOLATION_FAILED`) only if it cannot create one.
@@ -424,7 +439,16 @@ lead's session, a dead session *usually* leaves no surviving workers — but a *
 (a human force-resumes a lead that is actually alive) can spawn a second lead while a worker still
 lives, so safety must **not** depend on that: it comes from the durable `current_attempt_id` +
 **per-attempt branches** (below), with ephemerality only making the window rare; the tri-state resume
-(§1) and the recovery-disposition substep (§6) cap the *cost*. Orphaned tasks re-enter through §6's
+(§1) and the recovery-disposition substep (§6) cap the *cost*.
+
+**Sweep crash-orphaned worktrees on resume.** §5's worktree removal is best-effort after the durable
+emit, so a crash before it runs orphans the tree (the teammate dies with the session, so only the tree
+leaks), and a `merged`/terminal task never re-enters §6 to reclaim it. So on cold resume after replay,
+**force-remove any `.task-loop-worktrees/<task_id>-attempt-<attempt_id>` (the §5 path) whose `task_id`
+replays as `merged` or whose `attempt_id` ≠ that task's `current_attempt_id`** (`git worktree remove
+--force`, then `git worktree prune`) — idempotent and bounded (one pass over the dir).
+
+Orphaned tasks re-enter through §6's
 **recovery disposition** (status `active` with **no live worker** for `current_attempt_id`), so a
 crashed/resumed task is selected and re-dispatched by the same seat-capped frontier — never stranded,
 never a separate code path. Respawn follows **one rule, the GitHub-visible-artifact line:**
