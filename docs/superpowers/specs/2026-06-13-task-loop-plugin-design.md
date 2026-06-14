@@ -192,6 +192,13 @@ resumable state; `step-workflow` numbered file naming.
 
 ## 7. `run-cycle` skill + orchestrator (step c)
 
+> **Superseded (control-plane topology), 2026-06-14:** the three-job model below (self-paced loop +
+> watchdog + stop) is replaced by the **two-loop fixed-poll** model in
+> `2026-06-14-task-loop-two-loop-control-plane-design.md` — a fixed 30-min poll orchestrator (Loop A)
+> + a one-time stop early-wake (Loop B), **no watchdog**, death/intra-turn-hang recovery by **manual
+> `/run-cycle` resume**. The text below is retained for history; the run-cycle skill + `references/`
+> are the live source.
+
 Human entry point. Starts the orchestrator under **built-in `/loop` self-paced** (per the
 loop-mechanism conclusion — **not** ralph, **not** a blocking Stop hook), creates the
 Agent Team, and runs the state machine. It runs as **a live `/loop` lead plus two scheduler guard
