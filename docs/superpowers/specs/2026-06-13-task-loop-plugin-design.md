@@ -207,10 +207,25 @@ purely through the GitHub control issue.
   orchestrator); on resume detect a stale lease and rebuild fast state from the GitHub append-only
   comment log.
 - **check `stop_at` first** → if the clock has reached it, go to `draining`.
-- `dispatching` — read `directions.md` + repo + GitHub; run the **replan barrier** (§8);
-  `TaskCreate` ready tasks with dependency edges; spawn **one `cycle-worker` per ready
-  task** (capped to frontier width).
-- `waiting` — wait on automatic teammate idle notifications.
+- **Merge-first, then proactive seat-capped dispatch** (each turn, after the replan barrier):
+  integrate completed `MERGE_REQUEST`s **before** dispatching, so a merge that finishes a dependency
+  unblocks its dependents the **same turn**. Dispatch is proactive (not a phase) but **bounded** —
+  fill free seats up to a **cap of 5 concurrent workers** (documented guideline, not enforced;
+  best-effort **per lead session** — a watchdog false-positive takeover can transiently exceed it,
+  correctness-safe via durable `attempt_id` fencing); active workers never suppress dispatch of
+  newly-ready work while a seat is free. A long
+  merge-then-multi-dispatch turn re-reads the soft lease before each side-effect group so a busy
+  lead is not mistaken for a dead one.
+- `dispatching` — read `directions.md` + repo + GitHub; run the **replan barrier** (§8); then
+  **select → dispatch** with a **log-derived aging key** (`ready_since` = last-dependency
+  `MERGE_GRANTED` seq, no per-task side effect): spawn **one `cycle-worker`** into each free seat, up
+  to 5 in flight per lead session, **only the selected ≤5 touching GitHub** (entered even while other workers are
+  active; priority → oldest `ready_since` → `proposal.md` Roadmap order, ≥1 seat reserved for the oldest). Dispatchable
+  includes a crashed task (status `active`, no live worker) so recovery uses the same frontier. Issue
+  creation is idempotent (reuse a `Task-Loop-Task: <task_id>`-marked issue) so a crash before
+  `TASK_CREATED` never duplicates.
+- `waiting` — after filling every free seat, rely on automatic teammate idle notifications plus a
+  **bounded, jittered** fallback wake (never a reason to stop dispatching, never a busy-loop).
 - `idle` — frontier empty, nothing active, **no** stop signal → long `ScheduleWakeup`/
   `Monitor`; **does not exit** (continuous service).
 - `draining` — stop signal observed → no new dispatch; let active workers finish, bounded

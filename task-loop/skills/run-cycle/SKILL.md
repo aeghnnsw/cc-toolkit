@@ -124,27 +124,43 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 3. **Event-drain & ingest:** read each task issue's comments at/after its scan floor, dedupe by
    UUID, **process findings before merge requests**. Ack a fresh `PLAN_FINDING` here (one
    `PLAN_FINDING_RECORDED`); a fresh `MERGE_REQUEST` is **not** acked here — it is collected as a
-   *pending decision* acked only by the merge gate (§6). Advance a per-issue scan checkpoint only
+   *pending decision* acked only by the merge gate (§5). Advance a per-issue scan checkpoint only
    through a fully-acked prefix, so a pending merge request pins the floor and is re-ingested
    until decided.
 4. **Replan barrier:** read `directions.md` (highest priority); if a finding invalidated a
    hypothesis, **materialize** a new `plan_revision` (merge the proposal-update PR to `master`,
    then emit `PLAN_REVISION_BUMP`), recompute the frontier, and halt dispatch of the stale
    subgraph.
-5. **Dispatch** (unless draining): for each ready task (deps satisfied, not active,
-   revision-compatible), up to the frontier-width cap, emit `TASK_CREATED{…, iteration}` (first time
-   only) + `TASK_DISPATCHED{…, attempt_id}` (every dispatch) and spawn **one** `cycle-worker`
-   teammate (`agentType: cycle-worker`) with `task_id`, the task issue number, `control_issue`,
-   `spawned_plan_revision` (= current), `iteration`, a fresh `attempt_id`, the per-attempt branch
-   `<branch>-attempt-<attempt_id>`, `lead_worktree_root`, and the scope.
-6. **Merge** (sole integrator): on a `MERGE_REQUEST` that is **attempt-current** (`attempt_id ==
-   current_attempt_id`, else `MERGE_DENIED`) and revision-compatible, validate against the
-   freshly-drained state and `gh pr merge --squash --delete-branch --match-head-commit <SHA>`;
-   emit `MERGE_GRANTED` (or `MERGE_DENIED` + `TASK_STALE`).
-7. **Wait / idle / exit:** wait on teammate idle notifications while workers are active; **idle**
-   (long `ScheduleWakeup`, do **not** exit) when the frontier is empty with no stop signal;
-   when draining completes, run the recorded **pre-exit audit** and a **two-phase quiescence
-   exit** (cooldown + re-audit) before stopping.
+5. **Merge first** (sole integrator): integrate completions **before** dispatching so a merge that
+   finishes a dependency unblocks its dependents this same turn. **Re-confirm the lease before `gh pr
+   merge` — never merge after losing it** (a same-identity second lead makes the reconcile path
+   unable to tell a stale merge from a valid one). On a `MERGE_REQUEST` that is **attempt-current**
+   (`attempt_id == current_attempt_id`, else `MERGE_DENIED`) and revision-compatible, validate
+   against the freshly-drained state and `gh pr merge --squash --delete-branch --match-head-commit
+   <SHA>`; emit `MERGE_GRANTED` (or `MERGE_DENIED` + `TASK_STALE`).
+6. **Dispatch — proactive, seat-capped** (unless draining): re-confirm the lease, then from the
+   **post-merge** state **select → dispatch**. The frontier and the **aging key are log-derived**
+   (`ready_since` = the seq of a task's last-dependency `MERGE_GRANTED`), so **only the ≤5 selected
+   tasks touch GitHub** — a 200-task frontier still creates ≤5 issues. **Dispatchable** = deps merged
+   + revision-compatible + (status `ready` **or** `active` with no live worker — an orphaned attempt
+   recovered via `adopt_from_branch`); a **live** worker, `merged`, or `stale` is excluded. **Select**
+   up to **5 concurrent `cycle-worker` teammates** (documented guideline, not enforced) by
+   `directions.md` priority, then oldest `ready_since`, then `proposal.md` Roadmap order, reserving ≥1
+   seat for the oldest (starvation-free). **Active workers never suppress dispatch, but a lead never
+   *intentionally* exceeds 5 in flight** (best-effort per-session cap; a watchdog false-positive
+   takeover may transiently exceed it, correctness-safe via attempt fencing). **Dispatch** each
+   selected task: idempotently create/reuse its `Task-Loop-Task:
+   <task_id>`-marked issue, emit `TASK_CREATED{…, iteration}` (first dispatch) + `TASK_DISPATCHED{…,
+   attempt_id}`, and spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with `task_id`,
+   the task issue number, `control_issue`, `spawned_plan_revision` (= current), `iteration`, a fresh
+   `attempt_id`, the per-attempt branch `<branch>-attempt-<attempt_id>`, `lead_worktree_root`, and
+   the scope.
+7. **Wait / idle / exit:** reached only after §6 has filled every free seat it can. Teammate **idle
+   notifications are the primary wake**; add a **bounded, jittered** fallback `ScheduleWakeup`
+   (shorter when a capped backlog waits on a freeing seat, never a busy-loop); **idle** (long
+   `ScheduleWakeup`, do **not** exit) only when the frontier is empty with no stop signal; when
+   draining completes, run the recorded **pre-exit audit** and a **two-phase quiescence exit**
+   (cooldown + re-audit) before stopping.
 
 ## Hard invariants
 
@@ -155,6 +171,12 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 - **Merge gates:** every merge passes the **pre-merge event-drain barrier** and is
   **head-SHA-bound** (`--match-head-commit`); no revision becomes current until its
   proposal-update PR is merged to `master` (materialization).
+- **Proactive, seat-capped dispatch:** each turn merges completions **first**, then dispatches ready
+  tasks into free seats **up to 5 concurrent workers** (documented guideline, not enforced). Active
+  workers never suppress dispatch — a task unblocked by a merge is submitted the **same turn** if a
+  seat is free — but a lead never *intentionally* runs >5 (best-effort per-session cap; a watchdog
+  false-positive may transiently exceed it, bounded by attempt fencing); selection is
+  priority-then-oldest-ready (starvation-free).
 - **Continuous service:** "no ready work" is `idle`, never exit. Termination is a scheduled
   **drain-signal**, with a bounded, non-destructive drain (overdue workers →
   `orphaned_acknowledged`).
