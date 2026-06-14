@@ -42,7 +42,7 @@ written to local disk. Header shape:
 `phase`/`current_plan_revision`/`active_worker_ids` are **derived** (rebuilt by `replay` + session
 memory). The header is **soft, advisory, last-writer-wins**, and the orchestrator is its **sole
 writer** — it persists only the lease plus diagnostics a *human or the resume preflight* reads; **no
-sibling job consumes it** (there is no watchdog). `expires_at` (~2× the 1800 s poll) is the
+sibling job consumes it** (there is no watchdog). `expires_at` (~2× the 900 s poll) is the
 single-coordinator TTL: a manual second `/run-cycle` start that finds it in the future exits.
 `last_turn_started_at`/`last_turn_completed_at`/`next_wakeup_at` are **diagnostics** that make a manual
 resume *informed* (sleeping vs hung-mid-turn vs dead) instead of guessing from one TTL — advisory
@@ -55,7 +55,7 @@ fence), not an atomic lock.
 ## State machine
 
 **Two loops.** **Loop A** is this `/loop` orchestrator; every turn ends with a **fixed
-`ScheduleWakeup(1800)`** (30 min). **Loop B** is a one-time stop early-wake at `stop_at` (see
+`ScheduleWakeup(900)`** (15 min). **Loop B** is a one-time stop early-wake at `stop_at` (see
 *Stop-time control*). There is **no watchdog** — a fixed poll that re-derives the whole frontier each
 tick makes an *alive-but-stuck* orchestrator structurally impossible *between* turns. It does **not**
 cover an *intra-turn hang* (a `gh`/CI/spawn call that never returns before the turn reschedules): wrap
@@ -78,11 +78,11 @@ stray/late wake reading a clean `exiting` re-audits and stops without dispatchin
 - **dispatching** — creating tasks + spawning workers for ready tasks this turn. Entered whenever
   any ready task exists and `stop_at` is not reached — **including while other workers are active**
   (a §5 merge or a freed concurrency slot just unblocked it).
-- **waiting** — after filling every free seat, work is in flight → the **fixed `ScheduleWakeup(1800)`**.
+- **waiting** — after filling every free seat, work is in flight → the **fixed `ScheduleWakeup(900)`**.
   Idle notifications are **no longer part of the wake model**; every non-terminal phase uses the one
   fixed cadence. `waiting` never means "stop dispatching" — the next turn re-runs §5→§6 first.
 - **idle** — no ready work, no active workers, `stop_at` not reached → the same **fixed
-  `ScheduleWakeup(1800)`** (capped so it never sleeps past `stop_at`); **do not exit** (continuous
+  `ScheduleWakeup(900)`** (capped so it never sleeps past `stop_at`); **do not exit** (continuous
   service).
 - **draining** — clock reached `stop_at` → no new dispatch; wait for active workers, bounded
   by `drain_deadline_at`.
@@ -245,7 +245,7 @@ creates ≤5 issues this turn).
     session memory). Let `m = control_log.latest_recovery_with_metadata(comments, current_attempt_id)`.
     **If `m is None`** (no recovery comment for `current_attempt_id` — e.g. a branch-but-no-PR attempt
     that pushed before ever reporting) → treat as **not recent** → mint per the table immediately, **no
-    hold**. Otherwise `hold_until = m["created_at"] + 1800 + skew_grace`: if `now < hold_until` →
+    hold**. Otherwise `hold_until = m["created_at"] + 900 + skew_grace`: if `now < hold_until` →
     **hold** the task one poll (a merely-late live worker can finish or self-report) and re-evaluate
     next tick; else mint per the table. Human force overrides any hold.
 - **Dispatchable** = dependencies complete (each dep's `MERGE_GRANTED` is in the log → status
@@ -316,10 +316,10 @@ creates ≤5 issues this turn).
 ### 7. Wait / idle / exit
 Reached **only after §6 has filled every free seat it can** — never sleep with a free seat and ready
 work. The wake model is a **pure fixed poll**: every non-terminal state schedules the **same fixed
-`ScheduleWakeup(1800)`** (30 min). Idle notifications are **not** relied upon; whatever a turn finds it
+`ScheduleWakeup(900)`** (15 min). Idle notifications are **not** relied upon; whatever a turn finds it
 re-derives from GitHub and handles.
 - **Workers active, a capped backlog, or the frontier empty** (`stop_at` not reached) →
-  `waiting`/`idle`: schedule the **fixed `ScheduleWakeup(1800)`**, capped so it never sleeps past
+  `waiting`/`idle`: schedule the **fixed `ScheduleWakeup(900)`**, capped so it never sleeps past
   `stop_at`; **do not exit** (continuous service). One cadence for all of these — no jittered fallback,
   no shorter backlog wake, no recovery-probe wake. A held recovery candidate (§6 "hold if recent") is
   simply re-evaluated on the next fixed tick. Drop `active_worker_ids` entries as workers report and are
@@ -363,7 +363,7 @@ Changing `stop_at` (run longer / stop sooner) splits into two paths:
   and creates a new one** for the new time, then runs Step 2. This is the **only** ~0-latency path for
   **shortening**, and it is sole-writer-clean.
 - **Passive raw header edit** while Loop A sleeps — allowed but only **eventually observed** (≤ one
-  poll, ~30 min): Loop A recreates Loop B and acts on the new `stop_at` on its next wake. Discouraged
+  poll, ~15 min): Loop A recreates Loop B and acts on the new `stop_at` on its next wake. Discouraged
   (it races the sole-writer model) in favor of the active path.
 
 ## Emitting control events

@@ -56,6 +56,10 @@ Discover, without asking:
   plugin. These become the `{{BRANCH_PREFIXES}}` and inform the commit/PR steps.
 - Whether a **code skeleton exists** yet (package layout, build config) or the repo is
   docs-only (drives the `{{BOOTSTRAP_NOTE}}`).
+- The **compute environment** — whether an HPC scheduler (`sinfo`/`squeue`) or GPUs
+  (`nvidia-smi`) are present, and the local core count (`nproc`). This **informs** the default
+  `{{COMPUTE_POLICY}}` wording (it does **not** by itself authorize cluster submission — that
+  stays gated on a named account/partition, below).
 
 ### 3. Interview for the project specifics (finalize fuzzy ones with Codex)
 Ask the user only for what cannot be detected, one topic at a time, and pressure-test
@@ -68,12 +72,24 @@ ambiguous answers with `dev-skills:discuss-with-codex`:
   conservation checks, integration gates) → `{{TEST_CONVENTIONS}}`.
 - A **bootstrap note** if the repo has no code yet (what the earliest scaffolding tasks are)
   → `{{BOOTSTRAP_NOTE}}`.
+- The **compute policy** — how aggressively a worker should use this machine, and any account
+  /partition for cluster submission → `{{COMPUTE_POLICY}}`. **Never leave it raw or invent it
+  ad hoc.** Default (use unless the user states a constraint): *"Use all available **local**
+  compute — every CPU core and available GPU; parallelize independent work; never run a
+  parallelizable job single-threaded; background long jobs and verify their terminal state. Do
+  **not** submit to a cluster/SLURM scheduler unless this policy names an allowed account
+  /partition — then submit heavy jobs to compute nodes (`sbatch`/`srun`), never the shared login
+  node. Note: up to 5 cycle-workers may share this host, so this aggressive default can
+  oversubscribe; if you routinely run several workers at once, set a per-worker cap (e.g.
+  `cores ÷ workers`) here."* Only pressure-test with `discuss-with-codex` when the project has
+  shared-cluster quota/etiquette constraints (then name the account/partition and any per-worker
+  cap).
 - The **north star** phrasing → `{{NORTH_STAR}}` (from the Charter).
 
 ### 4. Render the playbook
 Copy `assets/task-loop-skeleton.md` to `docs/task-loop/task-loop.md` and replace **every**
-occurrence of each `{{PLACEHOLDER}}` (some appear twice — e.g. `{{CONTRACTS}}` and
-`{{TEST_CONVENTIONS}}` recur in the operating principles). For an absent fill — e.g. no
+occurrence of each `{{PLACEHOLDER}}` (some appear twice — e.g. `{{CONTRACTS}}`,
+`{{TEST_CONVENTIONS}}`, and `{{COMPUTE_POLICY}}` recur in the operating principles). For an absent fill — e.g. no
 bootstrap needed when a code skeleton already exists — write `n/a` or remove that bullet;
 never leave a raw `{{...}}`. Leave the generic cycle steps and operating principles intact —
 they are deliberately project-agnostic. Do **not** weaken the worker's control-protocol

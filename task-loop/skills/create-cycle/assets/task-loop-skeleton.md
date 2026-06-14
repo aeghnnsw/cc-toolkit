@@ -17,6 +17,7 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
 - **Steering file (read first):** `docs/task-loop/directions.md`
 - **Correctness contracts (not optional polish):** {{CONTRACTS}}
 - **What "tested" means here:** {{TEST_CONVENTIONS}}
+- **Compute policy (how fully to use this host):** {{COMPUTE_POLICY}}
 - **Branch prefixes:** {{BRANCH_PREFIXES}} (hyphen-joined; the repo hook may reject other forms)
 - **Bootstrap note:** {{BOOTSTRAP_NOTE}}
 
@@ -46,6 +47,13 @@ orchestrator (`run-cycle`) is the sole integrator and the sole editor of
    (and also **post the rubric to the issue** as the acceptance interface), keep appending the
    Decision log through the cycle, and **commit it with your implementation** — it is durable git
    state, part of your PR. Never skip the Rubric section.
+9. **Use the compute you have.** Get the task done fast — **never crawl single-threaded** when work
+   can be parallelized. At task start, **detect what's available** (`nproc` for CPU cores,
+   `nvidia-smi` for GPUs, and on an HPC login node `sinfo`/`squeue` for a scheduler), then apply the
+   **Compute policy** above — {{COMPUTE_POLICY}} — running independent sub-tasks concurrently
+   (multiprocessing, batch arrays, `Workflow`/inline-subagent fan-out — never a sub-team) and
+   backgrounding long jobs per principle 2 (then verify their terminal state). Don't waste capacity
+   and don't wait on avoidable single-threaded slowness.
 
 ## The cycle
 
