@@ -97,7 +97,8 @@ task-loop/
 ## Status
 
 - ✅ **Control protocol** (`control_log.py`, `gh_store.py`) — single-sequencer log, UUID
-  dedupe, checkpoint-based scan floor, schema validation; 45 unit tests.
+  dedupe, checkpoint-based scan floor, per-attempt ownership + iteration fields, recovery-comment
+  parser, schema validation; 58 unit tests.
 - ✅ **`specify-aims`**, **`create-cycle`**, **`run-cycle`** skills + **`cycle-worker`** agent.
 - ⚠️ **Phase 0 spike (operator-run)** — `run-cycle` is built against the documented
   Agent-Teams / `/loop` / stop-signal contract; the operator validates those primitives with

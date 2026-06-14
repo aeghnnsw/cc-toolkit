@@ -150,6 +150,9 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
   `MERGE_DENIED` (stale attempt) and stop. A superseded attempt could only have written its own
   per-attempt branch, so it can never affect the current attempt's branch/PR. (Every worker inbox
   event carries `attempt_id`; this is the gate that makes the durable single-flight token binding.)
+  **`MERGE_DENIED` only acks the request — it does NOT stale the task** (`replay` no longer maps
+  `MERGE_DENIED → stale`); the task stays `active` under the current attempt. Only the
+  genuine-invalid path (below) pairs `MERGE_DENIED` with an explicit `TASK_STALE`.
 - **Inspect PR state first** (`gh pr view <N> --json state,mergedAt,mergedBy,headRefOid`).
   - **Already merged by this orchestrator** at the recorded head (`mergedBy` == the orchestrator's
     own identity **and** `headRefOid`/merge commit == the validated `pr_head_sha`): a prior turn

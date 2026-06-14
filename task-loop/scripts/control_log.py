@@ -132,7 +132,11 @@ _STATUS_BY_TYPE = {
     "TASK_CREATED": "ready",
     "TASK_DISPATCHED": "active",
     "MERGE_GRANTED": "merged",
-    "MERGE_DENIED": "stale",
+    # MERGE_DENIED deliberately does NOT change task status: it acks the inbox
+    # MERGE_REQUEST but covers two cases — a *superseded-attempt* denial (the task
+    # is still active under the current attempt) and a genuinely-invalid merge (the
+    # gate emits an explicit TASK_STALE alongside it). Auto-staling here would wrongly
+    # stale an actively-worked task on a superseded-attempt denial.
     "TASK_STALE": "stale",
     "TASK_REVISION_COMPATIBLE": "active",
 }

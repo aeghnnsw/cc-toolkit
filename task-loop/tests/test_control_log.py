@@ -237,12 +237,27 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(state["current_plan_revision"], 2)
         self.assertEqual(state["tasks"]["T2"]["status"], "stale")
 
-    def test_merge_denied_status_stale(self):
+    def test_merge_denied_alone_does_not_stale_task(self):
+        # A superseded-attempt denial ACKs the request but leaves the task ACTIVE
+        # (the current attempt is still working); only an explicit TASK_STALE stales it.
         events = [_bump(1), _created(2), _dispatched(3),
                   {"kind": "control", "seq": 4, "type": "MERGE_DENIED", "task_id": "T1",
                    "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
                    "source_comment_id": "IC", "source_comment_ts": TS_A,
                    "source_uuid": "u1", "ts": "t"}]
+        state = control_log.replay(events)
+        self.assertEqual(state["tasks"]["T1"]["status"], "active")
+        self.assertEqual(state["seen_source_uuids"], {"u1"})  # still acked (dedupe)
+
+    def test_merge_denied_plus_task_stale_marks_stale(self):
+        # A genuinely-invalid merge: the gate emits MERGE_DENIED (ack) + TASK_STALE.
+        events = [_bump(1), _created(2), _dispatched(3),
+                  {"kind": "control", "seq": 4, "type": "MERGE_DENIED", "task_id": "T1",
+                   "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
+                   "source_comment_id": "IC", "source_comment_ts": TS_A,
+                   "source_uuid": "u1", "ts": "t"},
+                  {"kind": "control", "seq": 5, "type": "TASK_STALE", "task_id": "T1",
+                   "plan_revision": 1, "ts": "t"}]
         self.assertEqual(control_log.replay(events)["tasks"]["T1"]["status"], "stale")
 
     def test_revision_compatible_status_active(self):
