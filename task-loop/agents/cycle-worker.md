@@ -97,6 +97,44 @@ description of the task. If any is missing, ask the orchestrator (the team lead)
   Stage files by explicit path; commit with clean, attribution-free text via `git commit -F`.
 - **No nested teams.** For intra-task parallelism use `Workflow` or inline subagents, never a
   sub-team.
+- **Never foreground-block a long shell job — background it and verify its terminal state.** If a
+  **shell command** may plausibly **approach the 10-minute foreground cap or has unbounded variance**
+  (full test suites, builds, installs, large downloads/datasets, training scripts — anything
+  estimated **>~5 min**), do **not** run it as a blocking foreground call: it would be **killed at the
+  10-min cap**, and a synchronous block stalls your turn. Run the command **itself** with **`Bash`
+  `run_in_background`**, writing its output and exit status to two files derived from **one job stem
+  you choose** — name it after the job, your `attempt_id`, **and a per-run counter** so the two files
+  are pairable, their paths are ones you **know** (to `Read` later), and each run is **unique even
+  across reruns of the same job in one attempt** (no stale reuse). **Clear the status file before
+  launch**, so a run killed before the wrapper writes leaves *no* status rather than a stale `0`:
+  ```bash
+  J=job-<label>-<attempt_id>-r<N>     # ONE run-unique stem you pick; bump <N> on every rerun
+  rm -f "$J.status"
+  ( cmd > "$J.log" 2>&1; rc=$?; printf '%s\n' "$rc" > "$J.status"; exit "$rc" )
+  ```
+  The background completion is your single terminal signal. **Then verify BOTH, in order:**
+  (a) `<J>.status` **exists** and contains exactly `0` — that is the authoritative exit code, written
+  by the wrapper, **not** by the job's own stdout; a run-unique stem plus the pre-launch clear mean it
+  cannot be spoofed by a log line or reused stale, and a **missing** status (e.g. the run was killed
+  before it wrote) is a **failure**, never success;
+  and (b) **`Read` `<J>.log` and scan for failure evidence** (`FAILED`, `Error`, `Traceback`,
+  `Killed`, `OOM`, skipped setup, partial output) — **inspect each match in context**, since a `0`
+  exit can still hide a swallowed child failure while `failed=0` / `0 errors` / a test *name* are
+  benign. Proceed only if the status is `0` **and** every match is genuinely benign. **Never infer
+  success from silence.**
+  - **Streamed progress** (CI steps, training epochs — you want checkpoints, not just the end) → use
+    **`Monitor`** on a command that emits one line per event and exits at a terminal state, the
+    filter covering success **and** failure signatures.
+  - **Completion signaled OUTSIDE the launched process** (a detached server becoming ready, a remote
+    CI/job) — and only then → a `run_in_background` `until`-loop polling that external marker. Do
+    **not** use an `until grep`-loop for an ordinary command: it can fire early on an incidental
+    `Error` string, or hang forever if the tool exits without your marker.
+  - **Non-shell long calls are NOT shell jobs** — never force them into the wrapper above; rely on
+    the tool's **own** bounded/background completion. (In this harness a `Workflow` run returns
+    immediately and notifies on completion, and `discuss-with-codex` bounds each Codex call itself.)
+    If some other tool could run unbounded with no such background/monitorable completion, **break it
+    into smaller bounded calls** or tell the orchestrator the task needs orchestration support —
+    don't block on it.
 
 **Handoff (the end of your cycle):**
 When the rubric is green, the PR is open, and Codex review has no blocking issues, post a
