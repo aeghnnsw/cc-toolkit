@@ -129,7 +129,9 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    unable to tell a stale merge from a valid one). On a `MERGE_REQUEST` that is **attempt-current**
    (`attempt_id == current_attempt_id`, else `MERGE_DENIED`) and revision-compatible, validate
    against the freshly-drained state and `gh pr merge --squash --delete-branch --match-head-commit
-   <SHA>`; emit `MERGE_GRANTED` (or `MERGE_DENIED` + `TASK_STALE`).
+   <SHA>`; emit `MERGE_GRANTED` (or `MERGE_DENIED` + `TASK_STALE`). On a terminal attempt, run the
+   **attempt cleanup**: `TaskStop` the now-idle teammate (by its `(task_id, attempt_id)` key) and
+   remove its worktree — the worker idles after `MERGE_REQUEST` and never self-terminates.
 6. **Dispatch — proactive, seat-capped** (unless draining): re-confirm the lease, then from the
    **post-merge** state **select → dispatch**. The frontier and the **aging key are log-derived**
    (`ready_since` = the seq of a task's last-dependency `MERGE_GRANTED`), so **only the ≤5 selected
@@ -156,8 +158,9 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
 
 ## Hard invariants
 
-- **Sole integrator:** only the orchestrator runs `gh pr merge`. Workers end at
-  `MERGE_REQUEST`.
+- **Sole integrator:** only the orchestrator runs `gh pr merge`. Workers end at `MERGE_REQUEST`, go
+  idle, and never self-terminate on the merge path; the orchestrator reaps the idle teammate
+  (`TaskStop` by its `(task_id, attempt_id)` key) when its attempt becomes terminal.
 - **Single writer:** only the orchestrator writes the **control-issue body runtime header**, emits
   sequenced `CONTROL_EVENT`s, bumps `plan_revision`, and edits `docs/task-loop/proposal.md`.
 - **Merge gates:** every merge passes the **pre-merge event-drain barrier** and is

@@ -212,8 +212,9 @@ If still valid **and** current, request merge as an **immutable attempt**: **fre
 (push no more commits), generate a fresh `merge_request_uuid`, post a recovery comment
 `status=merge_requesting, merge_request_uuid=<u>, merge_request_head_sha=<current pr_head_sha>`, then
 post the **`MERGE_REQUEST` inbox event** (carrying that `pr_head_sha`, `uuid`,
-`spawned_plan_revision`, and `attempt_id`), then post `status=merge_requested` and **go idle**. The
-**orchestrator** validates (head-SHA-bound, attempt-current) and merges — it is the sole integrator.
+`spawned_plan_revision`, and `attempt_id`), then post `status=merge_requested` and **go idle** (the
+lead reaps you after merge — see *Handoff*). The **orchestrator** validates (head-SHA-bound,
+attempt-current) and merges — it is the sole integrator.
 If a fix is unavoidable after freezing, the attempt is void: return to `status=pr_open`, push the fix
 (new head), and start a **new** merge attempt with a **new** `uuid` — never reuse a UUID for a
 different head.
@@ -389,8 +390,12 @@ proposal and a `discuss-with-codex` round cannot resolve. Otherwise keep going.
 When the rubric is green, the PR is open, and Codex review has no blocking issues, post a
 `MERGE_REQUEST` inbox event (carrying the PR head SHA, your `spawned_plan_revision`, and your
 `attempt_id`), send the orchestrator a one-line completion message, and **go idle**. The
-orchestrator validates and merges only if your `attempt_id` is still current; it then emits
-`MERGE_GRANTED` (your `NNN_<task>.md` record is already on `master`).
+orchestrator validates and merges only if your `attempt_id` is still current, emits `MERGE_GRANTED`
+(your `NNN_<task>.md` record is already on `master`) — or `MERGE_DENIED` if your attempt was
+superseded/invalid — then **reaps your idle teammate with `TaskStop`**. You do not self-terminate on
+the merge path; idling until the lead stops you is correct. (You *do* self-terminate on the pre-PR
+fence paths — a stale revision or superseded attempt you detect yourself at step 10 — where there is
+no merge handoff for the lead to reap.)
 
 ## Edge cases
 - *Revision invalidated mid-cycle:* stop at the next boundary, record `stale_revision_blocked`,
