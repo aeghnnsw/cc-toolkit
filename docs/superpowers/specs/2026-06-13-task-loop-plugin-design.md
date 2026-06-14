@@ -6,6 +6,14 @@
 - `2026-06-13-cycle-loop-mechanism-conclusion.md` (loop driver + termination)
 - `2026-06-13-living-proposal-ownership-conclusion.md` (proposal ownership + split-brain)
 
+> **Control-plane topology superseded (2026-06-14).** Every mention below of a **self-paced `/loop`**,
+> a **`heartbeat`**, a **`watchdog`**, or `watchdog_schedule_id` reflects the original *three-job*
+> control plane. That topology is replaced by the **two-loop fixed-poll** model in
+> `2026-06-14-task-loop-two-loop-control-plane-design.md` (Loop A = `/loop` on a fixed 30-min poll;
+> Loop B = a one-time stop early-wake; **no watchdog**; death/intra-turn-hang recovery by **manual
+> `/run-cycle` resume**). The run-cycle skill + its `references/` are the live source; the prose here
+> is retained for history.
+
 ## 1. Overview
 
 `task-loop` generalizes the METBG "study loop" — a proven autonomous, resumable

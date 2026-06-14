@@ -95,7 +95,9 @@ stray/late wake reading a clean `exiting` re-audits and stops without dispatchin
 
 ### 1. Lease & rebuild
 - Read the **control-issue body header**. If a **live** lease (`expires_at` in the future) is owned
-  by a different instance → exit (never two orchestrators). Else acquire/refresh the lease by writing
+  by a different instance → exit (never two orchestrators) — **unless an explicit human
+  force-takeover is in effect** (the header is soft, so force is always available, including over a
+  still-`likely_alive` lease; see the tri-state below). Else acquire/refresh the lease by writing
   the header (`owner`, `expires_at = now + TTL`, and the turn diagnostics `last_turn_started_at = now`
   and the `next_wakeup_at` you intend to schedule), then **re-read the header and confirm you still own
   it** before any side effect (the **write-then-re-read fence**; GitHub gives no atomic CAS, so this is
@@ -233,10 +235,12 @@ creates ≤5 issues this turn).
     re-dispatch mints a fresh `attempt_id` + its own branch, and `adopt_from_branch` only **reads** the
     old branch.
   - **"Recent" is a pure function of canonical GitHub time** (not the worker-authored JSON `ts`, not
-    session memory): `hold_until = created_at + 1800 + skew_grace`, where `created_at =
-    control_log.latest_recovery_with_metadata(comments, current_attempt_id)["created_at"]`. If
-    `now < hold_until` → **hold** the task one poll (a merely-late live worker can finish or
-    self-report) and re-evaluate next tick; human force overrides the hold.
+    session memory). Let `m = control_log.latest_recovery_with_metadata(comments, current_attempt_id)`.
+    **If `m is None`** (no recovery comment for `current_attempt_id` — e.g. a branch-but-no-PR attempt
+    that pushed before ever reporting) → treat as **not recent** → mint per the table immediately, **no
+    hold**. Otherwise `hold_until = m["created_at"] + 1800 + skew_grace`: if `now < hold_until` →
+    **hold** the task one poll (a merely-late live worker can finish or self-report) and re-evaluate
+    next tick; else mint per the table. Human force overrides any hold.
 - **Dispatchable** = dependencies complete (each dep's `MERGE_GRANTED` is in the log → status
   `merged`), revision-compatible (`spawned_plan_revision` would be the current `plan_revision`), and
   **either** status `ready` (never dispatched) **or** status `active` with **no live worker** for its

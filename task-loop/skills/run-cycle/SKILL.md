@@ -84,8 +84,9 @@ crash/hang). Detect which **first**, and keep **all** state in GitHub — no loc
    4–5), rebuild from GitHub, and apply the tri-state takeover (`references/` §1). Otherwise it is a
    **fresh start**.
 2. **Lease:** read the header `lease`. If a **live** lease (`expires_at` in the future) is owned by a
-   different instance → **exit** (never two orchestrators) — unless this is an explicit human
-   force-takeover of a diagnosably-dead lead (tri-state resume, `references/` §1). Else claim it: write
+   different instance → **exit** (never two orchestrators) — unless an explicit human force-takeover is
+   in effect (the header is soft, so force is always available, including over a still-`likely_alive`
+   lead; tri-state resume, `references/` §1). Else claim it: write
    the header with your `lease` (`owner`, `expires_at = now + TTL`) and the turn diagnostics, then
    **re-read and confirm you still own it** before any side effect (the **write-then-re-read fence** —
    GitHub has no atomic CAS). This is the only single-coordinator guard — no local lock file.
