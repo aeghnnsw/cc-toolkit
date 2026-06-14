@@ -44,8 +44,9 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
 `task-loop` invokes skills from two **required** plugins — install them first:
 
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `finishing-a-development-branch`. (Worker worktree isolation is
-  automatic via the `cycle-worker` agent's `isolation: worktree` declaration.)
+  `verification-before-completion`, `finishing-a-development-branch`. (Each `cycle-worker` creates its
+  own git worktree at invocation — in-process Teams do not honor an `isolation: worktree` declaration,
+  so the worker self-provisions one keyed on its `attempt_id`.)
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
 **Run the `preflight` skill** to check two scopes: that these skills are loadable in your

@@ -198,9 +198,16 @@ abort the turn without merging or emitting. Act in this order:
   request's `source_uuid`, which `replay` rejects). If invalid, emit `MERGE_DENIED{... source_*}` +
   `TASK_STALE`, and message the worker to stop/rescope.
 - After that emit, remove the worker from `active_worker_ids` (the worker's `NNN_<task>.md` record
-  is already on `master`). **Worktree cleanup:** if the worker recorded its worktree path (in its
-  recovery comments) and it is local, clean, and matches this task/attempt, remove it
-  (`git worktree remove`); **never** remove a path equal to `lead_worktree_root`.
+  is already on `master`). **Worktree cleanup:** the attempt's worktree path is **deterministic**
+  (`$(dirname "$lead_worktree_root")/.task-loop-worktrees/<task_id>-attempt-<attempt_id>`), so derive
+  it even when no recovery comment recorded it. Remove it **only** when the path sits under that
+  `.task-loop-worktrees/` prefix, matches this task/attempt, and is **not** `lead_worktree_root`. On a
+  **merged** attempt the tree is clean → `git worktree remove`. Apply the **same cleanup to any attempt
+  that reaches a terminal non-merged disposition** (superseded, stale, denied, or orphaned past the
+  drain deadline): that attempt is abandoned and its tree may be **dirty**, so force it
+  (`git worktree remove --force`) — its only durable surface was its own per-attempt remote branch, so
+  discarding the local tree loses nothing. The harness no longer auto-cleans worker worktrees, so
+  without this dead attempts would leak them. After removal, `git worktree prune`.
 
 ### 6. Dispatch — proactive, seat-capped (skip if draining)
 **Lease fence first:** before this batch, **refresh + re-read the lease and re-confirm you still own
@@ -297,12 +304,14 @@ creates ≤5 issues this turn).
   - Spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with a prompt carrying
     `task_id`, `issue=<n>`, `control_issue=<#>`, `spawned_plan_revision=<current>`, `iteration=NNN`,
     `attempt_id`, the per-attempt branch `<branch>-attempt-<attempt_id>`, your **`lead_worktree_root`**
-    (`git rev-parse --show-toplevel`, for the worker's isolation self-check), and — when
+    (`git rev-parse --show-toplevel`, the base for the worker's worktree self-setup + isolation verify),
+    and — when
     re-dispatching a task that already has a GitHub-visible attempt — `adopt_from_branch=`the latest
     pushed attempt branch (the new attempt branches *from* it; Option-1: local-only pre-PR WIP is
-    disposable). Record its id in `active_worker_ids`. The teammate declares `isolation: worktree`, so
-    the harness gives it its **own** worktree — never ask it to create one; the worker self-checks
-    isolation and aborts (`WORKTREE_ISOLATION_FAILED`) if its toplevel equals `lead_worktree_root`.
+    disposable). Record its id in `active_worker_ids`. The worker **creates its own git worktree** at
+    invocation (in-process Teams do **not** honor an `isolation: worktree` declaration) — keyed on its
+    `attempt_id`, as a sibling of `lead_worktree_root` — and records that path in a recovery comment for
+    your §5 cleanup; it aborts (`WORKTREE_ISOLATION_FAILED`) only if it cannot create one.
 
 ### 7. Wait / idle / exit
 Reached **only after §6 has filled every free seat it can** — never sleep with a free seat and ready
