@@ -170,13 +170,14 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
 - Merge bound to the validated head: `gh pr merge <N> --squash --delete-branch
   --match-head-commit <pr_head_sha>`. If the head changed since validation, the guard fails →
   re-drain and re-validate (the worker will have minted a fresh attempt UUID).
-- Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}`. If invalid, emit
-  `MERGE_DENIED{... source_*}` + `TASK_STALE`, and message the worker to stop/rescope.
-- After merge, emit `MERGE_GRANTED` (the durable completion marker; the worker's `NNN_<task>.md`
-  record is already on `master`) and remove the worker from `active_worker_ids`. **Worktree
-  cleanup:** if the worker recorded its worktree path (in its recovery comments) and it is local,
-  clean, and matches this task/attempt, remove it (`git worktree remove`); **never** remove a path
-  equal to `lead_worktree_root`.
+- Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}` — **exactly once** per
+  merged request (it is the durable completion marker, and re-emitting it would duplicate the
+  request's `source_uuid`, which `replay` rejects). If invalid, emit `MERGE_DENIED{... source_*}` +
+  `TASK_STALE`, and message the worker to stop/rescope.
+- After that emit, remove the worker from `active_worker_ids` (the worker's `NNN_<task>.md` record
+  is already on `master`). **Worktree cleanup:** if the worker recorded its worktree path (in its
+  recovery comments) and it is local, clean, and matches this task/attempt, remove it
+  (`git worktree remove`); **never** remove a path equal to `lead_worktree_root`.
 
 ### 7. Wait / idle / exit
 - **Active workers exist** → `waiting`: rely on automatic idle notifications; set a long
