@@ -118,14 +118,15 @@ def _bump(seq=1, rev=1, sha="deadbeef"):
             "plan_revision": rev, "proposal_sha": sha, "ts": "t"}
 
 
-def _created(seq, task="T1", issue=12, rev=1):
+def _created(seq, task="T1", issue=12, rev=1, iteration=1):
     return {"kind": "control", "seq": seq, "type": "TASK_CREATED", "task_id": task,
-            "plan_revision": rev, "issue_number": issue, "ts": "t"}
+            "plan_revision": rev, "issue_number": issue, "iteration": iteration,
+            "ts": "t"}
 
 
-def _dispatched(seq, task="T1", rev=1):
+def _dispatched(seq, task="T1", rev=1, attempt="att-1"):
     return {"kind": "control", "seq": seq, "type": "TASK_DISPATCHED",
-            "task_id": task, "plan_revision": rev, "ts": "t"}
+            "task_id": task, "plan_revision": rev, "attempt_id": attempt, "ts": "t"}
 
 
 def _checkpoint(seq, issue=12, through=TS_A):
@@ -150,6 +151,37 @@ class TestReplay(unittest.TestCase):
         state = control_log.replay(self._events())
         self.assertEqual(state["seen_source_uuids"], {"u1"})
         self.assertEqual(state["source_uuid_to_seq"]["u1"], 4)
+
+    def test_cold_replay_preserves_iteration(self):
+        # The per-task iteration index must survive a cold replay (it is NOT
+        # reconstructed from docs/task-loop/logs/, which is audit-only).
+        state = control_log.replay([_bump(1), _created(2, iteration=7)])
+        self.assertEqual(state["tasks"]["T1"]["iteration"], 7)
+
+    def test_task_created_requires_iteration(self):
+        bad = _created(2)
+        del bad["iteration"]
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), bad])
+
+    def test_task_created_non_int_iteration_raises(self):
+        bad = _created(2, iteration="001")  # string would not compare/sort as int
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), bad])
+
+    def test_dispatch_stores_current_attempt_id_latest_wins(self):
+        # attempt_id is the durable single-flight ownership token; a re-dispatch
+        # supersedes the prior attempt (latest TASK_DISPATCHED wins).
+        events = [_bump(1), _created(2), _dispatched(3, attempt="att-A"),
+                  _dispatched(4, attempt="att-B")]
+        state = control_log.replay(events)
+        self.assertEqual(state["tasks"]["T1"]["current_attempt_id"], "att-B")
+
+    def test_task_dispatched_requires_attempt_id(self):
+        bad = _dispatched(3)
+        del bad["attempt_id"]
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2), bad])
 
     def test_acked_event_does_not_advance_scan_floor(self):
         # A merge ack must NOT move the floor (only checkpoints do).
@@ -205,12 +237,27 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(state["current_plan_revision"], 2)
         self.assertEqual(state["tasks"]["T2"]["status"], "stale")
 
-    def test_merge_denied_status_stale(self):
+    def test_merge_denied_alone_does_not_stale_task(self):
+        # A superseded-attempt denial ACKs the request but leaves the task ACTIVE
+        # (the current attempt is still working); only an explicit TASK_STALE stales it.
         events = [_bump(1), _created(2), _dispatched(3),
                   {"kind": "control", "seq": 4, "type": "MERGE_DENIED", "task_id": "T1",
                    "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
                    "source_comment_id": "IC", "source_comment_ts": TS_A,
                    "source_uuid": "u1", "ts": "t"}]
+        state = control_log.replay(events)
+        self.assertEqual(state["tasks"]["T1"]["status"], "active")
+        self.assertEqual(state["seen_source_uuids"], {"u1"})  # still acked (dedupe)
+
+    def test_merge_denied_plus_task_stale_marks_stale(self):
+        # A genuinely-invalid merge: the gate emits MERGE_DENIED (ack) + TASK_STALE.
+        events = [_bump(1), _created(2), _dispatched(3),
+                  {"kind": "control", "seq": 4, "type": "MERGE_DENIED", "task_id": "T1",
+                   "plan_revision": 1, "pr_head_sha": "abc", "source_issue": 12,
+                   "source_comment_id": "IC", "source_comment_ts": TS_A,
+                   "source_uuid": "u1", "ts": "t"},
+                  {"kind": "control", "seq": 5, "type": "TASK_STALE", "task_id": "T1",
+                   "plan_revision": 1, "ts": "t"}]
         self.assertEqual(control_log.replay(events)["tasks"]["T1"]["status"], "stale")
 
     def test_revision_compatible_status_active(self):
@@ -220,12 +267,32 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(control_log.replay(events)["tasks"]["T1"]["status"], "active")
 
     def test_plan_finding_recorded_dedupe_and_status(self):
-        events = [{"kind": "control", "seq": 1, "type": "PLAN_FINDING_RECORDED",
+        events = [_bump(1), _created(2),
+                  {"kind": "control", "seq": 3, "type": "PLAN_FINDING_RECORDED",
                    "task_id": "T1", "source_issue": 12, "source_comment_id": "IC",
                    "source_comment_ts": TS_EARLY, "source_uuid": "uf", "ts": "t"}]
         state = control_log.replay(events)
         self.assertEqual(state["seen_source_uuids"], {"uf"})
-        self.assertIsNone(state["tasks"]["T1"]["status"])
+        # PLAN_FINDING_RECORDED does not change task status (stays "ready").
+        self.assertEqual(state["tasks"]["T1"]["status"], "ready")
+
+    def test_non_string_attempt_id_raises(self):
+        bad = _dispatched(3, attempt=7)  # int, not an opaque uuid string
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2), bad])
+
+    def test_dispatch_before_create_raises(self):
+        # TASK_DISPATCHED with no prior TASK_CREATED would yield an active task
+        # with issue_number=None / iteration=None — reject it.
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _dispatched(2)])
+
+    def test_duplicate_task_created_raises(self):
+        # iteration/issue_number are assigned once; a second TASK_CREATED for the
+        # same task_id must not overwrite them.
+        with self.assertRaises(ValueError):
+            control_log.replay([_bump(1), _created(2, iteration=1),
+                                _created(3, iteration=9)])
 
     def test_plan_finding_recorded_requires_source_uuid(self):
         events = [{"kind": "control", "seq": 1, "type": "PLAN_FINDING_RECORDED",
@@ -314,13 +381,43 @@ class TestReplay(unittest.TestCase):
             control_log.replay([bad])
 
 
+class TestRecoveryComments(unittest.TestCase):
+    def test_format_parse_round_trip(self):
+        rec = {"attempt_id": "att-1", "status": "pr_open", "pr": "#42",
+               "pr_head_sha": "abc"}
+        body = control_log.format_recovery(rec)
+        self.assertIn("```task-loop-recovery", body)
+        self.assertEqual(control_log.parse_recovery(body), [rec])
+
+    def test_parse_recovery_ignores_event_fences(self):
+        # A task-loop-event block must NOT be parsed as a recovery record.
+        ev = control_log.format_event({"kind": "inbox", "uuid": "u1"})
+        self.assertEqual(control_log.parse_recovery(ev), [])
+
+    def test_latest_recovery_picks_last_for_attempt(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "in_progress"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        self.assertEqual(control_log.latest_recovery([c1, c2], "A")["status"], "pr_open")
+
+    def test_latest_recovery_ignores_other_attempts(self):
+        c1 = ("IC1", TS_EARLY,
+              control_log.format_recovery({"attempt_id": "A", "status": "pr_open"}))
+        c2 = ("IC2", TS_A,
+              control_log.format_recovery({"attempt_id": "B", "status": "merge_requested"}))
+        # A later comment for a DIFFERENT attempt must not shadow A's record.
+        self.assertEqual(control_log.latest_recovery([c1, c2], "A")["status"], "pr_open")
+        self.assertIsNone(control_log.latest_recovery([c1, c2], "C"))
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_ingest_emit_replay_and_cold_resume_dedupe(self):
         inbox = [
-            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "type": "MERGE_REQUEST",
-             "pr_head_sha": "abc", "ts": "t"},
-            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "type": "MERGE_REQUEST",
-             "pr_head_sha": "abc", "ts": "t"},
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "attempt_id": "att-1", "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
+            {"kind": "inbox", "uuid": "u1", "task_id": "T1", "spawned_plan_revision": 1,
+             "attempt_id": "att-1", "type": "MERGE_REQUEST", "pr_head_sha": "abc", "ts": "t"},
         ]
         seeded = [_bump(1), _created(2), _dispatched(3)]
         state = control_log.replay(seeded)

@@ -30,7 +30,9 @@ import json
 import re
 
 EVENT_FENCE = "task-loop-event"
+RECOVERY_FENCE = "task-loop-recovery"
 _FENCE_RE = re.compile(r"```" + EVENT_FENCE + r"\s*\n(.*?)\n```", re.DOTALL)
+_RECOVERY_FENCE_RE = re.compile(r"```" + RECOVERY_FENCE + r"\s*\n(.*?)\n```", re.DOTALL)
 _TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # GitHub canonical UTC, second granularity
 
 
@@ -44,6 +46,35 @@ def format_event(event: dict) -> str:
 def parse_events(comment_body: str) -> list:
     """Extract all task-loop-event JSON objects from a comment body, in order."""
     return [json.loads(m.group(1)) for m in _FENCE_RE.finditer(comment_body)]
+
+
+def format_recovery(recovery: dict) -> str:
+    """Serialize one worker recovery record as a fenced ```task-loop-recovery JSON
+    block. Recovery records are worker state (append-only, attempt_id-tagged
+    comments), NOT sequenced control events — they are never validated or replayed
+    by the control log; the orchestrator only reads the latest one per attempt."""
+    return "```{fence}\n{body}\n```".format(
+        fence=RECOVERY_FENCE, body=json.dumps(recovery, sort_keys=True)
+    )
+
+
+def parse_recovery(comment_body: str) -> list:
+    """Extract all task-loop-recovery JSON objects from a comment body, in order."""
+    return [json.loads(m.group(1)) for m in _RECOVERY_FENCE_RE.finditer(comment_body)]
+
+
+def latest_recovery(comments: list, attempt_id):
+    """Return the most recent recovery record tagged with `attempt_id`, or None.
+
+    `comments` are (id, created_at, body) triples in GitHub's oldest-first order
+    (as returned by `gh_store.read_comments`); the LAST matching record wins, so
+    records tagged with a different (e.g. superseded) attempt_id are ignored."""
+    found = None
+    for (_id, _created_at, body) in comments:
+        for rec in parse_recovery(body):
+            if rec.get("attempt_id") == attempt_id:
+                found = rec
+    return found
 
 
 def filter_new_inbox(inbox_events: list, seen_uuids) -> list:
@@ -101,7 +132,11 @@ _STATUS_BY_TYPE = {
     "TASK_CREATED": "ready",
     "TASK_DISPATCHED": "active",
     "MERGE_GRANTED": "merged",
-    "MERGE_DENIED": "stale",
+    # MERGE_DENIED deliberately does NOT change task status: it acks the inbox
+    # MERGE_REQUEST but covers two cases — a *superseded-attempt* denial (the task
+    # is still active under the current attempt) and a genuinely-invalid merge (the
+    # gate emits an explicit TASK_STALE alongside it). Auto-staling here would wrongly
+    # stale an actively-worked task on a superseded-attempt denial.
     "TASK_STALE": "stale",
     "TASK_REVISION_COMPATIBLE": "active",
 }
@@ -111,8 +146,8 @@ _SOURCE_FIELDS = ("source_issue", "source_comment_id", "source_comment_ts",
 # Required fields per control-event type (beyond kind/seq/type/ts).
 _REQUIRED_FIELDS = {
     "PLAN_REVISION_BUMP": ("plan_revision", "proposal_sha"),
-    "TASK_CREATED": ("task_id", "plan_revision", "issue_number"),
-    "TASK_DISPATCHED": ("task_id", "plan_revision"),
+    "TASK_CREATED": ("task_id", "plan_revision", "issue_number", "iteration"),
+    "TASK_DISPATCHED": ("task_id", "plan_revision", "attempt_id"),
     "TASK_STALE": ("task_id", "plan_revision"),
     "TASK_REVISION_COMPATIBLE": ("task_id", "plan_revision"),
     "INBOX_SCAN_CHECKPOINT": ("issue_number", "through_ts"),
@@ -120,7 +155,13 @@ _REQUIRED_FIELDS = {
     "MERGE_DENIED": ("task_id", "plan_revision", "pr_head_sha") + _SOURCE_FIELDS,
     "PLAN_FINDING_RECORDED": ("task_id",) + _SOURCE_FIELDS,
 }
-_INT_FIELDS = ("plan_revision", "issue_number", "source_issue")
+# `iteration` is the per-task chronological log index (zero-padded 001 in records,
+# stored as an int here). `attempt_id` is an opaque per-dispatch ownership token
+# (a uuid string), so it is validated only as required-non-empty, not as an int.
+_INT_FIELDS = ("plan_revision", "issue_number", "source_issue", "iteration")
+# `attempt_id` is an opaque ownership token; it must be a non-empty string (a
+# numeric attempt_id would compare/serialize inconsistently across the protocol).
+_STR_FIELDS = ("attempt_id",)
 _TS_FIELDS = ("source_comment_ts", "through_ts")
 
 
@@ -157,6 +198,11 @@ def _validate(event):
             val = event.get(intf)
             if isinstance(val, bool) or not isinstance(val, int):
                 raise ValueError("%s.%s must be an int, got %r" % (etype, intf, val))
+    for sf in _STR_FIELDS:
+        if sf in required and not isinstance(event.get(sf), str):
+            raise ValueError(
+                "%s.%s must be a string, got %r" % (etype, sf, event.get(sf))
+            )
     for tsf in _TS_FIELDS:
         if tsf in required and not _is_canonical_utc(event.get(tsf)):
             raise ValueError(
@@ -207,19 +253,36 @@ def replay(control_events: list) -> dict:
                 )
             state["scan_floor_ts_by_issue"][issue] = through
         else:
+            tid = event["task_id"]
+            if etype == "TASK_CREATED":
+                if tid in state["tasks"]:
+                    raise ValueError(
+                        "duplicate TASK_CREATED for task %r (iteration is assigned once)"
+                        % (tid,)
+                    )
+            elif tid not in state["tasks"]:
+                raise ValueError(
+                    "%s for unestablished task %r (no prior TASK_CREATED)" % (etype, tid)
+                )
             task = state["tasks"].setdefault(
-                event["task_id"],
+                tid,
                 {"status": None, "plan_revision": None, "issue_number": None,
-                 "pr_head_sha": None},
+                 "pr_head_sha": None, "iteration": None, "current_attempt_id": None},
             )
             task["status"] = _STATUS_BY_TYPE.get(etype, task["status"])
             if event.get("plan_revision") is not None:
                 task["plan_revision"] = event["plan_revision"]
             if etype == "TASK_CREATED":
                 task["issue_number"] = event["issue_number"]
+                task["iteration"] = event["iteration"]
                 # Discover the task issue so a cold resume scans it; "" = scan all
                 # until a checkpoint advances the floor.
                 state["scan_floor_ts_by_issue"].setdefault(event["issue_number"], "")
+            if etype == "TASK_DISPATCHED":
+                # Latest dispatch wins: the durable single-flight ownership token.
+                # A worker whose attempt_id != current_attempt_id is superseded and
+                # must stop before any side effect.
+                task["current_attempt_id"] = event["attempt_id"]
             if event.get("pr_head_sha"):
                 task["pr_head_sha"] = event["pr_head_sha"]
         # Source-tagged events rebuild the dedupe set (NOT the scan floor).

@@ -32,10 +32,11 @@ available-skills list** (that list reflects an installed *and enabled* plugin). 
 a skill to test it** — invoking `brainstorming` / `discuss-with-codex` (etc.) would actually
 *start* it. Check each name against the available skills instead.
 
-Required (10 skills across 2 plugins):
+Required (9 skills across 2 plugins):
 
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
+  `verification-before-completion`, `finishing-a-development-branch`. (Worker isolation is handled
+  by the `cycle-worker` agent's `isolation: worktree` declaration, **not** `using-git-worktrees`.)
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
 **Matching (owner-verified preferred):** the task-loop depends on these *specific plugins'*

@@ -44,7 +44,8 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
 `task-loop` invokes skills from two **required** plugins — install them first:
 
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
+  `verification-before-completion`, `finishing-a-development-branch`. (Worker worktree isolation is
+  automatic via the `cycle-worker` agent's `isolation: worktree` declaration.)
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
 **Run the `preflight` skill** to check two scopes: that these skills are loadable in your
@@ -72,7 +73,7 @@ The **`preflight`** skill sets this for you (and reminds you to restart). The `s
 | `docs/task-loop/proposal.md` | `specify-aims`, then orchestrator | Charter + Roadmap (living research spine) |
 | `docs/task-loop/task-loop.md` | `create-cycle` | the per-task playbook each worker follows |
 | `docs/task-loop/directions.md` | you | human steering channel (read first each round) |
-| `docs/task-loop/logs/NNN_<task>_{rubric,log}.md` | worker | binary acceptance + decision/evidence trail |
+| `docs/task-loop/logs/NNN_<task>.md` | worker | one git-tracked per-cycle record (**Rubric** + **Decision log** sections); `NNN` = zero-padded iteration index from `001` (orchestrator-assigned, tracks cycles chronologically) |
 | GitHub control issue (comments) + per-task issues | orchestrator + workers | append-only control-event log |
 | GitHub control issue (body runtime header) | orchestrator (sole writer) | lease/heartbeat, `stop_at`, schedule handles — **no local files** |
 
@@ -96,7 +97,8 @@ task-loop/
 ## Status
 
 - ✅ **Control protocol** (`control_log.py`, `gh_store.py`) — single-sequencer log, UUID
-  dedupe, checkpoint-based scan floor, schema validation; 45 unit tests.
+  dedupe, checkpoint-based scan floor, per-attempt ownership + iteration fields, recovery-comment
+  parser, schema validation; 58 unit tests.
 - ✅ **`specify-aims`**, **`create-cycle`**, **`run-cycle`** skills + **`cycle-worker`** agent.
 - ⚠️ **Phase 0 spike (operator-run)** — `run-cycle` is built against the documented
   Agent-Teams / `/loop` / stop-signal contract; the operator validates those primitives with

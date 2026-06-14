@@ -124,11 +124,27 @@ RESULT: ___ (dependency blocks: ___ ; auto-unblock on completion: ___)
 
 RESULT: ___ (nested team blocked as expected: ___)
 
-### C6. Ephemerality on resume (confirm the constraint)
-- [ ] Confirm in-process teammates do **not** survive `/resume` / session end (expected). This
-  validates the recovery model: the orchestrator must respawn workers from durable state.
+### C6. Ephemerality on resume (HARD READY gate)
+- [ ] Confirm in-process teammates do **not** survive `/resume` / session end. This underpins the
+  recovery model. **Hard gate:** if teammates *can* survive detached, two attempts could coexist
+  far more easily, so the durable `attempt_id` fence + per-attempt branches are not optional —
+  do **not** run unattended until ephemerality is confirmed.
 
 RESULT: ___ (teammates ephemeral on resume: ___)
+
+### C7. Worktree isolation actually honored (HARD READY gate)
+- [ ] Spawn **two** teammates with `agentType: cycle-worker` (which declares `isolation: worktree`),
+  each reporting `git rev-parse --show-toplevel`. Require the two toplevels to be **distinct from
+  each other AND both different from the lead's** `git rev-parse --show-toplevel`.
+- [ ] **Hard gate:** if isolation is silently ignored (a teammate's toplevel == the lead root),
+  workers share the lead cwd and race the index/filesystem — the merge gate cannot detect cross-task
+  contamination. "Agent Teams enabled" is **not** READY without this probe passing. (The worker's
+  runtime self-check is the second line of defense, but the probe must pass first.)
+
+Prompt to try: *"Create an agent team. Spawn two cycle-worker teammates; each runs
+`git rev-parse --show-toplevel` and reports it. Then print the lead's own toplevel."*
+
+RESULT: ___ (two distinct worktrees, both ≠ lead root: ___)
 
 ---
 
@@ -179,8 +195,10 @@ RESULT: ___ (detection method: ___)
 
 ## Decision gate
 
-`run-cycle` is **buildable as designed** when A1–A2, B1–B2, C1–C4, and D1–D2 all pass (C5/C6/E1
-are confirmations/inputs, not blockers).
+`run-cycle` is **buildable as designed** when A1–A2, B1–B2, C1–C4, and D1–D2 all pass. **C6
+(ephemerality) and C7 (worktree isolation honored) are now HARD gates for unattended runs** — the
+single-flight safety (durable `attempt_id` + per-attempt branches) and the no-cross-task-contamination
+guarantee depend on them (C5/E1 remain confirmations/inputs).
 
 - [ ] **All required checks pass** → proceed to build `run-cycle` (the orchestrator state machine
   on top of `control_log`/`gh_store`, using the confirmed primitives).

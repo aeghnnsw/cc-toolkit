@@ -17,7 +17,8 @@ events = [e for (_id, _ts, body) in raw for e in control_log.parse_events(body)
           if e.get("kind") == "control"]
 state = control_log.replay(events)
 # -> current_plan_revision, current_proposal_sha, last_seq, tasks{task_id:{status,issue_number,
-#    plan_revision,pr_head_sha}}, seen_source_uuids, source_uuid_to_seq, scan_floor_ts_by_issue
+#    plan_revision,pr_head_sha,iteration,current_attempt_id}}, seen_source_uuids,
+#    source_uuid_to_seq, scan_floor_ts_by_issue
 ```
 
 **No local files.** The only mutable runtime cell is the **control-issue body runtime header** — a
@@ -116,18 +117,42 @@ For each known task issue (every `tasks[*].issue_number`):
   (`spawned_plan_revision` would be the current `plan_revision`). Honor `directions.md` priority.
 - Cap concurrency at the **frontier width** (a small bound, e.g. ≤5). For each chosen task:
   - Ensure its GitHub task issue exists (`gh issue create`, label `loop:in-progress`).
-  - Emit `TASK_CREATED{task_id, plan_revision, issue_number}` and `TASK_DISPATCHED{task_id,
-    plan_revision}`.
+  - **Iteration index** `NNN` — a zero-padded 3-digit counter from `001`, monotonic across the
+    loop, **assigned once at `TASK_CREATED`** and reused on every re-dispatch. It is a **required
+    `TASK_CREATED` field**; `replay` stores `tasks[task_id].iteration`, so it is recovered from the
+    **control log**, never reconstructed from `docs/task-loop/logs/` (audit-only). It names the
+    worker's `NNN_<task>.md` record.
+  - **Attempt ownership** — mint a fresh `attempt_id` (uuid) for **this** dispatch. It is a
+    **required `TASK_DISPATCHED` field**; `replay` stores `tasks[task_id].current_attempt_id`
+    (latest dispatch wins) — the **durable single-flight token**. Each attempt writes only its own
+    **per-attempt remote branch** `<branch>-attempt-<attempt_id>`, so two attempts can never write
+    the same ref; a superseded worker can touch only its own dead branch.
+  - Emit `TASK_CREATED{task_id, plan_revision, issue_number, iteration}` (only the first time the
+    task enters the system) and `TASK_DISPATCHED{task_id, plan_revision, attempt_id}` (every
+    dispatch).
   - Spawn **one** `cycle-worker` teammate (`agentType: cycle-worker`) with a prompt carrying
-    `task_id`, `issue=<n>`, `spawned_plan_revision=<current>`, a fresh `attempt_id`, the
-    **deterministic branch name** (e.g. `<type>-<issue>-<task>`), and the task scope. Record its id
-    in `active_worker_ids`. On a respawn, reuse the deterministic branch so the worker adopts any
-    existing remote branch/PR rather than opening a duplicate (see *Recovery*).
+    `task_id`, `issue=<n>`, `control_issue=<#>`, `spawned_plan_revision=<current>`, `iteration=NNN`,
+    `attempt_id`, the per-attempt branch `<branch>-attempt-<attempt_id>`, your
+    **`lead_worktree_root`** (`git rev-parse --show-toplevel`, for the worker's isolation
+    self-check), and — when re-dispatching a task that already has a GitHub-visible attempt —
+    `adopt_from_branch=`the latest pushed attempt branch (the new attempt branches *from* it;
+    Option-1: local-only pre-PR WIP is disposable). Record its id in `active_worker_ids`. The
+    teammate declares `isolation: worktree`, so the harness gives it its **own** worktree — never
+    ask it to create one; the worker self-checks isolation and aborts
+    (`WORKTREE_ISOLATION_FAILED`) if its toplevel equals `lead_worktree_root`.
 
 ### 6. Merge (sole integrator, on a pending `MERGE_REQUEST`)
 A `MERGE_REQUEST` is pending (un-acked) from §3. This step is the **only** place it is acked,
 and a `MERGE_GRANTED`/`MERGE_DENIED` is emitted **only after the outcome is durable** — never a
 pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order:
+- **Reject stale attempts first:** if the `MERGE_REQUEST`'s `attempt_id` !=
+  `tasks[task_id].current_attempt_id`, the worker was superseded by a later dispatch → emit
+  `MERGE_DENIED` (stale attempt) and stop. A superseded attempt could only have written its own
+  per-attempt branch, so it can never affect the current attempt's branch/PR. (Every worker inbox
+  event carries `attempt_id`; this is the gate that makes the durable single-flight token binding.)
+  **`MERGE_DENIED` only acks the request — it does NOT stale the task** (`replay` no longer maps
+  `MERGE_DENIED → stale`); the task stays `active` under the current attempt. Only the
+  genuine-invalid path (below) pairs `MERGE_DENIED` with an explicit `TASK_STALE`.
 - **Inspect PR state first** (`gh pr view <N> --json state,mergedAt,mergedBy,headRefOid`).
   - **Already merged by this orchestrator** at the recorded head (`mergedBy` == the orchestrator's
     own identity **and** `headRefOid`/merge commit == the validated `pr_head_sha`): a prior turn
@@ -145,10 +170,14 @@ pre-merge "granted." Crash-safe via idempotent reconciliation; act in this order
 - Merge bound to the validated head: `gh pr merge <N> --squash --delete-branch
   --match-head-commit <pr_head_sha>`. If the head changed since validation, the guard fails →
   re-drain and re-validate (the worker will have minted a fresh attempt UUID).
-- Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}`. If invalid, emit
-  `MERGE_DENIED{... source_*}` + `TASK_STALE`, and message the worker to stop/rescope.
-- After merge, set the task's `RECOVERY` / `NNN_log.md` to complete and remove the worker from
-  `active_worker_ids`.
+- Emit `MERGE_GRANTED{task_id, plan_revision, pr_head_sha, source_*}` — **exactly once** per
+  merged request (it is the durable completion marker, and re-emitting it would duplicate the
+  request's `source_uuid`, which `replay` rejects). If invalid, emit `MERGE_DENIED{... source_*}` +
+  `TASK_STALE`, and message the worker to stop/rescope.
+- After that emit, remove the worker from `active_worker_ids` (the worker's `NNN_<task>.md` record
+  is already on `master`). **Worktree cleanup:** if the worker recorded its worktree path (in its
+  recovery comments) and it is local, clean, and matches this task/attempt, remove it
+  (`git worktree remove`); **never** remove a path equal to `lead_worktree_root`.
 
 ### 7. Wait / idle / exit
 - **Active workers exist** → `waiting`: rely on automatic idle notifications; set a long
@@ -192,9 +221,10 @@ an already-stale heartbeat, so two live orchestrators are rare by construction).
 raises on a seq gap/dup or duplicate `source_uuid`, that is **detectable corruption → halt and
 escalate to a human**, never continue.
 
-Event types — **orchestrator-originated** (no source): `TASK_CREATED` (carries `issue_number`),
-`TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`), `TASK_STALE`,
-`TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries `issue_number` + `through_ts`).
+Event types — **orchestrator-originated** (no source): `TASK_CREATED` (carries `issue_number` +
+`iteration`), `TASK_DISPATCHED` (carries `attempt_id`), `PLAN_REVISION_BUMP` (carries
+`proposal_sha`), `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries
+`issue_number` + `through_ts`).
 **Inbox-derived** (carry `source_*`): `MERGE_GRANTED`, `MERGE_DENIED`, `PLAN_FINDING_RECORDED`.
 `replay` validates the schema and raises on a seq gap/dup, a duplicate `source_uuid`, a
 checkpoint for an unknown/regressing issue, or a non-canonical timestamp.
@@ -210,24 +240,32 @@ acknowledged` (every blocked/stale task has a follow-up), `unmerged == 0` (no op
 ## Recovery (cold resume)
 
 A fresh orchestrator on clean `master` rebuilds entirely from GitHub: the control issue (replay →
-revision, dedupe set, scan floors, task statuses), per-task `RECOVERY` ledgers (issue bodies),
-open PRs, and `docs/task-loop/logs/`. Ephemeral teammates and `~/.claude/tasks/` are **not** relied
-upon, and because teammates die with the lead's session a crashed loop 1 leaves **no surviving
-workers** — so respawn is safe. Respawn follows **one rule, the GitHub-visible-artifact line:**
+revision, dedupe set, scan floors, task statuses, **`iteration`**, **`current_attempt_id`**), the
+per-task **append-only recovery comments** (read via `control_log.latest_recovery(comments,
+current_attempt_id)`), open
+PRs, and `docs/task-loop/logs/` (audit only). Ephemeral teammates and `~/.claude/tasks/` are **not**
+relied upon. Because teammates die with the lead's session a crashed loop 1 *usually* leaves no
+surviving workers — but a watchdog **false-positive** (lead alive, heartbeat merely stale) can spawn
+a second lead while a worker still lives, so safety must **not** depend on that: it comes from the
+durable `current_attempt_id` + **per-attempt branches** (below), with ephemerality only making the
+window rare. Respawn follows **one rule, the GitHub-visible-artifact line:**
 
 - **No remote branch and no PR** for a dispatched task → any work was local-only pre-PR WIP, which
   is **disposable**: abandon it and **re-dispatch a fresh attempt** (new `attempt_id`) from clean
   `master`. At most one in-flight task's un-pushed WIP is lost and simply redone — zero correctness
   loss. This is what makes "resume from any session / clean checkout" honest.
-- **A remote branch and/or PR exists** (recorded as `attempt_id` + head SHA in the `RECOVERY`
-  ledger) → **adopt** it via GitHub and drive it to merge. A worker in `pr_open` /
-  `merge_requesting` is *ready but unannounced*.
+- **A per-attempt branch and/or PR exists** → re-dispatch with `adopt_from_branch=`that branch so
+  the new attempt branches **from** it (a *read*, never a write to it) and drives it to merge. The
+  latest recovery comment for `current_attempt_id` tells *ready-but-unannounced* (`pr_open` /
+  `merge_requesting`) from *still-working*.
 
-Dispatch uses **deterministic per-task branch/worktree naming** + an `attempt_id`, so re-dispatch
-and adoption are idempotent: a respawned worker that finds the branch/PR already present adopts or
-aborts — it never opens a second PR. Local-worktree adoption is **only a same-machine
-optimization**, never a correctness requirement. The planning step is idempotent — the same
-frontier is recomputed and only missing workers respawn.
+Each attempt writes **only** its own per-attempt remote branch `<branch>-attempt-<attempt_id>` and
+its own append-only recovery comments — there is **no shared writable ref or body** two attempts can
+race on. A superseded worker (its `attempt_id` != `current_attempt_id`) is harmless: it can touch
+only its own dead branch, and the merge gate denies its `MERGE_REQUEST`. The orchestrator merges
+**only** the current attempt's PR; the durable `current_attempt_id` makes "which attempt owns this
+task" a pure function of the control log, not of a fragile "one worker at a time" assumption. The
+planning step is idempotent — the same frontier is recomputed and only missing workers respawn.
 
 ## Deliberate with Codex
 

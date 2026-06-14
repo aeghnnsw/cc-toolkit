@@ -75,7 +75,8 @@ package `superpowers`. The suite invokes skills from two **required prerequisite
 plugins** that the user must have installed:
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `using-git-worktrees`, `finishing-a-development-branch`.
+  `verification-before-completion`, `finishing-a-development-branch`. (Worker worktree isolation is
+  automatic via the `cycle-worker` agent's `isolation: worktree`, not `using-git-worktrees`.)
 
 `README.md` declares these prerequisites explicitly. `run-cycle` and `create-cycle`
 **fail fast** with install guidance if a required skill is unavailable (rather than
@@ -90,8 +91,7 @@ Created in the **target project** (not the plugin):
 | `docs/task-loop/proposal.md` | durable (git) | `specify-aims` (initial); **orchestrator only** thereafter | charter (aims/success/non-goals, human-gated) + roadmap (stages + hypothesis ledger, orchestrator-authored PRs). **Not** the live coordination primitive. |
 | `docs/task-loop/task-loop.md` | durable (git) | create-cycle | the per-task playbook each worker reads |
 | `docs/task-loop/directions.md` | durable (git) | human | steering channel, read first each planning round |
-| `docs/task-loop/logs/NNN_<task>_rubric.md` | durable (git) | worker | binary acceptance criteria (orchestrator↔worker "done" interface) |
-| `docs/task-loop/logs/NNN_<task>_log.md` | durable (git) | worker | decision record: task, steering, codex dispositions, rubric evidence, follow-ups |
+| `docs/task-loop/logs/<NNN>_<task>.md` | durable (git) | worker | one per-cycle record with a **Rubric** section (binary acceptance — the orchestrator↔worker "done" interface, also posted to the issue) and a **Decision log** section (task, steering, codex dispositions, rubric evidence, follow-ups). `<NNN>` = zero-padded iteration index from `001`, orchestrator-assigned |
 | GitHub control issue — **comments** (append-only control events) | durable (remote) | worker + orchestrator | **authoritative cross-agent coordination log** (see §8) |
 | GitHub control issue — **body runtime header** | durable (remote) | **orchestrator only** (sole writer) | the single mutable runtime cell: `lease`/`heartbeat`, **`stop_at`**, `watchdog_schedule_id`, `stop_schedule_id`, advisory `phase`. **No local files** — `plan_revision`/ready/active/blocked are rebuilt from the comment log on every turn |
 
@@ -146,15 +146,22 @@ a generic skeleton + project specifics, and scaffold the rest.
 The worker's per-task playbook (generalized from METBG's 11 steps; project specifics
 stripped to the create-cycle fills). A worker runs this **once** for its assigned task:
 
-1. **Recover & anchor** — read the issue body's `RECOVERY` ledger (a worker-maintained
-   state machine, **not** a control event) and resume by its `status`, or abandon; read
+1. **Recover & anchor** — read the latest **`attempt_id`-tagged recovery comment** (append-only,
+   **not** a mutated body, **not** a control event) and resume by its `status`, or abandon; read
    `directions.md`; re-read the referenced docs at the current `plan_revision`.
-2. **Confirm task** — the orchestrator already chose/scoped it; validate scope and the
-   `spawned_plan_revision`.
-3. **Issue & branch** — confirm issue; branch from fresh master into the worker's **own
-   git worktree**; open the `RECOVERY` ledger (issue body) + `NNN_<task>_log.md`.
+2. **Confirm task** — the orchestrator already chose/scoped it; validate scope, the
+   `spawned_plan_revision`, **and that `attempt_id == current_attempt_id`** (else stop,
+   `superseded_attempt`).
+3. **Issue & branch** — confirm issue; the worker **already runs in its own git worktree**
+   (the `cycle-worker` agent declares `isolation: worktree`) and **self-checks it**
+   (`git rev-parse --show-toplevel` != `lead_worktree_root`, else `WORKTREE_ISOLATION_FAILED`); it
+   does **not** create one. It works an attempt-scoped local branch and pushes only to its
+   **per-attempt remote branch** `<branch>-attempt-<attempt_id>` (no shared writable ref). Open the
+   per-cycle record `<NNN>_<task>.md` (`NNN` = the orchestrator-assigned iteration index from
+   `001`) and post the first recovery comment.
 4. **Rubric** — `goal-rubric` → binary rubric → finalize via a `discuss-with-codex`
-   pass → write `NNN_<task>_rubric.md` and post to the issue.
+   pass → write **and commit** it into the **Rubric** section of `<NNN>_<task>.md` and post to the
+   issue (the record is git-tracked).
 5. **Spec → plan → implement** — `brainstorming` (autonomous: decline user gates → route
    open questions to `discuss-with-codex`) → spec → `writing-plans` → **TDD**. Long
    compute → background; intra-task parallelism → `Workflow`/inline subagents (never a
@@ -169,12 +176,14 @@ stripped to the create-cycle fills). A worker runs this **once** for its assigne
 9. **Open PR & review** — commit (clean text, `-F`, explicit paths); open PR with
    `Plan-Revision: N` + task ID; **`discuss-with-codex` adversarial PR review until no
    blocking issues**.
-10. **Request merge & hand off** — re-check `plan_revision` validity; post a
-    `MERGE_REQUEST` *inbox* event (PR head SHA, revision) and **go idle. The worker does
-    NOT merge.** If its revision was invalidated at any phase boundary, it marks itself
-    `stale_revision_blocked` and shuts down without merging.
-11. *(Finalization — set `RECOVERY: complete`, evidence into the log — happens after the
-    orchestrator merges; the worker records what it can before handoff.)*
+10. **Request merge & hand off** — re-check **both `plan_revision` AND `attempt_id`**; post a
+    `MERGE_REQUEST` *inbox* event (PR head SHA, `spawned_plan_revision`, `attempt_id`) and **go
+    idle. The worker does NOT merge.** If its revision was invalidated or its attempt superseded at
+    any phase boundary, it posts a terminal recovery comment (`stale_revision_blocked` /
+    `superseded_attempt`) and shuts down without merging.
+11. *(Finalization — the orchestrator emits `MERGE_GRANTED` after it merges; the worker's
+    `<NNN>_<task>.md` record is already on `master`. The worker records what it can before
+    handoff.)*
 
 **Generic operating principles** (constant across projects): deliberate-with-codex
 instead of asking the user; never let long jobs block (background + `Monitor`/
@@ -220,7 +229,7 @@ run the **pre-merge event-drain barrier** (§8), re-read `current_plan_revision`
 task's compatibility + CI/review state, then `gh pr merge --squash --delete-branch
 --match-head-commit <validated SHA>`. If invalid → `MERGE_DENIED` + mark task stale + tell
 the worker to shut down / rescope. If the orchestrator is dead/draining, nothing merges
-(stalled merge ≫ stale merge); the PR + `RECOVERY` persist for resume.
+(stalled merge ≫ stale merge); the PR + the worker's recovery comments persist for resume.
 
 The `MERGE_REQUEST` inbox event is **not** acked during the event-drain (its only legal
 source-tagged events are merge *outcomes*); it is a *pending decision* that pins the issue's
@@ -245,14 +254,16 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
 
 - **Worker inbox events** are *unsequenced* comments on the worker's **own task issue**,
   each a fenced JSON block tagged with a client-generated `uuid`, `task_id`,
-  `spawned_plan_revision`, event type (`PLAN_FINDING`, `MERGE_REQUEST`), and (for
-  `MERGE_REQUEST`) `pr_head_sha`.
+  `spawned_plan_revision`, `attempt_id` (so the merge gate can deny a superseded attempt), event
+  type (`PLAN_FINDING`, `MERGE_REQUEST`), and (for `MERGE_REQUEST`) `pr_head_sha`.
 - The orchestrator **ingests** inbox events across task issues and **emits normalized
   `CONTROL_EVENT` comments on the control issue** with a monotonic integer `seq` it alone
   assigns. Control event types are two families:
   - *orchestrator-originated* (no source provenance): `TASK_CREATED` (carries the task's
-    `issue_number`), `TASK_DISPATCHED`, `PLAN_REVISION_BUMP` (carries `proposal_sha`),
-    `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries
+    `issue_number` + `iteration`, the per-task record index), `TASK_DISPATCHED` (carries
+    `attempt_id`, the durable single-flight ownership token — `replay` stores
+    `current_attempt_id` per task, latest dispatch wins), `PLAN_REVISION_BUMP` (carries
+    `proposal_sha`), `TASK_STALE`, `TASK_REVISION_COMPATIBLE`, `INBOX_SCAN_CHECKPOINT` (carries
     `issue_number` + `through_ts`);
   - *inbox-derived* (carry `source_issue` / `source_comment_id` / `source_comment_ts` /
     `source_uuid`): `MERGE_GRANTED`, `MERGE_DENIED` (answer a `MERGE_REQUEST`),
@@ -311,9 +322,10 @@ assign sequence numbers (GitHub gives comment IDs, not a project-wide ordered st
 Subagent definition referenced by `agentType` when the orchestrator spawns a teammate.
 - **System prompt:** "Execute exactly one task's cycle by following
   `docs/task-loop/task-loop.md`. Deliberate with `discuss-with-codex` at rubric / open
-  design questions / PR review. Never edit `proposal.md`. Never merge — open the PR,
-  re-check your `plan_revision`, post `MERGE_REQUEST`, and go idle. Record durable state
-  as control events + your `NNN_*` records."
+  design questions / PR review. Never edit `proposal.md`. Never merge — open the PR from your
+  per-attempt branch, re-check both `plan_revision` and `attempt_id`, post a `MERGE_REQUEST`
+  (carrying `attempt_id`), and go idle. Record durable state as `attempt_id`-tagged recovery
+  comments + your `<NNN>_<task>.md` record."
 - **Tools:** full dev set (Bash, Read, Edit, Write, git/gh via Bash, Skill, Workflow).
 - Note: a teammate ignores the agent def's `skills:`/`mcpServers:` frontmatter but loads
   skills from project/user settings, so it can invoke `discuss-with-codex` etc.
@@ -326,22 +338,26 @@ Subagent definition referenced by `agentType` when the orchestrator spawns a tea
 
 ## 11. Durable state & recovery
 A fresh agent on clean `master` recovers from: git `master`, the GitHub append-only
-control-event log + per-task `RECOVERY`, open PRs, and `docs/task-loop/logs/`. The
+control-event log + per-task recovery comments, open PRs, and `docs/task-loop/logs/`. The
 orchestrator rebuilds its fast state (incl. `current_plan_revision` and the
 ready/active/blocked sets) **in memory** by replaying the GitHub control-event log — there is no
 local state file to restore, only the control-issue body header (lease + `stop_at` + schedule
 handles). Ephemeral Agent-Teams state (teammates, `~/.claude/tasks/`) is **not** relied upon — the
 orchestrator respawns workers for still-open tasks. The planning step is idempotent.
 
-**Per-task recovery (the `RECOVERY` ledger).** A worker's progress through irreversible actions
-is a state machine recorded in its **task-issue body** (`gh issue edit`, last-write-wins):
-`in_progress → creating_pr → pr_open → merge_requesting → merge_requested`. It is written as an
-ordered pre/post-condition around `gh pr create` and the merge request, so the orchestrator can
-distinguish *ready-but-unannounced* from *still-working* even if the worker died before posting
-its `MERGE_REQUEST`. A merge-request attempt is **immutable**: its `merge_request_uuid` is bound
-to `merge_request_head_sha` and the branch freezes once `merge_requesting` begins — a changed
-head requires a fresh UUID, so the protocol's UUID dedupe can never strand a newer head. (Full
-definition in the generated `task-loop.md` *RECOVERY ledger*.)
+**Per-task recovery (the recovery comments).** A worker's progress through irreversible actions is
+a state machine recorded as **append-only, `attempt_id`-tagged recovery comments** (`gh issue
+comment`) — **never** a mutated issue body, so two attempts can never race the same surface:
+`in_progress → creating_pr → pr_open → merge_requesting → merge_requested`. The orchestrator reads
+the **latest comment for `current_attempt_id`** to distinguish *ready-but-unannounced* from
+*still-working* even if the worker died before posting its `MERGE_REQUEST`. Each **attempt** owns a
+**per-attempt remote branch** (`<branch>-attempt-<attempt_id>`) and is gated by the durable
+`current_attempt_id` (a superseded attempt's `MERGE_REQUEST` is denied), so safety does not depend
+on a "one worker at a time" assumption. A merge-request attempt is additionally **immutable**: its
+`merge_request_uuid` is bound to `merge_request_head_sha` and the branch freezes once
+`merge_requesting` begins — a changed head requires a fresh UUID, so the protocol's UUID dedupe can
+never strand a newer head. (Full
+definition in the generated `task-loop.md` *Recovery comments* section.)
 
 ## 12. Agent Teams enablement & constraints
 - Requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (settings.json) and Claude Code
