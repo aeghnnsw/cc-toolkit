@@ -35,8 +35,9 @@ a skill to test it** — invoking `brainstorming` / `discuss-with-codex` (etc.) 
 Required (9 skills across 2 plugins):
 
 - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
-  `verification-before-completion`, `finishing-a-development-branch`. (Worker isolation is handled
-  by the `cycle-worker` agent's `isolation: worktree` declaration, **not** `using-git-worktrees`.)
+  `verification-before-completion`, `finishing-a-development-branch`. (Each `cycle-worker`
+  self-provisions its own git worktree at invocation — in-process Teams do not honor an
+  `isolation: worktree` declaration, and it does **not** use `using-git-worktrees`.)
 - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`, `step-workflow`.
 
 **Matching (owner-verified preferred):** the task-loop depends on these *specific plugins'*

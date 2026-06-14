@@ -67,22 +67,41 @@ Validate the scope against the issue; confirm `spawned_plan_revision` matches th
 `master` **and** that `attempt_id == current_attempt_id` for your task (replay the `control_issue`).
 If your attempt was superseded, stop now (`superseded_attempt`).
 
-### 3. Verify isolation, then create your attempt branch
-You run in your **own** isolated worktree (your agent declares `isolation: worktree`). **Verify it
-first:** `git rev-parse --show-toplevel`; if it equals `lead_worktree_root`, isolation was **not**
-honored — **stop and post `WORKTREE_ISOLATION_FAILED`**, do nothing else (no checkout, no edits).
-**Do not create another worktree** (no `using-git-worktrees`, no `git worktree add`). Then check out
-an **attempt-scoped local branch** and bind it to your **per-attempt remote branch**
-`<branch>-attempt-<attempt_id>` (so two attempts never write the same ref): `git fetch origin`; if
-`adopt_from_branch` was given, `git checkout -B <local> origin/<adopt_from_branch>`, else
-`git checkout -B <local> origin/master` (the fresh base; prefix from {{BRANCH_PREFIXES}}). Open the per-cycle
-record `docs/task-loop/logs/<NNN>_<task>.md` (`<NNN>` = the iteration index from your spawn prompt,
-zero-padded from `001`; see operating principle 8) with frontmatter `status: in_progress`,
-`iteration`, `task`, `issue`, `branch`, `attempt_id`, `spawned_plan_revision` and empty **Rubric** +
-**Decision log** sections, and post your first **`task-loop-recovery` comment** (append-only,
-`attempt_id`-tagged): `status=in_progress`, `resume_from=<step>`, `branch`,
-`worktree=<show-toplevel>`, `attempt_id`, `spawned_plan_revision`. Local pre-PR WIP is **disposable**
-(not recoverable off-machine) — durability begins at the first push (step 9).
+### 3. Set up your own worktree, then create your attempt branch
+This agent does **not** rely on harness worktree isolation — in-process Teams do **not** honor an
+`isolation: worktree` declaration, so you start in the lead's **shared** tree. **Your first action** is
+to create and enter your **own** worktree, keyed on your `attempt_id` (so concurrent workers never
+collide and a same-attempt re-entry reuses, never duplicates, it). The snippet sets `base` to
+`origin/<adopt_from_branch>` if `adopt_from_branch` was given, else `origin/master` (the fresh base);
+`<local>` is an attempt-scoped local branch (unique per `attempt_id`, so it is never "already checked
+out" elsewhere; prefix from {{BRANCH_PREFIXES}}). 5 workers share one repo, so the loops **retry
+transient git locks** (a `*.lock` from another git process) — a lock is **never** fatal:
+```bash
+base="origin/master"; [ -n "<adopt_from_branch>" ] && base="origin/<adopt_from_branch>"
+WT_PARENT="$(dirname "$lead_worktree_root")/.task-loop-worktrees"; mkdir -p "$WT_PARENT"
+WT="$WT_PARENT/<task_id>-attempt-<attempt_id>"
+n=0; until git -C "$lead_worktree_root" fetch origin || [ $n -ge 5 ]; do n=$((n+1)); sleep 2; done
+if git -C "$lead_worktree_root" worktree list --porcelain | grep -qxF "worktree $WT"; then
+  cd "$WT"                                                # re-entry: reuse this attempt's worktree
+else
+  n=0; until git -C "$lead_worktree_root" worktree add -B <local> "$WT" "$base" || [ $n -ge 5 ]; do
+    n=$((n+1)); sleep 2; done
+  cd "$WT"
+fi
+```
+If you still cannot create/enter a worktree after the retries, post `WORKTREE_ISOLATION_FAILED` and do
+nothing else. **Verify:**
+`git rev-parse --show-toplevel` == `$WT` (≠ `lead_worktree_root`); on re-entry also `git -C "$WT"
+symbolic-ref --short HEAD` == `<local>`. **`$WT` is your working root for the whole cycle** — cwd may not
+persist across separate tool calls, so prefix repo-touching shell with `cd "$WT"` (or `git -C "$WT" …`)
+and use absolute paths under `$WT` for file edits. Open the per-cycle record
+`docs/task-loop/logs/<NNN>_<task>.md` (`<NNN>` = the iteration index from your spawn prompt, zero-padded
+from `001`; see operating principle 8) with frontmatter `status: in_progress`, `iteration`, `task`,
+`issue`, `branch`, `attempt_id`, `spawned_plan_revision` and empty **Rubric** + **Decision log**
+sections, and post your first **`task-loop-recovery` comment** (append-only, `attempt_id`-tagged):
+`status=in_progress`, `resume_from=<step>`, `branch`, `worktree=$WT`, `attempt_id`,
+`spawned_plan_revision`. Local pre-PR WIP is **disposable** (not recoverable off-machine) — durability
+begins at the first push (step 9).
 
 ### 4. Define the rubric (binary)
 Use `dev-skills:goal-rubric` to draft a binary pass/fail rubric (each item a test name, a
