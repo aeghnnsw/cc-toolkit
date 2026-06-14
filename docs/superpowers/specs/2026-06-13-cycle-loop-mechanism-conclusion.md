@@ -39,8 +39,15 @@ rather than an iteration count.
   backlog then exit" mode is an optional flag, not the default.)
 
 ### Orchestrator state machine
-- `dispatching` — ready work exists, no stop signal → create/assign tasks.
-- `waiting` — active workers exist → wait on idle notifications.
+**Dispatch is proactive and seat-capped, not a phase:** each turn merges completions **first**, then
+dispatches ready tasks into free seats **up to a cap of 5 concurrent workers** (documented guideline,
+not enforced) — active workers never suppress dispatch of newly-unblocked work while a seat is free
+(a merge unblocks dependents the same turn).
+- `dispatching` — ready work exists, no stop signal → create/assign tasks into free seats, ≤5 in
+  flight per lead session (best-effort; a stale-lead false positive may transiently exceed it,
+  correctness-safe via `attempt_id` fencing; entered even while other workers are active).
+- `waiting` — after filling every free seat, work is in flight → idle notifications + a **bounded,
+  jittered** fallback wake; never a reason to stop dispatching, never a busy-loop.
 - `idle` — no ready work, no active workers, no stop signal → long `ScheduleWakeup` /
   Monitor; **do not exit**.
 - `draining` — stop signal observed → no new dispatch; wait for active workers, bounded
