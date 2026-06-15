@@ -46,8 +46,8 @@ so the project's cycle stays current with the template.
 ## Process
 
 ### 1. Read the proposal
-Read `docs/task-loop/proposal.md`. The Charter's Aim + Success criteria become the
-**north star**; the Roadmap stages + hypotheses inform what tasks will look like. If the
+Read `docs/task-loop/proposal.md`. The Specific Aims (Aim + Success criteria) define the project
+**goal**; the Implementation Plan's stages + hypotheses inform what tasks will look like. If the
 proposal is missing, stop and direct the user to `specify-aims` first.
 
 ### 2. Auto-detect what the repo already tells you
@@ -87,7 +87,7 @@ ambiguous answers with `dev-skills:discuss-with-codex`:
   `cores ÷ workers`) here."* Only pressure-test with `discuss-with-codex` when the project has
   shared-cluster quota/etiquette constraints (then name the account/partition and any per-worker
   cap).
-- The **north star** phrasing → `{{NORTH_STAR}}` (from the Charter).
+- The project **goal** phrasing → `{{GOAL}}` (from the Specific Aims).
 
 ### 4. Render the cycle file
 Copy `assets/task-loop-skeleton.md` to `docs/task-loop/task-loop.md` and replace each

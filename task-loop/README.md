@@ -18,16 +18,17 @@ single-sequencer event log) + numbered decision records, so a cold agent can con
 Three skills, run in order, plus one agent:
 
 ```
-a. /specify-aims   → docs/task-loop/proposal.md   (Charter + Roadmap; collaborative + codex)
+a. /specify-aims   → docs/task-loop/proposal.md   (aims + plan + roadmap; collaborative + codex)
 b. /create-cycle   → docs/task-loop/task-loop.md   (project parameters + scaffolding)
 c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-signal
                      cycle-worker (agent): executes one task's cycle
 ```
 
 1. **`specify-aims`** — brainstorm the project goal *with you* and pressure-test it with
-   `discuss-with-codex`, then write `docs/task-loop/proposal.md`: a **Charter** (stable
-   aims/success/constraints/non-goals — human-gated) and a **Roadmap** (living stages +
-   hypothesis ledger — orchestrator-authored).
+   `discuss-with-codex`, then write `docs/task-loop/proposal.md` in three parts: **Specific Aims &
+   Goal** (stable aims/success/constraints/non-goals — human-gated), an **Implementation Plan**
+   (proposed stages + milestones), and a **Living Roadmap** (progress + hypothesis ledger —
+   orchestrator-authored).
 2. **`create-cycle`** — render the project-specific `docs/task-loop/task-loop.md` (the worker's
    tailored step-by-step cycle plus this project's parameters; the `cycle-worker` agent holds only
    the general principles and invariants and follows this file) from auto-detected/interviewed
@@ -72,7 +73,7 @@ The **`preflight`** skill sets this for you (and reminds you to restart). The `s
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `docs/task-loop/proposal.md` | `specify-aims`, then orchestrator | Charter + Roadmap (living research spine) |
+| `docs/task-loop/proposal.md` | `specify-aims`, then orchestrator | specific aims + implementation plan + living roadmap (the project's living spine) |
 | `docs/task-loop/task-loop.md` | `create-cycle` | this project's tailored step-by-step cycle + parameters; each worker follows it strictly (general principles + invariants live in the `cycle-worker` agent) |
 | `docs/task-loop/directions.md` | you | human steering channel (read first each round) |
 | `docs/task-loop/logs/NNN_<task>.md` | worker | one git-tracked per-cycle record (**Rubric** + **Decision log** sections); `NNN` = zero-padded iteration index from `001` (orchestrator-assigned, tracks cycles chronologically) |
@@ -85,7 +86,7 @@ The **`preflight`** skill sets this for you (and reminds you to restart). The `s
 task-loop/
 ├── skills/
 │   ├── preflight/        # standalone: verify required skills + enable Agent Teams (run once)
-│   ├── specify-aims/     # step a: author the proposal (Charter + Roadmap)
+│   ├── specify-aims/     # step a: author the proposal (aims + plan + roadmap)
 │   ├── create-cycle/     # step b: render task-loop.md + scaffolding
 │   └── run-cycle/        # step c: the orchestrator (state machine in references/)
 ├── agents/

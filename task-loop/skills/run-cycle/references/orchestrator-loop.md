@@ -151,7 +151,7 @@ For each known task issue (every `tasks[*].issue_number`):
   merge), just emit `PLAN_REVISION_BUMP{plan_revision: N, proposal_sha: <merged SHA>}`; otherwise
   author it, `gh pr merge` it (orchestrator is the sole editor of `proposal.md`), then emit the
   bump. Never emit the bump before the proposal PR is on `master`.
-- Recompute the dependency frontier from the Roadmap + declared `depends_on_tasks` /
+- Recompute the dependency frontier from the Implementation Plan + declared `depends_on_tasks` /
   `depends_on_hypotheses`. Mark every task in the invalidated subgraph `TASK_STALE` and **halt
   its dispatch**. If a finding's blast radius can't be mapped confidently, **freeze broadly**.
 
@@ -274,7 +274,7 @@ creates ≤5 issues this turn).
   replayed log — identical across resumes.
 - **Select** up to the number of free seats (deterministic, starvation-free): order by (1)
   `directions.md` priority, then (2) **oldest** `ready_since`, then (3) the task/stage declaration
-  order in the **`docs/task-loop/proposal.md` Roadmap** (the task source §4 computes the frontier
+  order in the **`docs/task-loop/proposal.md` Implementation Plan** (the task source §4 computes the frontier
   from — *not* the worker's cycle file `task-loop.md`) as the final tie-break. **Reserve ≥1 of
   the 5 seats for the oldest dispatchable task** (a max-skip rule) so a stream of high-priority work
   cannot starve it.
