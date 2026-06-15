@@ -1,6 +1,6 @@
 ---
 name: create-cycle
-description: This skill should be used when the user asks to "create cycle", "create the task loop", "generate the task-loop instructions", "write the per-task playbook", "scaffold task-loop", or to turn a task-loop proposal into the project-parameters file a worker reads. It renders docs/task-loop/task-loop.md (this project's parameters; the worker's full cycle and general rules live in the cycle-worker agent contract) from auto-detected and interviewed specifics, and scaffolds docs/task-loop/directions.md, the logs directory, .gitignore, and the loop:in-progress label.
+description: This skill should be used when the user asks to "create cycle", "create the task loop", "generate the task-loop instructions", "write the per-task playbook", "scaffold task-loop", or to turn a task-loop proposal into the per-project cycle a worker follows. It renders docs/task-loop/task-loop.md — this project's tailored step-by-step worker cycle plus its parameters (the cycle-worker agent holds only the general principles and invariants and follows this file) — from auto-detected and interviewed specifics, and scaffolds docs/task-loop/directions.md, the logs directory, .gitignore, and the loop:in-progress label.
 version: 0.1.0
 ---
 
@@ -9,29 +9,30 @@ version: 0.1.0
 ## Overview
 
 Second step of the task-loop workflow (`specify-aims` → **`create-cycle`** → `run-cycle`).
-It generates the **project-parameters file** `docs/task-loop/task-loop.md` — the file each
-worker reads for this project's specifics — by filling a parameters template, and it scaffolds
-the supporting files. The worker's **full cycle and all general rules live in the `cycle-worker`
-agent contract** (`task-loop/agents/cycle-worker.md`), not in this file. Run it once the proposal
-(`docs/task-loop/proposal.md`) exists.
+It generates `docs/task-loop/task-loop.md` — the **per-project cycle a worker follows**: the full
+step-by-step procedure (recover → confirm → worktree → rubric → spec/plan → TDD → verify →
+reconcile → doc-update → open-PR → request-merge → record) with this project's parameters
+interpolated into the steps — by rendering `assets/task-loop-skeleton.md`, then scaffolds the
+supporting files. The `cycle-worker` agent contract holds only the **general operating principles
+and non-negotiable invariants**; it reads and **follows this file strictly**. Run it once the
+proposal (`docs/task-loop/proposal.md`) exists.
 
-The generic cycle (recover → rubric → spec/plan → TDD → verify → reconcile → doc-update →
-open-PR → request-merge → record) and every general rule are **fixed across projects and live in
-the `cycle-worker` agent contract** — so they update centrally with the plugin and never drift.
-This skill's job is to (a) discover/ask the project specifics and (b) render them into the
-parameters template (`assets/task-loop-skeleton.md`), then scaffold the rest.
+The cycle template (`assets/task-loop-skeleton.md`) is the **single source** of the step-by-step
+procedure in the plugin; this skill renders it per project with the project's specifics. Because the
+rendered `task-loop.md` is a snapshot, **re-run `create-cycle` after upgrading the task-loop plugin**
+so the project's cycle stays current with the template.
 
 ## When to use / not use
 
 - **Use** to (re)generate `docs/task-loop/task-loop.md` and scaffold a project for the loop,
-  after `specify-aims` has produced the proposal.
+  after `specify-aims` has produced the proposal — and to **refresh** it after a plugin upgrade.
 - **Do not use** to run tasks — that is `run-cycle` (orchestrator) plus the `cycle-worker`
-  agent. This skill only authors the instructions and scaffolding.
+  agent. This skill only authors the cycle and scaffolding.
 
 ## Outputs
 
-- `docs/task-loop/task-loop.md` — the rendered **project-parameters** file (from
-  `assets/task-loop-skeleton.md`; the cycle itself lives in the `cycle-worker` agent contract).
+- `docs/task-loop/task-loop.md` — the rendered **per-project cycle + parameters** (from
+  `assets/task-loop-skeleton.md`).
 - `docs/task-loop/directions.md` — the human steering file (from
   `assets/directions-template.md`).
 - `docs/task-loop/logs/` — the iteration-indexed record directory (with a `.gitkeep`). Each cycle
@@ -88,14 +89,14 @@ ambiguous answers with `dev-skills:discuss-with-codex`:
   cap).
 - The **north star** phrasing → `{{NORTH_STAR}}` (from the Charter).
 
-### 4. Render the parameters file
+### 4. Render the cycle file
 Copy `assets/task-loop-skeleton.md` to `docs/task-loop/task-loop.md` and replace each
 `{{PLACEHOLDER}}` in the **Project parameters** list with this project's value. For an absent
 fill — e.g. no bootstrap needed when a code skeleton already exists — write `n/a` or remove that
-bullet; never leave a raw `{{...}}`. The cycle, operating principles, and control-protocol
-obligations are **not** in this file — they live in the `cycle-worker` agent contract — so there
-is nothing to weaken here; just fill the parameters accurately and leave the *"Where the cycle
-and rules live"* pointer intact.
+bullet; never leave a raw `{{...}}`. **Leave the step-by-step cycle itself verbatim** — it is the
+fixed procedure; only the parameters are project-specific, and the steps reference them by name. Do
+**not** edit, reorder, or weaken the cycle steps, the worktree bash, or the recovery/control-event
+shapes when rendering — copying the template faithfully is what keeps the protocol correct.
 
 ### 5. Scaffold the rest
 - Copy `assets/directions-template.md` to `docs/task-loop/directions.md`.
@@ -111,19 +112,21 @@ Commit the scaffolding with clean, attribution-free text via a branch + PR (`git
 
 ## Key principles
 
-- **Parameters here, cycle in the agent contract.** This skill only fills the `{{...}}`
-  parameters; the discipline (TDD, evidence-before-done, codex deliberation, worker-never-merges)
-  and the full cycle are constant and live in the `cycle-worker` agent contract. The
-  contracts/tests/compute/docs are the local values you fill.
+- **Cycle + parameters here; principles + invariants in the agent.** This skill renders the
+  per-project cycle and fills the `{{...}}` parameters. The general discipline (TDD,
+  evidence-before-done, codex deliberation, worker-never-merges) and the non-negotiable invariants
+  live in the `cycle-worker` agent contract; the contracts/tests/compute/docs are the local values
+  you fill into the cycle.
 - **Detect before asking.** Pull the test command and git-hook constraints from the repo;
   reserve questions for genuinely project-specific intent.
-- **Don't duplicate the contract.** Never copy cycle steps or control-protocol rules into the
-  rendered file — they belong to the agent contract; duplicating them reintroduces the drift this
-  separation removes.
+- **Render faithfully, don't author.** Fill placeholders only; never edit the cycle steps or
+  control-protocol shapes. The template is the single source of the procedure — re-running
+  `create-cycle` after a plugin upgrade is how a project's cycle stays current (it is the drift
+  mitigation, since the rendered file is a snapshot).
 
 ## Additional resources
 
-- **`assets/task-loop-skeleton.md`** — the project-parameters template to render.
+- **`assets/task-loop-skeleton.md`** — the per-project cycle + parameters template to render.
 - **`assets/directions-template.md`** — the steering-file scaffold.
 - Design rationale: `docs/superpowers/specs/2026-06-13-task-loop-plugin-design.md` (§5–§6)
   and the control-protocol section (§8). The worker helpers it references are
