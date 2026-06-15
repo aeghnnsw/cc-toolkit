@@ -139,7 +139,7 @@ Each `/loop` turn, in order (details in `references/orchestrator-loop.md`):
    + revision-compatible + (status `ready` **or** `active` with no live worker — an orphaned attempt
    recovered via `adopt_from_branch`); a **live** worker, `merged`, or `stale` is excluded. **Select**
    up to **5 concurrent `cycle-worker` teammates** (documented guideline, not enforced) by
-   `directions.md` priority, then oldest `ready_since`, then `proposal.md` Roadmap order, reserving ≥1
+   `directions.md` priority, then oldest `ready_since`, then `proposal.md` Implementation-Plan order, reserving ≥1
    seat for the oldest (starvation-free). **Active workers never suppress dispatch, but a lead never
    *intentionally* exceeds 5 in flight** (best-effort per-session cap; a manual double-start
    takeover may transiently exceed it, correctness-safe via attempt fencing). **Dispatch** each

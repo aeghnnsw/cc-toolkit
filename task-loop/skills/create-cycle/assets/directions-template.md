@@ -18,7 +18,7 @@ Conventions:
 - Newest direction at the top; keep it short and imperative.
 - Date each note. Strike through or delete a note once the loop has acted on it, so the file
   reflects only *current* standing direction.
-- A note here overrides the loop's defaults but **not** the Charter or the correctness
+- A note here overrides the loop's defaults but **not** the Specific Aims or the correctness
   contracts — if a direction conflicts with those, the loop flags it (via
   `discuss-with-codex`) rather than silently breaking them.
 

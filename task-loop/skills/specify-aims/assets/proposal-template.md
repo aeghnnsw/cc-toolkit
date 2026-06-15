@@ -1,19 +1,18 @@
 ---
 plan_revision: 1
-status: active
 ---
 
 # <Project Name> — Proposal
 
-## Charter (stable — human-gated)
+## Specific Aims & Goal — *stable, human-gated*
 
-> The north star. Changes to this zone are a stop-condition-class decision; the
-> task-loop never edits the Charter autonomously.
+> The goal and the definition of done. The task-loop never edits this zone autonomously; changing it
+> is a stop-condition-class decision escalated to you.
 
 ### Aim
-<One paragraph: what this project is trying to achieve, and why it matters.>
+<One paragraph: what this project achieves, and why it matters.>
 
-### Success criteria (what "done" looks like)
+### Success criteria (definition of done)
 - <Binary / checkable where possible — e.g. "benchmark X reproduces value Y within tolerance Z".>
 - <...>
 
@@ -23,37 +22,50 @@ status: active
 ### Non-goals
 - <Explicitly out of scope, to stop scope creep.>
 
-## Roadmap (living — orchestrator-authored)
+## Implementation Plan — *proposed, orchestrator-revised*
 
-> Dependency-ordered stages and their hypotheses. The orchestrator updates this
-> zone via dedicated, codex-reviewed PRs as work validates or rejects hypotheses.
-> Each `plan_revision` bump is materialized here before dependent tasks dispatch.
+> The dependency-ordered stages and milestones planned to reach the Aim — kept rough on purpose. The
+> orchestrator revises this and bumps `plan_revision` when a finding changes the plan. Each stage
+> declares the falsifiable **hypotheses** it rests on — the units the loop validates, and the edges it
+> reasons about when scoping an invalidation.
 
-### Stage 1 — <name>
+### Stages (dependency-ordered)
+
+**Stage 1 — <name>**
 - **Goal:** <what this stage delivers>
 - **Depends on:** <prior stages / hypotheses, or "none">
-- **Rough acceptance:** <how we will know it is done>
-- **Hypotheses:**
-  - `H1.1` (open): <a falsifiable assumption this stage rests on>
+- **Acceptance:** <how we will know it is done>
+- **Hypotheses:** `H1.1` — <a falsifiable assumption this stage rests on>
 
-### Stage 2 — <name>
+**Stage 2 — <name>**
 - **Goal:** <...>
 - **Depends on:** Stage 1
-- **Rough acceptance:** <...>
-- **Hypotheses:**
-  - `H2.1` (open): <...>
+- **Acceptance:** <...>
+- **Hypotheses:** `H2.1` — <...>
 
 <add stages as needed — keep them rough; the loop refines them>
 
-## Hypothesis ledger
+### Milestones
+> Coarse, demonstrable checkpoints spanning stages.
+- **M1 — <name>:** <what it proves, e.g. "Stages 1–2: end-to-end run on toy input">
+- **M2 — <name>:** <...>
 
-> The **canonical roll-up** of every `Hx.y` declared inline under the stages above. Every
-> inline hypothesis must appear here; this table is authoritative for status. The orchestrator
-> updates `Status` as findings land.
+## Living Roadmap — *progress, orchestrator-authored*
 
-| ID | Statement | Status | Evidence / disposition |
-|------|-----------|--------|------------------------|
-| H1.1 | <falsifiable assumption> | open | |
-| H2.1 | <falsifiable assumption> | open | |
+> The running status, updated as work lands. The orchestrator owns this zone during a run; it records
+> progress — it is not the plan itself.
+
+### Progress
+- **Current stage:** <Stage N — short status, or "not started">
+- **Milestones reached:** <M1 …, or "none yet">
+
+### Hypothesis ledger
+> Tracks the status of every `Hx.y` declared in the Implementation Plan, by ID. Statements live with
+> their stage above; do not restate them here.
+
+| ID   | Status | Evidence / disposition |
+|------|--------|------------------------|
+| H1.1 | open   |                        |
+| H2.1 | open   |                        |
 
 <status ∈ {open, validated, rejected}>

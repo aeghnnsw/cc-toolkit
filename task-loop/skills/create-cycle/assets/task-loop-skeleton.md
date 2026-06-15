@@ -13,7 +13,7 @@ file** against the current cycle template (this keeps the cycle from drifting be
 
 ## Project parameters (filled by create-cycle)
 
-- **North star / done:** {{NORTH_STAR}}
+- **Goal / done:** {{GOAL}}
 - **Source-of-truth docs (read every task):** `docs/task-loop/proposal.md` plus {{SOURCE_DOCS}}
 - **Steering file (read first):** `docs/task-loop/directions.md`
 - **Correctness contracts (not optional polish):** {{CONTRACTS}}
