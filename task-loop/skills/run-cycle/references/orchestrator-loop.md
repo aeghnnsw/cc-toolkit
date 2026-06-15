@@ -275,7 +275,7 @@ creates ≤5 issues this turn).
 - **Select** up to the number of free seats (deterministic, starvation-free): order by (1)
   `directions.md` priority, then (2) **oldest** `ready_since`, then (3) the task/stage declaration
   order in the **`docs/task-loop/proposal.md` Roadmap** (the task source §4 computes the frontier
-  from — *not* the worker's project-parameters file `task-loop.md`) as the final tie-break. **Reserve ≥1 of
+  from — *not* the worker's cycle file `task-loop.md`) as the final tie-break. **Reserve ≥1 of
   the 5 seats for the oldest dispatchable task** (a max-skip rule) so a stream of high-priority work
   cannot starve it.
 - **Seat cap = 5** simultaneous `cycle-worker` teammates (one task each → at most 5 in flight **per

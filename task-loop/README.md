@@ -28,10 +28,11 @@ c. /run-cycle      → orchestrator: /loop self-paced + Agent Team + drain-on-si
    `discuss-with-codex`, then write `docs/task-loop/proposal.md`: a **Charter** (stable
    aims/success/constraints/non-goals — human-gated) and a **Roadmap** (living stages +
    hypothesis ledger — orchestrator-authored).
-2. **`create-cycle`** — render the project-specific `docs/task-loop/task-loop.md` (this project's
-   parameters; the worker's full cycle and general rules live in the `cycle-worker` agent contract)
-   from auto-detected/interviewed specifics, and scaffold `directions.md` (steering), the logs
-   directory, `.gitignore`, and the `loop:in-progress` label.
+2. **`create-cycle`** — render the project-specific `docs/task-loop/task-loop.md` (the worker's
+   tailored step-by-step cycle plus this project's parameters; the `cycle-worker` agent holds only
+   the general principles and invariants and follows this file) from auto-detected/interviewed
+   specifics, and scaffold `directions.md` (steering), the logs directory, `.gitignore`, and the
+   `loop:in-progress` label.
 3. **`run-cycle`** — the orchestrator: each turn it computes the dependency-ordered task frontier,
    spawns one `cycle-worker` teammate per ready task, and validates + merges their PRs. It runs as
    a **live `/loop` lead plus two scheduler guard jobs (no local files)** — a watchdog that detects
@@ -72,7 +73,7 @@ The **`preflight`** skill sets this for you (and reminds you to restart). The `s
 | Path | Owner | Purpose |
 |---|---|---|
 | `docs/task-loop/proposal.md` | `specify-aims`, then orchestrator | Charter + Roadmap (living research spine) |
-| `docs/task-loop/task-loop.md` | `create-cycle` | this project's parameters each worker reads (the cycle + general rules live in the `cycle-worker` agent contract) |
+| `docs/task-loop/task-loop.md` | `create-cycle` | this project's tailored step-by-step cycle + parameters; each worker follows it strictly (general principles + invariants live in the `cycle-worker` agent) |
 | `docs/task-loop/directions.md` | you | human steering channel (read first each round) |
 | `docs/task-loop/logs/NNN_<task>.md` | worker | one git-tracked per-cycle record (**Rubric** + **Decision log** sections); `NNN` = zero-padded iteration index from `001` (orchestrator-assigned, tracks cycles chronologically) |
 | GitHub control issue (comments) + per-task issues | orchestrator + workers | append-only control-event log |
