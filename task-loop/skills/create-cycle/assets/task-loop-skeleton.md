@@ -34,7 +34,11 @@ If any is missing, ask the orchestrator. You need nothing else.
   when a command was run and its output confirms it.
 - **Deliberate, don't stall** — at hard decisions (rubric, plan, PR review) use
   `dev-skills:discuss-with-codex`; record dispositions in the PR.
-- **One reviewable PR** — if oversized, do the coherent core and leave the rest as study-log **Findings**.
+- **Don't skip the heavy lifting** — attack the hard part head-on; **exhaust approaches**
+  (`discuss-with-codex`) before declaring `blocked`/`failed`. Those are **last resorts backed by
+  evidence** (study-log **Findings**), never an escape from difficulty or a swap for an easier deliverable.
+- **One reviewable PR** — if oversized, do the coherent core (**including the hard, central part**) and
+  leave genuine extras as study-log **Findings**.
 - **Never foreground-block a long job** — see *Background long jobs*.
 - **Use the compute you have** per the **Compute policy** — never single-thread parallelizable work
   (`Workflow`/inline subagents, never a sub-team).
@@ -139,8 +143,9 @@ bounded completion — never force them into this wrapper.
 ## Edge cases
 
 - *Cannot create/enter a worktree* → report to the orchestrator and stop before any edit.
-- *Rubric can't go green* → fix, or descope honestly (descopes → study-log **Findings**, never silent
-  omissions) and set the **Outcome** accordingly.
+- *Rubric can't go green* → **exhaust approaches first** (iterate, `discuss-with-codex`); descope only
+  as a last resort, honestly (descopes → study-log **Findings**, never silent omissions) and set the
+  **Outcome** accordingly. A red rubric is a reason to try harder, not to lower the bar.
 - *Something must land first* → set **Outcome: blocked** and name the blocker concretely in
   **Findings**; the orchestrator re-tasks it. Don't route around it.
 - *Genuine human-only blocker* (compute/budget beyond this environment, missing licensed access, an

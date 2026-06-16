@@ -3,7 +3,7 @@
 **Date:** 2026-06-15
 **Status:** design agreed; **fully built**. Components: `db/schema.sql`, `cli/task-loop`, `skills/setup` (live-verified), `references/pr-findings.md`, `agents/cycle-worker`, `skills/create-cycle` + `task-loop-skeleton.md`, `skills/run-cycle`. Old harness retired: old `scripts/` + tests removed, `preflight` folded into `setup`, `specify-aims` slimmed, README + `plugin.json` updated.
 **Supersedes:** the GitHub-issue-comment control-log harness (`scripts/control_log.py`, `scripts/gh_store.py`, old `run-cycle`).
-**Companion docs:** orchestrator-pass deliberation `2026-06-15-task-loop-orchestrator-pass-conclusion.md` (refines §7–§9 below); earlier redesign record `2026-06-15-task-loop-supabase-harness-redesign-conclusion.md`; diagrams `2026-06-15-task-loop-harness-diagram.md`.
+**Companion docs:** orchestrator-pass deliberation `2026-06-15-task-loop-orchestrator-pass-conclusion.md` (refines §7–§9 below); **persistence-model closure `2026-06-16-task-loop-persistence-loop-conclusion.md` (this revision — supersedes the human-wait branches in §8/§9)**; earlier redesign record `2026-06-15-task-loop-supabase-harness-redesign-conclusion.md`; diagrams `2026-06-15-task-loop-harness-diagram.md`.
 
 This is the single source of truth for the redesigned harness. It records *what* we are building and *why* the non-obvious cuts were made (several reverse earlier drafts).
 
@@ -13,6 +13,7 @@ This is the single source of truth for the redesigned harness. It records *what*
 
 - **Simple and elegant over flexible.** Flexibility makes a harness fragile. Fewer states, fewer rules, one obvious path.
 - **Idempotent, stateless orchestrator.** All durable state lives in the world (Supabase DB + GitHub), never in the orchestrator. Running the loop *from anywhere, anytime* always does the same thing — there is **no** start/resume/recover mode.
+- **Relentless toward the goal; never gives up.** Short of the time bound the orchestrator never abandons the goal — every failed attempt is *diagnosed* and *re-attacked* with a materially-different, AIM-aligned strategy, escalating the approach when the same obstacle recurs. It never idles on difficulty, picks the easy task over the hard one, or drifts to an easier goal. Terminal states: **goal-met** or **`stop_at`** (§8).
 - **The orchestrator decides; the worker works.** The orchestrator never writes task code; the cycle-worker never touches the DB or merges.
 - **Two agent types only.** Everything else is deterministic, non-agent infrastructure (DB, CLI, GitHub, a hook).
 
@@ -139,58 +140,68 @@ Each tick, **in order** (steering first — it gates everything irreversible):
    the basis for the reset rule below).
 3. **Merge / classify** (only PRs steering allows) — per `working` task's PR. **Mergeable** (CI +
    review green **and** GitHub merge-state clean — no conflict/behind) → **head-SHA-atomic merge**
-   (`gh pr merge --squash --match-head-commit <SHA>`, §9; a green→red flap is rejected) → close issue →
-   `task-loop close <seq>` → reap. Outcome (§pr-findings): **success/failed** → close; **blocked** →
-   close + work recreated in step 5. **Gate-failed / merge-blocked / stuck** (required check red, review
-   failed, conflict/behind/blocked, a deterministic merge rejection, or pending past bound / never
-   posts) → label the issue `needs-human`, surface once, **leave the task** — the idle worker won't
-   repair it, and close-and-recreate would spin (retry is human-only). **Pending** → leave for next pass.
+   (`gh pr merge --squash --match-head-commit <SHA>`, §9; a green→red flap is rejected) → on **success**
+   close issue + `task-loop close <seq>`; **blocked** → close task + work recreated in step 5 → reap.
+   **Behind base only** → `gh pr update-branch` (mechanical sync; merge next pass). **Gate-failed /
+   stuck / conflict** (check red, review failed, genuine conflict / deterministic rejection, or pending
+   past bound / never posts) → **diagnose and re-attack, never give up**: `gh pr close` + `task-loop
+   close <seq>`, then step 5 materializes the **next attempt against the same issue** with a
+   materially-different, escalated, AIM-aligned strategy. (Recreation is safe because it is *diagnosed
+   escalation*, not blind repetition — reversing the old "close-recreate spins → surface `needs-human`"
+   rule — and `stop_at` bounds it.) **Pending** → leave for next pass.
 4. **Findings → `proposal.md` (reconcile sweep).** The orchestrator is the **sole editor** of
    `proposal.md`. When merged findings change the roadmap, **recompute** the affected sections from
    *current default + the complete set of merged study-logs not yet reflected* (never a stale patch),
    PR it, merge it; regenerate if the base moved. Convergent under concurrent orchestrators — no lock.
-5. **Materialize tasks (idempotent) — the goal-driver.** Ensure the board carries the next work toward
-   the **Success criteria**: the proposal's **planned stages not yet turned into tasks** (initial seed
-   + ongoing decomposition), discovered blockers, blocked re-creation (`--dep`, re-linking the issue),
-   direction- and finding-driven tasks. Create or adopt the issue, then `task-loop add … --issue N`.
-   Never duplicate. While the goal is unmet this always adds the next task(s) — or flags a human-only gap.
+5. **Materialize tasks (idempotent) — the goal-driver that never gives up.** Ensure the board carries
+   the next work toward the **Success criteria**: planned stages not yet tasked (seed + decomposition,
+   **including the riskiest / heavy-lifting work — never deferred for easy wins**), discovered blockers,
+   `--dep` re-creation (re-linking the issue), direction-/finding-driven tasks, and **re-attacks** of
+   every attempt step 3 closed non-mergeable. A re-attack is **diagnosed** (`discuss-with-codex`: what
+   failed, what's untried), **materially different** from prior attempts on that issue, and **escalates
+   the class of approach** when the same obstacle recurs. **AIM-fidelity:** every new task is
+   codex-checked against the Success criteria — keep only AIM-aligned work, never drift to an easier
+   goal. Create or adopt the issue, then `task-loop add … --issue N`; never duplicate. While the goal is
+   unmet this **always** adds the next task(s); there is no give-up exit.
 6. **Dispatch** (skip if draining). `task-loop claim` loop → spawn one `cycle-worker` per claim (`seq`,
    title, issue, branch), record its id, up to a soft capacity.
 7. **Goal check / terminate.** Evaluate the **Success criteria** against the repo (run them; don't infer
-   from "tasks closed"). **Met** → done (drain + stop). **Unmet + real progress** (a `working` task
-   whose worker is advancing or whose PR is mergeable/genuinely-pending, *or* a `claimable` task) →
-   continue. **Unmet + no real progress + nothing claimable** → before idling, **ensure a durable
-   surfaced blocker exists**: per-unit `needs-human` issues (step 3) plus — for a *planning* gap (empty
-   board / deadlock / criteria stricter than any task) — a proposal-level
-   `needs-human: proposal-unmet-no-planned-work` issue. Then idle; never idle on an unmet goal with
-   nothing surfaced. Drain waits only for real-progress tasks, so `stop_at` always fires.
-   *(Closure verified adversarially — `…-orchestrator-pass-conclusion.md` addendum.)*
+   from "tasks closed"). **Met** → done (drain + stop). **Unmet** → **always continue**: step 5 keeps
+   the board carrying the next diagnosed, AIM-aligned work, so there is **no exhaustion terminal and no
+   idle-on-difficulty** — the only non-goal terminal is **`stop_at`** (Loop B guarantees it fires). If
+   escalations converge on something genuinely beyond the loop's reach, drop a **non-blocking** note for
+   async human steering (`directions.md`) and **keep attacking other angles** — never wait, never
+   redefine the goal. *(Closure re-verified adversarially for the persistence model —
+   `…-2026-06-16-task-loop-persistence-loop-conclusion.md`.)*
 
 ### Reset rule (the one subtle invariant)
-`claim` makes `open → working` atomic but **not** `working → open`. A PR is a durable artifact (any
-orchestrator may merge it); a PR-absent `working` task is **ambiguous** — you can't tell "alive but
-pre-PR" from "dead" without an ownership/liveness marker (which we don't have). So a `working`-no-PR
-task is reset **only** with positive "no live owner" knowledge: **(a)** the orchestrator that spawned
-it observed its death *this session*, or **(b)** a human runs `task-loop reset <seq>`. A cold / foreign
-tick **surfaces** opaque tasks ("`012` looks orphaned; reset it if no orchestrator is live"), never
-auto-resets them; `directions.md` never triggers reset (it is standing steering, not a queue). **Cost:**
-concurrent multi-orchestrator loses *automatic* pre-PR orphan recovery; single / sequential-cross-machine
-keeps it (teammates die with their session, so the spawning session is the only live observer).
+`claim` makes `open → working` atomic but **not** `working → open`. A PR is durable (any orchestrator
+may merge it); a PR-absent `working` task is **ambiguous** — alive-pre-PR vs dead — without an ownership
+marker (which we don't keep). So it is reset **only** with positive "no live owner" knowledge: **(a)**
+in-session observed death; **(b)** a human `task-loop reset <seq>`; or **(c)** a **single-orchestrator
+cold start** — a fresh session in the default single-orchestrator mode safely reclaims **every** opaque
+`working`-no-PR orphan (prior-session workers died with their session), so crash/restart **self-heals
+with no human-wait**. Single-orchestrator is an *operator deployment declaration*, not a runtime
+detection; accidental concurrency degrades to **bounded waste** (a reset may clobber a peer's branch →
+that unit is re-attacked), never unrecoverable. Only **declared multi-orchestrator** operation refuses
+to reclaim a foreign orphan (it surfaces it); `directions.md` never triggers reset. **Termination** is
+independent of all this: at `stop_at` the drain is **bounded** (it waits only for genuinely-pending PRs,
+never for orphans/stuck), so the run always stops within a bounded time.
 
 **Recovery is just the next tick.** PR-present `working` tasks integrate; PR-absent ones are held +
-surfaced. **The run finishes when the Success criteria are met** (goal achieved, step 7); `stop_at` is
-only the time bound. An empty board with the goal **unmet** is *not* a stop — step 5 materializes the
-next work, or step 7 escalates a human-only gap. So the loop always advances the goal, finishes it, or
-asks for help — it never quietly stalls short of the goal.
+surfaced. **The run finishes when the Success criteria are met** (goal achieved, step 7) **or** at
+`stop_at` (the time bound). An empty board with the goal **unmet** is *never* a stop — step 5
+materializes the next diagnosed, AIM-aligned work. So the loop always advances the goal, finishes it, or
+runs out the clock having genuinely kept trying — it never quietly gives up short of the goal.
 
 ### Issues ↔ tasks
-Every task is **paired with a GitHub issue**, created or linked **at task creation** (the orchestrator either opens a new issue or links an existing one — including adopting an existing issue that has no task yet). The `tasks.issue` field holds it. On a successful merge the PR **closes the issue**. On a **blocked** outcome the orchestrator **re-links the issue to the new task** (it stays open, following the remaining work). Whether to close or keep an issue is the orchestrator's judgment.
+Every task is **paired with a GitHub issue** at creation (open new or adopt existing; `tasks.issue` holds it). **The issue is the persistent unit-of-work identity; a task is one *attempt* at it.** On a successful merge the orchestrator **closes the issue**. On **blocked / gate-failed / conflict** it closes only the *task* (the attempt) but **keeps the issue open and re-links** it to the next attempt step 5 materializes — so the unit is pursued across attempts until success or `stop_at`. The issue closes **only on success** (or by human steering).
 
 ---
 
 ## 9. Merge safety
 
-- The orchestrator runs `gh pr merge` itself, after reading the PR and confirming readiness (CI + review green, findings OK). The merge is **head-SHA-atomic** — `gh pr merge --squash --match-head-commit <validated SHA>` — so a PR that flipped red or gained commits between the readiness check and the merge is **rejected**, not merged stale (re-evaluated next tick). When the work is done it **merges the PR and closes the task**.
+- The orchestrator runs `gh pr merge` itself, after reading the PR and confirming readiness (CI + review green, findings OK). The merge is **head-SHA-atomic** — `gh pr merge --squash --match-head-commit <validated SHA>` — so a PR that flipped red or gained commits between the readiness check and the merge is **rejected**, not merged stale (re-evaluated next tick). When the work is done it **merges the PR and closes the task**. A **deterministic** block is **re-attacked, never surfaced for a human to fix**: *behind base* → `gh pr update-branch`; *conflict / other* → a diagnosed, materially-different next attempt (§8 step 3/5).
 - **A task-loop-specific merge hook is NOT part of this harness.** Generic `gh pr merge` gating is already provided by a **separate plugin's hook**, and **branch protection** (required CI + an independent review check, posted by a CI workflow/Action — never the worker) is the structural backstop no merge can bypass.
 - The task-specific decision ("is this PR's outcome mergeable; does anything block it?") is the **orchestrator's judgment** as it reads the PR — not a machine-enforced DB guard. (Codex argued for first-class findings + a DB-checking executor for structural impossibility; the operator chose the simpler "the orchestrator is smart and decides" model, backed by branch protection.)
 
@@ -250,14 +261,7 @@ Most settled in the orchestrator-pass deliberation (`…-orchestrator-pass-concl
 - **Issue ↔ task pairing** → paired at creation; PR `Refs` (never `Closes`); orchestrator closes on success, re-links on blocked. Close-vs-keep is its judgment.
 - **Worker scope** → does its one task, isolates in its own worktree, reports findings in the PR; no merge / DB / issue / plan management.
 - **Capacity / concurrency** → not prescribed (soft knob). **Branch naming** → implementer's choice (`tl/<seq>` default; stale branch deleted on reset). **Multi-machine launch** → out of harness scope.
+- **Persistence / no-human-wait (this revision)** → the loop **never gives up short of the goal** and **never waits on a human decision** (humans steer *direction* only, async via `directions.md`). Every non-mergeable attempt is **diagnosed** (`discuss-with-codex`) and **re-attacked** with a **materially-different, AIM-aligned** strategy, **escalating the class of approach** when the same obstacle recurs (decided: *diagnosis + escalation teeth*, with *codex as the diagnosis / AIM-fidelity engine*); merge-blocked → behind-base `gh pr update-branch`, else a diagnosed next attempt. The GitHub **issue is the persistent unit identity; a task is one attempt**. Terminal states reduce to **goal-met** or **`stop_at`** — no exhaustion/idle terminal. This **reverses** the old "close-recreate spins → surface `needs-human`" rule: recreation is safe because it is diagnosed escalation (not blind repetition) and `stop_at` bounds it. Worker-side: *don't skip the heavy lifting* — `failed`/`blocked` are last resorts backed by evidence, not escape hatches. Closure re-verified adversarially (`…-2026-06-16-task-loop-persistence-loop-conclusion.md`).
 
 **Still genuinely open:**
 - Which **CI / Action produces the independent review check** and how it's bound to the PR head.
-- **No-human-wait autonomy (next change, decided but not yet applied).** The loop must **never wait on
-  a human decision** — humans steer *direction* only (`directions.md`, async). The current
-  `needs-human → surface + idle` branches (§8 step 3/7 and the closure addendum) are to be **replaced
-  by autonomous handling**: merge-blocked → **auto-rebase**; gate-failed/stuck → **bounded autonomous
-  retry** (issue-derived attempt count) then **record-failed-and-continue**; planning gap →
-  codex-decompose, else **terminate with a residual report**. Terminal states become
-  **goal-met / `stop_at` / autonomously-exhausted-and-reported** — never idle-wait. (To be designed +
-  Codex-verified; the §8/§9/addendum text below still describes the superseded human-wait model.)

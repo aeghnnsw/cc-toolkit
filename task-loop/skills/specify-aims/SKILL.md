@@ -91,5 +91,3 @@ PR with clean, attribution-free text.
 
 - **`assets/proposal-template.md`** — the three-part proposal scaffold to copy into the
   project.
-- Design rationale: `docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md` and the
-  orchestrator-pass conclusion (`…-2026-06-15-task-loop-orchestrator-pass-conclusion.md`).

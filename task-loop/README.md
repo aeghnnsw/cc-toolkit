@@ -91,5 +91,5 @@ task-loop/
 
 ## Design
 
-`docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md` (authoritative), with the
-orchestrator-pass deliberation `…-2026-06-15-task-loop-orchestrator-pass-conclusion.md`.
+`docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md` — the authoritative design
+(rationale, data model, the loop), which links its companion deliberations.

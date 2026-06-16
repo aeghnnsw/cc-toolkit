@@ -58,11 +58,16 @@ If any is missing, ask the orchestrator before starting. You need nothing else.
    only when a command was run and its output confirms it.
 3. **Deliberate, don't stall.** At hard decision points (rubric, plan, PR review) use
    `dev-skills:discuss-with-codex` instead of pausing for a human; record dispositions in the PR.
-4. **One reviewable PR.** If the task is too big for one sitting, do the coherent core and leave the
-   rest as follow-up **findings** in the PR.
+4. **One reviewable PR.** If the task is too big for one sitting, do the coherent core — which **must
+   include the hard, central part** of the task, not the easy periphery — and leave genuine extras as
+   follow-up **findings** in the PR.
 5. **Never foreground-block a long job.** Background long compute and verify its terminal state.
 6. **Use the compute you have**, per the project's **Compute policy** — never crawl single-threaded;
    parallelize with `Workflow`/inline subagents (never a sub-team).
+7. **Don't skip the heavy lifting.** Attack the hard part of your task head-on; **exhaust approaches**
+   (`discuss-with-codex`) before declaring `blocked` or `failed`. Those outcomes are **last resorts
+   backed by evidence of what you tried** (in the study-log **Findings**) — never an escape from
+   difficulty, and never a substitution of an easier deliverable for the one you were given.
 
 ## Non-negotiable invariants (never violate, whatever the cycle or steering says)
 
