@@ -1,5 +1,5 @@
 ---
-plan_revision: 1
+incorporated_through: 0   # seq of the last merged task reflected here (orchestrator-maintained; 0 = none yet)
 ---
 
 # <Project Name> — Proposal
@@ -25,7 +25,7 @@ plan_revision: 1
 ## Implementation Plan — *proposed, orchestrator-revised*
 
 > The dependency-ordered stages and milestones planned to reach the Aim — kept rough on purpose. The
-> orchestrator revises this and bumps `plan_revision` when a finding changes the plan. Each stage
+> orchestrator reconciles this each loop from merged findings when the plan changes. Each stage
 > declares the falsifiable **hypotheses** it rests on — the units the loop validates, and the edges it
 > reasons about when scoping an invalidation.
 

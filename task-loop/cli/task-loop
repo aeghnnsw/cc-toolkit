@@ -1,0 +1,221 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["httpx>=0.27"]
+# ///
+"""task-loop — DB-only CLI for the Supabase task-loop harness.
+
+Run it with uv (no install needed beyond uv itself):
+    uv run task-loop/cli/task-loop <command> ...
+or, since it is executable: ./task-loop/cli/task-loop <command> ...
+
+Credentials — env vars, or the machine-local config written once by
+`task-loop login` at $XDG_CONFIG_HOME/task-loop/config (default ~/.config/task-loop/config):
+    TASK_LOOP_URL   Supabase project URL, e.g. https://<ref>.supabase.co
+    TASK_LOOP_KEY   Supabase API key
+
+The project ("owner/repo") is auto-detected from `git remote get-url origin`.
+This CLI only ever talks to the DB (Supabase REST). GitHub (PRs, merges) is the
+orchestrator's job, via `gh`. The schema in db/schema.sql is applied once to the
+Supabase project out-of-band (SQL editor / supabase CLI); `init` only registers
+this repo as a row.
+"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import re
+import subprocess
+import sys
+
+import httpx
+
+
+def _config_path() -> str:
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(base, "task-loop", "config")
+
+
+def _config() -> dict[str, str]:
+    out: dict[str, str] = {}
+    try:
+        with open(_config_path()) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    out[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def _setting(name: str, cfg: dict[str, str]) -> str:
+    v = os.environ.get(name) or cfg.get(name)
+    if not v:
+        sys.exit(f"task-loop: {name} not set — run `task-loop login` (or export it)")
+    return v
+
+
+def _project(override: str | None) -> str:
+    if override:
+        return override
+    out = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", out)
+    if not m:
+        sys.exit(f"task-loop: cannot derive project from git remote: {out!r}")
+    return m.group(1)
+
+
+def _client() -> httpx.Client:
+    cfg = _config()
+    key = _setting("TASK_LOOP_KEY", cfg)
+    url = _setting("TASK_LOOP_URL", cfg)
+    return httpx.Client(
+        base_url=url.rstrip("/") + "/rest/v1",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        timeout=15.0,
+    )
+
+
+def _check(r: httpx.Response) -> httpx.Response:
+    if r.status_code >= 300:
+        sys.exit(f"task-loop: HTTP {r.status_code} — {r.text}")
+    return r
+
+
+# --- commands ---------------------------------------------------------------
+
+def cmd_init(c, proj, a):
+    _check(c.post(
+        "/projects",
+        params={"on_conflict": "id"},
+        headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+        json={"id": proj, "default_branch": a.branch},
+    ))
+    print(f"registered {proj}")
+
+
+def cmd_add(c, proj, a):
+    seq = _check(c.post("/rpc/task_add", json={
+        "p_project": proj,
+        "p_title": a.title,
+        "p_deps": a.dep or [],
+        "p_issue": a.issue,
+    })).json()
+    print(f"{int(seq):03d}")
+
+
+def cmd_claim(c, proj, a):
+    data = _check(c.post("/rpc/task_claim", json={"p_project": proj})).json()
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not data:
+        print("none")
+        return
+    deps = " ".join(f"{d:03d}" for d in (data.get("deps") or []))
+    line = f"{int(data['seq']):03d}  {data['title']}"
+    if deps:
+        line += f"  (deps: {deps})"
+    if data.get("issue"):
+        line += f"  (issue #{data['issue']})"
+    print(line)
+
+
+def _patch_status(c, proj, seq, new, only_working=False):
+    params = {"project_id": f"eq.{proj}", "seq": f"eq.{seq}"}
+    if only_working:
+        params["status"] = "eq.working"
+    return _check(c.patch(
+        "/tasks", params=params,
+        headers={"Prefer": "return=representation"},
+        json={"status": new},
+    ))
+
+
+def cmd_close(c, proj, a):
+    rows = _patch_status(c, proj, a.seq, "closed").json()
+    print(f"closed {int(a.seq):03d}" if rows else f"no task {int(a.seq):03d}")
+
+
+def cmd_reset(c, proj, a):
+    rows = _patch_status(c, proj, a.seq, "open", only_working=True).json()
+    print(f"reset {int(a.seq):03d}" if rows else f"task {int(a.seq):03d} not working")
+
+
+def cmd_status(c, proj, a):
+    rows = _check(c.get("/tasks", params={
+        "project_id": f"eq.{proj}",
+        "order": "seq",
+        "select": "seq,status,title,deps,issue",
+    })).json()
+    if not rows:
+        print(f"{proj}: no tasks")
+        return
+    for t in rows:
+        print(f"{int(t['seq']):03d}  {t['status']:<8}  {t['title']}")
+
+
+def cmd_login(a):
+    url = a.url or input("Supabase URL: ").strip()
+    key = a.key or getpass.getpass("Supabase key: ").strip()
+    path = _config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(f"TASK_LOOP_URL={url}\nTASK_LOOP_KEY={key}\n")
+    print(f"saved creds to {path} (0600)")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="task-loop")
+    p.add_argument("--project", help="override the auto-detected owner/repo")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init", help="register this repo (schema applied out-of-band)")
+    s.add_argument("--branch", default="main")
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("add", help="add a task")
+    s.add_argument("title")
+    s.add_argument("--dep", type=int, action="append", help="a dependency seq (repeatable)")
+    s.add_argument("--issue", type=int)
+    s.set_defaults(fn=cmd_add)
+
+    s = sub.add_parser("claim", help="atomically claim the next ready task")
+    s.set_defaults(fn=cmd_claim)
+
+    s = sub.add_parser("close", help="close a task")
+    s.add_argument("seq", type=int)
+    s.set_defaults(fn=cmd_close)
+
+    s = sub.add_parser("reset", help="reset a stuck working task back to open")
+    s.add_argument("seq", type=int)
+    s.set_defaults(fn=cmd_reset)
+
+    s = sub.add_parser("status", help="list this project's tasks")
+    s.set_defaults(fn=cmd_status)
+
+    s = sub.add_parser("login", help="save Supabase creds to the machine-local config")
+    s.add_argument("--url", help="prompted if omitted")
+    s.add_argument("--key", help="prompted (hidden) if omitted")
+    s.set_defaults(fn=None)
+
+    a = p.parse_args()
+    if a.cmd == "login":
+        cmd_login(a)
+        return
+    with _client() as c:
+        a.fn(c, _project(a.project), a)
+
+
+if __name__ == "__main__":
+    main()

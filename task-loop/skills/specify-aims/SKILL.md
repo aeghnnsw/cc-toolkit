@@ -21,12 +21,10 @@ decomposition with `dev-skills:discuss-with-codex`.
 
 ## When to use / not use
 
-- **Use** to author a new proposal, or to re-aim one **before the loop has started** (no control
-  issue yet).
-- **Do not use** once the project has a **control issue** (i.e. `run-cycle` has started). From that
-  point the control log holds the authoritative plan revision and **only the orchestrator** edits
-  `proposal.md` (via `run-cycle`); re-aiming is then a loop-reset / plan-revision decision, not a
-  `specify-aims` edit.
+- **Use** to author a new proposal, or to re-aim one **before the loop has started**.
+- **Do not use** once `run-cycle` is running — from then on the **orchestrator is the sole editor** of
+  `proposal.md`, reconciling it each loop from merged findings. Re-aiming a running project is a
+  steering decision (`directions.md`) or a stop-then-re-aim, not a `specify-aims` edit.
 
 ## Output: `docs/task-loop/proposal.md`
 
@@ -37,14 +35,16 @@ Three parts with different change bars (scaffold in `assets/proposal-template.md
   escalated to the user.
 - **Implementation Plan (proposed, orchestrator-revised):** dependency-ordered Stages — each with a
   goal, declared dependencies, rough acceptance, and the **hypotheses** it rests on — plus coarse
-  **milestones**. The orchestrator revises this (bumping `plan_revision`) when a finding changes the
-  plan.
+  **milestones**. The orchestrator **reconciles** this each loop (recomputing from merged findings)
+  when a finding changes the plan.
 - **Living Roadmap (progress, orchestrator-authored):** the running status — current stage,
   milestones reached, and a **hypothesis ledger** tracking each hypothesis as `open` / `validated` /
   `rejected`. Updated as work lands.
 
-Frontmatter starts at `plan_revision: 1`; `run-cycle` owns later plan-revision bumps and the
-plan/roadmap edits — the Specific Aims stay human-gated.
+Once `run-cycle` starts, the orchestrator owns the plan/roadmap edits (reconciling them each loop from
+merged findings); the Specific Aims stay human-gated. The template carries an `incorporated_through`
+marker (the seq of the last merged task reflected) that the orchestrator maintains — there is no
+`plan_revision` counter.
 
 ## Process
 
@@ -80,9 +80,8 @@ Fold the conclusions into the proposal; record any unresolved tension in the rel
 
 ### 5. Write the proposal
 For a new project, create `docs/task-loop/` and copy `assets/proposal-template.md` to
-`docs/task-loop/proposal.md` (it ships `plan_revision: 1`); to re-aim a pre-run proposal, edit the
-existing file in place rather than overwriting it. Fill in the three parts in current-truth prose
-(no "previously…").
+`docs/task-loop/proposal.md`; to re-aim a pre-run proposal, edit the existing file in place rather
+than overwriting it. Fill in the three parts in current-truth prose (no "previously…").
 
 ### 6. Commit on a branch + PR
 The proposal is durable git state. Create a branch, commit `docs/task-loop/proposal.md`, and open a
@@ -92,5 +91,5 @@ PR with clean, attribution-free text.
 
 - **`assets/proposal-template.md`** — the three-part proposal scaffold to copy into the
   project.
-- Design rationale: `docs/superpowers/specs/2026-06-13-task-loop-plugin-design.md` (§4) and
-  `docs/superpowers/specs/2026-06-13-living-proposal-ownership-conclusion.md`.
+- Design rationale: `docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md` and the
+  orchestrator-pass conclusion (`…-2026-06-15-task-loop-orchestrator-pass-conclusion.md`).
