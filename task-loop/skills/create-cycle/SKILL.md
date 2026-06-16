@@ -115,4 +115,3 @@ Commit the scaffolding with clean, attribution-free text via a branch + PR (`git
 - **`assets/directions-template.md`** — the steering-file scaffold.
 - **`${CLAUDE_PLUGIN_ROOT}/references/pr-findings.md`** — the PR study-log contract the cycle's
   step 8 writes and the orchestrator reads.
-- Design rationale: `docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md`.

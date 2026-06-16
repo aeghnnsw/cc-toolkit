@@ -46,17 +46,21 @@ Study log: docs/task-loop/logs/<NNN>_<task>.md
 
 ## The three outcomes
 
-The worker declares one; the orchestrator acts (full handling in `run-cycle` §8). Every outcome funnels
-the task `working → closed` — nothing is dropped.
+The worker declares one; the orchestrator acts (full handling in `run-cycle`'s pass, steps 3 + 5).
+Every outcome funnels the task `working → closed` — nothing is dropped.
 
 | Outcome | Worker means | Orchestrator bookkeeping |
 |---|---|---|
 | `success` | rubric green; task done | merge PR, `close` task, file **Findings** follow-ups as new tasks, close issue |
-| `failed` | can't complete as specified, no dependency to name | `close` task (PR stays as the record) |
-| `blocked` | something must land first | `close` task, create a new task `--dep <blocker>` carrying the remaining work, **re-link the issue** to it (stays open) |
+| `failed` | genuinely can't complete as specified **after real effort** (approaches exhausted, `discuss-with-codex` consulted), no dependency to name | `close` the attempt (PR stays as the record); the orchestrator **diagnoses and re-attacks** — a materially-different next attempt on the **same issue** (issue stays open). Never a dead end. |
+| `blocked` | something concrete must land first | `close` task, create a new task `--dep <blocker>` carrying the remaining work, **re-link the issue** to it (stays open) |
 
-Whether a `failed`/`blocked` PR is merged, closed, or left open is the orchestrator's judgment
-(§8–§9); the worker never merges.
+`failed` / `blocked` are **last resorts**, not escape hatches from difficulty — declare one only with
+evidence of what was tried (the study log's **Findings**), never to avoid the heavy lifting. The
+orchestrator treats every non-`success` attempt as **input to a diagnosed re-attack**, not an
+abandonment: the GitHub **issue is the persistent unit identity** and is pursued across attempts until
+it succeeds or the run hits its time bound. Whether a `failed`/`blocked` PR is merged, closed, or left
+open is the orchestrator's judgment (`run-cycle` §3); the worker never merges.
 
 ## Finding the PR
 
