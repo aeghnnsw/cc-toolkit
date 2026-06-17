@@ -169,7 +169,6 @@ Use this content:
 ```markdown
 ---
 name: goal-rubric
-version: 1.0.0
 description: Use when the user wants a measurable /goal rubric, success criteria, acceptance criteria, or completion condition, or when a /goal loop will not close because the criteria are not observable or binary.
 ---
 
@@ -261,7 +260,6 @@ Use this content:
 ```markdown
 ---
 name: doc-update
-version: 1.0.0
 description: Use when the user asks to update docs, refresh documentation, fix stale README content, audit documentation quality, remove outdated prose, or bring existing documentation in line with current project truth.
 ---
 
@@ -402,7 +400,30 @@ done
 
 Expected: each file has closed YAML frontmatter, a `name`, and a `description` that starts with `Use when`.
 
-- [ ] **Step 5: Confirm unsupported skills are not exposed to Codex**
+- [ ] **Step 5: Validate declared Codex skill root**
+
+Run:
+
+```bash
+uv run --with pyyaml python - <<'PY'
+from pathlib import Path
+import json
+
+manifest = json.loads(Path("dev-skills/.codex-plugin/plugin.json").read_text())
+assert manifest["skills"] == "./codex-skills/"
+
+skills_root = Path("dev-skills") / manifest["skills"].removeprefix("./").rstrip("/")
+assert skills_root.is_dir()
+
+skill_names = sorted(path.parent.name for path in skills_root.glob("*/SKILL.md"))
+assert skill_names == ["doc-update", "goal-rubric"], skill_names
+print(skill_names)
+PY
+```
+
+Expected: prints `['doc-update', 'goal-rubric']` and exits `0`.
+
+- [ ] **Step 6: Confirm unsupported skills are not exposed to Codex**
 
 Run:
 
@@ -417,7 +438,7 @@ test ! -e dev-skills/codex-skills/discord-setup
 
 Expected: every command exits `0`.
 
-- [ ] **Step 6: Commit implementation**
+- [ ] **Step 7: Commit implementation**
 
 Run:
 

@@ -110,7 +110,9 @@ Validation should include:
 
 - `jq . dev-skills/.codex-plugin/plugin.json`
 - `jq . .agents/plugins/marketplace.json`
-- Codex plugin validation for `dev-skills`
+- Direct Codex plugin structure validation for the declared `./codex-skills/`
+  root, since the older local plugin helper only accepts the default
+  `./skills/` root.
 - A file discovery check confirming only `goal-rubric` and `doc-update` exist
   under `dev-skills/codex-skills/`
 
