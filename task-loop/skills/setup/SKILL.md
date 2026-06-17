@@ -1,6 +1,6 @@
 ---
 name: setup
-description: This skill should be used when the user asks to "set up task-loop", "configure the Supabase backend", "connect the task-loop database", "save Supabase credentials", "onboard a repo to task-loop", "check task-loop prerequisites", "verify task-loop dependencies", "enable agent teams", "preflight", or otherwise prepare a machine/repo to run the task-loop harness. It walks through the one-time-per-account Supabase project + schema, the one-time-per-machine credential save (task-loop login) and Agent Teams enablement, the one-time-per-repo registration (task-loop init), and the required plugin skills, then verifies connectivity.
+description: This skill should be used when the user asks to "set up task-loop", "configure the Supabase backend", "connect the task-loop database", "save Supabase credentials", "onboard a repo to task-loop", "check existing task-loop setup", "check task-loop prerequisites", "verify task-loop dependencies", "enable agent teams", "preflight", or otherwise prepare a machine/repo to run the task-loop harness. It checks existing machine/repo setup first, then walks through missing Supabase, credential, repo-registration, Agent Teams, and required-skill setup only as needed.
 ---
 
 # Task-loop setup
@@ -15,7 +15,7 @@ Setup happens at three granularities, each done once:
 | Layer | Once per… | Action |
 |---|---|---|
 | Supabase project + schema | **account** | create a project, apply `db/schema.sql` |
-| credentials (`URL` + `KEY`) + Agent Teams | **machine** | `task-loop login` (0600); enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (Step 6) |
+| credentials (`URL` + `KEY`) + Agent Teams | **machine** | `task-loop login` (0600); enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (Step 7) |
 | repo registration | **repo** | `task-loop init` |
 
 (The required plugin *skills* — Step 0 — are session/project state, re-checked every run by `run-cycle`'s preconditions, not just here.)
@@ -35,9 +35,41 @@ Setup happens at three granularities, each done once:
   A skill is loadable iff it appears in the session's available-skills list (match the
   `plugin:skill` name, owner-verified — a same-named personal skill is not the dependency).
   `specify-aims` / `create-cycle` need these; `run-cycle` re-checks them every session before
-  dispatching (Step 6 enables what `run-cycle` also needs).
+  dispatching (Step 7 enables what `run-cycle` also needs).
 
-## Step 1 — Supabase project (once per account)
+## Step 1 — Check existing setup first
+
+Before walking through setup, check whether this machine and repo already work:
+
+```
+uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status
+```
+
+If `status` succeeds, report that:
+- machine credentials are available (env vars or the local config file);
+- Supabase REST connectivity works;
+- the schema is visible enough for the `tasks` query;
+- the current git remote can be derived as the task-loop project id.
+
+Then skip Supabase project creation, schema application, and `task-loop login`.
+For full repo readiness, still run the idempotent repo registration check:
+
+```
+uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
+```
+
+`init` upserts this repo's `projects` row, so it is safe to run even when the repo
+is already registered. Run the smoke test in Step 6 only if setup changed or the
+user asks for end-to-end write proof.
+
+If `status` fails, use the failure to choose the missing setup path:
+- `TASK_LOOP_URL` or `TASK_LOOP_KEY` missing → run Step 4 (`login`).
+- HTTP errors, missing relations, missing functions, or schema-looking failures → run Step 3.
+- Cannot derive the project from git remote → fix the repo remote or use the CLI `--project owner/repo` override.
+
+After fixing the reported gap, run Step 5 (`init`) and then Step 6 (smoke test).
+
+## Step 2 — Supabase project (once per account)
 
 If the user has no project yet:
 1. Create a project at https://supabase.com (the free tier is fine). This is the
@@ -50,7 +82,7 @@ If the user has no project yet:
 
 If they already have a shared task-loop project, reuse its URL + key — do **not** make a new one.
 
-## Step 2 — Apply the schema (once per project)
+## Step 3 — Apply the schema (once per project)
 
 PostgREST (the REST API the CLI uses) cannot run DDL, so the schema is applied once,
 out-of-band:
@@ -60,7 +92,7 @@ out-of-band:
 
 This creates `projects` + `tasks`, the `claimable` view, and the `task_add` / `task_claim` functions.
 
-## Step 3 — Save credentials (once per machine)
+## Step 4 — Save credentials (once per machine)
 
 ```
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop login
@@ -69,15 +101,18 @@ It prompts for the Project URL and the API key (hidden) and writes them to
 `$XDG_CONFIG_HOME/task-loop/config` (default `~/.config/task-loop/config`) at mode 0600.
 The CLI reads credentials env-first (`TASK_LOOP_URL` / `TASK_LOOP_KEY`), then this file.
 
-## Step 4 — Register the repo (once per repo)
+Skip this step when Step 1 `status` already succeeds unless the user wants to rotate credentials.
+
+## Step 5 — Register the repo (once per repo)
 
 From inside the repo (the project id is auto-derived from `git remote get-url origin`):
 ```
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
 ```
-Upserts this repo's `projects` row. Repeat in each repo that uses task-loop.
+Upserts this repo's `projects` row. Repeat in each repo that uses task-loop. This command is
+idempotent; run it after successful Step 1 when the user wants full repo readiness.
 
-## Step 5 — Verify
+## Step 6 — Verify
 
 ```
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints e.g. 001
@@ -85,8 +120,10 @@ uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status                   # lists the 
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close 001                # closes it
 ```
 A clean `add → status → close` confirms the URL, key, schema, and repo registration are all good.
+Run this smoke test when setup changed, when Step 1 failed and was fixed, or when the user asks for
+end-to-end write proof. If Step 1 succeeded and no setup changed, the smoke test is optional.
 
-## Step 6 — Enable Agent Teams (once per machine; needed by `run-cycle`)
+## Step 7 — Enable Agent Teams (once per machine; needed by `run-cycle`)
 
 `run-cycle` spawns `cycle-worker` **teammates**, which require **experimental Agent Teams** (off by
 default) and Claude Code **≥ v2.1.32**. `specify-aims` / `create-cycle` do **not** need it.
@@ -104,7 +141,7 @@ Report `claude --version` (must be ≥ v2.1.32 — tell the user to update if ol
 
 ## Notes
 
-- **The Supabase MCP is not required.** Setup and the running harness use only the REST `URL` + `KEY`. If the Supabase MCP happens to be connected it can optionally run the schema for you (it can execute DDL, which the REST API cannot), but it is never a dependency — when in doubt, apply the schema via the SQL editor (Step 2).
-- **Per-account / per-machine / per-repo** are independent: a new machine repeats Steps 3 + 6 (and confirms Step 0 skills); a new repo only repeats Step 4.
+- **The Supabase MCP is not required.** Setup and the running harness use only the REST `URL` + `KEY`. If the Supabase MCP happens to be connected it can optionally run the schema for you (it can execute DDL, which the REST API cannot), but it is never a dependency — when in doubt, apply the schema via the SQL editor (Step 3).
+- **Per-account / per-machine / per-repo** are independent: a new machine repeats Steps 4 + 7 (and confirms Step 0 skills); a new repo only repeats Step 5.
 - The key is a machine-local 0600 secret — never commit it, never put it in `settings.json`.
 - Setup is standalone; it is not part of the `specify-aims → create-cycle → run-cycle` workflow.

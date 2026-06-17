@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Use when setting up task-loop in Codex, configuring the Supabase backend, saving task-loop credentials, registering a repo, checking prerequisites, running preflight, or performing a setup smoke test.
+description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, checking prerequisites, running preflight, or performing a setup smoke test.
 ---
 
 # Task-loop Setup
@@ -40,6 +40,38 @@ gh auth status
 
 If `uv` is missing, stop and ask the user to install it. If `gh` is missing or unauthenticated, setup can save task-loop credentials but the later loop cannot run GitHub work.
 
+## Check Existing Setup First
+
+Before walking through setup, check whether this machine and repo already work:
+
+```bash
+uv run task-loop/cli/task-loop status
+```
+
+If `status` succeeds, report that:
+
+- machine credentials are available through env vars or local config;
+- Supabase REST connectivity works;
+- the schema is visible enough for the `tasks` query;
+- the current git remote can be derived as the task-loop project id.
+
+Then skip Supabase project creation, schema application, and `login`.
+For full repo readiness, still run the idempotent repo registration check:
+
+```bash
+uv run task-loop/cli/task-loop init
+```
+
+`init` upserts this repo's `projects` row, so it is safe to run even when the repo is already registered. Run the smoke test only if setup changed or the user asks for end-to-end write proof.
+
+If `status` fails, use the failure to choose the missing setup path:
+
+- `TASK_LOOP_URL` or `TASK_LOOP_KEY` missing: run `login`.
+- HTTP errors, missing relations, missing functions, or schema-looking failures: apply or re-apply `task-loop/db/schema.sql`.
+- Cannot derive the project from git remote: fix the repo remote or use the CLI `--project owner/repo` override.
+
+After fixing the reported gap, run `init`, then run the smoke test.
+
 ## Supabase Project
 
 Task-loop uses the user's hosted Supabase project. If the user does not already have one, have them create it in the Supabase dashboard and collect:
@@ -61,6 +93,8 @@ The schema is idempotent.
 
 ## Save Credentials
 
+Skip this step when `status` already succeeds unless the user wants to rotate credentials.
+
 Run:
 
 ```bash
@@ -71,6 +105,8 @@ The CLI prompts for the Project URL and API key and writes a local `0600` config
 
 ## Register Repository
 
+Run this after new setup, after fixing a failed setup check, or after a successful `status` when the user wants full repo readiness. The command is idempotent.
+
 From the repository root, run:
 
 ```bash
@@ -80,6 +116,8 @@ uv run task-loop/cli/task-loop init
 The project id is derived from `git remote get-url origin`.
 
 ## Smoke Test
+
+Run this when setup changed, when the setup check failed and was fixed, or when the user asks for end-to-end write proof. If `status` succeeded and no setup changed, this is optional.
 
 Run:
 
