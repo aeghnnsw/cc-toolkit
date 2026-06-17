@@ -117,8 +117,9 @@ idempotent; run it after successful Step 1 when the user wants full repo readine
 ```
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints e.g. 001
 uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status                   # lists the task
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close 001                # closes it
+uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close <seq>              # closes it
 ```
+Replace `<seq>` with the sequence printed by `add`.
 A clean `add → status → close` confirms the URL, key, schema, and repo registration are all good.
 Run this smoke test when setup changed, when Step 1 failed and was fixed, or when the user asks for
 end-to-end write proof. If Step 1 succeeded and no setup changed, the smoke test is optional.
