@@ -13,13 +13,16 @@
     "documentation",
     "goal",
     "rubric",
+    "pressure-test",
+    "critic",
+    "review",
     "workflow"
   ],
   "skills": "./codex-skills/",
   "interface": {
     "displayName": "Dev Skills",
     "shortDescription": "Codex-ready development workflow skills.",
-    "longDescription": "Use Dev Skills for selected development workflows, including measurable goal rubrics and current-truth documentation updates.",
+    "longDescription": "Use Dev Skills for selected development workflows, including measurable goal rubrics, current-truth documentation updates, and independent adversarial pressure tests.",
     "developerName": "Steven",
     "category": "Developer Tools",
     "capabilities": [
@@ -28,7 +31,8 @@
     ],
     "defaultPrompt": [
       "Draft a measurable /goal rubric.",
-      "Update existing documentation to current truth."
+      "Update existing documentation to current truth.",
+      "Pressure-test this plan before implementation."
     ]
   }
 }

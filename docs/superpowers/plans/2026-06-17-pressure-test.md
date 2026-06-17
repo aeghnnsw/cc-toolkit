@@ -79,7 +79,7 @@ Use this content:
 ```markdown
 ---
 name: pressure-test
-description: Use when a design, plan, rubric, PR, failure diagnosis, or task-loop decision needs independent adversarial review before conclusion.
+description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion.
 ---
 
 # Pressure Test
