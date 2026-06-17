@@ -80,11 +80,13 @@ task-loop/
 ├── cli/task-loop          # the uv/REST CLI (the only thing that talks to the DB)
 ├── references/
 │   └── pr-findings.md     # the worker → orchestrator study-log + PR contract
-├── skills/
+├── claude-skills/
 │   ├── setup/             # onboard account/machine/repo (Supabase, creds, Agent Teams, skills)
 │   ├── specify-aims/      # step a: author the proposal
 │   ├── create-cycle/      # step b: render task-loop.md + scaffolding
 │   └── run-cycle/         # step c: the orchestrator (per-tick algorithm in references/)
+├── codex-skills/
+│   └── setup/             # Codex setup and preflight support
 └── agents/
     └── cycle-worker.md    # the per-task executor (Agent-Teams teammate)
 ```

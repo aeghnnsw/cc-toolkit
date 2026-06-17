@@ -1,5 +1,6 @@
 {
   "name": "task-loop",
   "description": "Autonomous, orchestrated cycle-driven development on a hosted Supabase task board: the task-loop CLI, setup/specify-aims/create-cycle/run-cycle skills, and the cycle-worker agent.",
-  "version": "0.15.0"
+  "version": "0.15.0",
+  "skills": "./claude-skills/"
 }
