@@ -1,0 +1,34 @@
+{
+  "name": "task-loop",
+  "version": "0.15.0",
+  "description": "Task-loop setup and preflight support for Codex.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "task-loop",
+    "setup",
+    "preflight",
+    "supabase",
+    "workflow"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Task Loop",
+    "shortDescription": "Setup and preflight for task-loop in Codex.",
+    "longDescription": "Use Task Loop to configure the hosted Supabase task board, save local credentials, register a repository, and verify setup. Codex support is rolling out in phases; this slice supports setup and preflight only.",
+    "developerName": "Steven",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Set up task-loop for this repo.",
+      "Check task-loop prerequisites."
+    ]
+  }
+}
