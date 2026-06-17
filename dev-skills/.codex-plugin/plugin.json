@@ -1,0 +1,34 @@
+{
+  "name": "dev-skills",
+  "version": "1.0.0",
+  "description": "Development workflow skills for Codex.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "development",
+    "documentation",
+    "goal",
+    "rubric",
+    "workflow"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Dev Skills",
+    "shortDescription": "Codex-ready development workflow skills.",
+    "longDescription": "Use Dev Skills for selected development workflows, including measurable goal rubrics and current-truth documentation updates.",
+    "developerName": "Steven",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Draft a measurable /goal rubric.",
+      "Update existing documentation to current truth."
+    ]
+  }
+}
