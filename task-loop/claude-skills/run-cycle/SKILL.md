@@ -102,11 +102,14 @@ multi-orchestrator notes.
 ## Helpers — the `task-loop` CLI (the only DB access)
 
 `task-loop status [--json] | add "<title>" [--dep N…] [--issue N] | claim [--json] |
-task-loop set-issue SEQ --issue N [--json] | close SEQ | reset SEQ` — run via
-`uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop …`. Use `--json` when the orchestrator needs durable
-`seq`/`status`/`title`/`deps`/`issue` state. `set-issue` is compare-and-set only: it fills a missing
-task issue without overwriting an existing unit identity. Project (`owner/repo`) auto-detected from
-the git remote. GitHub (issues / PRs / merge) via `gh`. Never bypass the CLI to touch the DB.
+task-loop set-issue SEQ --issue N [--json] | task-loop set-seq N [--force] [--json] |
+task-loop close SEQ | reset SEQ`
+— run via `uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop …`. Use `--json` when the
+orchestrator needs durable `seq`/`status`/`title`/`deps`/`issue` state. `set-issue` is
+compare-and-set only: it fills a missing task issue without overwriting an existing unit identity.
+`set-seq` adjusts the repo-scoped next task sequence and refuses collisions unless `--force` is
+explicit. Project (`owner/repo`) auto-detected from the git remote. GitHub (issues / PRs / merge) via
+`gh`. Never bypass the CLI to touch the DB.
 
 ## Additional resources
 

@@ -10,8 +10,8 @@ Prepare this machine and repository for task-loop's hosted task board. Codex sup
 ## Preconditions
 
 - Work from the repository root.
-- Use the plugin checkout path when running commands in this repository: `uv run task-loop/cli/task-loop ...`.
-- If task-loop is installed from the Codex plugin cache, first locate the installed plugin root and run `uv run <plugin-root>/cli/task-loop ...`.
+- Use the plugin checkout path when running commands in this repository: `uv run --script task-loop/cli/task-loop ...`.
+- If task-loop is installed from the Codex plugin cache, first locate the installed plugin root and run `uv run --script <plugin-root>/cli/task-loop ...`.
 - Never commit Supabase credentials. The CLI stores credentials in `$XDG_CONFIG_HOME/task-loop/config` or `~/.config/task-loop/config` with mode `0600`.
 
 ## Required Skills
@@ -67,7 +67,7 @@ A new or restarted Codex session may be required before a newly installed custom
 Before walking through setup, check whether this machine and repo already work:
 
 ```bash
-uv run task-loop/cli/task-loop status
+uv run --script task-loop/cli/task-loop status
 ```
 
 If `status` succeeds, report that:
@@ -81,7 +81,7 @@ Then skip Supabase project creation, schema application, and `login`.
 For full repo readiness, still run the idempotent repo registration check and the Codex agent sync:
 
 ```bash
-uv run task-loop/cli/task-loop init
+uv run --script task-loop/cli/task-loop init
 ```
 
 `init` upserts this repo's `projects` row, so it is safe to run even when the repo is already registered. Run the smoke test only if setup changed or the user asks for end-to-end write proof.
@@ -120,7 +120,7 @@ Skip this step when `status` already succeeds unless the user wants to rotate cr
 Run:
 
 ```bash
-uv run task-loop/cli/task-loop login
+uv run --script task-loop/cli/task-loop login
 ```
 
 The CLI prompts for the Project URL and API key and writes a local `0600` config file.
@@ -132,7 +132,7 @@ Run this after new setup, after fixing a failed setup check, or after a successf
 From the repository root, run:
 
 ```bash
-uv run task-loop/cli/task-loop init
+uv run --script task-loop/cli/task-loop init
 ```
 
 The project id is derived from `git remote get-url origin`.
@@ -144,9 +144,9 @@ Run this when setup changed, when the setup check failed and was fixed, or when 
 Run:
 
 ```bash
-uv run task-loop/cli/task-loop add "setup smoke test"
-uv run task-loop/cli/task-loop status
-uv run task-loop/cli/task-loop close <seq>
+uv run --script task-loop/cli/task-loop add "setup smoke test"
+uv run --script task-loop/cli/task-loop status
+uv run --script task-loop/cli/task-loop close <seq>
 ```
 
 Replace `<seq>` with the sequence printed by `add`. The smoke test proves credentials, schema, and repo registration are working.

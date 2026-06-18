@@ -6,7 +6,7 @@
 """task-loop — DB-only CLI for the Supabase task-loop harness.
 
 Run it with uv (no install needed beyond uv itself):
-    uv run task-loop/cli/task-loop <command> ...
+    uv run --script task-loop/cli/task-loop <command> ...
 or, since it is executable: ./task-loop/cli/task-loop <command> ...
 
 Credentials — env vars, or the machine-local config written once by
@@ -93,6 +93,16 @@ def _check(r: httpx.Response) -> httpx.Response:
     return r
 
 
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
 # --- commands ---------------------------------------------------------------
 
 def cmd_init(c, proj, a):
@@ -177,6 +187,50 @@ def cmd_set_issue(c, proj, a):
         print(f"issue not set for {int(a.seq):03d}")
 
 
+def cmd_set_seq(c, proj, a):
+    project_rows = _check(c.get("/projects", params={
+        "id": f"eq.{proj}",
+        "select": "next_seq",
+    })).json()
+    if not project_rows:
+        sys.exit(f"task-loop: project {proj!r} not registered — run `task-loop init`")
+    old_next_seq = int(project_rows[0]["next_seq"])
+
+    task_rows = _check(c.get("/tasks", params={
+        "project_id": f"eq.{proj}",
+        "select": "seq",
+        "order": "seq.desc",
+        "limit": "1",
+    })).json()
+    max_task_seq = int(task_rows[0]["seq"]) if task_rows else None
+    if max_task_seq is not None and a.next_seq <= max_task_seq and not a.force:
+        sys.exit(
+            f"task-loop: next_seq {a.next_seq:03d} would collide with existing "
+            f"task {max_task_seq:03d}; use a value above {max_task_seq:03d} "
+            "or pass --force"
+        )
+
+    rows = _check(c.patch(
+        "/projects",
+        params={"id": f"eq.{proj}"},
+        headers={"Prefer": "return=representation"},
+        json={"next_seq": a.next_seq},
+    )).json()
+    if not rows:
+        sys.exit(f"task-loop: project {proj!r} was not updated")
+    next_seq = int(rows[0].get("next_seq", a.next_seq))
+    result = {
+        "project": proj,
+        "old_next_seq": old_next_seq,
+        "next_seq": next_seq,
+        "max_task_seq": max_task_seq,
+    }
+    if getattr(a, "json", False):
+        print(json.dumps(result))
+        return
+    print(f"next_seq {proj}: {old_next_seq:03d} -> {next_seq:03d}")
+
+
 def cmd_status(c, proj, a):
     rows = _check(c.get("/tasks", params={
         "project_id": f"eq.{proj}",
@@ -228,6 +282,12 @@ def main():
     s.add_argument("--issue", type=int, required=True)
     s.add_argument("--json", action="store_true", help="print the updated task row as JSON")
     s.set_defaults(fn=cmd_set_issue)
+
+    s = sub.add_parser("set-seq", help="set this project's next task sequence")
+    s.add_argument("next_seq", type=_positive_int, help="next seq to assign, e.g. 19 for 019")
+    s.add_argument("--force", action="store_true", help="allow a value at or below existing task seqs")
+    s.add_argument("--json", action="store_true", help="print the counter update as JSON")
+    s.set_defaults(fn=cmd_set_seq)
 
     s = sub.add_parser("close", help="close a task")
     s.add_argument("seq", type=int)

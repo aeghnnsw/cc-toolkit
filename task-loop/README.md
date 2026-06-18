@@ -44,18 +44,21 @@ dispatch. Codex `run-cycle` and worker dispatch are pending.
 ## The task DB + CLI
 
 All task state lives in the user's own hosted **Supabase** project (one shared across their repos;
-repos are rows). The only thing that talks to it is the **`task-loop` CLI** — a single `uv run` script,
-REST-only:
+repos are rows). The only thing that talks to it is the **`task-loop` CLI** — a single PEP 723
+`uv run --script` script, REST-only:
 
 ```
 task-loop status [--json] | add "<title>" [--dep N…] [--issue N] | claim [--json] |
-task-loop set-issue SEQ --issue N [--json] | close SEQ | reset SEQ | init | login
+task-loop set-issue SEQ --issue N [--json] | task-loop set-seq N [--force] [--json] |
+task-loop close SEQ | reset SEQ | init | login
 ```
 
 The orchestrator uses it; workers never do. `claim` is atomic (`FOR UPDATE SKIP LOCKED`) — the only
 dispatch lock, so multiple orchestrators (one per ecosystem) need no further coordination.
 `set-issue` is compare-and-set only: it fills `issue` only for an `open` or `working` task whose
 issue is still missing, and never overwrites an existing unit-of-work identity.
+`set-seq` adjusts the repo-scoped next task sequence and refuses values that would collide with
+existing tasks unless `--force` is explicit.
 
 ## Prerequisites
 

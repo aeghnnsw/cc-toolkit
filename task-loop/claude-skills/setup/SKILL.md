@@ -25,7 +25,7 @@ Setup happens at three granularities, each done once:
 
 ## Step 0 — Prerequisites
 
-- **`uv`** (runs the CLI; the CLI is a single `uv run` script with inline deps). Verify `uv --version`.
+- **`uv`** (runs the CLI; the CLI is a PEP 723 script with inline deps). Verify `uv --version`.
 - **`gh`**, authenticated (`gh auth status`) — the orchestrator uses it for PRs/merges. Not needed for the CLI itself, but required to run the loop later.
 - **Required plugin skills** — the harness invokes 8 skills from two plugins; install both (via `/plugin`):
   - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
@@ -42,7 +42,7 @@ Setup happens at three granularities, each done once:
 Before walking through setup, check whether this machine and repo already work:
 
 ```
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status
 ```
 
 If `status` succeeds, report that:
@@ -55,7 +55,7 @@ Then skip Supabase project creation, schema application, and `task-loop login`.
 For full repo readiness, still run the idempotent repo registration check:
 
 ```
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
 ```
 
 `init` upserts this repo's `projects` row, so it is safe to run even when the repo
@@ -95,7 +95,7 @@ This creates `projects` + `tasks`, the `claimable` view, and the `task_add` / `t
 ## Step 4 — Save credentials (once per machine)
 
 ```
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop login
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop login
 ```
 It prompts for the Project URL and the API key (hidden) and writes them to
 `$XDG_CONFIG_HOME/task-loop/config` (default `~/.config/task-loop/config`) at mode 0600.
@@ -107,7 +107,7 @@ Skip this step when Step 1 `status` already succeeds unless the user wants to ro
 
 From inside the repo (the project id is auto-derived from `git remote get-url origin`):
 ```
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
 ```
 Upserts this repo's `projects` row. Repeat in each repo that uses task-loop. This command is
 idempotent; run it after successful Step 1 when the user wants full repo readiness.
@@ -115,9 +115,9 @@ idempotent; run it after successful Step 1 when the user wants full repo readine
 ## Step 6 — Verify
 
 ```
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints e.g. 001
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status                   # lists the task
-uv run ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close <seq>              # closes it
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints e.g. 001
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status                   # lists the task
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close <seq>              # closes it
 ```
 Replace `<seq>` with the sequence printed by `add`.
 A clean `add → status → close` confirms the URL, key, schema, and repo registration are all good.
