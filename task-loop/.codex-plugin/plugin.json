@@ -1,7 +1,7 @@
 {
   "name": "task-loop",
   "version": "0.15.0",
-  "description": "Task-loop setup, preflight, and specify-aims proposal support for Codex.",
+  "description": "Task-loop setup, preflight, specify-aims, and create-cycle scaffolding support for Codex.",
   "author": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"
@@ -15,6 +15,10 @@
     "supabase",
     "workflow",
     "specify-aims",
+    "create-cycle",
+    "cycle",
+    "scaffold",
+    "scaffolding",
     "proposal",
     "aims",
     "planning"
@@ -22,8 +26,8 @@
   "skills": "./codex-skills/",
   "interface": {
     "displayName": "Task Loop",
-    "shortDescription": "Setup, preflight, and proposal aims for task-loop in Codex.",
-    "longDescription": "Use Task Loop to configure the hosted Supabase task board, save local credentials, register a repository, verify setup, and author the initial task-loop proposal with specify-aims. Codex support is rolling out in phases; create-cycle and run-cycle remain pending.",
+    "shortDescription": "Setup, proposal aims, and create-cycle scaffolding for task-loop in Codex.",
+    "longDescription": "Use Task Loop to configure the hosted Supabase task board, save local credentials, register a repository, verify setup, author the initial proposal with specify-aims, and create-cycle scaffolding. Codex support is rolling out in phases; run-cycle remains pending.",
     "developerName": "Steven",
     "category": "Developer Tools",
     "capabilities": [
@@ -33,7 +37,8 @@
     "defaultPrompt": [
       "Set up task-loop for this repo.",
       "Check task-loop prerequisites.",
-      "Specify aims for this task-loop project."
+      "Specify aims for this task-loop project.",
+      "Create cycle scaffolding for this task-loop project."
     ]
   }
 }

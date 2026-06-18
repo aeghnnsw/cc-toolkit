@@ -1,11 +1,11 @@
 ---
 name: setup
-description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims.
+description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims or create-cycle.
 ---
 
 # Task-loop Setup
 
-Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, and `specify-aims`; `create-cycle` and `run-cycle` are pending Codex ports.
+Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, `specify-aims`, and `create-cycle`; `run-cycle` is pending.
 
 ## Preconditions
 
@@ -138,4 +138,4 @@ Report:
 - whether repo registration succeeded;
 - smoke-test sequence and closure result;
 - missing required skills, if any;
-- that Codex task-loop support currently includes setup, preflight, and `specify-aims`; `create-cycle` and `run-cycle` remain pending.
+- that Codex task-loop support currently includes setup, preflight, `specify-aims`, and `create-cycle`; `run-cycle` remains pending.
