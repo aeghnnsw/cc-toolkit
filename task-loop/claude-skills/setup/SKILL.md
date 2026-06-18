@@ -15,7 +15,7 @@ Setup happens at three granularities, each done once:
 | Layer | Once per… | Action |
 |---|---|---|
 | Supabase project + schema | **account** | create a project, apply `db/schema.sql` |
-| credentials (`URL` + `KEY`) + Agent Teams | **machine** | `task-loop login` (0600); enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (Step 7) |
+| credentials (`URL` + `KEY`) + Agent Teams | **machine** | `task-loop login` (0600); enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (Step 8) |
 | repo registration | **repo** | `task-loop init` |
 
 (The required plugin *skills* — Step 0 — are session/project state, re-checked every run by `run-cycle`'s preconditions, not just here.)
@@ -35,7 +35,7 @@ Setup happens at three granularities, each done once:
   A skill is loadable iff it appears in the session's available-skills list (match the
   `plugin:skill` name, owner-verified — a same-named personal skill is not the dependency).
   `specify-aims` / `create-cycle` need these; `run-cycle` re-checks them every session before
-  dispatching (Step 7 enables what `run-cycle` also needs).
+  dispatching (Step 8 enables what `run-cycle` also needs).
 
 ## Step 1 — Check existing setup first
 
@@ -59,7 +59,7 @@ uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
 ```
 
 `init` upserts this repo's `projects` row, so it is safe to run even when the repo
-is already registered. Run the smoke test in Step 6 only if setup changed or the
+is already registered. Run the smoke test in Step 7 only if setup changed or the
 user asks for end-to-end write proof.
 
 If `status` fails, use the failure to choose the missing setup path:
@@ -67,7 +67,7 @@ If `status` fails, use the failure to choose the missing setup path:
 - HTTP errors, missing relations, missing functions, or schema-looking failures → run Step 3.
 - Cannot derive the project from git remote → fix the repo remote or use the CLI `--project owner/repo` override.
 
-After fixing the reported gap, run Step 5 (`init`) and then Step 6 (smoke test).
+After fixing the reported gap, run Step 5 (`init`), use Step 6 if needed, then run Step 7 (smoke test).
 
 ## Step 2 — Supabase project (once per account)
 
@@ -112,10 +112,22 @@ uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop init
 Upserts this repo's `projects` row. Repeat in each repo that uses task-loop. This command is
 idempotent; run it after successful Step 1 when the user wants full repo readiness.
 
-## Step 6 — Verify
+## Step 6 — Optional sequence start
+
+If this repo already has external task history and the next DB task should start later than `001`,
+set the repo-scoped counter before adding any smoke-test task:
 
 ```
-uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints e.g. 001
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop set-seq 19
+```
+
+Use the next sequence number to allocate (`19` means the next `add` prints `019`). Skip this step for
+new task-loop repos or when numbering can start at `001`.
+
+## Step 7 — Verify
+
+```
+uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop add "setup smoke test"   # prints the seq
 uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop status                   # lists the task
 uv run --script ${CLAUDE_PLUGIN_ROOT}/cli/task-loop close <seq>              # closes it
 ```
@@ -124,7 +136,7 @@ A clean `add → status → close` confirms the URL, key, schema, and repo regis
 Run this smoke test when setup changed, when Step 1 failed and was fixed, or when the user asks for
 end-to-end write proof. If Step 1 succeeded and no setup changed, the smoke test is optional.
 
-## Step 7 — Enable Agent Teams (once per machine; needed by `run-cycle`)
+## Step 8 — Enable Agent Teams (once per machine; needed by `run-cycle`)
 
 `run-cycle` spawns `cycle-worker` **teammates**, which require **experimental Agent Teams** (off by
 default) and Claude Code **≥ v2.1.32**. `specify-aims` / `create-cycle` do **not** need it.
@@ -143,6 +155,6 @@ Report `claude --version` (must be ≥ v2.1.32 — tell the user to update if ol
 ## Notes
 
 - **The Supabase MCP is not required.** Setup and the running harness use only the REST `URL` + `KEY`. If the Supabase MCP happens to be connected it can optionally run the schema for you (it can execute DDL, which the REST API cannot), but it is never a dependency — when in doubt, apply the schema via the SQL editor (Step 3).
-- **Per-account / per-machine / per-repo** are independent: a new machine repeats Steps 4 + 7 (and confirms Step 0 skills); a new repo only repeats Step 5.
+- **Per-account / per-machine / per-repo** are independent: a new machine repeats Steps 4 + 8 (and confirms Step 0 skills); a new repo repeats Step 5, plus Step 6 when preserving prior numbering.
 - The key is a machine-local 0600 secret — never commit it, never put it in `settings.json`.
 - Setup is standalone; it is not part of the `specify-aims → create-cycle → run-cycle` workflow.
