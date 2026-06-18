@@ -6,7 +6,8 @@ description: Use when a Codex task-loop project has docs/task-loop/proposal.md a
 # Create Cycle
 
 Render the per-project task-loop cycle after `specify-aims`. This skill authors
-durable scaffolding only. Codex `run-cycle` and worker execution are pending.
+durable scaffolding only. Codex `run-cycle` runs manual controller passes after
+this file exists.
 
 ## Outputs
 
@@ -29,7 +30,7 @@ durable scaffolding only. Codex `run-cycle` and worker execution are pending.
    - local compute constraints and available tools.
 4. Resolve project parameters for the skeleton:
    - `{{GOAL}}` from the proposal's Specific Aims and success criteria;
-   - `{{SOURCE_DOCS}}` from source-of-truth docs the future worker should read;
+  - `{{SOURCE_DOCS}}` from source-of-truth docs the worker should read;
    - `{{CONTRACTS}}` from correctness invariants;
    - `{{TEST_CONVENTIONS}}` from what counts as tested;
    - `{{COMPUTE_POLICY}}` from local/host constraints;
@@ -52,7 +53,7 @@ durable scaffolding only. Codex `run-cycle` and worker execution are pending.
 - Keep the cycle steps and general rules intact unless repo facts make a line
   objectively wrong.
 - Use `n/a` for parameters that do not apply.
-- Keep the pending-support note in the rendered `task-loop.md`.
+- Keep the Codex run-cycle support note in the rendered `task-loop.md`.
 - Keep the inlined study-log and PR contract in the rendered `task-loop.md`.
 
 ## Pressure-test Focus
@@ -63,4 +64,4 @@ Ask the critic to attack:
 - whether source docs, contracts, or test conventions are too vague for later
   task selection;
 - whether compute policy or branch rules could cause unsafe worker behavior;
-- whether the rendered file is self-contained for a future Codex runner.
+- whether the rendered file is self-contained for the Codex runner.

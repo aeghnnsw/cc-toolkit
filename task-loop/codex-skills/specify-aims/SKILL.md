@@ -8,7 +8,7 @@ description: Use when starting a task-loop project in Codex, defining project ai
 Author or re-aim the task-loop proposal for a Codex-run project. This is the
 first workflow step after setup. It creates or updates
 `docs/task-loop/proposal.md`; `create-cycle` and `run-cycle` remain separate
-pending Codex ports.
+Codex steps.
 
 ## Output
 

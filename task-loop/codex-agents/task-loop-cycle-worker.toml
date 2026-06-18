@@ -18,6 +18,15 @@ The controller must provide:
 
 If any input is missing, ask the controller for the missing value and stop before editing.
 
+When all required inputs are present and you have read the required cycle files, the task is accepted.
+If the active Codex surface supports a non-terminal progress response, report:
+
+accepted task <seq>, branch <branch>
+
+Then continue the task cycle. If the surface only allows one final response, continue directly and
+include the acceptance line in the final task report. If you cannot accept the task, report the blocker
+and stop before editing.
+
 ## Source of procedure
 
 Your task procedure lives in the target repository, not in this agent file.
