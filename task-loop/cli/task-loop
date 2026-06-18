@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import re
 import subprocess
@@ -118,6 +119,9 @@ def cmd_claim(c, proj, a):
     data = _check(c.post("/rpc/task_claim", json={"p_project": proj})).json()
     if isinstance(data, list):
         data = data[0] if data else None
+    if getattr(a, "json", False):
+        print(json.dumps(data))
+        return
     if not data:
         print("none")
         return
@@ -151,12 +155,37 @@ def cmd_reset(c, proj, a):
     print(f"reset {int(a.seq):03d}" if rows else f"task {int(a.seq):03d} not working")
 
 
+def cmd_set_issue(c, proj, a):
+    rows = _check(c.patch(
+        "/tasks",
+        params={
+            "project_id": f"eq.{proj}",
+            "seq": f"eq.{a.seq}",
+            "issue": "is.null",
+            "status": "in.(open,working)",
+        },
+        headers={"Prefer": "return=representation"},
+        json={"issue": a.issue},
+    )).json()
+    row = rows[0] if rows else None
+    if getattr(a, "json", False):
+        print(json.dumps(row))
+        return
+    if row:
+        print(f"set issue for {int(a.seq):03d} to #{int(a.issue)}")
+    else:
+        print(f"issue not set for {int(a.seq):03d}")
+
+
 def cmd_status(c, proj, a):
     rows = _check(c.get("/tasks", params={
         "project_id": f"eq.{proj}",
         "order": "seq",
         "select": "seq,status,title,deps,issue",
     })).json()
+    if getattr(a, "json", False):
+        print(json.dumps(rows))
+        return
     if not rows:
         print(f"{proj}: no tasks")
         return
@@ -191,7 +220,14 @@ def main():
     s.set_defaults(fn=cmd_add)
 
     s = sub.add_parser("claim", help="atomically claim the next ready task")
+    s.add_argument("--json", action="store_true", help="print the claimed task row as JSON")
     s.set_defaults(fn=cmd_claim)
+
+    s = sub.add_parser("set-issue", help="fill a missing task issue without overwriting one")
+    s.add_argument("seq", type=int)
+    s.add_argument("--issue", type=int, required=True)
+    s.add_argument("--json", action="store_true", help="print the updated task row as JSON")
+    s.set_defaults(fn=cmd_set_issue)
 
     s = sub.add_parser("close", help="close a task")
     s.add_argument("seq", type=int)
@@ -202,6 +238,7 @@ def main():
     s.set_defaults(fn=cmd_reset)
 
     s = sub.add_parser("status", help="list this project's tasks")
+    s.add_argument("--json", action="store_true", help="print full task rows as JSON")
     s.set_defaults(fn=cmd_status)
 
     s = sub.add_parser("login", help="save Supabase creds to the machine-local config")

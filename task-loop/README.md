@@ -48,11 +48,14 @@ repos are rows). The only thing that talks to it is the **`task-loop` CLI** — 
 REST-only:
 
 ```
-task-loop status | add "<title>" [--dep N…] [--issue N] | claim | close SEQ | reset SEQ | init | login
+task-loop status [--json] | add "<title>" [--dep N…] [--issue N] | claim [--json] |
+task-loop set-issue SEQ --issue N [--json] | close SEQ | reset SEQ | init | login
 ```
 
 The orchestrator uses it; workers never do. `claim` is atomic (`FOR UPDATE SKIP LOCKED`) — the only
 dispatch lock, so multiple orchestrators (one per ecosystem) need no further coordination.
+`set-issue` is compare-and-set only: it fills `issue` only for an `open` or `working` task whose
+issue is still missing, and never overwrites an existing unit-of-work identity.
 
 ## Prerequisites
 
