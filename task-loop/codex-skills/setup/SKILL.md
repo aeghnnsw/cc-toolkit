@@ -92,7 +92,7 @@ If `status` fails, use the failure to choose the missing setup path:
 - HTTP errors, missing relations, missing functions, or schema-looking failures: apply or re-apply `task-loop/db/schema.sql`.
 - Cannot derive the project from git remote: fix the repo remote or use the CLI `--project owner/repo` override.
 
-After fixing the reported gap, run `init`, then run the smoke test.
+After fixing the reported gap, run `init`, use Optional Sequence Start if needed, then run the smoke test.
 
 ## Supabase Project
 
@@ -136,6 +136,18 @@ uv run --script task-loop/cli/task-loop init
 ```
 
 The project id is derived from `git remote get-url origin`.
+
+## Optional Sequence Start
+
+If this repo already has external task history and the next DB task should start later than `001`, set
+the repo-scoped counter before adding any smoke-test task:
+
+```bash
+uv run --script task-loop/cli/task-loop set-seq 19
+```
+
+Use the next sequence number to allocate (`19` means the next `add` prints `019`). Skip this for new
+task-loop repos or when numbering can start at `001`.
 
 ## Smoke Test
 
