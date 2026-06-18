@@ -86,7 +86,15 @@ task-loop/
 │   ├── create-cycle/      # step b: render task-loop.md + scaffolding
 │   └── run-cycle/         # step c: the orchestrator (per-tick algorithm in references/)
 ├── codex-skills/
-│   └── setup/             # Codex setup and preflight support
+│   ├── setup/             # Codex setup, preflight, and custom-agent sync
+│   ├── specify-aims/      # Codex proposal authoring support
+│   └── create-cycle/      # Codex task-loop.md scaffolding support
+├── codex-agents/
+│   └── task-loop-cycle-worker.toml  # Codex worker source synced to ~/.codex/agents/
+├── hooks/
+│   └── codex-hooks.json   # Codex SessionStart hook for agent sync
+├── scripts/
+│   └── sync_codex_agents.py # idempotent Codex custom-agent installer
 └── agents/
     └── cycle-worker.md    # the per-task executor (Agent-Teams teammate)
 ```
