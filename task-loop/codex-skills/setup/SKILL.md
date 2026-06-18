@@ -1,11 +1,11 @@
 ---
 name: setup
-description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims or create-cycle.
+description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, syncing the Codex cycle-worker agent, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims or create-cycle.
 ---
 
 # Task-loop Setup
 
-Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, `specify-aims`, and `create-cycle`; `run-cycle` is pending.
+Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, `specify-aims`, `create-cycle`, and `task_loop_cycle_worker` agent sync; `run-cycle` is pending.
 
 ## Preconditions
 
@@ -40,6 +40,28 @@ gh auth status
 
 If `uv` is missing, stop and ask the user to install it. If `gh` is missing or unauthenticated, setup can save task-loop credentials but the later loop cannot run GitHub work.
 
+## Sync Codex Cycle-worker Agent
+
+Run the agent sync before considering setup ready. The sync is idempotent and installs or updates the namespaced `task_loop_cycle_worker` custom agent at `~/.codex/agents/task-loop-cycle-worker.toml`.
+
+From this repository checkout, run:
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+uv run --no-project task-loop/scripts/sync_codex_agents.py --project-root "$REPO_ROOT"
+```
+
+If task-loop is installed from the Codex plugin cache, first locate the installed plugin root, then run:
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+uv run --no-project <plugin-root>/scripts/sync_codex_agents.py --project-root "$REPO_ROOT"
+```
+
+If sync exits non-zero or reports `conflict`, task-loop is not ready. Report the conflict details from the JSON output and do not continue to readiness claims until the unmanaged global or project-local Codex agent collision is resolved.
+
+A new or restarted Codex session may be required before a newly installed custom agent can be spawned.
+
 ## Check Existing Setup First
 
 Before walking through setup, check whether this machine and repo already work:
@@ -56,7 +78,7 @@ If `status` succeeds, report that:
 - the current git remote can be derived as the task-loop project id.
 
 Then skip Supabase project creation, schema application, and `login`.
-For full repo readiness, still run the idempotent repo registration check:
+For full repo readiness, still run the idempotent repo registration check and the Codex agent sync:
 
 ```bash
 uv run task-loop/cli/task-loop init
@@ -136,6 +158,8 @@ Report:
 - tool checks run and their result;
 - whether credentials were saved or already available;
 - whether repo registration succeeded;
+- `task_loop_cycle_worker` agent sync status, including any conflict details;
+- whether a new or restarted Codex session is needed before the synced agent can be spawned;
 - smoke-test sequence and closure result;
 - missing required skills, if any;
-- that Codex task-loop support currently includes setup, preflight, `specify-aims`, and `create-cycle`; `run-cycle` remains pending.
+- that Codex task-loop support currently includes setup, preflight, `specify-aims`, `create-cycle`, and `task_loop_cycle_worker` agent sync; `run-cycle` remains pending.

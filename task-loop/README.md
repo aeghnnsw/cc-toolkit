@@ -18,7 +18,7 @@ recovery is just the next tick.
 
 ## Workflow
 
-One-time **`setup`**, then three skills in order, plus one agent:
+Claude Code supports the full task-loop workflow today:
 
 ```
 setup           → Supabase project + schema, creds, repo init, Agent Teams, required skills
@@ -36,6 +36,10 @@ c. run-cycle    → orchestrator: fixed-interval Loop A + a non-destructive Loop
 3. **`create-cycle`** — render `docs/task-loop/task-loop.md` (the worker's tailored cycle + general
    rules + parameters) and scaffold `directions.md` + `logs/`.
 4. **`run-cycle`** — the orchestrator (above); the `cycle-worker` agent does each task.
+
+Codex support is rolling out in phases. Codex currently supports setup/preflight,
+`specify-aims`, `create-cycle`, and syncing the `task_loop_cycle_worker` custom agent for future
+dispatch. Codex `run-cycle` and worker dispatch are pending.
 
 ## The task DB + CLI
 
@@ -55,11 +59,15 @@ dispatch lock, so multiple orchestrators (one per ecosystem) need no further coo
 Run **`setup`**, which covers:
 
 - **`uv`** (runs the CLI) and **`gh`** (authenticated; PRs/merges).
-- **Agent Teams** — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + Claude Code ≥ v2.1.32 (workers are
-  teammates; `run-cycle` only — `specify-aims`/`create-cycle` don't need it).
-- **Required plugin skills (8):** `superpowers:{brainstorming, writing-plans,
-  test-driven-development, verification-before-completion, receiving-code-review}` and
-  `dev-skills:{discuss-with-codex, goal-rubric, doc-update}`. `run-cycle` re-checks these each session.
+- **Claude run-cycle only:** Agent Teams with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` and Claude Code
+  ≥ v2.1.32; workers are teammates.
+- **Codex setup:** the namespaced `task_loop_cycle_worker` custom agent is synced into
+  `~/.codex/agents/`; a new or restarted Codex session may be needed before it can be spawned.
+- **Required plugin skills:** Claude `run-cycle` currently uses
+  `superpowers:{brainstorming, writing-plans, test-driven-development,
+  verification-before-completion, receiving-code-review}` and
+  `dev-skills:{discuss-with-codex, goal-rubric, doc-update}`. Codex setup checks the Codex-supported
+  equivalents and treats `run-cycle` as pending.
 
 ## Files this creates in your project
 
@@ -86,7 +94,15 @@ task-loop/
 │   ├── create-cycle/      # step b: render task-loop.md + scaffolding
 │   └── run-cycle/         # step c: the orchestrator (per-tick algorithm in references/)
 ├── codex-skills/
-│   └── setup/             # Codex setup and preflight support
+│   ├── setup/             # Codex setup, preflight, and custom-agent sync
+│   ├── specify-aims/      # Codex proposal authoring support
+│   └── create-cycle/      # Codex task-loop.md scaffolding support
+├── codex-agents/
+│   └── task-loop-cycle-worker.toml  # Codex worker source synced to ~/.codex/agents/
+├── hooks/
+│   └── codex-hooks.json   # Codex SessionStart hook for agent sync
+├── scripts/
+│   └── sync_codex_agents.py # idempotent Codex custom-agent installer
 └── agents/
     └── cycle-worker.md    # the per-task executor (Agent-Teams teammate)
 ```

@@ -1,23 +1,32 @@
 # cc-toolkit
 
-Unified Claude Code plugin marketplace for development workflows, scientific content creation, and document processing.
+Unified Claude Code and Codex plugin marketplace for development workflows, task-loop orchestration, scientific content creation, and document processing.
 
 ## Overview
 
-**cc-toolkit** is a modular plugin marketplace following the official Claude Code plugin system. Each plugin is self-contained and can include skills, agents, hooks, and commands.
+**cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex-specific manifests.
 
 ## Repository Structure
 
 ```
 cc-toolkit/
 ├── .claude-plugin/
-│   └── marketplace.json           # Plugin registry
+│   └── marketplace.json           # Claude Code plugin registry
+├── .agents/
+│   └── plugins/
+│       └── marketplace.json       # Codex plugin registry
 ├── dev-skills/                     # Development workflow plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
-│   └── skills/
-│       ├── problem-solving-cycle/
-│       └── step-workflow/
+│   ├── .codex-plugin/
+│   │   └── plugin.json
+│   ├── skills/
+│   │   ├── problem-solving-cycle/
+│   │   └── step-workflow/
+│   └── codex-skills/
+│       ├── doc-update/
+│       ├── goal-rubric/
+│       └── pressure-test/
 ├── creator-skills/                 # Scientific content creation plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
@@ -36,6 +45,8 @@ cc-toolkit/
 ├── core-hooks/                     # Safety and workflow hooks plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
+│   ├── .codex-plugin/
+│   │   └── plugin.json
 │   ├── hooks/
 │   │   └── hooks.json
 │   └── scripts/
@@ -43,6 +54,17 @@ cc-toolkit/
 │       ├── pre_git_hook.py
 │       ├── post_tool_use.py
 │       └── system_notification.py
+├── task-loop/                      # Supabase-backed task-loop workflow plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── .codex-plugin/
+│   │   └── plugin.json
+│   ├── claude-skills/
+│   ├── codex-skills/
+│   ├── codex-agents/
+│   ├── hooks/
+│   ├── scripts/
+│   └── cli/
 ├── productivity-skills/            # Personal productivity plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
@@ -68,6 +90,16 @@ Development workflow automation and systematic problem-solving.
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
+- **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
+- **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision
+- **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
+- **project-eval**: Dispatch evaluator agents for multi-angle project review
+- **discord-setup**: Configure Discord plugin prerequisites
+
+**Codex skills:**
+- **doc-update**
+- **goal-rubric**
+- **pressure-test**
 
 ### Creator Skills (`creator-skills`)
 Scientific content creation for figures and presentations.
@@ -96,6 +128,23 @@ Safety guards and workflow enforcement hooks.
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.json`
 - **system_notification.py**: Plays sound notifications on task completion
 
+### Task Loop (`task-loop`)
+Supabase-backed task board plus proposal, cycle scaffolding, and worker support.
+
+**Claude Code support:**
+- **setup**: Configure Supabase credentials, register the repo, and check required tools and skills
+- **specify-aims**: Write `docs/task-loop/proposal.md`
+- **create-cycle**: Render `docs/task-loop/task-loop.md`, `directions.md`, and logs scaffolding
+- **run-cycle**: Drive the orchestrator and Claude cycle-worker agent
+
+**Codex support:**
+- **setup**: Check prerequisites and sync the `task_loop_cycle_worker` custom agent
+- **specify-aims**: Write or re-aim the proposal
+- **create-cycle**: Render Codex-compatible cycle scaffolding
+- **task_loop_cycle_worker**: Custom agent source synced into `~/.codex/agents/` for future dispatch
+
+Codex `run-cycle` and worker dispatch are pending.
+
 ### Productivity Skills (`productivity-skills`)
 Personal productivity automation using macOS Calendar and Reminders.
 
@@ -121,14 +170,14 @@ PyMOL molecular visualization control via MCP server.
 
 1. **Modular**: Each plugin is self-contained and portable
 2. **Scalable**: Easy to add new skills, agents, hooks, or commands to any plugin
-3. **Standard**: Follows official Claude Code plugin system architecture
+3. **Standard**: Follows Claude Code and Codex plugin packaging conventions where supported
 4. **Maintainable**: Clear separation of concerns between plugins
 5. **Shareable**: Individual plugins can be distributed independently
 
 ## Usage
 
 ### As a Marketplace
-Install the entire marketplace by linking to this repository in your Claude Code configuration.
+Install the marketplace by linking to this repository from Claude Code or Codex.
 
 ### Individual Plugins
 Each plugin can be used independently by referencing its directory:
@@ -136,5 +185,6 @@ Each plugin can be used independently by referencing its directory:
 - `./creator-skills`
 - `./doc-skills`
 - `./core-hooks`
+- `./task-loop`
 - `./productivity-skills`
 - `./pymol-skills`

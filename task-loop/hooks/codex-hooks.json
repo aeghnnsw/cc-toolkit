@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project ${PLUGIN_ROOT}/hooks/codex-session-start.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
