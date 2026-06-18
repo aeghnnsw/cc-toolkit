@@ -141,9 +141,10 @@ Supabase-backed task board plus proposal, cycle scaffolding, and worker support.
 - **setup**: Check prerequisites and sync the `task_loop_cycle_worker` custom agent
 - **specify-aims**: Write or re-aim the proposal
 - **create-cycle**: Render Codex-compatible cycle scaffolding
-- **task_loop_cycle_worker**: Custom agent source synced into `~/.codex/agents/` for future dispatch
+- **run-cycle**: Run a conservative manual controller pass after proving worker dispatch is observable
+- **task_loop_cycle_worker**: Custom agent source synced into `~/.codex/agents/` for controller dispatch
 
-Codex `run-cycle` and worker dispatch are pending.
+Full unattended Codex scheduling remains pending.
 
 ### Productivity Skills (`productivity-skills`)
 Personal productivity automation using macOS Calendar and Reminders.

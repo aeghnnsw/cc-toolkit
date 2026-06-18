@@ -1,11 +1,11 @@
 ---
 name: setup
-description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, syncing the Codex cycle-worker agent, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims or create-cycle.
+description: Use when setting up task-loop in Codex, checking existing task-loop setup, configuring Supabase, saving credentials, registering a repo, syncing the Codex cycle-worker agent, checking prerequisites, running preflight, performing a setup smoke test, or preparing to use task-loop specify-aims, create-cycle, or run-cycle.
 ---
 
 # Task-loop Setup
 
-Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, `specify-aims`, `create-cycle`, and `task_loop_cycle_worker` agent sync; `run-cycle` is pending.
+Prepare this machine and repository for task-loop's hosted task board. Codex support currently includes setup, preflight, `specify-aims`, `create-cycle`, `task_loop_cycle_worker` agent sync, and a manual single-pass `run-cycle`. Full unattended Codex scheduling remains pending.
 
 ## Preconditions
 
@@ -174,4 +174,4 @@ Report:
 - whether a new or restarted Codex session is needed before the synced agent can be spawned;
 - smoke-test sequence and closure result;
 - missing required skills, if any;
-- that Codex task-loop support currently includes setup, preflight, `specify-aims`, `create-cycle`, and `task_loop_cycle_worker` agent sync; `run-cycle` remains pending.
+- that Codex task-loop support currently includes setup, preflight, `specify-aims`, `create-cycle`, `task_loop_cycle_worker` agent sync, and a manual single-pass `run-cycle`; full unattended Codex scheduling remains pending.

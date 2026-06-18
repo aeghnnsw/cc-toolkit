@@ -1,7 +1,7 @@
 {
   "name": "task-loop",
   "version": "0.15.0",
-  "description": "Task-loop setup, preflight, specify-aims, create-cycle scaffolding, and cycle-worker agent sync support for Codex.",
+  "description": "Task-loop setup, preflight, specify-aims, create-cycle scaffolding, and manual run-cycle support for Codex.",
   "author": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"
@@ -16,6 +16,7 @@
     "workflow",
     "specify-aims",
     "create-cycle",
+    "run-cycle",
     "cycle-worker",
     "custom-agent",
     "agent",
@@ -30,8 +31,8 @@
   "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "Task Loop",
-    "shortDescription": "Setup, proposal aims, create-cycle scaffolding, and worker agent sync for task-loop in Codex.",
-    "longDescription": "Use Task Loop to configure the hosted Supabase task board, save local credentials, register a repository, verify setup, author the initial proposal with specify-aims, create-cycle scaffolding, and sync the task_loop_cycle_worker custom agent. Codex support is rolling out in phases; run-cycle remains pending.",
+    "shortDescription": "Setup, proposal aims, create-cycle scaffolding, and manual run-cycle support for task-loop in Codex.",
+    "longDescription": "Use Task Loop to configure the hosted Supabase task board, save local credentials, register a repository, verify setup, author the initial proposal with specify-aims, create-cycle scaffolding, sync the task_loop_cycle_worker custom agent, and run a conservative manual Codex controller pass. Full unattended Codex scheduling remains pending.",
     "developerName": "Steven",
     "category": "Developer Tools",
     "capabilities": [
@@ -43,7 +44,8 @@
       "Check task-loop prerequisites.",
       "Sync the task-loop Codex cycle worker agent.",
       "Specify aims for this task-loop project.",
-      "Create cycle scaffolding for this task-loop project."
+      "Create cycle scaffolding for this task-loop project.",
+      "Run one Codex task-loop controller pass."
     ]
   }
 }

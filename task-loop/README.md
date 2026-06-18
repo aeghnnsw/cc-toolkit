@@ -38,8 +38,8 @@ c. run-cycle    → orchestrator: fixed-interval Loop A + a non-destructive Loop
 4. **`run-cycle`** — the orchestrator (above); the `cycle-worker` agent does each task.
 
 Codex support is rolling out in phases. Codex currently supports setup/preflight,
-`specify-aims`, `create-cycle`, and syncing the `task_loop_cycle_worker` custom agent for future
-dispatch. Codex `run-cycle` and worker dispatch are pending.
+`specify-aims`, `create-cycle`, syncing the `task_loop_cycle_worker` custom agent, and a conservative
+manual `run-cycle` controller pass. Full unattended Codex scheduling remains pending.
 
 ## The task DB + CLI
 
@@ -69,11 +69,13 @@ Run **`setup`**, which covers:
   ≥ v2.1.32; workers are teammates.
 - **Codex setup:** the namespaced `task_loop_cycle_worker` custom agent is synced into
   `~/.codex/agents/`; a new or restarted Codex session may be needed before it can be spawned.
+- **Codex run-cycle:** currently manual single-pass. It claims only after proving the worker can be
+  spawned and observed in the active session.
 - **Required plugin skills:** Claude `run-cycle` currently uses
   `superpowers:{brainstorming, writing-plans, test-driven-development,
   verification-before-completion, receiving-code-review}` and
   `dev-skills:{discuss-with-codex, goal-rubric, doc-update}`. Codex setup checks the Codex-supported
-  equivalents and treats `run-cycle` as pending.
+  equivalents and Codex `run-cycle` uses `dev-skills:pressure-test` for adversarial judgment.
 
 ## Files this creates in your project
 
@@ -102,7 +104,8 @@ task-loop/
 ├── codex-skills/
 │   ├── setup/             # Codex setup, preflight, and custom-agent sync
 │   ├── specify-aims/      # Codex proposal authoring support
-│   └── create-cycle/      # Codex task-loop.md scaffolding support
+│   ├── create-cycle/      # Codex task-loop.md scaffolding support
+│   └── run-cycle/         # Codex manual single-pass controller support
 ├── codex-agents/
 │   └── task-loop-cycle-worker.toml  # Codex worker source synced to ~/.codex/agents/
 ├── hooks/
