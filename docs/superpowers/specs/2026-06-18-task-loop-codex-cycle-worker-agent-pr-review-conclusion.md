@@ -21,6 +21,10 @@ Round 2 objection: the README fix and PR-review conclusion were local but not ye
 
 Disposition: conceded. The fix must be committed and pushed before PR #157 can be treated as reviewed.
 
+Round 3 objection: PR #157 was not merge-ready while the pushed head still had `claude-review` pending.
+
+Disposition: conceded. Waited for `claude-review` on head `e0b7f02` and confirmed it passed before proceeding.
+
 ## Unresolved Tensions
 
 - Codex still lacks first-class plugin-bundled custom agent declaration, so sync into `~/.codex/agents/` remains the compatibility path.
@@ -28,4 +32,4 @@ Disposition: conceded. The fix must be committed and pushed before PR #157 can b
 
 ## Ending Condition
 
-Pending final convergence after pushing the README fix and this conclusion to PR #157.
+Converged after addressing the README support-status issue, pushing the fix to PR #157, and confirming the required PR check passed.
