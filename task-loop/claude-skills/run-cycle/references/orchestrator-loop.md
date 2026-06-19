@@ -107,7 +107,7 @@ Read the study-log **Outcome** *before* deciding — broken work is never merged
   obstacle has recurred. In drain-only mode, defer materialization to the next active run rather than
   starting a new attempt after `stop_at`.
   (Recreation is safe **because** it is diagnosed escalation, never blind repetition — and `stop_at`
-  bounds it; this reverses the old "close-recreate spins, surface `needs-human`" rule.)
+  bounds it; this reverses the prior surface-and-wait rule.)
 - **Genuinely pending** (required checks still running within the **CI bound** — a *configurable max
   age of the PR head commit* for required checks to post and finish, default ~30 min; past it, or a
   required context that never posts a check-run, the PR is **stuck**, above) → leave for next tick.
@@ -267,7 +267,7 @@ study-log **Outcome** is present and acceptable. Merge is **head-SHA-atomic**:
 gained commits between classification and merge is **rejected**, not merged stale. A **transient**
 rejection (head moved / gate race) → re-evaluate next tick; a **deterministic** rejection → re-attack
 via §3/§5 (**behind base** → `gh pr update-branch`; **conflict / other** → diagnose + a
-materially-different next attempt), **never an endless identical retry and never a `needs-human` wait**.
+materially-different next attempt), **never an endless identical retry and never a human-wait branch**.
 The orchestrator is the **sole merger** and makes the task-specific call ("is this outcome mergeable?")
 as it reads the PR. **Branch protection** (required
 CI + a review check posted by a CI workflow, **never** the worker) is the structural backstop no merge

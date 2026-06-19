@@ -39,9 +39,9 @@ Terminal states reduce to **goal-met** or **`stop_at`**. Humans steer *direction
 - The GitHub **issue is the persistent unit-of-work identity; a task is one *attempt***. Attempt history
   is derived from the issue's PR set — **no** DB attempt-counter / strategy-class column (semantic
   novelty can't be a schema field without brittleness).
-- **No-give-up replaces the old surface-and-idle / `needs-human` branches**, *reversing* the prior
-  "close-recreate spins → surface `needs-human`" rule: recreation is safe **because** it is diagnosed
-  escalation (not blind repetition) and `stop_at` bounds it.
+- **No-give-up replaces the old surface-and-idle branches**, *reversing* the prior surface-and-wait
+  rule: recreation is safe **because** it is diagnosed escalation (not blind repetition) and `stop_at`
+  bounds new starts.
 - **Drain model updated:** the historical bounded PR-only drain is superseded by Loop C, which drains
   observable live workers/monitored jobs and PR-present work while still never hanging on opaque no-PR
   rows.

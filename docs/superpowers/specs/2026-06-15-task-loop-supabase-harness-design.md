@@ -150,8 +150,8 @@ Each tick, **in order** (steering first — it gates everything irreversible):
    close <seq>`, then step 5 materializes the **next attempt against the same issue** on an active tick
    with a materially-different, escalated, AIM-aligned strategy. In drain-only mode, keep the issue open
    and defer materialization to the next active run. (Recreation is safe because it is *diagnosed
-   escalation*, not blind repetition — reversing the old "close-recreate spins → surface `needs-human`"
-   rule — and `stop_at` bounds new starts.) **Pending** → leave for next pass.
+   escalation*, not blind repetition — reversing the prior surface-and-wait rule — and `stop_at` bounds
+   new starts.) **Pending** → leave for next pass.
 4. **Findings → `proposal.md` (reconcile sweep).** The orchestrator is the **sole editor** of
    `proposal.md`. When merged findings change the roadmap, **recompute** the affected sections from
    *current default + the complete set of merged study-logs not yet reflected* (never a stale patch),
@@ -218,7 +218,7 @@ Every task is **paired with a GitHub issue** at creation (open new or adopt exis
 
 ## 10. Task lifecycle
 
-- States: **`open → working → closed`** (monotone). The only backward edge is **`reset` (`working → open`)**, allowed only with positive "no live owner" knowledge — in-session observed death or a human `task-loop reset` (§8 reset rule), never a blind cold/foreign reset.
+- States: **`open → working → closed`** (monotone). The only backward edge is **`reset` (`working → open`)**, allowed only with positive "no live owner" knowledge: in-session observed death, human `task-loop reset`, or default single-orchestrator cold-start reclaim (§8 reset rule). Declared multi-orchestrator foreign/opaque tasks are surfaced instead of blindly reset.
 - **`blocked` is derived**, not a stored state: `open` with an unmet dependency (`claimable` excludes it). A worker that *discovers* it's blocked → the orchestrator **closes the task and creates a new one** carrying the remaining work + the blocking dep.
 - A task **only** leaves `open`/`working` by being `closed`; nothing is silently dropped (a closed task's reason lives in its PR; a blocked task's work lives in its replacement).
 
@@ -276,7 +276,7 @@ stop model updated by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`:
 - **Issue ↔ task pairing** → paired at creation; PR `Refs` (never `Closes`); orchestrator closes on success, re-links on blocked. Close-vs-keep is its judgment.
 - **Worker scope** → does its one task, isolates in its own worktree, reports findings in the PR; no merge / DB / issue / plan management.
 - **Capacity / concurrency** → not prescribed (soft knob). **Branch naming** → implementer's choice (`tl/<seq>` default; stale branch deleted on reset). **Multi-machine launch** → out of harness scope.
-- **Persistence / no-human-wait (this revision)** → the loop **never gives up short of the goal** and **never waits on a human decision** (humans steer *direction* only, async via `directions.md`). Every non-mergeable attempt is **diagnosed** (`discuss-with-codex`) and **re-attacked** with a **materially-different, AIM-aligned** strategy, **escalating the class of approach** when the same obstacle recurs (decided: *diagnosis + escalation teeth*, with *codex as the diagnosis / AIM-fidelity engine*); merge-blocked → behind-base `gh pr update-branch`, else a diagnosed next attempt. The GitHub **issue is the persistent unit identity; a task is one attempt**. Terminal states reduce to **goal-met** or **`stop_at`** — no exhaustion/idle terminal. This **reverses** the old "close-recreate spins → surface `needs-human`" rule: recreation is safe because it is diagnosed escalation (not blind repetition) and `stop_at` bounds it. Worker-side: *don't skip the heavy lifting* — `failed`/`blocked` are last resorts backed by evidence, not escape hatches. Closure re-verified adversarially (`…-2026-06-16-task-loop-persistence-loop-conclusion.md`).
+- **Persistence / no-human-wait (this revision)** → the loop **never gives up short of the goal** and **never waits on a human decision** (humans steer *direction* only, async via `directions.md`). Every non-mergeable attempt is **diagnosed** (`discuss-with-codex`) and **re-attacked** with a **materially-different, AIM-aligned** strategy, **escalating the class of approach** when the same obstacle recurs (decided: *diagnosis + escalation teeth*, with *codex as the diagnosis / AIM-fidelity engine*); merge-blocked → behind-base `gh pr update-branch`, else a diagnosed next attempt. The GitHub **issue is the persistent unit identity; a task is one attempt**. Terminal states reduce to **goal-met** or **`stop_at`** — no exhaustion/idle terminal. This **reverses** the prior surface-and-wait rule: recreation is safe because it is diagnosed escalation (not blind repetition) and `stop_at` bounds it. Worker-side: *don't skip the heavy lifting* — `failed`/`blocked` are last resorts backed by evidence, not escape hatches. Closure re-verified adversarially (`…-2026-06-16-task-loop-persistence-loop-conclusion.md`).
 
 **Still genuinely open:**
 - Which **CI / Action produces the independent review check** and how it's bound to the PR head.

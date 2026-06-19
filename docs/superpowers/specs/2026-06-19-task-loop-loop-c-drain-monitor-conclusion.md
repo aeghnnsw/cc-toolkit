@@ -14,3 +14,9 @@ The initial Loop C design failed pressure testing until these points were tighte
 The implemented wording addresses those objections by making Loop B the stop transition, making Loop C
 the post-`stop_at` cancellation authority, deferring drain-time re-attacks to the next active run, and
 updating the README plus authoritative design spec alongside the skill files.
+
+Follow-up PR review found one more stale contradiction: older conclusion text still described a
+pre-revision reset/retry model. The PR now updates those historical summaries to the current model:
+default single-orchestrator cold-start reclaim is valid, declared multi-orchestrator foreign orphans
+are surfaced, and drain-deferred failed/blocked attempts are recoverable through the open issue and PR
+history on the next active run.
