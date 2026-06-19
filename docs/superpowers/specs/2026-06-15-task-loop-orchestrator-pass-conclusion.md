@@ -9,6 +9,11 @@ a Loop B to stop it).
 **Companion:** the authoritative design spec
 `2026-06-15-task-loop-supabase-harness-design.md` (this conclusion refines §7–§9 of it).
 
+**Stop-model supersession:** §4 below records the original Loop A/Loop B stop decision. The current
+stop model is superseded by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`: Loop B is the
+`stop_at` transition that creates recurring Loop C, and Loop C drains observable in-flight work before
+generation cancellation.
+
 Codex was adversarial-correct on all four contested points; the settled design below is the operator's
 6-step pass with four hard corrections folded in.
 
@@ -80,20 +85,22 @@ Study-logs are git-tracked on the default branch, so "complete merged evidence" 
 proposal may carry an "incorporated through task `<seq>`" marker to make "not yet reflected" cheap. No
 lock needed — the reconcile sweep is convergent.
 
-### 4. Stop model — Loop B is a non-destructive nudge; Loop A self-stops
-- **Loop A** = the fixed-interval `/loop` running the pass. Its tick is the **sole stop decision**:
-  when `now ≥ stop_at` and the board is drained, Loop A cancels **its own** schedule id and stops.
-- **Loop B** = a one-time job at `stop_at` that **wakes/nudges Loop A** so it stops at ~`stop_at`
-  instead of up to one interval late. It is **non-destructive** — it never force-stops or deletes
-  anything, so a **stale Loop B fire is harmless** (the woken tick re-checks the current `stop_at` and
-  continues if it was extended).
-- **`stop_at` is embedded as a literal in Loop A's recurring `/loop` prompt** — every tick self-checks
-  it with zero stored state.
-- Jobs carry a **`run_generation`** literal in their names (`task-loop-<project>-<gen>-A` / `-B`), so a
-  stale job touches only its own generation, never "whatever A exists for this project." Re-invoking
-  `/run-cycle` best-effort cancels all `task-loop-<project>-*` and creates a fresh generation.
-- **No Supabase runtime cell, no stored schedule handle, no local file** — generation + naming +
-  embedded `stop_at` suffice.
+### 4. Stop model — superseded by Loop C drain monitor
+
+This original decision is superseded by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`. The
+current model keeps Loop B non-destructive but makes it the `stop_at` transition that installs recurring
+Loop C. Loop C, not Loop A, is the post-`stop_at` drain/cancellation authority.
+
+Current decision:
+- **Loop A** = fixed-interval active pass before `stop_at`; after `stop_at` it runs drain-only and must
+  not cancel the generation before Loop B/Loop C exists.
+- **Loop B** = one-time non-destructive `stop_at` transition. It validates its generation from schedule
+  names, installs recurring Loop C, and never dispatches, materializes re-attacks, or force-stops live
+  work.
+- **Loop C** = recurring drain monitor. It drains observable in-flight workers/monitored jobs and
+  PR-present work, then cancels the generation's schedules.
+- **No Supabase runtime cell, no stored schedule handle, no local file** — generation names plus
+  embedded prompts suffice.
 
 ---
 
@@ -109,8 +116,9 @@ lock needed — the reconcile sweep is convergent.
    reset is in-session or direct CLI only; directions only surface.
 5. **Git serializes text, not planning semantics** (R5) — clean-merge-incoherent-meaning. *Conceded;*
    proposal update is a reconcile sweep from current default + complete evidence.
-6. **A destructive Loop B with a fixed name kills a newer run** (R6) → Loop B non-destructive +
-   `run_generation` naming; Loop A self-stops on its own schedule id. *Conceded.*
+6. **A destructive Loop B with a fixed name kills a newer run** (R6) → Loop B is non-destructive,
+   jobs are generation-named, and current post-`stop_at` cancellation is handled by Loop C for that
+   generation. *Conceded.*
 
 ## Unresolved tensions
 None substantive. The one residual is **operational, not a bug**: concurrent multi-orchestrator

@@ -8,18 +8,20 @@ OBJECTIONS)**.
 **Subject files:** `task-loop/skills/run-cycle/references/orchestrator-loop.md`, `…/run-cycle/SKILL.md`,
 `task-loop/references/pr-findings.md`, `task-loop/db/schema.sql`.
 **Supersedes** the human-wait closure addendum in `2026-06-15-task-loop-orchestrator-pass-conclusion.md`.
+**Stop-model supersession:** the bounded-drain termination text below is superseded by
+`2026-06-19-task-loop-loop-c-drain-monitor-design.md`: `stop_at` now bounds new starts, Loop B installs
+recurring Loop C, and Loop C drains observable in-flight work before generation cancellation.
 
 ## Settled position
 
 The loop rests on **two hard, independent guarantees plus one adversarially-enforced bias**:
 
-- **(T) Termination — rests on `stop_at` alone.** Loop A embeds `stop_at`; Loop B is a non-destructive
-  wake; at `stop_at` the tick runs a **bounded drain** — it waits only for **genuinely-pending** PRs
-  (those within the **CI bound**: a configurable max age of the PR head commit for required checks to
-  post/finish, default ~30 min), **never** for opaque `working`-no-PR orphans or stuck tasks — then
-  cancels its schedules and stops. The run always terminates within a bounded time of `stop_at` and
-  never hangs. Crash/restart **self-heals**: a single-orchestrator cold start reclaims every opaque
-  orphan (reset case (c)), so recovery never waits on a human.
+- **(T) Termination / drain — updated by the 2026-06-19 Loop C design.** The original bounded-drain text
+  below is historical. Current semantics: `stop_at` stops new starts, Loop B installs recurring Loop C,
+  and Loop C waits only for positively live in-session workers/monitored detached jobs and PR-present
+  work before cancelling the generation. Opaque `working`-no-PR rows follow the reset rule and do not
+  block the drain forever. Crash/restart **self-heals**: a single-orchestrator cold start reclaims every
+  opaque orphan (reset case (c)), so recovery never waits on a human.
 - **(P) Progress — rests on a never-empty board.** While the goal is unmet, step 5 always materializes
   the next work (planned-stage decomposition, blockers, and a **diagnosed re-attack** for every
   non-mergeable attempt). Step 7: unmet ⇒ always continue.
@@ -40,7 +42,9 @@ Terminal states reduce to **goal-met** or **`stop_at`**. Humans steer *direction
 - **No-give-up replaces the old surface-and-idle / `needs-human` branches**, *reversing* the prior
   "close-recreate spins → surface `needs-human`" rule: recreation is safe **because** it is diagnosed
   escalation (not blind repetition) and `stop_at` bounds it.
-- **Drain is bounded** (genuinely-pending PRs only); orphans/stuck never block termination.
+- **Drain model updated:** the historical bounded PR-only drain is superseded by Loop C, which drains
+  observable live workers/monitored jobs and PR-present work while still never hanging on opaque no-PR
+  rows.
 - **Reset rule gains case (c)** — single-orchestrator cold-start reclaim — so crash/restart self-heals
   without a human. Single-orchestrator is an **operator deployment declaration**, not runtime detection.
 - **Anti-laziness enforced at three points:** materialize (the riskiest/heavy work must be *on the
@@ -50,9 +54,10 @@ Terminal states reduce to **goal-met** or **`stop_at`**. Humans steer *direction
 ## Strongest objections and how each resolved
 
 1. **`stop_at` can't force termination — an opaque `working`-no-PR orphan blocks the drain forever, and
-   that waits on a human.** *Conceded — a real bug introduced in the rewrite.* Fixed with the **bounded
-   drain** (genuinely-pending PRs only; orphans/stuck never block) + **reset case (c)** (single-orch
-   cold-start reclaim). Termination now rests on `stop_at` unconditionally; crash/restart self-heals.
+   that waits on a human.** *Conceded — a real bug introduced in the rewrite.* Current fix: Loop C waits
+   only for positively live in-session workers/monitored jobs and PR-present work; opaque no-PR rows
+   follow the reset rule and never block the drain forever. Crash/restart self-heals through reset case
+   (c) in single-orchestrator mode.
 2. **Duplicate attempts aren't structurally prevented (materialization is lock-free).** *Conceded as
    bounded, non-fatal, scoped.* Possible only under *declared* multi-orchestrator; the issue is the unit
    identity and at most one attempt merges; the default single-orchestrator mode incurs none. Kept the

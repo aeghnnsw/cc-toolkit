@@ -9,6 +9,11 @@ Run one conservative Codex task-loop controller pass. The main Codex thread is
 the controller; do not create a separate orchestrator agent. Full unattended
 scheduling remains pending.
 
+Codex does not create unattended Loop A/B/C schedules today. When the user runs
+this skill for a post-`stop_at` drain pass, apply the same drain-only semantics
+as Claude Loop C manually: process steering, liveness, PR classification/merge,
+and proposal reconciliation; do not materialize re-attacks or dispatch new work.
+
 ## Preconditions
 
 - `task-loop:setup`, `task-loop:specify-aims`, and `task-loop:create-cycle`
@@ -40,6 +45,8 @@ Read these before taking controller actions:
 - A GitHub issue is the durable unit identity; a task is one attempt.
 - A current-attempt PR must match both `Refs #<issue>` and the task-specific
   study-log path `docs/task-loop/logs/<NNN>_...md`.
+- After `stop_at` or in an explicitly drain-only pass, no new starts: do not
+  claim, dispatch, or materialize re-attacks.
 
 ## Dispatch Gate
 
@@ -83,6 +90,7 @@ ambiguous, do not reset; leave the task `working` and report
    `uv run --script task-loop/cli/task-loop ...`; from an installed plugin use
    `uv run --script <plugin-root>/cli/task-loop ...`.
 2. Read the required references and current project docs.
-3. Work `references/orchestrator-loop.md` step by step.
+3. Work `references/orchestrator-loop.md` step by step. If this is a
+   post-`stop_at` drain pass, use its drain-only path and skip claims.
 4. Stop after one pass and report actions taken, skipped claims, dispatches,
    ambiguous working tasks, and remaining claimable work.

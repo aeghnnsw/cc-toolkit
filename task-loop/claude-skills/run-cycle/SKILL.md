@@ -1,7 +1,7 @@
 ---
 name: run-cycle
 description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under a fixed-interval loop; each tick honors human steering, merges ready PRs, diagnoses and re-attacks any failed/blocked/stuck attempt with a materially-different AIM-aligned strategy (it never gives up short of the goal or the time bound), reconciles the roadmap, and dispatches the next work. Idempotent — every tick re-derives state from the task DB + GitHub + directions.md.
-version: 0.3.0
+version: 0.4.0
 ---
 
 # Run Cycle
@@ -23,7 +23,8 @@ failed / blocked / stuck attempt is **diagnosed** (`dev-skills:discuss-with-code
 with a materially-different, AIM-aligned strategy — escalating the approach when the same obstacle
 recurs, never idling on difficulty, never drifting to an easier goal. The GitHub **issue is the
 persistent unit-of-work identity**; each task is one **attempt** at it. Terminal states are
-**goal-met** or **`stop_at`** — nothing else.
+**goal-met** or **`stop_at`** — nothing else. After `stop_at`, the run enters a drain-only monitor:
+no new starts, but observable in-flight workers and landed PRs are processed before shutdown.
 
 The per-tick algorithm itself lives in **`references/orchestrator-loop.md`**; each Loop A tick **reads
 it and works it as a `TodoWrite`** (see *The pass*).
@@ -42,33 +43,40 @@ confirm the scaffolding is present: `docs/task-loop/{proposal.md, task-loop.md, 
 *Recommended:* branch protection requiring CI + an independent review check, with the orchestrator the
 only identity allowed to merge.
 
-## Control plane — fixed-interval Loop A, non-destructive Loop B
+## Control plane — Loop A, Loop B transition, Loop C drain monitor
 
-`run-cycle` sets up two scheduled jobs, both named with a fresh **`run_generation`** so a stale job can
-never touch a newer run:
+`run-cycle` initially sets up two scheduled jobs, both named with a fresh **`run_generation`** so a
+stale job can never touch a newer run. Loop C is created later by the stop transition, not at startup:
 
 - **Loop A** — a **fixed-interval** loop (default 15 min) whose prompt tells each tick to **read
   `references/orchestrator-loop.md` and complete its pass as a `TodoWrite`**. `stop_at` and
   `run_generation` are **embedded in the prompt**, so each tick sees them with zero stored state. Named
-  `task-loop-<project>-<gen>-A`.
-- **Loop B** — a **one-time** job at `stop_at` that **wakes Loop A to run a tick promptly**. It is
-  **non-destructive** — it never force-stops anything — so a stale fire is harmless: the woken tick
-  re-checks the *current* `stop_at` and continues if it was extended. Named `…-<gen>-B`.
+  `task-loop-<project>-<gen>-A`. After `stop_at`, Loop A must run drain-only and must not cancel the
+  generation before the Loop B/Loop C transition exists.
+- **Loop B** — a **one-time** job at `stop_at` that is the stop transition. It validates its generation
+  by schedule names (if a newer `task-loop-<project>-<newer-gen>-*` exists, it no-ops/cancels itself),
+  then creates or ensures **Loop C**. It may run/wake one drain tick, but it never dispatches new work,
+  never materializes re-attacks, and never force-stops live work. Named `...-<gen>-B`.
+- **Loop C** — a **recurring drain monitor** (default ~30 min) created by Loop B and named
+  `...-<gen>-C`. Each tick runs the drain subset only: steering, liveness, PR merge/classification,
+  and proposal reconciliation. It skips materialize re-attacks and dispatch.
 
-**Stopping is Loop A's own decision:** a tick stops the run (cancels its own `-A`/`-B` schedules) once
-**either** the proposal's **Success criteria are met** (goal achieved — the natural finish) **or**
-`now ≥ stop_at` (the time bound), after a **bounded drain** of genuinely-pending PRs (opaque orphans /
-stuck tasks never block it — see the reference). To change the bound, re-invoke `/run-cycle` — it mints
-a new generation, best-effort cancels every `task-loop-<project>-*` job, and recreates both. No DB cell,
-no stored handle, no local file.
+**Stopping after `stop_at` is Loop C's decision:** `stop_at` means "stop starting new work," not
+"abandon work already launched." Loop C cancels the generation's `-A`/`-B`/`-C` schedules and stops
+only when no positively live in-session worker or monitored detached job remains for this generation
+and no PR-present `working` task still needs merge/classification. Opaque `working`-no-PR rows without
+positive live ownership follow the reset rule in the reference and never block Loop C forever. To change
+the bound, re-invoke `/run-cycle` — it mints a new generation, best-effort cancels every
+`task-loop-<project>-*` job, and recreates Loop A + Loop B. No DB cell, no stored handle, no local file.
 
 ## Setup (on invocation)
 
 1. Confirm prerequisites (above). 2. Ask the run duration (default 24h) → compute `stop_at` (UTC); mint
 `run_generation` (`date -u +%s`). 3. Best-effort cancel stale `task-loop-<project>-*` jobs. 4. Ensure
 the cycle-worker **team** exists (recreate on a fresh session — teammates are ephemeral). 5. Create
-Loop A + Loop B; Loop A's prompt carries `stop_at` + `run_generation` and the instruction to **read
-`references/orchestrator-loop.md` and work it as a `TodoWrite` each tick**. Loop A then runs unattended.
+Loop A + Loop B only; Loop B's prompt creates Loop C at `stop_at`. Loop A's prompt carries `stop_at` +
+`run_generation` and the instruction to **read `references/orchestrator-loop.md` and work it as a
+`TodoWrite` each tick**. Loop A then runs unattended.
 
 ## The pass (each Loop A tick)
 
@@ -76,9 +84,10 @@ Loop A + Loop B; Loop A's prompt carries `stop_at` + `run_generation` and the in
 completed in order, every tick. Re-read the reference each tick (it is the single source of the
 algorithm and may have changed); never rely on a baked-in copy. In one line the pass is:
 
-> read state + stop-check → honor steering → liveness → merge / classify (read the **Outcome**; never
-> merge broken work) → reconcile `proposal.md` → materialize the next work (incl. **diagnosed
-> re-attacks**, escalating recurring obstacles, AIM-fidelity-checked) → dispatch → goal-check / terminate.
+> read state + phase-check → honor steering → liveness → merge / classify (read the **Outcome**; never
+> merge broken work) → reconcile `proposal.md` → materialize the next work while active (incl.
+> **diagnosed re-attacks**, escalating recurring obstacles, AIM-fidelity-checked) → dispatch while
+> active → goal-check / drain / terminate.
 
 The reference also holds the reset rule, proposal-reconcile detail, stop model, recovery, and
 multi-orchestrator notes.
@@ -89,6 +98,9 @@ multi-orchestrator notes.
 - **`task-loop claim` is the only dispatch lock** — no lease, no other guard.
 - **Never give up short of the goal** — every non-mergeable attempt is diagnosed and re-attacked with a
   materially-different, escalated, AIM-aligned strategy; the run ends only at **goal-met** or **`stop_at`**.
+- **After `stop_at`, no new starts** — Loop B installs Loop C; Loop C drains observable in-flight
+  workers/monitored jobs and PR-present work, then cancels the generation. It does not dispatch or
+  materialize re-attacks.
 - **Reset only with positive "no live owner" knowledge** — in-session observed death, a human
   `task-loop reset <seq>`, or a **single-orchestrator cold start** reclaiming opaque orphans (the
   default mode — prior-session workers die with their session, so none can be live). Only *declared*
