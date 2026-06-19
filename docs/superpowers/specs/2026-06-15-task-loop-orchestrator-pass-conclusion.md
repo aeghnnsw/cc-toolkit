@@ -9,6 +9,11 @@ a Loop B to stop it).
 **Companion:** the authoritative design spec
 `2026-06-15-task-loop-supabase-harness-design.md` (this conclusion refines §7–§9 of it).
 
+**Stop-model supersession:** §4 below records the original Loop A/Loop B stop decision. The current
+stop model is superseded by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`: Loop B is the
+`stop_at` transition that creates recurring Loop C, and Loop C drains observable in-flight work before
+generation cancellation.
+
 Codex was adversarial-correct on all four contested points; the settled design below is the operator's
 6-step pass with four hard corrections folded in.
 
@@ -45,24 +50,25 @@ finished" was too strong.)
 `task-loop claim` protects `open → working` (atomic, `FOR UPDATE SKIP LOCKED`) but **not**
 `working → open`. A PR is a durable artifact (merge is safe for any orchestrator); a PR-absent
 `working` task is **ambiguous** — without a durable ownership/liveness marker you cannot distinguish
-"alive but pre-PR" from "dead". So **reset has exactly two triggers**:
+"alive but pre-PR" from "dead". Current reset has exactly three positive no-live-owner cases:
 
 - **(a) In-session observed death** — this orchestrator spawned the teammate this session and saw it
   die / finish without a PR → auto `reset`. Always safe.
 - **(b) Human direct CLI** — the operator runs `task-loop reset <seq>` out-of-band (only the human
   knows whether another orchestrator is live).
+- **(c) Single-orchestrator cold start** — on a fresh session in the default single-orchestrator mode,
+  prior-session workers died with their session, so opaque `working`-no-PR tasks are reclaimable.
 
-A **cold / fresh / foreign** tick **never** auto-resets an opaque `working`-no-PR task — it only
-**surfaces** it ("`012` looks orphaned; if no orchestrator is live, run `task-loop reset 012`"). It
-still merges PR-present tasks and dispatches claimable. `directions.md` **never** triggers reset (it is
-standing steering, not a consumable queue; a stale `reset 012` line would re-fire and kill a new live
+A declared **multi-orchestrator foreign** tick never auto-resets an opaque `working`-no-PR task — it
+only **surfaces** it ("`012` looks orphaned; if no orchestrator is live, run `task-loop reset 012`").
+It still merges PR-present tasks and dispatches claimable. `directions.md` **never** triggers reset (it
+is standing steering, not a consumable queue; a stale `reset 012` line would re-fire and kill a new live
 worker). **No lease / heartbeat / attempt-id / timer / ownership marker is added.**
 
-**Accepted cost:** running multiple concurrent orchestrators on one project loses *automatic* recovery
-of pre-PR orphans (a human `reset` handles the rare stuck one). Single-orchestrator operation —
-including sequential cross-machine (stop here, start there) — keeps full auto-recovery, because
-Agent-Teams teammates die with their session, so the spawning session is the only one that ever has a
-live teammate to observe.
+**Accepted cost:** declared concurrent multi-orchestrator operation loses *automatic* recovery of
+foreign pre-PR orphans (a human `reset` handles the rare stuck one). Single-orchestrator operation —
+including crash/restart and sequential cross-machine (stop here, start there) — keeps full
+auto-recovery because prior-session Agent-Teams teammates die with their session.
 
 ### 3. Proposal update is a reconcile sweep, not a patch
 The orchestrator is the sole editor of `proposal.md`. Concurrent orchestrators patching it from a stale
@@ -80,20 +86,22 @@ Study-logs are git-tracked on the default branch, so "complete merged evidence" 
 proposal may carry an "incorporated through task `<seq>`" marker to make "not yet reflected" cheap. No
 lock needed — the reconcile sweep is convergent.
 
-### 4. Stop model — Loop B is a non-destructive nudge; Loop A self-stops
-- **Loop A** = the fixed-interval `/loop` running the pass. Its tick is the **sole stop decision**:
-  when `now ≥ stop_at` and the board is drained, Loop A cancels **its own** schedule id and stops.
-- **Loop B** = a one-time job at `stop_at` that **wakes/nudges Loop A** so it stops at ~`stop_at`
-  instead of up to one interval late. It is **non-destructive** — it never force-stops or deletes
-  anything, so a **stale Loop B fire is harmless** (the woken tick re-checks the current `stop_at` and
-  continues if it was extended).
-- **`stop_at` is embedded as a literal in Loop A's recurring `/loop` prompt** — every tick self-checks
-  it with zero stored state.
-- Jobs carry a **`run_generation`** literal in their names (`task-loop-<project>-<gen>-A` / `-B`), so a
-  stale job touches only its own generation, never "whatever A exists for this project." Re-invoking
-  `/run-cycle` best-effort cancels all `task-loop-<project>-*` and creates a fresh generation.
-- **No Supabase runtime cell, no stored schedule handle, no local file** — generation + naming +
-  embedded `stop_at` suffice.
+### 4. Stop model — superseded by Loop C drain monitor
+
+This original decision is superseded by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`. The
+current model keeps Loop B non-destructive but makes it the `stop_at` transition that installs recurring
+Loop C. Loop C, not Loop A, is the post-`stop_at` drain/cancellation authority.
+
+Current decision:
+- **Loop A** = fixed-interval active pass before `stop_at`; after `stop_at` it runs drain-only and must
+  not cancel the generation before Loop B/Loop C exists.
+- **Loop B** = one-time non-destructive `stop_at` transition. It validates its generation from schedule
+  names, installs recurring Loop C, and never dispatches, materializes re-attacks, or force-stops live
+  work.
+- **Loop C** = recurring drain monitor. It drains observable in-flight workers/monitored jobs and
+  PR-present work, then cancels the generation's schedules.
+- **No Supabase runtime cell, no stored schedule handle, no local file** — generation names plus
+  embedded prompts suffice.
 
 ---
 
@@ -109,8 +117,9 @@ lock needed — the reconcile sweep is convergent.
    reset is in-session or direct CLI only; directions only surface.
 5. **Git serializes text, not planning semantics** (R5) — clean-merge-incoherent-meaning. *Conceded;*
    proposal update is a reconcile sweep from current default + complete evidence.
-6. **A destructive Loop B with a fixed name kills a newer run** (R6) → Loop B non-destructive +
-   `run_generation` naming; Loop A self-stops on its own schedule id. *Conceded.*
+6. **A destructive Loop B with a fixed name kills a newer run** (R6) → Loop B is non-destructive,
+   jobs are generation-named, and current post-`stop_at` cancellation is handled by Loop C for that
+   generation. *Conceded.*
 
 ## Unresolved tensions
 None substantive. The one residual is **operational, not a bug**: concurrent multi-orchestrator
@@ -133,24 +142,29 @@ disagreement.)
 Holes found → fixes (all now in `run-cycle` SKILL + `references/orchestrator-loop.md` and §8–§9 above):
 
 1. **Stuck / never-mergeable PR spins forever** — the worker opens a PR then idles, so a red/stuck PR
-   is never repaired; "something `working` = progress" masked it, and `stop_at` draining ("stop when no
-   `working` remains") never fired. → **Real-progress predicate** (a gate-failed/stuck working task is
-   *not* progress) + step-3 PR classification; drain waits only for real-progress.
+   is never repaired; "something `working` = progress" masked it. → Step-3 PR classification is total:
+   merge success, update behind-base PRs, or close non-mergeable attempts and re-attack on the next
+   active materialization pass.
 2. **Livelock guard needs durable per-unit retry accounting the DB lacks** — re-materializing a failed
-   unit as a new task looks "fresh" each time, so a K-failure guard can't fire. → **No auto-recreation;
-   the GitHub issue is the durable per-unit identity** (1:1, never duplicated). Gate-failed/stuck →
-   label `needs-human`, leave the task; retry is human-only.
+   unit as a new task looks "fresh" each time, so a K-failure guard can't fire. → The **GitHub issue is
+   the durable per-unit identity** (1:1, never duplicated), and all PRs that `Refs #<issue>` are the
+   attempt history. Gate-failed/stuck/conflicted attempts are diagnosed and re-materialized as
+   materially different re-attacks on active ticks; if classified during drain-only mode, the open issue
+   and PR history make the re-attack recoverable on the next active run.
 3. **"Unmet + board empty" is a *planning* gap with no task → silent terminal stall** (nothing
-   surfaced). → before idling, **guarantee a durable surfaced blocker**: per-unit `needs-human` issues,
-   plus a proposal-level `needs-human: proposal-unmet-no-planned-work` for a planning gap. Also
-   **head-SHA-atomic merge** (`--match-head-commit`) to defeat a green→red flap between classify and merge.
+   surfaced). → while active and the goal is unmet, step 5 must materialize the next diagnosed,
+   AIM-aligned work: planned stages, blockers, re-attacks, direction/finding work, and drain-deferred
+   open issues. Also **head-SHA-atomic merge** (`--match-head-commit`) defeats a green→red flap between
+   classify and merge.
 4. **Gate-green but merge-blocked** (PR conflicted / behind a required base after `main` moved) — the
    atomic merge rejects for a non-head reason and nothing surfaces it → per-unit stall. → **`MERGEABLE`
-   includes GitHub merge-state (clean, not behind)**; any deterministic merge rejection →
-   `needs-human: merge-blocked`. **PR classification is now total** over states.
+   includes GitHub merge-state (clean, not behind)**; behind-base is mechanically updated by the
+   orchestrator, and deterministic conflicts are diagnosed and re-attacked. **PR classification is now
+   total** over states.
 
-**Settled closure invariant:** every tick, a `working` task is exactly one of *merge-and-close*,
-*pending-within-a-bound*, or *`needs-human` (surfaced, not progress, not blocking drain)*; the board is
-never left empty short of the goal without a durable surfaced blocker; nothing failed is auto-recreated.
-⟹ every tick **advances a task, finishes the goal, or has durably asked for help** — and the run always
-terminates (goal-met, or surfaced-and-idle, or `stop_at`). Codex: converged, no further objections.
+**Settled closure invariant:** on active ticks, every `working` task is classified as mergeable,
+pending within a CI bound, behind-base, blocked, failed/stuck/conflicted, or no-PR/liveness-gated. The
+board is never left empty short of the goal; step 5 creates the next diagnosed, AIM-aligned work unless
+the run is drain-only. During drain-only mode, new starts are forbidden, but failed/blocked/stuck
+attempts remain recoverable through the open issue and PR history for the next active run. Codex:
+converged, no further objections.

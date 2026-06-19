@@ -1,7 +1,8 @@
 # Codex Orchestrator Loop
 
 This is a manual single-pass controller algorithm for Codex. Re-run the skill
-for another pass. Do not schedule unattended Loop A/Loop B jobs from Codex yet.
+for another pass. Do not schedule unattended Loop A/Loop B/Loop C jobs from
+Codex yet.
 
 ## State Sources
 
@@ -10,6 +11,14 @@ for another pass. Do not schedule unattended Loop A/Loop B jobs from Codex yet.
 - GitHub through `gh` issues and PRs.
 - Git-tracked project files under `docs/task-loop/`.
 - Worker handoff messages observed in this Codex session.
+
+## Drain-Only Mode
+
+If invoked after `stop_at` or explicitly as a drain pass, model Claude Loop C
+manually: run steering, liveness, PR classification/merge, and proposal
+reconciliation, then report whether another manual drain pass is needed. Skip
+materialization and dispatch. Codex does not define unattended Loop A/B/C
+scheduling in this skill.
 
 ## 0. Read State
 
@@ -39,10 +48,13 @@ For each `working` task:
 - **PR with `Outcome: success` and clean gates:** merge using GitHub's current
   head-SHA protection, close the GitHub issue, then `task-loop close <seq>`.
 - **PR with `Outcome: blocked`:** close the attempt task, keep the issue open,
-  and materialize the blocker/remnant as a new task linked by dependency.
+  and materialize the blocker/remnant as a new task linked by dependency. In
+  drain-only mode, defer materialization to the next active run.
 - **PR with `Outcome: failed`, red gates, conflict, or stale pending state:**
   close the attempt task, read the attempt history for that issue, and
-  materialize a materially different re-attack against the same issue.
+  materialize a materially different re-attack against the same issue. In
+  drain-only mode, keep the issue open and defer the re-attack to the next
+  active run.
 - **Working with no PR:** reset only with positive no-live-worker evidence:
   observed in-session refusal/failure before task work or explicit human CLI
   reset. A Codex cold-start declaration is not proof that prior workers are
@@ -60,12 +72,16 @@ state plus all merged study logs not yet reflected. The controller is the only
 
 ## 4. Materialize Tasks
 
+Skip this step in drain-only mode.
+
 Ensure the board has the next goal-driving work, but add only tasks with
 durable unit identity:
 
 - proposal hypothesis IDs such as `H1.1`;
 - proposal milestone IDs such as `M1`;
 - issue-backed re-attacks from classified attempts;
+- drain-deferred open issues whose latest task/PR attempt closed
+  non-successfully after `stop_at` and have no open/working task;
 - direction-instructed work that names an explicit issue or durable unit marker.
 
 Before creating an issue, search for an existing issue carrying the same unit
@@ -76,6 +92,8 @@ Do not materialize free-form Findings text into tasks unless it already has a
 durable marker or is part of a diagnosed re-attack/blocker flow.
 
 ## 5. Dispatch Claimable Work
+
+Skip this step in drain-only mode.
 
 Default capacity is one task per manual pass unless the user explicitly asks
 for more.
@@ -117,4 +135,5 @@ End the pass with:
 - PRs merged or left pending;
 - any skipped claim reason;
 - ambiguous `working` tasks;
+- whether the drain appears complete or another manual drain pass is needed;
 - next recommended pass action.

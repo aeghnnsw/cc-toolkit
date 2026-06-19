@@ -24,7 +24,7 @@ Claude Code supports the full task-loop workflow today:
 setup           → Supabase project + schema, creds, repo init, Agent Teams, required skills
 a. specify-aims → docs/task-loop/proposal.md   (aims + plan + roadmap; collaborative + codex)
 b. create-cycle → docs/task-loop/task-loop.md  (the worker's per-project cycle + parameters)
-c. run-cycle    → orchestrator: fixed-interval Loop A + a non-destructive Loop B stop nudge
+c. run-cycle    → orchestrator: fixed-interval Loop A + Loop B stop transition → Loop C drain monitor
                   cycle-worker (agent): executes one task's cycle in its own worktree
 ```
 
@@ -35,7 +35,9 @@ c. run-cycle    → orchestrator: fixed-interval Loop A + a non-destructive Loop
    write `proposal.md`: Specific Aims & Goal (human-gated) + Implementation Plan + Living Roadmap.
 3. **`create-cycle`** — render `docs/task-loop/task-loop.md` (the worker's tailored cycle + general
    rules + parameters) and scaffold `directions.md` + `logs/`.
-4. **`run-cycle`** — the orchestrator (above); the `cycle-worker` agent does each task.
+4. **`run-cycle`** — the orchestrator (above); the `cycle-worker` agent does each task. In Claude,
+   `stop_at` stops new starts and Loop B installs Loop C to monitor observable in-flight workers/PRs
+   until the drain is complete.
 
 Codex support is rolling out in phases. Codex currently supports setup/preflight,
 `specify-aims`, `create-cycle`, syncing the `task_loop_cycle_worker` custom agent, and a conservative

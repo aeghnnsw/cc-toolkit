@@ -3,7 +3,7 @@
 **Date:** 2026-06-15
 **Status:** design agreed; **fully built**. Components: `db/schema.sql`, `cli/task-loop`, `skills/setup` (live-verified), `references/pr-findings.md`, `agents/cycle-worker`, `skills/create-cycle` + `task-loop-skeleton.md`, `skills/run-cycle`. Old harness retired: old `scripts/` + tests removed, `preflight` folded into `setup`, `specify-aims` slimmed, README + `plugin.json` updated.
 **Supersedes:** the GitHub-issue-comment control-log harness (`scripts/control_log.py`, `scripts/gh_store.py`, old `run-cycle`).
-**Companion docs:** orchestrator-pass deliberation `2026-06-15-task-loop-orchestrator-pass-conclusion.md` (refines §7–§9 below); **persistence-model closure `2026-06-16-task-loop-persistence-loop-conclusion.md` (this revision — supersedes the human-wait branches in §8/§9)**; earlier redesign record `2026-06-15-task-loop-supabase-harness-redesign-conclusion.md`; diagrams `2026-06-15-task-loop-harness-diagram.md`.
+**Companion docs:** orchestrator-pass deliberation `2026-06-15-task-loop-orchestrator-pass-conclusion.md` (refines §7–§9 below, with its original stop model superseded by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`); **persistence-model closure `2026-06-16-task-loop-persistence-loop-conclusion.md` (supersedes the human-wait branches in §8/§9, with its original bounded-drain stop model superseded by the 2026-06-19 Loop C design)**; earlier redesign record `2026-06-15-task-loop-supabase-harness-redesign-conclusion.md`; diagrams `2026-06-15-task-loop-harness-diagram.md`.
 
 This is the single source of truth for the redesigned harness. It records *what* we are building and *why* the non-obvious cuts were made (several reverse earlier drafts).
 
@@ -124,15 +124,17 @@ Three independent granularities, each done once:
 
 The orchestrator runs under a **fixed-interval Loop A** (default 15 min). Each tick is one idempotent
 pass over (DB + GitHub + `directions.md`) — no start/resume/recover distinction. **Loop B** is a
-one-time job at `stop_at` that *non-destructively* wakes Loop A; **Loop A is the sole stop authority**
-(a tick with `now ≥ stop_at` + a drained board cancels its own generation-named schedules and stops).
-Both jobs carry a `run_generation` so a stale job never touches a newer run. Full algorithm +
-rationale: `skills/run-cycle` and the deliberation `…-orchestrator-pass-conclusion.md`.
+one-time job at `stop_at` that acts as the stop transition: it validates its generation, creates
+recurring **Loop C**, and does not dispatch, re-attack, or force-stop live work. **Loop C** drains
+observable in-flight workers/monitored jobs and PR-present work, then cancels the generation's
+`-A`/`-B`/`-C` jobs. Jobs carry a `run_generation` so a stale job never touches a newer run. Full
+algorithm + rationale: `skills/run-cycle` and the deliberation `…-orchestrator-pass-conclusion.md`.
 
 Each tick, **in order** (steering first — it gates everything irreversible):
 
-0. **Read state + stop check.** `task-loop status` + open PRs/issues + `directions.md`. `now ≥ stop_at`
-   → drain (skip dispatch; finish in-flight; stop when no `working` remains).
+0. **Read state + phase check.** `task-loop status` + open PRs/issues + `directions.md`. `now ≥ stop_at`
+   → drain-only (skip materialization/dispatch; finish observable in-flight work and landed PRs under
+   Loop C).
 1. **Honor steering.** Apply `directions.md` (highest priority) *before* any merge — pause/freeze,
    "don't merge #X", priorities, blockers. Steering is an **exogenous trigger** (a tick does real work
    on new directions, not only on completions).
@@ -145,30 +147,35 @@ Each tick, **in order** (steering first — it gates everything irreversible):
    **Behind base only** → `gh pr update-branch` (mechanical sync; merge next pass). **Gate-failed /
    stuck / conflict** (check red, review failed, genuine conflict / deterministic rejection, or pending
    past bound / never posts) → **diagnose and re-attack, never give up**: `gh pr close` + `task-loop
-   close <seq>`, then step 5 materializes the **next attempt against the same issue** with a
-   materially-different, escalated, AIM-aligned strategy. (Recreation is safe because it is *diagnosed
-   escalation*, not blind repetition — reversing the old "close-recreate spins → surface `needs-human`"
-   rule — and `stop_at` bounds it.) **Pending** → leave for next pass.
+   close <seq>`, then step 5 materializes the **next attempt against the same issue** on an active tick
+   with a materially-different, escalated, AIM-aligned strategy. In drain-only mode, keep the issue open
+   and defer materialization to the next active run. (Recreation is safe because it is *diagnosed
+   escalation*, not blind repetition — reversing the prior surface-and-wait rule — and `stop_at` bounds
+   new starts.) **Pending** → leave for next pass.
 4. **Findings → `proposal.md` (reconcile sweep).** The orchestrator is the **sole editor** of
    `proposal.md`. When merged findings change the roadmap, **recompute** the affected sections from
    *current default + the complete set of merged study-logs not yet reflected* (never a stale patch),
    PR it, merge it; regenerate if the base moved. Convergent under concurrent orchestrators — no lock.
-5. **Materialize tasks (idempotent) — the goal-driver that never gives up.** Ensure the board carries
-   the next work toward the **Success criteria**: planned stages not yet tasked (seed + decomposition,
+5. **Materialize tasks (idempotent; skip while draining) — the goal-driver that never gives up.**
+   Ensure the board carries the next work toward the **Success criteria**: planned stages not yet
+   tasked (seed + decomposition,
    **including the riskiest / heavy-lifting work — never deferred for easy wins**), discovered blockers,
-   `--dep` re-creation (re-linking the issue), direction-/finding-driven tasks, and **re-attacks** of
-   every attempt step 3 closed non-mergeable. A re-attack is **diagnosed** (`discuss-with-codex`: what
+   `--dep` re-creation (re-linking the issue), direction-/finding-driven tasks, drain-deferred open
+   issues with no active task, and **re-attacks** of every attempt step 3 closed non-mergeable. A
+   re-attack is **diagnosed** (`discuss-with-codex`: what
    failed, what's untried), **materially different** from prior attempts on that issue, and **escalates
    the class of approach** when the same obstacle recurs. **AIM-fidelity:** every new task is
    codex-checked against the Success criteria — keep only AIM-aligned work, never drift to an easier
    goal. Create or adopt the issue, then `task-loop add … --issue N`; never duplicate. While the goal is
-   unmet this **always** adds the next task(s); there is no give-up exit.
+   unmet and the run is active this **always** adds the next task(s); there is no give-up exit.
 6. **Dispatch** (skip if draining). `task-loop claim` loop → spawn one `cycle-worker` per claim (`seq`,
    title, issue, branch), record its id, up to a soft capacity.
 7. **Goal check / terminate.** Evaluate the **Success criteria** against the repo (run them; don't infer
-   from "tasks closed"). **Met** → done (drain + stop). **Unmet** → **always continue**: step 5 keeps
-   the board carrying the next diagnosed, AIM-aligned work, so there is **no exhaustion terminal and no
-   idle-on-difficulty** — the only non-goal terminal is **`stop_at`** (Loop B guarantees it fires). If
+   from "tasks closed"). **Met** → done (drain observable in-flight work + stop). **Unmet** →
+   **always continue**: step 5 keeps the board carrying the next diagnosed, AIM-aligned work, so there
+   is **no exhaustion terminal and no
+   idle-on-difficulty** — the only non-goal terminal is **`stop_at`** (Loop B guarantees the drain
+   transition fires). If
    escalations converge on something genuinely beyond the loop's reach, drop a **non-blocking** note for
    async human steering (`directions.md`) and **keep attacking other angles** — never wait, never
    redefine the goal. *(Closure re-verified adversarially for the persistence model —
@@ -185,11 +192,13 @@ with no human-wait**. Single-orchestrator is an *operator deployment declaration
 detection; accidental concurrency degrades to **bounded waste** (a reset may clobber a peer's branch →
 that unit is re-attacked), never unrecoverable. Only **declared multi-orchestrator** operation refuses
 to reclaim a foreign orphan (it surfaces it); `directions.md` never triggers reset. **Termination** is
-independent of all this: at `stop_at` the drain is **bounded** (it waits only for genuinely-pending PRs,
-never for orphans/stuck), so the run always stops within a bounded time.
+independent of all this: at `stop_at` Loop C waits only for positively live in-session workers,
+monitored detached jobs, and PR-present work; opaque no-PR rows follow the reset rule and do not block
+the drain forever.
 
-**Recovery is just the next tick.** PR-present `working` tasks integrate; PR-absent ones are held +
-surfaced. **The run finishes when the Success criteria are met** (goal achieved, step 7) **or** at
+**Recovery is just the next tick.** PR-present `working` tasks integrate; PR-absent ones are reset with
+positive no-live-owner knowledge, surfaced under declared multi-orchestrator ambiguity, or left
+recoverable. **The run finishes when the Success criteria are met** (goal achieved, step 7) **or** at
 `stop_at` (the time bound). An empty board with the goal **unmet** is *never* a stop — step 5
 materializes the next diagnosed, AIM-aligned work. So the loop always advances the goal, finishes it, or
 runs out the clock having genuinely kept trying — it never quietly gives up short of the goal.
@@ -209,7 +218,7 @@ Every task is **paired with a GitHub issue** at creation (open new or adopt exis
 
 ## 10. Task lifecycle
 
-- States: **`open → working → closed`** (monotone). The only backward edge is **`reset` (`working → open`)**, allowed only with positive "no live owner" knowledge — in-session observed death or a human `task-loop reset` (§8 reset rule), never a blind cold/foreign reset.
+- States: **`open → working → closed`** (monotone). The only backward edge is **`reset` (`working → open`)**, allowed only with positive "no live owner" knowledge: in-session observed death, human `task-loop reset`, or default single-orchestrator cold-start reclaim (§8 reset rule). Declared multi-orchestrator foreign/opaque tasks are surfaced instead of blindly reset.
 - **`blocked` is derived**, not a stored state: `open` with an unmet dependency (`claimable` excludes it). A worker that *discovers* it's blocked → the orchestrator **closes the task and creates a new one** carrying the remaining work + the blocking dep.
 - A task **only** leaves `open`/`working` by being `closed`; nothing is silently dropped (a closed task's reason lives in its PR; a blocked task's work lives in its replacement).
 
@@ -235,7 +244,7 @@ Every task is **paired with a GitHub issue** at creation (open new or adopt exis
 - `references/pr-findings.md` — the study-log + PR contract (the `success/failed/blocked` outcomes).
 - `agents/cycle-worker` — thin, isolated worker: follows `task-loop.md` via a TodoWrite, worktree-isolated, work → PR → report → idle; no merge/DB/issue/plan.
 - `skills/create-cycle` + `assets/task-loop-skeleton.md` — renders the worker's per-project cycle + general rules (simple model; old control-issue/attempt machinery stripped).
-- `skills/run-cycle` (SKILL + `references/orchestrator-loop.md`) — the §8 6-step pass, reset rule, proposal reconcile, Loop A/Loop B stop model.
+- `skills/run-cycle` (SKILL + `references/orchestrator-loop.md`) — the §8 6-step pass, reset rule, proposal reconcile, Loop A/Loop B/Loop C drain model.
 
 **Retirement / cleanup — done:**
 1. Removed old `scripts/` (`control_log.py`/`gh_store.py`) + their tests.
@@ -251,17 +260,23 @@ Every task is **paired with a GitHub issue** at creation (open new or adopt exis
 
 ## 13. Resolved decisions (were open questions)
 
-Most settled in the orchestrator-pass deliberation (`…-orchestrator-pass-conclusion.md`):
+Most settled in the orchestrator-pass deliberation (`…-orchestrator-pass-conclusion.md`), with the
+stop model updated by `2026-06-19-task-loop-loop-c-drain-monitor-design.md`:
 
 - **Pass shape** → a **6-step, directions-first pass** (§8): read state + steering → liveness → merge → reconcile `proposal.md` → materialize tasks → dispatch. Steering is read *before* any irreversible action and is an exogenous trigger.
-- **Reset rule** → reset only on in-session observed death **or** a human `task-loop reset`; cold/foreign ticks surface but never auto-reset opaque `working`-no-PR tasks; `directions.md` never triggers reset (§8). Honest cost: concurrent multi-orchestrator loses auto pre-PR recovery; single/sequential keeps it.
+- **Reset rule** → reset only with positive no-live-owner knowledge: in-session observed death, human
+  `task-loop reset`, or the default single-orchestrator cold-start reclaim; declared multi-orchestrator
+  foreign/opaque tasks are surfaced instead. `directions.md` never triggers reset (§8).
 - **`proposal.md` updates** → the orchestrator is the **sole editor**, and each update is a **reconcile sweep** (recompute from current default + the complete merged-evidence set), never a stale patch — convergent under concurrency, no lock.
-- **Stop model** → fixed-interval **Loop A** self-stops (sole stop authority); **Loop B** is a *non-destructive* early-wake; both jobs are `run_generation`-named; `stop_at` rides in Loop A's prompt — no DB cell, no stored handle, no local file.
+- **Stop model** → fixed-interval **Loop A** runs active ticks; **Loop B** is the non-destructive
+  `stop_at` transition that creates recurring **Loop C**; Loop C drains observable in-flight
+  workers/monitored jobs and PR-present work before cancelling the generation. Jobs are
+  `run_generation`-named; `stop_at` rides in prompts — no DB cell, no stored handle, no local file.
 - **Study-log / findings format** → settled: `docs/task-loop/logs/<seq>_<task>.md` (Outcome + rubric + evidence + findings), committed in the PR; PR body = `Refs #<issue>` + Outcome + pointer (`references/pr-findings.md`).
 - **Issue ↔ task pairing** → paired at creation; PR `Refs` (never `Closes`); orchestrator closes on success, re-links on blocked. Close-vs-keep is its judgment.
 - **Worker scope** → does its one task, isolates in its own worktree, reports findings in the PR; no merge / DB / issue / plan management.
 - **Capacity / concurrency** → not prescribed (soft knob). **Branch naming** → implementer's choice (`tl/<seq>` default; stale branch deleted on reset). **Multi-machine launch** → out of harness scope.
-- **Persistence / no-human-wait (this revision)** → the loop **never gives up short of the goal** and **never waits on a human decision** (humans steer *direction* only, async via `directions.md`). Every non-mergeable attempt is **diagnosed** (`discuss-with-codex`) and **re-attacked** with a **materially-different, AIM-aligned** strategy, **escalating the class of approach** when the same obstacle recurs (decided: *diagnosis + escalation teeth*, with *codex as the diagnosis / AIM-fidelity engine*); merge-blocked → behind-base `gh pr update-branch`, else a diagnosed next attempt. The GitHub **issue is the persistent unit identity; a task is one attempt**. Terminal states reduce to **goal-met** or **`stop_at`** — no exhaustion/idle terminal. This **reverses** the old "close-recreate spins → surface `needs-human`" rule: recreation is safe because it is diagnosed escalation (not blind repetition) and `stop_at` bounds it. Worker-side: *don't skip the heavy lifting* — `failed`/`blocked` are last resorts backed by evidence, not escape hatches. Closure re-verified adversarially (`…-2026-06-16-task-loop-persistence-loop-conclusion.md`).
+- **Persistence / no-human-wait (this revision)** → the loop **never gives up short of the goal** and **never waits on a human decision** (humans steer *direction* only, async via `directions.md`). Every non-mergeable attempt is **diagnosed** (`discuss-with-codex`) and **re-attacked** with a **materially-different, AIM-aligned** strategy, **escalating the class of approach** when the same obstacle recurs (decided: *diagnosis + escalation teeth*, with *codex as the diagnosis / AIM-fidelity engine*); merge-blocked → behind-base `gh pr update-branch`, else a diagnosed next attempt. The GitHub **issue is the persistent unit identity; a task is one attempt**. Terminal states reduce to **goal-met** or **`stop_at`** — no exhaustion/idle terminal. This **reverses** the prior surface-and-wait rule: recreation is safe because it is diagnosed escalation (not blind repetition) and `stop_at` bounds it. Worker-side: *don't skip the heavy lifting* — `failed`/`blocked` are last resorts backed by evidence, not escape hatches. Closure re-verified adversarially (`…-2026-06-16-task-loop-persistence-loop-conclusion.md`).
 
 **Still genuinely open:**
 - Which **CI / Action produces the independent review check** and how it's bound to the PR head.

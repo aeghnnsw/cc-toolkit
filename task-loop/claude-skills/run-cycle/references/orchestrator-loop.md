@@ -26,29 +26,42 @@ AIM-aligned strategy (§3/§5/§7), never surrendered, idled, or redefined into 
 ## Control plane (set up once per invocation)
 
 `/run-cycle` mints a fresh **`run_generation`** (`date -u +%s`), best-effort cancels stale
-`task-loop-<project>-*` scheduled jobs, ensures the cycle-worker **team** exists, then creates:
+`task-loop-<project>-*` scheduled jobs, ensures the cycle-worker **team** exists, then creates Loop A
+and Loop B. Loop C is created only when the stop transition fires:
 
 - **Loop A** — a fixed-interval loop (default 15 min, `task-loop-<project>-<gen>-A`) running the pass
-  below, with `stop_at` + `run_generation` embedded in its prompt.
-- **Loop B** — a one-time job at `stop_at` (`…-<gen>-B`) that **wakes Loop A to run a tick promptly**;
-  **non-destructive** (a stale fire just makes Loop A run a tick that re-checks the current `stop_at`).
+  below, with `stop_at` + `run_generation` embedded in its prompt. Before `stop_at`, it runs the full
+  pass. At/after `stop_at`, it runs drain-only and must not cancel the generation before the Loop B/C
+  transition exists.
+- **Loop B** — a one-time job at `stop_at` (`...-<gen>-B`) that is the **stop transition**. It validates
+  its generation from schedule names: if a newer `task-loop-<project>-<newer-gen>-*` job exists, it
+  no-ops/cancels itself. Otherwise it creates or ensures Loop C and may run/wake one drain tick. It
+  never dispatches, never materializes re-attacks, and never force-stops live work.
+- **Loop C** — a recurring drain monitor (default ~30 min, `...-<gen>-C`) created by Loop B. It runs the
+  drain subset until no positively live in-session worker/monitored detached job remains for this
+  generation and no PR-present `working` task still needs merge/classification; then it cancels
+  `-A`/`-B`/`-C` for the generation and stops.
 
-Loop A is the **sole stop authority**: a tick stops the run (cancels its own `-A`/`-B` jobs) once
-**either** the proposal's **Success criteria are met** (goal achieved — the natural finish, step 7)
-**or** `now ≥ stop_at` (the time bound) — then it runs a **bounded drain** (merge genuinely-pending PRs;
-opaque `working`-no-PR orphans and stuck tasks never block it) and stops. Because every job is
-generation-named, a leftover job from an earlier run can only touch its own generation — never a newer
-run's Loop A.
+Because every job is generation-named, a leftover job from an earlier run can only touch its own
+generation. Generation checks use schedule names only — no DB cell, stored handle, or local runtime
+file.
 
 ## The pass
 
-### 0. Read state + stop check
-`task-loop status`; list open PRs/issues; read `directions.md`. If `now ≥ stop_at`, enter **draining**:
-skip **materialize re-attacks (step 5)** and **dispatch (step 6)** — no new work — but still run steps
-1–4 (steering, liveness, **merge** mergeable in-flight PRs, reconcile). Drain is **bounded**: wait only
-for **genuinely-pending** PRs (still within the CI bound), **never** for opaque `working`-no-PR orphans
-or stuck tasks. Once no genuinely-pending PR remains, cancel the `-A`/`-B` jobs and stop — any leftover
-`working` rows are recoverable state for the next run, never a reason to keep ticking.
+### 0. Read state + phase check
+`task-loop status`; list open PRs/issues; read `directions.md`. If `now ≥ stop_at`, enter
+**drain-only**: skip **materialize re-attacks (step 5)** and **dispatch (step 6)** — no new starts —
+but still run steps 1–4 (steering, liveness, **merge/classify** landed in-flight PRs, reconcile).
+
+Loop B is the normal creator of Loop C. If a Loop A tick happens after `stop_at` before Loop B has
+installed Loop C, it must not cancel the generation; it either leaves the generation alive for Loop B or
+best-effort ensures Loop C if Loop B is clearly absent/stale. Loop C self-closes only after:
+
+- no positively live in-session worker or monitored detached job remains for this generation; and
+- no PR-present `working` task still needs merge/classification.
+
+Opaque `working`-no-PR tasks without positive live ownership follow the Reset rule. They do not block
+Loop C forever; they are reset, surfaced, or left as recoverable state according to that rule.
 
 ### 1. Honor steering (first, before any irreversible action)
 `directions.md` is highest-priority and free-form; interpret it and apply its constraints **this tick,
@@ -77,9 +90,10 @@ Read the study-log **Outcome** *before* deciding — broken work is never merged
   bound head; if the head moved or the merge is rejected for a **transient** reason → re-evaluate next
   tick, defeating a green→red flap). Then `gh issue close <issue>`; `task-loop close <seq>` (its
   **Findings** feed step 5); **reap the idle teammate** (`TaskStop` the worker you spawned for that seq).
-- **`blocked`** (Outcome: blocked) → `task-loop close <seq>`; step 5 recreates the remaining work as a
-  `--dep` task, the issue stays **open**, re-linked there → reap. (Merge the partial PR only if it is
-  independently valuable — your call; otherwise `gh pr close <N>` as the record.)
+- **`blocked`** (Outcome: blocked) → `task-loop close <seq>`; on an active tick, step 5 recreates the
+  remaining work as a `--dep` task. In drain-only mode, defer recreation to the next active run. The
+  issue stays **open**, re-linked there → reap. (Merge the partial PR only if it is independently
+  valuable — your call; otherwise `gh pr close <N>` as the record.)
 - **`success` but behind base only** (green, no conflict, just behind a required up-to-date base) → run
   **`gh pr update-branch <N>`** — a *mechanical base-sync the orchestrator owns* (not task code) → CI
   re-runs → merge next tick. The cheapest re-attack: no new task.
@@ -88,18 +102,20 @@ Read the study-log **Outcome** *before* deciding — broken work is never merged
   rejection, or is pending **past the bound** / never posts) → **do not idle, do not surface-and-wait,
   do not merge broken work.** **Diagnose** the failure (study log + CI logs + the diff) and re-attack:
   close this attempt — `gh pr close <N>` (it stays as the record) + `task-loop close <seq>` — and let
-  **step 5 materialize the *next* attempt against the same issue** with a **materially-different,
-  AIM-aligned** strategy, *escalating the class of approach* if the same obstacle has recurred.
+  **step 5 materialize the *next* attempt against the same issue** on the next active tick with a
+  **materially-different, AIM-aligned** strategy, *escalating the class of approach* if the same
+  obstacle has recurred. In drain-only mode, defer materialization to the next active run rather than
+  starting a new attempt after `stop_at`.
   (Recreation is safe **because** it is diagnosed escalation, never blind repetition — and `stop_at`
-  bounds it; this reverses the old "close-recreate spins, surface `needs-human`" rule.)
+  bounds it; this reverses the prior surface-and-wait rule.)
 - **Genuinely pending** (required checks still running within the **CI bound** — a *configurable max
   age of the PR head commit* for required checks to post and finish, default ~30 min; past it, or a
   required context that never posts a check-run, the PR is **stuck**, above) → leave for next tick.
 - **No PR** → liveness applies (§Reset); never launder a merge done by someone else (*Merge gate*).
 
 Every task funnels `working → closed` (merged on success, else closed-as-attempt with its **work
-re-materialized** in step 5) — nothing is silently dropped, and **no difficulty is ever abandoned short
-of the goal.**
+re-materialized** in step 5 on an active tick or deferred from drain-only to the next active run) —
+nothing is silently dropped, and **no difficulty is ever abandoned short of the goal.**
 
 ### 4. Findings → proposal (reconcile sweep, NOT a patch)
 If merged findings change the roadmap / plan / milestones, **recompute** the affected `proposal.md`
@@ -111,6 +127,10 @@ reflected in it)** — never one orchestrator's stale local patch. Edit on a bra
 common case). This makes the update convergent even under concurrent orchestrators — no lock.
 
 ### 5. Materialize tasks (idempotent) — the goal-driver that never gives up
+Skip this step entirely in drain-only mode; `stop_at` forbids new starts. Drain-deferred blocked or
+failed attempts stay recoverable through the open GitHub issue and the PR attempt history, and the next
+active run materializes the next attempt here.
+
 This step keeps the board carrying the **next real work toward the Success criteria**; while the goal
 is unmet it is **never** allowed to go empty. From the reconciled `proposal.md` + merged findings +
 `directions.md` + the **attempts §3 just closed**, ensure a task exists for each unit that should:
@@ -130,6 +150,8 @@ is unmet it is **never** allowed to go empty. From the reconciled `proposal.md` 
   — **never re-file the same wall**. (Because the issue is the stable identity and its PR history is the
   attempt ledger, a re-attack is never mistaken for a fresh unit — the escalation always has the full
   record to act on.)
+- **drain-deferred re-attacks** — open task-loop issues whose latest task/PR attempt closed
+  non-successfully after `stop_at` and that currently have no open/working task.
 - **direction-instructed** and **finding-unlocked** tasks driving the goal.
 
 **AIM-fidelity (the other half of the constraint).** Every task this step creates must serve the
@@ -159,8 +181,9 @@ Stop when `claim` returns `none` or you reach capacity (the rest win a seat on a
 Evaluate the proposal's **Success criteria** against the repo — **run them** (commands/tests/artifacts,
 `superpowers:verification-before-completion`); don't infer from "tasks closed".
 
-- **Criteria met** → **done**: dispatch nothing, let in-flight PRs drain, cancel the `-A`/`-B` jobs,
-  stop. (The natural finish.)
+- **Criteria met** → **done**: dispatch nothing. If observable in-flight workers or PR-present working
+  tasks remain, enter the same drain-only behavior and stop when the Loop C self-close condition holds;
+  otherwise cancel the generation's jobs and stop. (The natural finish.)
 - **Criteria unmet** → **always continue.** §5 guarantees the board carries the next diagnosed,
   AIM-aligned work (re-attacks, decomposition, blockers), so the loop keeps driving. **There is no
   exhaustion terminal and no idle-on-difficulty** — a non-mergeable attempt is diagnosed and
@@ -174,24 +197,31 @@ via `directions.md` *asynchronously* — and **keep attacking other angles towar
 waiting for a reply; never redefine the goal into something easier. Humans steer *direction*; the loop
 never stops *trying*.
 
-**Drain / `stop_at`:** at `now ≥ stop_at` the tick stops dispatching and re-attacking, lets
-**genuinely-pending** in-flight PRs merge (a **bounded** wait, capped by the CI bound), then cancels the
-schedules and stops. **Opaque `working`-no-PR orphans and stuck tasks never block termination** — they
-are left as recoverable state for the next run (PR-present → mergeable later; PR-absent orphan →
-reclaimed by the next single-orchestrator cold start (§Reset case (c)) or a human reset). `stop_at` is
-the **sole** non-goal terminal; Loop B guarantees it fires; so the run **always** terminates within a
-bounded time of `stop_at`.
+**Drain / `stop_at`:** at `now ≥ stop_at`, the run stops dispatching and re-attacking. Loop B installs
+Loop C, and Loop C keeps the same live session around to process observable in-flight work:
 
-This is the closure guarantee, reframed for persistence. **Termination** rests on `stop_at` alone
-(Loop B + the §0 stop check make it always fire, and the drain is **bounded** — it waits only for
-genuinely-pending PRs, never for orphans/stuck — so `stop_at` forces a stop within bounded time, never
-hanging on an un-resettable task). **Goal progress** rests on §5 always materializing the next
-diagnosed, AIM-aligned work while the goal is unmet. These two are **independent and hard**. **Non-spin**
-is not a hard invariant but an **adversarially-enforced bias**: each re-attack reads the unit's full
-(derivable) attempt history and is pushed by `discuss-with-codex` to be materially different and escalate
-— so the budget is spent exploring, not blindly repeating, with `stop_at` as the backstop if a given
-round's novelty is imperfect. The loop therefore **advances the goal, finishes it, or runs out the clock
-having genuinely kept trying — it never hangs, never quietly gives up, and never drifts off the AIM.**
+- keep checking positively live workers you spawned this session and any monitored detached jobs they
+  reported;
+- merge/classify PR-present `working` tasks as they land;
+- run proposal reconciliation for merged findings;
+- skip materialization and dispatch.
+
+Loop C self-closes when no positively live in-flight worker/monitored job remains and no PR-present
+`working` task needs merge/classification. Opaque `working`-no-PR rows without positive live ownership
+never become hidden blockers: apply the Reset rule if you have positive no-live-owner knowledge, surface
+them under declared multi-orchestrator ambiguity, or leave them as recoverable state for the next run.
+If the session dies during Loop C, recovery is unchanged: the next `/run-cycle` re-derives from DB +
+GitHub and reclaims/surfaces according to the Reset rule.
+
+This is the closure guarantee, reframed for live-through workers. **`stop_at` bounds new starts, not
+post-stop observation of work already launched.** **Goal progress** rests on §5 always materializing the
+next diagnosed, AIM-aligned work while active and the goal is unmet. **Drain progress** rests on positive
+liveness and PR artifacts: Loop C waits only for work it can observe as live or PR-present, never for
+opaque no-PR rows with no live owner evidence. **Non-spin** is not a hard invariant but an
+**adversarially-enforced bias**: each re-attack reads the unit's full (derivable) attempt history and is
+pushed by `discuss-with-codex` to be materially different and escalate — so the active-run budget is
+spent exploring, not blindly repeating. The loop therefore **advances the goal, finishes it, or reaches
+`stop_at` having genuinely kept trying, then drains observable in-flight work without starting more.**
 
 ## Reset rule (the central invariant)
 
@@ -237,7 +267,7 @@ study-log **Outcome** is present and acceptable. Merge is **head-SHA-atomic**:
 gained commits between classification and merge is **rejected**, not merged stale. A **transient**
 rejection (head moved / gate race) → re-evaluate next tick; a **deterministic** rejection → re-attack
 via §3/§5 (**behind base** → `gh pr update-branch`; **conflict / other** → diagnose + a
-materially-different next attempt), **never an endless identical retry and never a `needs-human` wait**.
+materially-different next attempt), **never an endless identical retry and never a human-wait branch**.
 The orchestrator is the **sole merger** and makes the task-specific call ("is this outcome mergeable?")
 as it reads the PR. **Branch protection** (required
 CI + a review check posted by a CI workflow, **never** the worker) is the structural backstop no merge
