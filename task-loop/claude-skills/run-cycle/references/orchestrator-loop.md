@@ -1,12 +1,15 @@
 # Orchestrator loop — the per-tick pass (run-cycle detail)
 
 The orchestrator is the **sole dispatcher, decider, merger, and editor of `proposal.md`**, and it
-holds **no durable state of its own**: every tick re-derives everything from the **task DB** (via the
-`task-loop` CLI), **GitHub** (via `gh`), and the git-tracked **`docs/task-loop/`** files. Two
-orchestrators reading the same DB + GitHub + `directions.md` take the same action. **Recovery is just
-the next tick.** It is also **relentless**: short of the time bound it **never gives up on the goal** —
-every failed / blocked / stuck attempt is *diagnosed* and *re-attacked* with a materially-different,
-AIM-aligned strategy (§3/§5/§7), never surrendered, idled, or redefined into an easier goal.
+holds **no durable state of its own**: durable task/PR/proposal decisions are re-derived each tick from
+the **task DB** (via the `task-loop` CLI), **GitHub** (via `gh`), and the git-tracked
+**`docs/task-loop/`** files. Liveness and teammate cleanup may also use nondurable in-session teammate
+handles. Two orchestrators reading the same durable state converge on the same durable outcome, but can
+differ in liveness/cleanup actions: the owner requests shutdown; a non-owner surfaces the missing
+handle. **Recovery is just the next tick.** It is also **relentless**: short of the time bound it
+**never gives up on the goal** — every failed / blocked / stuck attempt is *diagnosed* and
+*re-attacked* with a materially-different, AIM-aligned strategy (§3/§5/§7), never surrendered, idled,
+or redefined into an easier goal.
 
 ## Where state lives
 
@@ -20,8 +23,8 @@ AIM-aligned strategy (§3/§5/§7), never surrendered, idled, or redefined into 
 - **Git-tracked files.** `proposal.md` (the roadmap the orchestrator reconciles), `directions.md`
   (human steering), `docs/task-loop/logs/<seq>_<task>.md` (merged study-logs = the durable evidence set).
 - **In-session only (not durable).** Which teammate this orchestrator spawned for which task — the
-  basis for *in-session* reset (case (a)). A fresh session has none; it recovers opaque orphans via the
-  cold-start reclaim (case (c)) instead.
+  basis for *in-session* liveness and reset (case (a)). A fresh session has no durable worker ownership
+  proof; opaque pre-PR rows need explicit no-live-owner evidence before reset.
 
 ## Control plane (set up once per invocation)
 
@@ -38,9 +41,9 @@ and Loop B. Loop C is created only when the stop transition fires:
   no-ops/cancels itself. Otherwise it creates or ensures Loop C and may run/wake one drain tick. It
   never dispatches, never materializes re-attacks, and never force-stops live work.
 - **Loop C** — a recurring drain monitor (default ~30 min, `...-<gen>-C`) created by Loop B. It runs the
-  drain subset until no positively live in-session worker/monitored detached job remains for this
-  generation and no PR-present `working` task still needs merge/classification; then it cancels
-  `-A`/`-B`/`-C` for the generation and stops.
+  drain subset until no positively live in-session worker/monitored detached job remains for
+  open/working tasks in this generation and no PR-present `working` task still needs
+  merge/classification; then it cancels `-A`/`-B`/`-C` for the generation and stops.
 
 Because every job is generation-named, a leftover job from an earlier run can only touch its own
 generation. Generation checks use schedule names only — no DB cell, stored handle, or local runtime
@@ -62,6 +65,24 @@ best-effort ensures Loop C if Loop B is clearly absent/stale. Loop C self-closes
 
 Opaque `working`-no-PR tasks without positive live ownership follow the Reset rule. They do not block
 Loop C forever; they are reset, surfaced, or left as recoverable state according to that rule.
+
+Closed-task teammate cleanup is separate from task liveness. Once a seq is closed, if this session has
+the recorded teammate id/name for that seq, send it a graceful shutdown request. If this session has no
+teammate handle, record/surface `shutdown not attempted for task <seq>: no in-session teammate handle`.
+Only the live orchestrator session that owns the handle can request that shutdown later if it observes
+the closed seq. If the request is rejected, no response arrives by the next drain tick, or the teammate
+remains addressable after approval, record/surface the cleanup failure and stop counting that closed
+seq's teammate as an active drain blocker. Do **not** use `TaskStop`, reopen/reset the task, or block
+Loop C solely on cleanup failure.
+
+Before canceling the generation on goal-met or Loop C self-close, run a final cleanup audit for closed
+seqs touched this tick, shutdown requests sent this tick, and shutdown requests still pending. If a
+closed seq has no in-session teammate handle, surface
+`shutdown not attempted for task <seq>: no in-session teammate handle`. Treat shutdown as verified only
+after approval **and** a post-approval addressability check confirms the teammate is no longer
+reachable. If that check has not happened, or the teammate is still reachable, surface
+`shutdown unverified for task <seq> teammate <id/name>` as a cleanup finding, then stop. This audit
+reports uncertainty; it does not keep the run alive by itself.
 
 ### 1. Honor steering (first, before any irreversible action)
 `directions.md` is highest-priority and free-form; interpret it and apply its constraints **this tick,
@@ -89,11 +110,11 @@ Read the study-log **Outcome** *before* deciding — broken work is never merged
   **atomically**: `gh pr merge <N> --squash --match-head-commit <validated head SHA>` (re-checks at the
   bound head; if the head moved or the merge is rejected for a **transient** reason → re-evaluate next
   tick, defeating a green→red flap). Then `gh issue close <issue>`; `task-loop close <seq>` (its
-  **Findings** feed step 5); **reap the idle teammate** (`TaskStop` the worker you spawned for that seq).
+  **Findings** feed step 5); run closed-task teammate cleanup.
 - **`blocked`** (Outcome: blocked) → `task-loop close <seq>`; on an active tick, step 5 recreates the
   remaining work as a `--dep` task. In drain-only mode, defer recreation to the next active run. The
-  issue stays **open**, re-linked there → reap. (Merge the partial PR only if it is independently
-  valuable — your call; otherwise `gh pr close <N>` as the record.)
+  issue stays **open**, re-linked there → run closed-task teammate cleanup. (Merge the partial PR only
+  if it is independently valuable — your call; otherwise `gh pr close <N>` as the record.)
 - **`success` but behind base only** (green, no conflict, just behind a required up-to-date base) → run
   **`gh pr update-branch <N>`** — a *mechanical base-sync the orchestrator owns* (not task code) → CI
   re-runs → merge next tick. The cheapest re-attack: no new task.
@@ -173,8 +194,8 @@ While within your **soft capacity** (you decide; not prescribed):
 - The claimed task already has an `issue` (paired in step 5); pick a branch (e.g. `tl/<seq>`, honoring
   any repo branch-prefix hook).
 - **Spawn one `cycle-worker` teammate** (ask for it by agent type) with: `seq`, `title`, `issue`, and
-  the branch. **Record the teammate id against the seq** — it is the basis for liveness (§2) and reap
-  (§3).
+  the branch. **Record the teammate id/name against the seq** — it is the basis for liveness (§2) and
+  shutdown after closure (§3).
 Stop when `claim` returns `none` or you reach capacity (the rest win a seat on a later tick).
 
 ### 7. Goal check / terminate (close the loop on the GOAL, never on difficulty)
@@ -183,7 +204,8 @@ Evaluate the proposal's **Success criteria** against the repo — **run them** (
 
 - **Criteria met** → **done**: dispatch nothing. If observable in-flight workers or PR-present working
   tasks remain, enter the same drain-only behavior and stop when the Loop C self-close condition holds;
-  otherwise cancel the generation's jobs and stop. (The natural finish.)
+  otherwise run the final closed-teammate cleanup audit, cancel the generation's jobs, and stop. (The
+  natural finish.)
 - **Criteria unmet** → **always continue.** §5 guarantees the board carries the next diagnosed,
   AIM-aligned work (re-attacks, decomposition, blockers), so the loop keeps driving. **There is no
   exhaustion terminal and no idle-on-difficulty** — a non-mergeable attempt is diagnosed and
@@ -200,16 +222,18 @@ never stops *trying*.
 **Drain / `stop_at`:** at `now ≥ stop_at`, the run stops dispatching and re-attacking. Loop B installs
 Loop C, and Loop C keeps the same live session around to process observable in-flight work:
 
-- keep checking positively live workers you spawned this session and any monitored detached jobs they
-  reported;
+- keep checking positively live workers you spawned this session while they still own open/working
+  tasks, and any monitored detached jobs they reported;
 - merge/classify PR-present `working` tasks as they land;
 - run proposal reconciliation for merged findings;
 - skip materialization and dispatch.
 
-Loop C self-closes when no positively live in-flight worker/monitored job remains and no PR-present
-`working` task needs merge/classification. Opaque `working`-no-PR rows without positive live ownership
-never become hidden blockers: apply the Reset rule if you have positive no-live-owner knowledge, surface
-them under declared multi-orchestrator ambiguity, or leave them as recoverable state for the next run.
+Loop C self-closes when no positively live in-flight worker/monitored job remains for open/working
+tasks and no PR-present `working` task needs merge/classification. Before canceling schedules, run the
+final closed-teammate cleanup audit. Opaque `working`-no-PR rows without positive live ownership never
+become hidden blockers: apply the Reset rule if you have positive no-live-owner knowledge, surface them
+for operator reset/assertion, or leave them as recoverable state for the next run. Closed-task shutdown
+failures are cleanup findings, not active work.
 If the session dies during Loop C, recovery is unchanged: the next `/run-cycle` re-derives from DB +
 GitHub and reclaims/surfaces according to the Reset rule.
 
@@ -234,29 +258,20 @@ with positive knowledge that no live worker owns it** — true in three cases:
   finish-without-PR → `task-loop reset <seq>` (claimable again next tick). On the *same* tick, delete
   the stale remote branch (`git push origin --delete <branch>`) so re-dispatch starts clean.
 - **(b) Human direct CLI** — the operator runs `task-loop reset <seq>` out-of-band.
-- **(c) Single-orchestrator cold start** — on a fresh session in **single-orchestrator operation**,
-  **every** opaque `working`-no-PR task is safely reclaimable: each worker from a prior session died
-  **with** that session, so no live worker can own one. Reset and re-attack them (deleting any stale
-  remote branch first). This is the autonomous recovery that keeps the loop from **ever waiting on a
-  human** after a crash / restart. Single-orchestrator is an **operator deployment declaration** (the
-  harness's default mode — the operator controls how many orchestrators run), *not* a runtime
-  detection. Accidental concurrency (running two while declaring single) is operator error and degrades
-  to **bounded waste** — a reset may clobber a peer's `tl/<seq>` branch, so that unit is simply
-  re-attacked — never unrecoverable loss.
+- **(c) Explicit operator no-live assertion** — the operator states the prior Agent Teams session is
+  terminated and no other orchestrator owns the task, then directs this run to reclaim the opaque rows.
+  Delete any stale remote branch first, then reset and re-attack.
 
-**Only under *declared* multi-orchestrator operation** (the operator runs more than one orchestrator —
-declared via `directions.md` / the invocation) does a tick refuse to reclaim an opaque `working`-no-PR
-task it didn't spawn: a concurrent peer's worker may be live **and** share the `tl/<seq>` branch, so an
-erroneous reset would clobber it. It **surfaces** the task instead ("`012` looks orphaned; if no
-orchestrator is live, run `task-loop reset 012`") and moves on (still merging PR-present tasks and
-dispatching claimable). `directions.md` never *triggers* a reset — a stale `reset 012` line would
-re-fire and kill a live worker.
+A fresh session by itself is **not** positive no-live-owner knowledge. If an opaque `working`-no-PR
+task was not spawned by this live session and no explicit operator assertion exists, **surface** it
+instead ("`012` is working with no PR and no observable owner; if no worker/orchestrator is live, run
+`task-loop reset 012`") and move on. Still merge PR-present tasks and dispatch claimable work.
+`directions.md` never *triggers* a reset — a stale `reset 012` line would re-fire and kill a live
+worker.
 
-**Consequence (honest):** the default **single-orchestrator** mode — including sequential cross-machine
-and crash / restart (teammates die with their session) — **always** reclaims pre-PR orphans
-autonomously and never waits on a human. Only **declared concurrent multi-orchestrator** operation
-trades that for a human reset *or* a tolerated duplicate attempt (bounded waste — the issue is the unit
-identity, and at most one attempt merges).
+**Consequence (honest):** crash/restart and cross-machine recovery remain idempotent for PR-present
+work and claimable work, but opaque pre-PR work may require an operator reset or explicit no-live
+assertion. This avoids clobbering a still-live teammate while keeping the DB schema lease-free.
 
 ## Merge gate
 
@@ -286,21 +301,20 @@ succeeds or `stop_at` halts the run. The issue closes **only on success** (or by
 
 ## Recovery = the next tick
 
-There is no resume path. A fresh orchestrator recreates the team, reads `task-loop status` + GitHub +
-`directions.md`, and runs a normal tick: PR-present `working` tasks are integrated; PR-absent orphans
-are **reclaimed and re-attacked** in the default single-orchestrator mode (§Reset case (c)) — held and
-surfaced only under *declared* multi-orchestrator operation. So a crash / restart **self-heals** without
-human intervention.
+There is no durable worker resume path. A fresh orchestrator creates the session's team, reads
+`task-loop status` + GitHub + `directions.md`, and runs a normal tick: PR-present `working` tasks are
+integrated; PR-absent opaque rows are reset only with the positive no-live-owner evidence in §Reset, or
+surfaced for operator reset/assertion. Crash/restart self-heals for durable artifacts and claimable
+work; pre-PR opaque work is not blindly clobbered.
 
 ## Multiple orchestrators
 
-Declared multi-orchestrator operation (one per ecosystem — Claude / Gemini / Codex) runs with **no
-coordination beyond `task-loop claim`**: the atomic claim guarantees single-flight *dispatch*, any
-orchestrator may merge any ready PR, and the proposal reconcile-sweep (§4) is convergent. The two
-surfaces they must respect: a foreign orchestrator never resets an opaque `working` task it doesn't own
-(§Reset), and *materialization* is unlocked, so two peers may create a **duplicate attempt** for one
-unit — bounded waste (the issue is the unit identity; at most one attempt merges). Both are accepted
-costs of lock-free concurrency; the default single-orchestrator mode incurs neither.
+Multiple orchestrators (one per ecosystem — Claude / Gemini / Codex) run with **no coordination beyond
+`task-loop claim`**: the atomic claim guarantees single-flight *dispatch*, any orchestrator may merge
+any ready PR, and the proposal reconcile-sweep (§4) is convergent. The two surfaces they must respect:
+an orchestrator never resets an opaque `working` task without positive no-live-owner evidence (§Reset),
+and *materialization* is unlocked, so two peers may create a **duplicate attempt** for one unit —
+bounded waste (the issue is the unit identity; at most one attempt merges).
 
 ## Deliberate with Codex
 

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- task-loop: replace Claude cycle-worker `TaskStop` reaping guidance with graceful teammate shutdown requests.
+- task-loop: require positive no-live-owner evidence before resetting fresh-session opaque workers.
 - task-loop: document Loop C post-`stop_at` drain monitoring and bump plugin manifests to `0.17.0`.
 - task-loop: bump plugin manifests to `0.16.0` so Claude and Codex refresh cached run-cycle support.
 - task-loop: add conservative manual Codex `run-cycle` support with observable worker dispatch gates.

@@ -1,7 +1,7 @@
 ---
 name: run-cycle
 description: This skill should be used when the user asks to "run cycle", "run the task loop", "start the orchestrator", "drive the autonomous loop", or to begin autonomous, orchestrated execution of a task-loop project. It runs the orchestrator under a fixed-interval loop; each tick honors human steering, merges ready PRs, diagnoses and re-attacks any failed/blocked/stuck attempt with a materially-different AIM-aligned strategy (it never gives up short of the goal or the time bound), reconciles the roadmap, and dispatches the next work. Idempotent — every tick re-derives state from the task DB + GitHub + directions.md.
-version: 0.4.0
+version: 0.4.1
 ---
 
 # Run Cycle
@@ -13,10 +13,11 @@ This skill is the **orchestrator** (the main agent): sole **dispatcher / decider
 sole **editor of `proposal.md`**. It talks to the task DB **only** via the `task-loop` CLI and to
 GitHub via `gh`; `cycle-worker` teammates do the tasks.
 
-**Idempotent & stateless.** All durable state lives in **Supabase** (the board), **GitHub**
-(PRs/issues), and the git-tracked `docs/task-loop/` files. Every tick re-derives from
-`task-loop status` + GitHub + `directions.md` and takes the same action — there is **no** control
-issue, **no** lease, and **no** local runtime files. **Recovery is just the next tick.**
+**Idempotent durable decisions.** All durable state lives in **Supabase** (the board), **GitHub**
+(PRs/issues), and the git-tracked `docs/task-loop/` files. Every tick re-derives task, PR, and proposal
+decisions from `task-loop status` + GitHub + `directions.md` — there is **no** control issue, **no**
+lease, and **no** local runtime files. Liveness and teammate cleanup can depend on in-session teammate
+handles. **Recovery is just the next tick.**
 
 **Relentless (never gives up).** Short of the time bound the orchestrator never abandons the goal. A
 failed / blocked / stuck attempt is **diagnosed** (`dev-skills:discuss-with-codex`) and **re-attacked**
@@ -63,20 +64,21 @@ stale job can never touch a newer run. Loop C is created later by the stop trans
 
 **Stopping after `stop_at` is Loop C's decision:** `stop_at` means "stop starting new work," not
 "abandon work already launched." Loop C cancels the generation's `-A`/`-B`/`-C` schedules and stops
-only when no positively live in-session worker or monitored detached job remains for this generation
-and no PR-present `working` task still needs merge/classification. Opaque `working`-no-PR rows without
-positive live ownership follow the reset rule in the reference and never block Loop C forever. To change
-the bound, re-invoke `/run-cycle` — it mints a new generation, best-effort cancels every
+only when no positively live in-session worker or monitored detached job remains for open/working tasks
+in this generation and no PR-present `working` task still needs merge/classification; before canceling,
+it runs the final closed-teammate cleanup audit from the reference. Opaque `working`-no-PR rows without
+positive live ownership follow the reset rule in the reference and never block Loop C forever. To
+change the bound, re-invoke `/run-cycle` — it mints a new generation, best-effort cancels every
 `task-loop-<project>-*` job, and recreates Loop A + Loop B. No DB cell, no stored handle, no local file.
 
 ## Setup (on invocation)
 
 1. Confirm prerequisites (above). 2. Ask the run duration (default 24h) → compute `stop_at` (UTC); mint
 `run_generation` (`date -u +%s`). 3. Best-effort cancel stale `task-loop-<project>-*` jobs. 4. Ensure
-the cycle-worker **team** exists (recreate on a fresh session — teammates are ephemeral). 5. Create
-Loop A + Loop B only; Loop B's prompt creates Loop C at `stop_at`. Loop A's prompt carries `stop_at` +
-`run_generation` and the instruction to **read `references/orchestrator-loop.md` and work it as a
-`TodoWrite` each tick**. Loop A then runs unattended.
+the cycle-worker **team** exists for this session. 5. Create Loop A + Loop B only; Loop B's prompt
+creates Loop C at `stop_at`. Loop A's prompt carries `stop_at` + `run_generation` and the instruction
+to **read `references/orchestrator-loop.md` and work it as a `TodoWrite` each tick**. Loop A then runs
+unattended.
 
 ## The pass (each Loop A tick)
 
@@ -99,12 +101,12 @@ multi-orchestrator notes.
 - **Never give up short of the goal** — every non-mergeable attempt is diagnosed and re-attacked with a
   materially-different, escalated, AIM-aligned strategy; the run ends only at **goal-met** or **`stop_at`**.
 - **After `stop_at`, no new starts** — Loop B installs Loop C; Loop C drains observable in-flight
-  workers/monitored jobs and PR-present work, then cancels the generation. It does not dispatch or
-  materialize re-attacks.
+  workers/monitored jobs for open/working tasks and PR-present work, runs the final closed-teammate
+  cleanup audit, then cancels the generation. It does not dispatch or materialize re-attacks.
 - **Reset only with positive "no live owner" knowledge** — in-session observed death, a human
-  `task-loop reset <seq>`, or a **single-orchestrator cold start** reclaiming opaque orphans (the
-  default mode — prior-session workers die with their session, so none can be live). Only *declared*
-  multi-orchestrator operation refuses to reclaim a foreign orphan (it **surfaces** it). `directions.md`
+  `task-loop reset <seq>`, or an explicit operator assertion that the prior Agent Teams session is
+  terminated and no other orchestrator owns the task. A fresh session alone is not proof. Opaque
+  `working`-no-PR rows without positive evidence are surfaced, never blindly reset. `directions.md`
   never triggers reset. Full rule in the reference.
 - **Idempotent passes:** proposal updates are reconcile sweeps, never stale patches; task/issue creation
   is idempotent.
