@@ -115,8 +115,8 @@ rigor; fix or rebut each point; re-review until no blocking issues.
 
 ### 9. Report and idle
 Send the orchestrator **one line** — your `seq`, the PR number + URL + head SHA, and the declared
-**Outcome** — then **go idle**. Do not merge and do not self-terminate; the orchestrator validates,
-merges, and reaps you.
+**Outcome** — then **go idle**. Do not merge and do not self-terminate. If the orchestrator sends a
+shutdown request for that closed `seq`, approve it and exit gracefully.
 
 ## Background long jobs (never foreground-block)
 

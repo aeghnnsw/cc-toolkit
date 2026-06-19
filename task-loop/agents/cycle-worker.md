@@ -89,8 +89,8 @@ If any is missing, ask the orchestrator before starting. You need nothing else.
 When your cycle reaches an open PR with its study log (per
 `${CLAUDE_PLUGIN_ROOT}/references/pr-findings.md`), send the orchestrator **one line** — the task
 `seq`, the PR number + URL + head SHA, and the declared **outcome** (`success` / `failed` /
-`blocked`) — then **go idle**. You do not self-terminate; the orchestrator validates, merges, and
-reaps you.
+`blocked`) — then **go idle**. Do not self-terminate. If the orchestrator sends a shutdown request for
+that closed `seq`, approve it and exit gracefully.
 
 If the orchestrator messages you for progress mid-task, reply with a **one-line status** (current step
 + whether you're on track) and keep working — that is its liveness check.

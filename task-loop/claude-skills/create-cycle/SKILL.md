@@ -1,7 +1,7 @@
 ---
 name: create-cycle
 description: This skill should be used when the user asks to "create cycle", "create the task loop", "generate the task-loop instructions", "write the per-task playbook", "scaffold task-loop", or to turn a task-loop proposal into the per-project cycle a worker follows. It renders docs/task-loop/task-loop.md — this project's tailored step-by-step worker cycle, its general rules, and its parameters (the cycle-worker agent follows this file) — from auto-detected and interviewed specifics, and scaffolds docs/task-loop/directions.md and a .gitignore entry.
-version: 0.2.0
+version: 0.2.1
 ---
 
 # Create Cycle

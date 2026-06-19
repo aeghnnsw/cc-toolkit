@@ -33,7 +33,7 @@ after merges. Each fixed-interval tick, in order:
    alive and ask for a progress line (skip if none dispatched).
 3. **Merge** (only PRs allowed by step 1) — for each `working` task with a ready PR (CI green +
    independent review check green), merge → `gh issue close <issue>` → `task-loop close <seq>`, then
-   reap the now-idle teammate.
+   request graceful shutdown of the now-idle teammate.
 4. **Findings → proposal (reconcile sweep)** — see §3 below.
 5. **Materialize tasks** — from the freshly-reconciled proposal + merged findings + directions: create
    discovered blocker tasks, re-create blocked tasks with their dependency, create direction-instructed
@@ -56,19 +56,18 @@ finished" was too strong.)
   die / finish without a PR → auto `reset`. Always safe.
 - **(b) Human direct CLI** — the operator runs `task-loop reset <seq>` out-of-band (only the human
   knows whether another orchestrator is live).
-- **(c) Single-orchestrator cold start** — on a fresh session in the default single-orchestrator mode,
-  prior-session workers died with their session, so opaque `working`-no-PR tasks are reclaimable.
+- **(c) Explicit operator no-live assertion** — the operator states the prior Agent Teams session is
+  terminated and no other orchestrator owns the task, then directs reclaim.
 
-A declared **multi-orchestrator foreign** tick never auto-resets an opaque `working`-no-PR task — it
-only **surfaces** it ("`012` looks orphaned; if no orchestrator is live, run `task-loop reset 012`").
-It still merges PR-present tasks and dispatches claimable. `directions.md` **never** triggers reset (it
-is standing steering, not a consumable queue; a stale `reset 012` line would re-fire and kill a new live
+Any fresh-session opaque `working`-no-PR task without that positive evidence is surfaced ("`012` looks
+orphaned; if no worker/orchestrator is live, run `task-loop reset 012`") instead of blindly reset. It
+still merges PR-present tasks and dispatches claimable. `directions.md` **never** triggers reset (it is
+standing steering, not a consumable queue; a stale `reset 012` line would re-fire and kill a new live
 worker). **No lease / heartbeat / attempt-id / timer / ownership marker is added.**
 
-**Accepted cost:** declared concurrent multi-orchestrator operation loses *automatic* recovery of
-foreign pre-PR orphans (a human `reset` handles the rare stuck one). Single-orchestrator operation —
-including crash/restart and sequential cross-machine (stop here, start there) — keeps full
-auto-recovery because prior-session Agent-Teams teammates die with their session.
+**Accepted cost:** crash/restart and sequential cross-machine recovery may need a human reset or
+explicit no-live assertion for pre-PR opaque rows. PR-present and claimable work still recovers on the
+next tick.
 
 ### 3. Proposal update is a reconcile sweep, not a patch
 The orchestrator is the sole editor of `proposal.md`. Concurrent orchestrators patching it from a stale
