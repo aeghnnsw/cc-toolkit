@@ -36,7 +36,7 @@ a single shell script: composing each rebuttal is your job.
 ## Defaults
 
 - `ROUND_CAP=6` (one round = one Claude↔Codex exchange)
-- `CALL_TIMEOUT=180` seconds per codex call; `SMOKE_TIMEOUT=60` for preflight
+- `CALL_TIMEOUT=600` seconds per codex call; `SMOKE_TIMEOUT=60` for preflight
 - Codex sandbox: `read-only`, repo as working dir
 - Conclusion: always saved AND presented
 
@@ -103,7 +103,7 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
-codex_to 180 codex exec --json -s read-only -C "$REPO" \
+codex_to 600 codex exec --json -s read-only -C "$REPO" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 status=$?
@@ -157,7 +157,7 @@ CRITIC
 # NOTE: do NOT pass -s/-C to `codex exec resume`. Sandbox and cwd are bound to
 # the session at kickoff and `resume` rejects those flags. Always use the
 # explicit THREAD_ID form captured in Step 1.
-codex_to 180 codex exec resume "$THREAD_ID" --json \
+codex_to 600 codex exec resume "$THREAD_ID" --json \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 echo "exit=$?"
