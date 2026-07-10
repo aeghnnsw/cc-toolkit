@@ -37,8 +37,9 @@ a single shell script: composing each rebuttal is your job.
 
 - `ROUND_CAP=6` (one round = one Claude↔Codex exchange)
 - `CALL_TIMEOUT=600` seconds per codex call; `SMOKE_TIMEOUT=60` for preflight
-- Model: `gpt-5.6-sol` with `model_reasoning_effort=xhigh`, pinned per call so the
-  skill does not depend on the ambient `~/.codex/config.toml` default
+- Model: `gpt-5.6-sol`, pinned per call so the skill does not depend on the ambient
+  `~/.codex/config.toml` default. Reasoning effort is `xhigh` on the deliberation
+  calls (kickoff/resume) and `low` on the preflight smoke (a trivial connectivity check)
 - Codex sandbox: `read-only`, repo as working dir
 - Conclusion: always saved AND presented
 
@@ -67,7 +68,7 @@ A real smoke call catches broken Codex environments that `command -v` cannot
 
 ```bash
 command -v codex >/dev/null || { echo "codex CLI not found — install it first"; exit 1; }
-codex_to 60 codex exec --json -m gpt-5.6-sol -c model_reasoning_effort="xhigh" \
+codex_to 60 codex exec --json -m gpt-5.6-sol -c model_reasoning_effort="low" \
   -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
   "Reply with exactly: ok" > "$DIR/smoke.jsonl" 2> "$DIR/smoke.err"
 echo "exit=$?"
