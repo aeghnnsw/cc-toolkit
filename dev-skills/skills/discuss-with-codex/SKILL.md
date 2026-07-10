@@ -37,6 +37,8 @@ a single shell script: composing each rebuttal is your job.
 
 - `ROUND_CAP=6` (one round = one Claude↔Codex exchange)
 - `CALL_TIMEOUT=600` seconds per codex call; `SMOKE_TIMEOUT=60` for preflight
+- Model: `gpt-5.6-sol` with `model_reasoning_effort=xhigh`, pinned per call so the
+  skill does not depend on the ambient `~/.codex/config.toml` default
 - Codex sandbox: `read-only`, repo as working dir
 - Conclusion: always saved AND presented
 
@@ -65,7 +67,8 @@ A real smoke call catches broken Codex environments that `command -v` cannot
 
 ```bash
 command -v codex >/dev/null || { echo "codex CLI not found — install it first"; exit 1; }
-codex_to 60 codex exec --json -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
+codex_to 60 codex exec --json -m gpt-5.6-sol -c model_reasoning_effort="xhigh" \
+  -s read-only -C "$REPO" -o "$DIR/smoke.txt" \
   "Reply with exactly: ok" > "$DIR/smoke.jsonl" 2> "$DIR/smoke.err"
 echo "exit=$?"
 grep -qi "ok" "$DIR/smoke.txt" 2>/dev/null && echo "SMOKE OK" || { echo "SMOKE FAILED"; tail -5 "$DIR/smoke.err"; }
@@ -103,7 +106,8 @@ You are acting as an ADVERSARIAL CRITIC in a structured discussion. Your job is 
 CRITIC
 )"
 
-codex_to 600 codex exec --json -s read-only -C "$REPO" \
+codex_to 600 codex exec --json -m gpt-5.6-sol -c model_reasoning_effort="xhigh" \
+  -s read-only -C "$REPO" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 status=$?
@@ -155,9 +159,11 @@ CRITIC
 )"
 
 # NOTE: do NOT pass -s/-C to `codex exec resume`. Sandbox and cwd are bound to
-# the session at kickoff and `resume` rejects those flags. Always use the
-# explicit THREAD_ID form captured in Step 1.
+# the session at kickoff and `resume` rejects those flags. (-m/-c ARE accepted,
+# so the model pin below is fine.) Always use the explicit THREAD_ID form
+# captured in Step 1.
 codex_to 600 codex exec resume "$THREAD_ID" --json \
+  -m gpt-5.6-sol -c model_reasoning_effort="xhigh" \
   -o "$DIR/msg.txt" "$PROMPT" \
   > "$DIR/events.jsonl" 2> "$DIR/err.log"
 echo "exit=$?"
