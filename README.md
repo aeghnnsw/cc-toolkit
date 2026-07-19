@@ -26,11 +26,17 @@ cc-toolkit/
 │   └── codex-skills/
 │       ├── doc-update/
 │       ├── goal-rubric/
-│       └── pressure-test/
+│       ├── pressure-test/
+│       └── step-workflow/
 ├── creator-skills/                 # Scientific content creation plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
-│   └── skills/
+│   ├── .codex-plugin/
+│   │   └── plugin.json
+│   ├── skills/
+│   │   ├── sci-figure-format/
+│   │   └── sci-slides/
+│   └── codex-skills/
 │       ├── sci-figure-format/
 │       └── sci-slides/
 ├── doc-skills/                     # Document processing plugin
@@ -100,6 +106,7 @@ Development workflow automation and systematic problem-solving.
 - **doc-update**
 - **goal-rubric**
 - **pressure-test**
+- **step-workflow**
 
 ### Creator Skills (`creator-skills`)
 Scientific content creation for figures and presentations.
@@ -107,6 +114,10 @@ Scientific content creation for figures and presentations.
 **Skills:**
 - **sci-figure-format**: Publication-quality scientific figure formatting for major journals (Nature, Science, ACS, RSC)
 - **sci-slides**: Academic presentation slide creation for STEM fields
+
+**Codex skills:**
+- **sci-figure-format**
+- **sci-slides**
 
 ### Document Skills (`doc-skills`)
 Document processing and AI-accessible content extraction.
