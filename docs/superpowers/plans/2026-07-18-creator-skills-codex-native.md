@@ -228,9 +228,9 @@ Run:
 jq . creator-skills/.codex-plugin/plugin.json >/dev/null
 jq . dev-skills/.codex-plugin/plugin.json >/dev/null
 jq . .agents/plugins/marketplace.json >/dev/null
-python /Users/steven/.codex/skills/.system/skill-creator/scripts/quick_validate.py creator-skills/codex-skills/sci-slides
-python /Users/steven/.codex/skills/.system/skill-creator/scripts/quick_validate.py creator-skills/codex-skills/sci-figure-format
-python /Users/steven/.codex/skills/.system/skill-creator/scripts/quick_validate.py dev-skills/codex-skills/step-workflow
+python "${CODEX_HOME:-${HOME}/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" creator-skills/codex-skills/sci-slides
+python "${CODEX_HOME:-${HOME}/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" creator-skills/codex-skills/sci-figure-format
+python "${CODEX_HOME:-${HOME}/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" dev-skills/codex-skills/step-workflow
 ```
 
 Expected: all commands exit `0`.
