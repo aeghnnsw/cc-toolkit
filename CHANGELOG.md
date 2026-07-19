@@ -4,6 +4,7 @@
 
 ### Changed
 
+- creator-skills/dev-skills: add native Codex support for `sci-slides`, `sci-figure-format`, and `step-workflow`.
 - task-loop: replace Claude cycle-worker `TaskStop` reaping guidance with graceful teammate shutdown requests.
 - task-loop: require positive no-live-owner evidence before resetting fresh-session opaque workers.
 - task-loop: document Loop C post-`stop_at` drain monitoring and bump plugin manifests to `0.17.0`.
