@@ -59,7 +59,8 @@ This ensures proper alphabetical sorting.
 3. **Number files sequentially** - Order prefixes by execution or workflow
 4. **Use underscores, not spaces** - Keep file names shell- and tool-friendly
 5. **Track the numbered work with `update_plan`** - Map each plan item to its
-   corresponding step and keep exactly one item in progress
+   corresponding step, keep at most one item in progress, and leave none in
+   progress after completion
 6. **Renumber when needed** - Restore a clear sequence after inserting or
    reordering steps
 
