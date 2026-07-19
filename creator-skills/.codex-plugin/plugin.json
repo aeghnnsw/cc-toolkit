@@ -1,0 +1,37 @@
+{
+  "name": "creator-skills",
+  "version": "1.0.1",
+  "description": "Scientific content creation skills for Codex.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "science",
+    "scientific",
+    "presentation",
+    "slides",
+    "figures",
+    "visualization",
+    "publication"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Creator Skills",
+    "shortDescription": "Codex-ready scientific slides and figure guidance.",
+    "longDescription": "Use Creator Skills to design scientific presentations and format publication-quality scientific figures.",
+    "developerName": "Steven",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Design an effective scientific presentation.",
+      "Review these academic slides.",
+      "Format this scientific figure for publication."
+    ]
+  }
+}
