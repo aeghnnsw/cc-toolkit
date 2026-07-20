@@ -74,7 +74,12 @@ cc-toolkit/
 ├── productivity-skills/            # Personal productivity plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
-│   └── skills/
+│   ├── .codex-plugin/
+│   │   └── plugin.json
+│   ├── skills/
+│   │   ├── calendar-manager/
+│   │   └── reminder-manager/
+│   └── codex-skills/
 │       ├── calendar-manager/
 │       └── reminder-manager/
 └── pymol-skills/                   # PyMOL molecular visualization plugin
@@ -168,6 +173,15 @@ Personal productivity automation using macOS Calendar and Reminders.
 - **gtd-project**: Review and manage GTD projects and their actions
 - **gtd-next**: Calendar-aware task selection and time-blocked agendas
 - **gtd-overview**: Read-only listing of all projects with their actions plus standalone actions
+
+**Codex skills:**
+- **calendar-manager**
+- **reminder-manager**
+- **gtd-inbox**
+- **gtd-process**
+- **gtd-project**
+- **gtd-next**
+- **gtd-overview**
 
 ### PyMOL Skills (`pymol-skills`)
 PyMOL molecular visualization control via MCP server.
