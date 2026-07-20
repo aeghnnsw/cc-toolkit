@@ -1,0 +1,40 @@
+{
+  "name": "productivity-skills",
+  "version": "5.2.0",
+  "description": "macOS productivity skills for Codex: Calendar, Reminders, and GTD workflows via EventKit CLI.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "productivity",
+    "gtd",
+    "calendar",
+    "reminders",
+    "macos",
+    "eventkit",
+    "tasks",
+    "agenda",
+    "inbox"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Productivity Skills",
+    "shortDescription": "Codex-ready macOS Calendar, Reminders, and GTD workflows.",
+    "longDescription": "Use Productivity Skills to manage macOS Calendar events and Reminders, capture and process GTD inbox items, review projects, and generate calendar-aware agendas.",
+    "developerName": "Steven",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "What's on my calendar today?",
+      "Add a reminder to buy groceries tomorrow.",
+      "Process my GTD inbox.",
+      "What should I work on next?"
+    ]
+  }
+}
