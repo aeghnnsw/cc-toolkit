@@ -7,7 +7,7 @@ Process GTD inbox items into projects or actions. The agent infers categorizatio
 
 ## CLI Tool
 
-Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/`, two levels above this skill file; in a repository checkout it is `productivity-skills/`. Resolve it to an absolute path and substitute it in every command:
+Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
 
 ```bash
 swift <plugin-root>/scripts/productivity-cli.swift <command>

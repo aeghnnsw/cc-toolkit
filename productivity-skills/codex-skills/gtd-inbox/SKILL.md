@@ -34,7 +34,7 @@ If unclear, ask the user to clarify.
 
 **Adding Items:**
 1. Check if a semantically similar item already exists
-2. If similar found, ask the user: "Similar item exists: '[item]'. Add anyway?" (yes / no)
+2. If similar found, ask the user: "Similar item exists: '[item]'. Add anyway?" with options "Yes, add it" / "No, skip"
 3. **Get current date** if item contains time references:
    ```bash
    date "+%Y-%m-%d %A"
