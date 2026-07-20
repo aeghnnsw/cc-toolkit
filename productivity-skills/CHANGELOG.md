@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.0.0] - 2026-07-20
+
+### Removed
+- Redundant `personal-assistant` Claude subagent; use `gtd-next` for next-task selection and agenda planning
+
 ## [5.2.0] - 2026-06-07
 
 ### Added

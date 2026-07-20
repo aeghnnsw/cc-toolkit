@@ -1,6 +1,6 @@
 {
   "name": "productivity-skills",
-  "version": "5.2.0",
+  "version": "6.0.0",
   "description": "macOS productivity skills for Codex: Calendar, Reminders, and GTD workflows via EventKit CLI.",
   "author": {
     "name": "Steven",

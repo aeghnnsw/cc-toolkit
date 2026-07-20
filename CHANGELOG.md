@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
+
 ### Changed
 
 - productivity-skills: add native Codex support for all seven Calendar, Reminders, and GTD skills.
