@@ -104,6 +104,20 @@ def test_blocks_parent_traversal_from_macos_tmpdir(self):
         env={"TMPDIR": temp_root},
     )
 
+def test_does_not_trust_broad_protected_tmpdir(self):
+    cases = (
+        ("/var", "/var/log/example"),
+        ("/var/folders", "/var/folders/example"),
+        ("/var/log/example/T", "/var/log/example/T/candidate.json"),
+    )
+    for temp_root, target in cases:
+        with self.subTest(temp_root=temp_root):
+            self.assert_blocked(
+                f"rm -rf {target}",
+                "protected system path /var",
+                env={"TMPDIR": temp_root},
+            )
+
 def test_allows_glob_in_later_command(self):
     self.assert_allowed("rm /tmp/a.txt /tmp/b.txt && ls /tmp/prefix*")
 
@@ -156,6 +170,44 @@ def test_blocks_supported_rm_program_forms(self):
     for command in commands:
         with self.subTest(command=command):
             self.assert_blocked(command, "protected system path /var")
+
+def test_blocks_rm_inside_shell_command_string(self):
+    commands = (
+        'bash -c "rm /var/log/example"',
+        'sudo sh -c "rm /var/log/example"',
+        'env MODE=test zsh -lc "rm /var/log/example"',
+    )
+    for command in commands:
+        with self.subTest(command=command):
+            self.assert_blocked(command, "protected system path /var")
+
+def test_blocks_rm_inside_shell_group_or_function(self):
+    commands = (
+        "{ rm /var/log/example; }",
+        "cleanup() { rm /var/log/example; }; cleanup",
+        "function cleanup { rm /var/log/example; }; cleanup",
+    )
+    for command in commands:
+        with self.subTest(command=command):
+            self.assert_blocked(command, "protected system path /var")
+
+def test_blocks_rm_inside_double_quoted_command_substitution(self):
+    commands = (
+        'echo "$(rm /var/log/example)"',
+        'echo "`rm /var/log/example`"',
+    )
+    for command in commands:
+        with self.subTest(command=command):
+            self.assert_blocked(command, "protected system path /var")
+
+def test_allows_rm_text_inside_single_quotes(self):
+    commands = (
+        "echo '$(rm /var/log/example)'",
+        "echo '`rm /var/log/example`'",
+    )
+    for command in commands:
+        with self.subTest(command=command):
+            self.assert_allowed(command)
 
 def test_blocks_malformed_rm_shell_text(self):
     self.assert_blocked(
@@ -337,6 +389,17 @@ argument list. This must recognize dangerous commands after `&&`, `||`, `;`,
 pipelines, newlines, subshell boundaries, and backticks without treating an
 argument to `echo`, `gh`, `grep`, or `git commit` as an executable.
 
+Recognize `bash`, `dash`, `fish`, `ksh`, `sh`, and `zsh` after the same wrapper
+processing. When one has a short option containing `c`, recursively pass its
+following command-string argument through `dangerous_rm_reason`, with a maximum
+nesting depth of eight. This preserves safety for `bash -c "rm /var/..."` while
+leaving quoted prose passed to non-shell programs untouched.
+
+Before segment inspection, scan the original shell text for `$()` and backtick
+command substitutions outside single quotes. Recursively inspect their command
+content so double quoting does not hide executable deletion, while single
+quotes continue to represent literal prose.
+
 - [ ] **Step 4: Implement target classification and actionable reasons**
 
 Extract removal targets by skipping options until `--` and then treating all
@@ -365,7 +428,9 @@ PROTECTED_SYSTEM_PATHS = (
 
 Add temp-root helpers that collect absolute roots from `TMPDIR` and
 `tempfile.gettempdir()`, normalize them with `Path.resolve(strict=False)`, and
-compare candidates using `Path.relative_to`. Return these exact reasons:
+compare candidates using `Path.relative_to`. Reject temp roots inside protected
+system trees unless they resolve to the macOS per-user
+`/var/folders/<id>/<id>/T` shape. Return these exact reasons:
 
 ```python
 "wildcard rm target"

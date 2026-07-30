@@ -26,7 +26,10 @@ actual destructive `rm` invocations.
 Tokenize shell input with Python's standard-library `shlex` support and split it
 at shell control operators. Inspect only segments whose invoked program is
 `rm`, including direct path forms and common command wrappers such as `sudo`,
-`env`, and `command`.
+`env`, and `command`. Recognized shell interpreters using `-c` are inspected
+recursively so invocation scoping does not create a bypass for commands such
+as `bash -c "rm /var/..."`. Executing command substitutions inside unquoted or
+double-quoted text are also inspected, while literal single-quoted text is not.
 
 For each real `rm` invocation:
 
@@ -46,7 +49,10 @@ conservatively because its targets cannot be classified safely.
 
 The exception is derived from the process environment (`TMPDIR`) and Python's
 resolved temporary directory. Both the configured root and candidate target
-are normalized before containment is checked.
+are normalized before containment is checked. A temp root inside a protected
+system tree is trusted only when it has the macOS per-user
+`/var/folders/<id>/<id>/T` shape; broad or unrelated values such as `/var`,
+`/var/folders`, or `/var/log/.../T` cannot bypass protection.
 
 Only descendants are exempt. The temp root itself, targets containing a parent
 component, wildcard targets, and paths resolving outside the configured root
@@ -74,8 +80,13 @@ Safety tests will verify that it still blocks:
 
 - `/`, protected system directories, `.`, `..`, home references, and the temp
   root itself;
+- broad or unrelated protected paths supplied through `TMPDIR`;
 - wildcards belonging to an actual `rm`;
-- dangerous `rm` after compound-command separators and common wrappers;
+- dangerous `rm` after compound-command separators, inside shell groups and
+  function bodies, and through common wrappers;
+- dangerous `rm` inside a recognized shell interpreter's command string;
+- dangerous `rm` inside command substitutions, including double-quoted ones;
+- literal `rm` text inside single quotes remaining allowed;
 - malformed shell text that appears to invoke `rm`.
 
 Tests will exercise both Claude `Bash` and Codex `exec_command` payloads where
