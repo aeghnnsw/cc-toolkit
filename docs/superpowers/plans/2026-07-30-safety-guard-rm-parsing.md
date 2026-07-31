@@ -17,6 +17,26 @@
 - Permit only strict descendants of the active temp root; never permit deleting the root itself.
 - Keep changes limited to issue #181 and bump `core-hooks` by one patch version.
 
+## Review Hardening Addendum
+
+PR review exposed safety regressions that the initial simplified parsing
+sketches below did not cover. The implemented parser therefore also:
+
+- removes line continuations and shell comments quote-aware, preserves quoted
+  punctuation, and distinguishes redirections from command boundaries;
+- consumes clustered and value-taking options for supported wrappers;
+- recognizes common process launchers, `xargs`, `find -exec`, `eval`,
+  shell/fish command strings, `env -S`, and command/process substitutions;
+- treats `env -S` as argv splitting, not shell evaluation;
+- classifies protected `find` roots substituted into direct
+  `find -exec rm ... {}` targets;
+- rejects `/`, ancestors of protected roots, and non-exact macOS temp-root
+  shapes as trusted temp directories.
+
+These decisions supersede the narrower wrapper and tokenization snippets later
+in this historical implementation plan. Arbitrary launcher semantics and data
+flow into `xargs` through standard input remain out of scope.
+
 ---
 
 ### Task 1: Invocation-aware `rm` safety guard

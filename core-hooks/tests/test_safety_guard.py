@@ -80,15 +80,34 @@ class SafetyGuardTests(unittest.TestCase):
 
     def test_does_not_trust_broad_protected_tmpdir(self):
         cases = (
-            ("/var", "/var/log/example"),
-            ("/var/folders", "/var/folders/example"),
-            ("/var/log/example/T", "/var/log/example/T/candidate.json"),
+            ("/var", "/var/log/example", "protected system path /var"),
+            (
+                "/var/folders",
+                "/var/folders/example",
+                "protected system path /var",
+            ),
+            (
+                "/var/log/example/T",
+                "/var/log/example/T/candidate.json",
+                "protected system path /var",
+            ),
+            ("/", "/etc/example", "protected system path /etc"),
+            (
+                "/private",
+                "/private/var/log/example",
+                "protected system path /private/var",
+            ),
+            (
+                "/var/folders/8n/example/nested/T",
+                "/var/folders/8n/example/nested/T/candidate.json",
+                "protected system path /var",
+            ),
         )
-        for temp_root, target in cases:
+        for temp_root, target, reason in cases:
             with self.subTest(temp_root=temp_root):
                 self.assert_blocked(
                     f"rm -rf {target}",
-                    "protected system path /var",
+                    reason,
                     env={"TMPDIR": temp_root},
                 )
 
@@ -108,6 +127,34 @@ class SafetyGuardTests(unittest.TestCase):
             'gh issue create --title "safety_guard blocks rm under /var/folders"'
         )
 
+    def test_allows_rm_text_in_nonexecuting_arguments(self):
+        commands = (
+            "xargs echo rm /var/log/example",
+            "timeout 5 echo rm /var/log/example",
+            "sudo echo rm /var/log/example",
+            'env echo -S "rm -rf /var/log/example"',
+            'env echo --split-string "rm -rf /var/log/example"',
+            'env -S "echo ; rm /var/log/example"',
+            'fish --command="echo rm /var/log/example"',
+            "gh issue create --title rm --body /var/log/example",
+            "find /tmp -name rm -print",
+            "watch -x echo rm /var/log/example",
+            "watch -x echo ';' rm /var/log/example",
+            "parallel echo rm /var/log/example ::: input",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command)
+
+    def test_allows_dangerous_rm_text_in_shell_comments(self):
+        commands = (
+            "echo ready # rm -rf /var/log/example",
+            "echo ready # $(rm -rf /var/log/example)",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command)
+
     def test_blocks_wildcard_owned_by_rm(self):
         self.assert_blocked(
             "rm -rf /tmp/prefix*",
@@ -126,11 +173,27 @@ class SafetyGuardTests(unittest.TestCase):
             "protected system path /var",
         )
 
-    def test_blocks_protected_system_target_through_env(self):
-        self.assert_blocked(
-            "env MODE=test rm -rf /var/log/example",
-            "protected system path /var",
+    def test_blocks_rm_after_sudo_options_with_values(self):
+        commands = (
+            "sudo -D /tmp rm -rf /var/log/example",
+            "sudo -nD /tmp rm -rf /var/log/example",
+            "sudo -R /tmp/root rm -rf /var/log/example",
+            "sudo -T 5 rm -rf /var/log/example",
+            "sudo --command-timeout 5 rm -rf /var/log/example",
         )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_protected_system_target_through_env(self):
+        commands = (
+            "env MODE=test rm -rf /var/log/example",
+            "env -P /bin rm -rf /var/log/example",
+            "env -ivP /bin rm -rf /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
 
     def test_blocks_rm_after_shell_boundaries(self):
         commands = (
@@ -161,6 +224,100 @@ class SafetyGuardTests(unittest.TestCase):
             'bash -c "rm /var/log/example"',
             'sudo sh -c "rm /var/log/example"',
             'env MODE=test zsh -lc "rm /var/log/example"',
+            'fish --command="rm /var/log/example"',
+            'fish -C "rm /var/log/example"',
+            'fish --init-command="rm /var/log/example"',
+            'fish -ic "rm /var/log/example"',
+            'bash +O extglob -c "rm /var/log/example"',
+            'zsh +o aliases -c "rm /var/log/example"',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_rm_inside_command_string_launchers(self):
+        commands = (
+            'eval "rm -rf /var/log/example"',
+            'env -S "rm -rf /var/log/example"',
+            'env -S "rm -rf" /var/log/example',
+            'env -S"rm -rf" /var/log/example',
+            "env -S \"sh -c 'rm -rf /var/log/example'\"",
+            'watch "rm -rf /var/log/example"',
+            'xargs sh -c "rm -rf /var/log/example"',
+            r'find /tmp -exec sh -c "rm -rf /var/log/example" \;',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_rm_after_wrapper_options_with_values(self):
+        commands = (
+            "exec -a cleanup rm -rf /var/log/example",
+            "time -o /tmp/timing rm -rf /var/log/example",
+            "time -f %E rm -rf /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_rm_invoked_by_xargs(self):
+        commands = (
+            "xargs -0 rm -rf /var/log/example",
+            "xargs -a /tmp/input rm -rf /var/log/example",
+            "xargs --arg-file /tmp/input rm -rf /var/log/example",
+            "xargs -I {} rm -rf /var/log/example/{}",
+            "xargs -0I {} rm -rf /var/log/example/{}",
+            "xargs -J % rm -rf /var/log/example/%",
+            "xargs --replace rm -rf /var/log/example",
+            "xargs --eof rm -rf /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_rm_invoked_by_find_exec(self):
+        commands = (
+            (
+                r"find /tmp -name example -exec rm -rf /var/log/example {} \;",
+                "protected system path /var",
+            ),
+            (
+                r"find /var/log/example -type f -exec rm -rf {} \;",
+                "protected system path /var",
+            ),
+            (
+                r"find /tmp /etc/example -type f -exec rm -rf {} \;",
+                "protected system path /etc",
+            ),
+            (
+                r"find -L /var/log/example -type f -exec rm -rf {} \;",
+                "protected system path /var",
+            ),
+        )
+        for command, reason in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, reason)
+
+    def test_allows_find_exec_rm_with_safe_placeholder_prefix(self):
+        self.assert_allowed(
+            r"find /var/log/example -type f "
+            r"-exec rm -f /tmp/copies/{} \;"
+        )
+
+    def test_blocks_rm_through_common_process_wrappers(self):
+        commands = (
+            "timeout 5 rm -rf /var/log/example",
+            "timeout -vk 1 5 rm -rf /var/log/example",
+            "nice -n 10 rm -rf /var/log/example",
+            "ionice -c 2 -n 7 rm -rf /var/log/example",
+            "stdbuf -oL rm -rf /var/log/example",
+            "stdbuf -o L rm -rf /var/log/example",
+            "stdbuf --output L rm -rf /var/log/example",
+            "chroot /tmp/root rm -rf /var/log/example",
+            "watch -n 1 rm -rf /var/log/example",
+            "watch -q 5 rm -rf /var/log/example",
+            "watch --shotsdir /tmp rm -rf /var/log/example",
+            "parallel rm -rf /var/log/example ::: input",
         )
         for command in commands:
             with self.subTest(command=command):
@@ -185,6 +342,25 @@ class SafetyGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_blocked(command, "protected system path /var")
 
+    def test_blocks_rm_inside_process_substitution(self):
+        commands = (
+            "cat <(rm -rf /var/log/example)",
+            "cat >(rm -rf /var/log/example)",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_allows_literal_or_nondestructive_process_substitution(self):
+        commands = (
+            'echo "<(rm -rf /var/log/example)"',
+            "echo '>(rm -rf /var/log/example)'",
+            "cat <(echo rm -rf /var/log/example)",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command)
+
     def test_allows_rm_text_inside_single_quotes(self):
         commands = (
             "echo '$(rm /var/log/example)'",
@@ -193,6 +369,49 @@ class SafetyGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assert_allowed(command)
+
+    def test_blocks_protected_target_after_quoted_hash_argument(self):
+        self.assert_blocked(
+            'rm "#placeholder" /var/log/example',
+            "protected system path /var",
+        )
+
+    def test_blocks_protected_target_after_quoted_shell_punctuation(self):
+        commands = (
+            'rm ";" /var/log/example',
+            'rm ">" /var/log/example',
+            r"rm \; /var/log/example",
+            'rm "\\`" /var/log/example',
+            'echo "#"; rm -rf /var/log/example',
+            "echo '# note' && rm -rf /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_protected_target_with_shell_redirections(self):
+        commands = (
+            "> /tmp/guard.log rm -rf /var/log/example",
+            "rm -rf > /tmp/guard.log /var/log/example",
+            "rm -rf 2> /dev/null /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_rm_split_across_line_continuation(self):
+        commands = (
+            "r\\\nm -rf /var/log/example",
+            "rm -rf /va\\\nr/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_allows_protected_path_used_only_as_redirection(self):
+        self.assert_allowed(
+            "rm /tmp/candidate.json > /var/log/safety-guard-output"
+        )
 
     def test_blocks_malformed_rm_shell_text(self):
         self.assert_blocked(
