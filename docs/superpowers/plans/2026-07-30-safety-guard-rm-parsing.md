@@ -34,6 +34,8 @@ sketches below did not cover. The implemented parser therefore also:
   shapes as trusted temp directories;
 - normalizes repeated slashes in absolute removal targets and compares
   executable basenames case-insensitively for default macOS filesystems;
+- recognizes `$HOME` and `${HOME}` at shell variable boundaries without
+  matching similarly named variables such as `$HOMEBREW_CACHE`;
 - fails closed when an unexpected parser exception reaches the public analysis
   boundary, because the command cannot be classified safely.
 

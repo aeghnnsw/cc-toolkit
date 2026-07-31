@@ -474,6 +474,28 @@ class SafetyGuardTests(unittest.TestCase):
             tool_name="Bash",
         )
 
+    def test_allows_similarly_named_home_variables(self):
+        commands = (
+            "rm -rf $HOMEBREW_CACHE/downloads/candidate.tar.gz",
+            "rm -rf $HOMEBREW_PREFIX/var/log/example",
+            "rm -rf $HOMEDRIVE/example",
+            "rm -rf ${HOMEBREW_CACHE}/downloads/candidate.tar.gz",
+            "rm -rf ${HOMEDRIVE}/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command)
+
+    def test_blocks_home_variable_with_adjacent_expansion(self):
+        commands = (
+            "rm -rf $HOME${UNSET}/work",
+            "rm -rf ${HOME}${UNSET}",
+            "rm -rf $HOME$UNSET",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "home directory target")
+
     def test_blocks_existing_protected_target_categories(self):
         cases = (
             ("rm -rf /", "root directory"),

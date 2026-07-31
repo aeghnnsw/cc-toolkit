@@ -50,6 +50,9 @@ For each real `rm` invocation:
 - apply dangerous-path checks only to its removal targets;
 - continue blocking `/`, `.`, `..`, home references, and protected system
   directories, including absolute paths with redundant leading slashes;
+- treat `$HOME` at a shell identifier boundary and explicit `${HOME}` as home
+  references without matching unrelated variables whose names merely begin
+  with `HOME`;
 - allow an explicit target strictly beneath the active per-user temporary
   directory, while continuing to block removal of the temporary root itself;
 - return a specific reason for a rejection so the hook can explain which rule

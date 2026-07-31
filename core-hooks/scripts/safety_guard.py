@@ -847,8 +847,8 @@ def _dangerous_target_reason(target):
         return "parent directory reference"
     if (
         lowered.startswith("~")
-        or "$home" in lowered
-        or "${home}" in lowered
+        or re.match(r"^\$home(?:$|[^a-z0-9_])", lowered)
+        or lowered.startswith("${home}")
     ):
         return "home directory target"
 

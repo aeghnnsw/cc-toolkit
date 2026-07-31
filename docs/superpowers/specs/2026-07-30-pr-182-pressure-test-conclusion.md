@@ -77,6 +77,22 @@ in the initial PR head.
   than regressions introduced by this PR.
 - The missing Unreleased changelog entry was added.
 
+### Round 5
+
+- The `$HOME` substring check also matched unrelated variables such as
+  `$HOMEBREW_CACHE`, recreating a macOS false positive. Conceded and fixed by
+  recognizing `$HOME` at a shell identifier boundary and `${HOME}` as an
+  explicit braced variable, with Homebrew and `$HOMEDRIVE` counterexamples.
+- A slash-only first disposition missed adjacent expansions such as
+  `$HOME${UNSET}` that can still resolve to the home directory. Conceded and
+  fixed with identifier-boundary matching plus braced and unbraced regression
+  cases.
+- Consolidating the two protected-path helpers was a non-behavioral
+  refactoring suggestion and was left out to keep the reviewed fix focused.
+- The committed plan and conclusion are intentional workflow artifacts
+  required by the design, pressure-test, and implementation skills used for
+  this change.
+
 ## Unresolved tensions
 
 The hook is an accident-prevention guard, not a full shell interpreter.
@@ -87,6 +103,5 @@ executable command.
 
 ## Ending condition
 
-Converged after round 4. The final GitHub review's remaining in-scope
-hardening concern and the critic's objection to its first disposition were
-addressed with focused regressions.
+Converged after round 5. All in-scope GitHub and independent-critic objections
+were addressed with focused regressions.
