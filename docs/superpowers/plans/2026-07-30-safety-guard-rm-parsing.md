@@ -31,7 +31,9 @@ sketches below did not cover. The implemented parser therefore also:
 - classifies protected `find` roots substituted into direct
   `find -exec rm ... {}` targets;
 - rejects `/`, ancestors of protected roots, and non-exact macOS temp-root
-  shapes as trusted temp directories.
+  shapes as trusted temp directories;
+- normalizes repeated slashes in absolute removal targets and compares
+  executable basenames case-insensitively for default macOS filesystems.
 
 These decisions supersede the narrower wrapper and tokenization snippets later
 in this historical implementation plan. Arbitrary launcher semantics and data

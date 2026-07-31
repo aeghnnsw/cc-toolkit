@@ -34,7 +34,8 @@ forms, resolve common wrappers and launchers including `sudo`, `env`, `command`,
 `exec`, `time`, `xargs`, `find -exec`, `timeout`, `nice`, `ionice`, `stdbuf`,
 `chroot`, `watch`, and `parallel`. Wrapper option parsing consumes long, short,
 clustered, inline, and separate option values according to each supported
-launcher.
+launcher. Executable basenames are compared case-insensitively because default
+macOS filesystems resolve names such as `RM` to the same program as `rm`.
 
 Recursively inspect shell `-c`/fish `-C` command strings, `eval`, shell-mode
 `watch` and `parallel` templates, command substitutions, and process
@@ -48,7 +49,7 @@ For each real `rm` invocation:
 - apply wildcard checks only to that invocation's arguments;
 - apply dangerous-path checks only to its removal targets;
 - continue blocking `/`, `.`, `..`, home references, and protected system
-  directories;
+  directories, including absolute paths with redundant leading slashes;
 - allow an explicit target strictly beneath the active per-user temporary
   directory, while continuing to block removal of the temporary root itself;
 - return a specific reason for a rejection so the hook can explain which rule

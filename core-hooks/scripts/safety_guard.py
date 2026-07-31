@@ -300,7 +300,7 @@ def _command_segments(tokens):
 
 
 def _program_name(token):
-    return token.rsplit("/", 1)[-1]
+    return token.rsplit("/", 1)[-1].lower()
 
 
 def _skip_wrapper_options(tokens, index, value_options):
@@ -836,6 +836,8 @@ def _dangerous_target_reason(target):
         return "wildcard rm target"
 
     normalized = target.rstrip("/") or "/"
+    if normalized.startswith("/"):
+        normalized = re.sub(r"/+", "/", normalized)
     lowered = normalized.lower()
     if normalized == "/":
         return "root directory"

@@ -214,6 +214,8 @@ class SafetyGuardTests(unittest.TestCase):
             "command rm /var/log/example",
             "/bin/rm /var/log/example",
             "MODE=test rm /var/log/example",
+            "RM /var/log/example",
+            "SUDO RM /var/log/example",
         )
         for command in commands:
             with self.subTest(command=command):
@@ -434,7 +436,9 @@ class SafetyGuardTests(unittest.TestCase):
             ("rm -rf $HOME/work", "home directory target"),
             ("rm -rf /usr/local/example", "protected system path /usr"),
             ("rm -rf /var/log/example", "protected system path /var"),
+            ("rm -rf //var/log/example", "protected system path /var"),
             ("rm -rf /etc/example", "protected system path /etc"),
+            ("rm -rf ///etc/example", "protected system path /etc"),
             ("rm -rf /bin/example", "protected system path /bin"),
             ("rm -rf /sbin/example", "protected system path /sbin"),
             ("rm -rf /lib/example", "protected system path /lib"),

@@ -52,6 +52,15 @@ in the initial PR head.
   placeholders beginning with `{}`, with a safe prefixed-placeholder
   counterexample.
 
+### Round 3
+
+- Repeated leading slashes bypassed protected-path classification. Conceded and
+  fixed by collapsing repeated slashes in absolute removal targets, with
+  regressions for `/var` and `/etc`.
+- Executable matching was case-sensitive even though default macOS filesystems
+  resolve names such as `RM` and `SUDO` case-insensitively. Conceded and fixed
+  by normalizing executable basenames, with direct and wrapped regressions.
+
 ## Unresolved tensions
 
 The hook is an accident-prevention guard, not a full shell interpreter.
@@ -62,5 +71,5 @@ executable command.
 
 ## Ending condition
 
-Converged in round 2. The independent critic reported no substantive objection
+Converged in round 3. The independent critic reported no substantive objection
 after the revised Python 3.8 suite passed 62 tests.
