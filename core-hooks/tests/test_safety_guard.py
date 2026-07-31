@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import subprocess
@@ -5,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -420,6 +422,51 @@ class SafetyGuardTests(unittest.TestCase):
             'rm "/var/log/example',
             "unparseable rm command",
         )
+        self.assert_blocked(
+            'r\\\nm -rf "/var/log/example',
+            "shell command safety analysis failed",
+        )
+
+    def test_unexpected_parser_exception_fails_closed(self):
+        spec = importlib.util.spec_from_file_location(
+            "safety_guard_under_test",
+            SCRIPT,
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        commands = (
+            "rm -rf /var/log/example",
+            "r\\\nm -rf /var/log/example",
+            "r\\m -rf /var/log/example",
+            "r''m -rf /var/log/example",
+            "rm>/tmp/out -rf /var/log/example",
+            "echo ready",
+        )
+        parser_errors = (
+            RuntimeError("synthetic parser failure"),
+            ValueError("synthetic malformed shell input"),
+        )
+        for parser_error in parser_errors:
+            with mock.patch.object(
+                module,
+                "_shell_tokens",
+                side_effect=parser_error,
+            ):
+                for command in commands:
+                    expected = "shell command safety analysis failed"
+                    if isinstance(parser_error, ValueError) and command.startswith(
+                        "rm "
+                    ):
+                        expected = "unparseable rm command"
+                    with self.subTest(
+                        command=command,
+                        parser_error=type(parser_error).__name__,
+                    ):
+                        self.assertEqual(
+                            module.dangerous_rm_reason(command),
+                            expected,
+                        )
 
     def test_allows_explicit_tmp_file_for_claude_bash(self):
         self.assert_allowed(

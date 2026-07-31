@@ -56,7 +56,9 @@ For each real `rm` invocation:
   matched.
 
 Malformed shell text that appears to invoke `rm` remains blocked
-conservatively because its targets cannot be classified safely.
+conservatively because its targets cannot be classified safely. The public
+analysis boundary also fails closed with a specific reason when an unexpected
+parser exception prevents the command from being classified safely.
 
 ## Temp-directory exception
 

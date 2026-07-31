@@ -913,11 +913,15 @@ def _dangerous_rm_reason(command, depth):
     except ValueError:
         if re.search(r"\brm(?:\s|$)", command, re.IGNORECASE):
             return "unparseable rm command"
+        raise
     return None
 
 
 def dangerous_rm_reason(command):
-    return _dangerous_rm_reason(command, 0)
+    try:
+        return _dangerous_rm_reason(command, 0)
+    except Exception:
+        return "shell command safety analysis failed"
 
 
 def is_dangerous_rm_command(command):

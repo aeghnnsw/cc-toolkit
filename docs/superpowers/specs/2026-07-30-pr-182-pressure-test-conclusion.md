@@ -61,6 +61,22 @@ in the initial PR head.
   resolve names such as `RM` and `SUDO` case-insensitively. Conceded and fixed
   by normalizing executable basenames, with direct and wrapped regressions.
 
+### Round 4
+
+- An unexpected parser exception could reach `main()`'s pre-existing
+  fail-open handler. Conceded and fixed at the public analysis boundary:
+  commands that cannot be analyzed are rejected with a specific safety-analysis
+  failure reason.
+- A raw-text fallback for that boundary missed supported escaped executable
+  spellings such as line-continuation `rm`. Conceded and replaced with genuine
+  fail-closed behavior, with literal, escaped, and unrelated-command
+  regressions under a synthetic parser failure.
+- Native `find -delete`, broader glob syntax, and deletion through other
+  interpreters were identified as existing capabilities outside issue #181's
+  invocation-aware `rm` scope. They remain explicit follow-up concerns rather
+  than regressions introduced by this PR.
+- The missing Unreleased changelog entry was added.
+
 ## Unresolved tensions
 
 The hook is an accident-prevention guard, not a full shell interpreter.
@@ -71,5 +87,6 @@ executable command.
 
 ## Ending condition
 
-Converged in round 3. The independent critic reported no substantive objection
-after the revised Python 3.8 suite passed 62 tests.
+Converged after round 4. The final GitHub review's remaining in-scope
+hardening concern and the critic's objection to its first disposition were
+addressed with focused regressions.

@@ -33,7 +33,9 @@ sketches below did not cover. The implemented parser therefore also:
 - rejects `/`, ancestors of protected roots, and non-exact macOS temp-root
   shapes as trusted temp directories;
 - normalizes repeated slashes in absolute removal targets and compares
-  executable basenames case-insensitively for default macOS filesystems.
+  executable basenames case-insensitively for default macOS filesystems;
+- fails closed when an unexpected parser exception reaches the public analysis
+  boundary, because the command cannot be classified safely.
 
 These decisions supersede the narrower wrapper and tokenization snippets later
 in this historical implementation plan. Arbitrary launcher semantics and data

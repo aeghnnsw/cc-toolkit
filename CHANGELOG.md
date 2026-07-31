@@ -8,6 +8,8 @@
 
 ### Changed
 
+- core-hooks: scope safety checks to real `rm` invocations, allow valid macOS
+  per-user temp descendants, and fail closed on parser errors.
 - productivity-skills: add native Codex support for all seven Calendar, Reminders, and GTD skills.
 - creator-skills/dev-skills: add native Codex support for `sci-slides`, `sci-figure-format`, and `step-workflow`.
 - task-loop: replace Claude cycle-worker `TaskStop` reaping guidance with graceful teammate shutdown requests.
