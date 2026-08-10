@@ -10,3 +10,7 @@ __pycache__/
 
 # Compiled binaries (build from source)
 productivity-skills/scripts/productivity-cli
+
+# Local design drafts
+docs/superpowers/specs/2026-04-30-codex-core-hooks-design.md
+docs/superpowers/specs/2026-06-15-specify-aims-concision-cleanup-conclusion.md

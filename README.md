@@ -21,11 +21,13 @@ cc-toolkit/
 │   ├── .codex-plugin/
 │   │   └── plugin.json
 │   ├── skills/
+│   │   ├── handoff/
 │   │   ├── problem-solving-cycle/
 │   │   └── step-workflow/
 │   └── codex-skills/
 │       ├── doc-update/
 │       ├── goal-rubric/
+│       ├── handoff/
 │       ├── pressure-test/
 │       └── step-workflow/
 ├── creator-skills/                 # Scientific content creation plugin
@@ -97,6 +99,7 @@ cc-toolkit/
 Development workflow automation and systematic problem-solving.
 
 **Skills:**
+- **handoff**: Save concise continuation context for a fresh Claude Code or Codex session
 - **problem-solving-cycle**: Systematic development workflow from brainstorming to PR merge, including issue creation, branch management, and cleanup
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
@@ -110,6 +113,7 @@ Development workflow automation and systematic problem-solving.
 **Codex skills:**
 - **doc-update**
 - **goal-rubric**
+- **handoff**
 - **pressure-test**
 - **step-workflow**
 
