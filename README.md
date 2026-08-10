@@ -111,9 +111,9 @@ Development workflow automation and systematic problem-solving.
 - **discord-setup**: Configure Discord plugin prerequisites
 
 **Codex skills:**
-- **handoff**
 - **doc-update**
 - **goal-rubric**
+- **handoff**
 - **pressure-test**
 - **step-workflow**
 
