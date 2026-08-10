@@ -1,0 +1,7 @@
+interface:
+  display_name: "Handoff"
+  short_description: "Create a concise continuation handoff"
+  default_prompt: "Use $handoff to save a concise handoff for the next session."
+
+policy:
+  allow_implicit_invocation: false
