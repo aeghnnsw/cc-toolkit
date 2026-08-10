@@ -25,7 +25,6 @@ cc-toolkit/
 │   └── marketplace.json                 # Plugin marketplace registry
 ├── .github/
 │   └── workflows/
-│       ├── claude-code-review.yml       # Claude Code Review automation
 │       └── claude.yml                   # Claude Code trigger automation
 ├── cc-customize/                        # Claude Code customization plugin
 │   ├── .claude-plugin/
@@ -309,23 +308,16 @@ The core skill defines a complete development workflow with 8 phases:
 - Keep workspace organized
 
 ### GitHub Actions Integration
-The repository includes two automation workflows:
+The repository includes one Claude Code automation workflow:
 
-**1. Claude Code Review Workflow** (claude-code-review.yml)
-- Triggers on PR open/sync
-- Uses Claude Code to review code quality, bugs, performance, security, test coverage
-- Posts review as PR comment
-- Uses repository CLAUDE.md for style guidance
-- Restricted tool access for security
-
-**2. Claude Code Trigger Workflow** (claude.yml)
+**Claude Code Trigger Workflow** (claude.yml)
 - Triggers on comments, PR reviews, and issues
 - Responds to @claude mentions
 - Executes custom Claude Code commands based on context
 - Can read CI results on PRs
 - Flexible prompt and tool restrictions
 
-Both workflows use OAuth token authentication and restrict Claude Code tool access for security.
+The workflow uses OAuth token authentication and limits GitHub permissions to the required scopes.
 
 ## Development Patterns & Conventions
 
@@ -402,4 +394,3 @@ Each skill's `SKILL.md` file serves as both:
 - Guidance for Claude Code on how to execute the skill
 
 Well-written skill documentation is critical for discoverability and correct usage.
-

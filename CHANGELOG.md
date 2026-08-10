@@ -5,6 +5,7 @@
 ### Removed
 
 - productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
+- GitHub Actions: remove the automatic Claude review from every pull request; keep on-demand `@claude` triggers.
 
 ### Changed
 
