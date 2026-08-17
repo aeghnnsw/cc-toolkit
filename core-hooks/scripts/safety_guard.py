@@ -11,6 +11,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from hook_payload import get_shell_command
+
 
 SHELL_PUNCTUATION = ";&|()<>\n`"
 COMMAND_BOUNDARY_PUNCTUATION = ";&|()\n`"
@@ -117,16 +119,6 @@ PROTECTED_SYSTEM_PATHS = (
     "/dev",
     "/boot",
 )
-
-
-def get_shell_command(tool_name, tool_input):
-    if not isinstance(tool_input, dict):
-        return ''
-    if tool_name == 'Bash':
-        return tool_input.get('command', '')
-    if tool_name == 'exec_command':
-        return tool_input.get('cmd', '')
-    return ''
 
 
 def _shell_tokens(command):
@@ -937,10 +929,7 @@ def main():
         # Read JSON input from stdin
         input_data = json.load(sys.stdin)
 
-        tool_name = input_data.get('tool_name', '')
-        tool_input = input_data.get('tool_input', {})
-
-        command = get_shell_command(tool_name, tool_input)
+        command = get_shell_command(input_data)
 
         # Block dangerous rm commands while allowing explicit removals
         reason = dangerous_rm_reason(command) if command else None
@@ -948,7 +937,7 @@ def main():
             print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
-            sys.exit(2)  # Exit code 2 blocks tool call and shows error to Claude/Codex
+            sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
 
         # Ensure log directory exists
         log_dir = Path.cwd() / 'logs'
