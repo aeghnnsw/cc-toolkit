@@ -2,15 +2,14 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""
-Claude Code hook for git operations.
-Adds context reminders before git commits and PR creation.
-"""
+"""Cross-runtime policy hook for git operations."""
 
 import json
 import os
 import re
 import sys
+
+from hook_payload import get_shell_command
 
 
 VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
@@ -37,14 +36,9 @@ ATTRIBUTION_PATTERNS = [
 PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
 
 
-def get_shell_command(tool_name, tool_input):
-    if not isinstance(tool_input, dict):
-        return ""
-    if tool_name == "Bash":
-        return tool_input.get("command", "")
-    if tool_name == "exec_command":
-        return tool_input.get("cmd", "")
-    return ""
+def block(reason):
+    print(f"BLOCKED: {reason}", file=sys.stderr)
+    sys.exit(2)
 
 
 def split_commands(command):
@@ -173,22 +167,14 @@ def main():
         print("Error: Invalid JSON input", file=sys.stderr)
         sys.exit(1)
 
-    tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
-
-    command = get_shell_command(tool_name, tool_input)
+    command = get_shell_command(input_data)
     if command:
         if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
-            response = {
-                "systemMessage": "BLOCKED: Use 'git add <filename>' with specific file names instead of 'git add .', 'git add -A', or 'git add --all' for precise change control.",
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": "Bulk git add operations are prohibited - use specific file names"
-                }
-            }
-            print(json.dumps(response))
-            sys.exit(0)
+            block(
+                "Bulk git add operations are prohibited. "
+                "Use specific file names instead of 'git add .', 'git add -A', "
+                "or 'git add --all'."
+            )
 
         # AI attribution is a hard block. Check it before the advisory handlers
         # below so a compound command (e.g. `gh pr edit ... && gh pr merge`)
@@ -197,29 +183,18 @@ def main():
         if is_contribution_cmd:
             for pattern in ATTRIBUTION_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
-                    response = {
-                        "systemMessage": "BLOCKED: Git operation contains AI tool attribution. Remove AI contribution messages from commit messages and PR descriptions/comments.",
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": "deny",
-                            "permissionDecisionReason": "AI tool attribution detected in git operation"
-                        }
-                    }
-                    print(json.dumps(response))
-                    sys.exit(0)
+                    block(
+                        "AI tool attribution detected in git operation. "
+                        "Remove AI contribution messages from commit messages and "
+                        "PR descriptions/comments."
+                    )
 
         invalid_branch, saw_valid_branch = check_branch_names(command)
         if invalid_branch:
-            response = {
-                "systemMessage": f"Branch name '{invalid_branch}' is invalid. Use only these prefixes: {', '.join(VALID_PREFIXES)}",
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
-                }
-            }
-            print(json.dumps(response))
-            sys.exit(0)
+            block(
+                f"Branch name '{invalid_branch}' is invalid. "
+                f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
+            )
 
         if saw_valid_branch:
             response = {

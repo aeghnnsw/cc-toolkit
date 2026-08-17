@@ -57,6 +57,29 @@ class SafetyGuardTests(unittest.TestCase):
             "wildcard rm target",
         )
 
+    def test_blocks_dangerous_grok_rm(self):
+        result = run_hook(
+            {
+                "hookEventName": "PreToolUse",
+                "toolName": "run_terminal_command",
+                "toolInput": {"command": "rm -rf *"},
+            }
+        )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Reason: wildcard rm target", result.stderr)
+
+    def test_allows_safe_grok_rm(self):
+        result = run_hook(
+            {
+                "hookEventName": "PreToolUse",
+                "toolName": "run_terminal_command",
+                "toolInput": {"command": "rm /tmp/candidate.json"},
+            }
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_allows_explicit_file_beneath_macos_tmpdir(self):
         temp_root = "/var/folders/8n/example/T"
         self.assert_allowed(
@@ -433,7 +456,11 @@ class SafetyGuardTests(unittest.TestCase):
             SCRIPT,
         )
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        sys.path.insert(0, str(SCRIPT.parent))
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.pop(0)
 
         commands = (
             "rm -rf /var/log/example",

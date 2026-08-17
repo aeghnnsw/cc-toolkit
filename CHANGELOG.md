@@ -10,6 +10,8 @@
 ### Changed
 
 - dev-skills: add an explicit cross-platform handoff skill for Claude Code and Codex.
+- core-hooks: enforce pre-git and dangerous-removal policies under Grok Build by
+  normalizing hook payloads and using cross-runtime blocking exits.
 - core-hooks: scope safety checks to real `rm` invocations, allow valid macOS
   per-user temp descendants, and fail closed on parser errors.
 - productivity-skills: add native Codex support for all seven Calendar, Reminders, and GTD skills.
