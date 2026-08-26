@@ -42,6 +42,25 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 
 ---
 
+### Soft Okabe-Ito (Muted Categorical Data ≤8 groups)
+
+```
+#C6A15B
+#8EACB8
+#83A08E
+#C8BC7B
+#6E8EA0
+#BC7A62
+#AC8B9D
+#A29E97
+```
+
+**When to use:** Low-saturation editorial figures where a soft, Morandi-inspired appearance is preferred
+
+**Accessibility note:** Muting reduces contrast and category separability. Pair colors with shapes, markers, or line styles; verify them against the final background. Use the original Okabe-Ito palette when accessibility is the priority.
+
+---
+
 ### ColorBrewer Set3 (9-12 categories)
 
 ```
@@ -195,6 +214,7 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 **Colors:**
 - [ ] Colorblind-safe palette (Okabe-Ito)
 - [ ] No red-green combinations
+- [ ] Soft Okabe-Ito, when used, is paired with shapes, markers, or line styles and checked against the final background
 
 **Design:**
 - [ ] Clear axis labels with units
@@ -209,6 +229,7 @@ When helping users format figures:
 
 1. **Select color palette:**
    - ≤8 categories → Okabe-Ito
+   - ≤8 categories with a muted editorial style → Soft Okabe-Ito with redundant shape, marker, or line-style encoding
    - 9-12 categories → Set3
    - Diverging data → PiYG or BuRd
    - 2 colors → Blue-Orange
