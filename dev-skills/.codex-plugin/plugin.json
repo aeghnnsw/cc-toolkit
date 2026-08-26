@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Development workflow skills for Codex.",
   "author": {
     "name": "Steven",
@@ -18,6 +18,8 @@
     "pressure-test",
     "critic",
     "review",
+    "git",
+    "cleanup",
     "workflow",
     "file-naming",
     "organization"
@@ -26,7 +28,7 @@
   "interface": {
     "displayName": "Dev Skills",
     "shortDescription": "Codex-ready development workflow skills.",
-    "longDescription": "Use Dev Skills for concise handoffs, measurable goal rubrics, current-truth documentation updates, independent adversarial pressure tests, and sequential file organization.",
+    "longDescription": "Use Dev Skills for repository cleanup, concise handoffs, measurable goal rubrics, current-truth documentation updates, independent adversarial pressure tests, and sequential file organization.",
     "developerName": "Steven",
     "category": "Developer Tools",
     "capabilities": [
@@ -37,6 +39,7 @@
       "Draft a measurable /goal rubric.",
       "Update existing documentation to current truth.",
       "Pressure-test this plan before implementation.",
+      "Clean merged worktrees and branches.",
       "Organize this feature with numbered step-based file names."
     ]
   }

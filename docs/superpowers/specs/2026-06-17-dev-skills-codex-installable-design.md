@@ -37,8 +37,7 @@ In scope:
 Out of scope:
 
 - Porting `discuss-with-codex`.
-- Porting `pr-feedback`, `project-eval`, `problem-solving-cycle`,
-  `step-workflow`, or `discord-setup`.
+- Porting `pr-feedback`, `project-eval`, `step-workflow`, or `discord-setup`.
 - Adding placeholder or disabled Codex skills for unsupported entries.
 - Declaring `task-loop` as Codex-discoverable.
 

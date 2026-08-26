@@ -22,13 +22,14 @@ cc-toolkit/
 │   │   └── plugin.json
 │   ├── skills/
 │   │   ├── handoff/
-│   │   ├── problem-solving-cycle/
+│   │   ├── repo-cleanup/
 │   │   └── step-workflow/
 │   └── codex-skills/
 │       ├── doc-update/
 │       ├── goal-rubric/
 │       ├── handoff/
 │       ├── pressure-test/
+│       ├── repo-cleanup/
 │       └── step-workflow/
 ├── creator-skills/                 # Scientific content creation plugin
 │   ├── .claude-plugin/
@@ -96,11 +97,11 @@ cc-toolkit/
 ## Available Plugins
 
 ### Development Skills (`dev-skills`)
-Development workflow automation and systematic problem-solving.
+Development workflows, repository hygiene, documentation, and review.
 
 **Skills:**
 - **handoff**: Save concise continuation context for a fresh Claude Code or Codex session
-- **problem-solving-cycle**: Systematic development workflow from brainstorming to PR merge, including issue creation, branch management, and cleanup
+- **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, and reconcile the Default Branch
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
@@ -115,6 +116,7 @@ Development workflow automation and systematic problem-solving.
 - **goal-rubric**
 - **handoff**
 - **pressure-test**
+- **repo-cleanup**
 - **step-workflow**
 
 ### Creator Skills (`creator-skills`)

@@ -13,7 +13,7 @@
 - Work on branch `feat-141-codex-dev-skills` for issue #141.
 - Do not modify the existing Claude skill files under `dev-skills/skills/`.
 - Expose only `goal-rubric` and `doc-update` to Codex in this issue.
-- Do not port `discuss-with-codex`, `pr-feedback`, `project-eval`, `problem-solving-cycle`, `step-workflow`, or `discord-setup`.
+- Do not port `discuss-with-codex`, `pr-feedback`, `project-eval`, `step-workflow`, or `discord-setup`.
 - Do not declare `task-loop` as Codex-discoverable in this issue.
 - Use `.codex-plugin/plugin.json`, not `.codex_plugin/plugin.json`.
 - Use `dev-skills/codex-skills/` as the Codex skill root and declare it with `"skills": "./codex-skills/"`.
@@ -431,7 +431,6 @@ Run:
 test ! -e dev-skills/codex-skills/discuss-with-codex
 test ! -e dev-skills/codex-skills/pr-feedback
 test ! -e dev-skills/codex-skills/project-eval
-test ! -e dev-skills/codex-skills/problem-solving-cycle
 test ! -e dev-skills/codex-skills/step-workflow
 test ! -e dev-skills/codex-skills/discord-setup
 ```
