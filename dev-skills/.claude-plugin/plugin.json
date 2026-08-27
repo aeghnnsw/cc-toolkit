@@ -1,5 +1,5 @@
 {
   "name": "dev-skills",
-  "description": "Collection of development workflow skills including systematic problem-solving cycle from brainstorming to PR merge",
-  "version": "3.9.0"
+  "description": "Development workflow skills for repository hygiene, documentation, review, and structured execution",
+  "version": "3.10.0"
 }

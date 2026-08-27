@@ -42,7 +42,7 @@ cc-toolkit/
 │   └── skills/
 │       ├── pr-feedback/
 │       │   └── SKILL.md
-│       ├── problem-solving-cycle/
+│       ├── repo-cleanup/
 │       │   └── SKILL.md
 │       └── step-workflow/
 │           └── SKILL.md
@@ -118,14 +118,9 @@ Example skill structure:
         └── SKILL.md         # Skill definition
 ```
 
-### Using the Problem-Solving Cycle Workflow
-This is the primary skill included in the repository. It provides guidance for:
-- Issue-driven development
-- Branch creation and worktree management
-- PR-based code review
-- Merge and cleanup
-
-Use this workflow by asking Claude Code to apply the "problem-solving-cycle" skill.
+### Cleaning Repository State
+Use `repo-cleanup` to remove merged worktrees and branches, prune the Default
+Branch upstream remote, and reconcile the local Default Branch.
 
 ### Managing Worktrees
 The repository uses git worktrees stored in the `trees/` directory for isolated development:
@@ -265,47 +260,10 @@ The repository follows the official Claude Code plugin system with a modular arc
    - Auto-discovers agents from `agents/` directory
    - Matches user requests to appropriate capabilities
 
-### Problem-Solving Cycle Skill
-The core skill defines a complete development workflow with 8 phases:
-
-**Phase 1: Brainstorming**
-- Discuss problem and solutions with user
-- Understand requirements and constraints
-- Categorize change type (feature, bugfix, docs, refactor, chore, test)
-
-**Phase 2: Issue Creation**
-- Create GitHub issue via `gh issue create`
-- Document problem and solution approach
-- Note issue number for branch naming
-
-**Phase 3: Worktree & Branch Setup**
-- Create isolated git worktree
-- Follow branch naming convention: `<type>-<issue>-<description>`
-- Types: feat, bugfix, doc, refactor, chore, test
-
-**Phase 4: Development & Testing**
-- Implement changes in worktree
-- Write/update tests
-- Run test suite before PR
-
-**Phase 5: Push & PR Creation**
-- Push branch with tracking: `git push -u origin`
-- Create PR with simple, concise description
-- Reference issue: "Closes #<number>"
-
-**Phase 6: Review Process**
-- Respond to reviewer feedback
-- Make requested changes
-- Re-run tests after updates
-
-**Phase 7: Merge & Close**
-- Merge via `gh pr merge --squash` to keep history clean
-- Issue auto-closes if PR description references it
-
-**Phase 8: Cleanup**
-- Remove worktree: `git worktree remove trees/<type>-<issue>-<description>`
-- Delete local branch if needed
-- Keep workspace organized
+### Repository Cleanup Skill
+The `repo-cleanup` skill verifies merged branches across merge strategies,
+removes eligible local worktrees and branches, cleans the Default Branch upstream
+remote, and reports state that must be retained.
 
 ### GitHub Actions Integration
 The repository includes one Claude Code automation workflow:

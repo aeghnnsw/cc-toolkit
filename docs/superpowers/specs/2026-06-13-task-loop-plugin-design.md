@@ -46,7 +46,6 @@ c. /run-cycle     → orchestrator: /loop self-paced + Agent Team + drain-on-sig
 - Survive cold resume from durable state alone (git + GitHub + numbered records).
 
 ### Non-goals
-- Not a replacement for `problem-solving-cycle` (kept as the lightweight manual flow).
 - No external watchdog process in v1 (deferred; see §12).
 - Not a general project-management tool — it drives *implementation* against a proposal.
 
@@ -401,7 +400,6 @@ definition in the generated `task-loop.md` *Recovery comments* section.)
 - New `task-loop/.claude-plugin/plugin.json` (name `task-loop`; version tracked in the manifest).
 - Add a `task-loop` entry to root `.claude-plugin/marketplace.json` (bump its `metadata.version`).
 - New `task-loop/README.md` documenting the a→b→c workflow + enablement.
-- `problem-solving-cycle` is left unchanged.
 
 ## 14. Coverage of the original 8 requirements
 1 → `create-cycle` generates `task-loop.md`. 2 → `cycle-worker` agent runs the cycle.
