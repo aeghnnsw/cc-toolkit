@@ -20,6 +20,9 @@ Do not use for routine edits where the user asked for direct implementation and 
 ## Defaults
 
 - `ROUND_CAP = 6`
+- `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
+- `CONCLUSION_PATH = docs/pressure-test/YYYY-MM-DD-topic-slug-conclusion.md`
+- Explicit user directions override the corresponding output path.
 - Stop early on convergence.
 - Always save and present a conclusion.
 - The critic is read-only. If the active Codex surface supports per-agent sandbox control, spawn the critic with read-only access. Otherwise, instruct the critic not to write files or run mutating commands, and do not approve critic write actions.
@@ -84,9 +87,9 @@ Stop before round 6 only when:
 
 Do not stop because the current position feels persuasive. Judge convergence against the critic's actual objections and the decision boundary.
 
-## Progress Format
+## Session Record
 
-After each round, record:
+After each round, update `SESSION_PATH` with the complete session so later turns can resume from it:
 
 ```text
 Round N
@@ -97,11 +100,7 @@ Current position: updated position.
 
 ## Conclusion
 
-Write the conclusion to:
-
-```text
-docs/superpowers/specs/YYYY-MM-DD-topic-slug-conclusion.md
-```
+Write the conclusion to `CONCLUSION_PATH`.
 
 Include:
 
