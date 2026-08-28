@@ -9,6 +9,7 @@
 
 ### Changed
 
+- dev-skills: store pressure-test sessions and conclusions under `docs/pressure-test` by default.
 - dev-skills: add explicit repository cleanup for Claude Code and Codex.
 - dev-skills: add an explicit cross-platform handoff skill for Claude Code and Codex.
 - core-hooks: enforce pre-git and dangerous-removal policies under Grok Build by
