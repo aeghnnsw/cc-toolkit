@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.1.0] - 2026-09-03
+
+### Changed
+- Store the shared Claude Code and Codex GTD inbox at `~/.gtd/inbox.md`
+
 ## [6.0.0] - 2026-07-20
 
 ### Removed

@@ -7,9 +7,9 @@ Manage the user's GTD inbox based on their request.
 
 ## Step 1: Read Inbox File
 
-1. Read `~/.claude/productivity-skills/inbox.md` (shared with the Claude Code version of this skill — keep this exact path)
+1. Read `~/.gtd/inbox.md` (shared with the Claude Code version of this skill — keep this exact path)
 2. If file or directory does not exist:
-   - Create directory: `mkdir -p ~/.claude/productivity-skills`
+   - Create directory: `mkdir -p ~/.gtd`
    - Create file with format:
      ```markdown
      # Inbox
