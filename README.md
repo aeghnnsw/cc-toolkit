@@ -6,6 +6,16 @@ Unified Claude Code and Codex plugin marketplace for development workflows, task
 
 **cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex-specific manifests.
 
+## Development
+
+This repository contains both plugin source and shared contributor documentation.
+The marketplace registries select individual plugin directories for distribution.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for what belongs in Git, local exclusions,
+and verification, and [CLAUDE.md](CLAUDE.md) for the development workflow.
+`AGENTS.md` links to the same instructions. The documents under `docs/agents/`
+configure work on this repository; using its plugins does not require installing
+Matt Pocock's development skills.
+
 ## Repository Structure
 
 ```
@@ -15,6 +25,14 @@ cc-toolkit/
 ├── .agents/
 │   └── plugins/
 │       └── marketplace.json       # Codex plugin registry
+├── CLAUDE.md                       # Shared contributor instructions
+├── AGENTS.md                       # Symlink to CLAUDE.md
+├── CONTRIBUTING.md                 # Repository boundaries and verification
+├── docs/
+│   ├── agents/                     # Shared development skill configuration
+│   ├── adr/                        # Accepted architecture decisions
+│   └── superpowers/                # Design and planning documents
+├── cc-customize/                   # Claude Code model and statusline skills
 ├── dev-skills/                     # Development workflow plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
@@ -88,10 +106,9 @@ cc-toolkit/
 └── pymol-skills/                   # PyMOL molecular visualization plugin
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── skills/
-    │   └── pymol-mcp/
-    └── commands/
-        └── setup.md
+    └── skills/
+        ├── pymol-mcp/
+        └── pymol-setup/
 ```
 
 ## Available Plugins
@@ -137,7 +154,7 @@ Document processing and AI-accessible content extraction.
 - **docling-pdf**: PDF to markdown conversion using IBM's Docling library
 - **paper-rename**: Intelligent PDF renaming based on extracted titles and metadata
 
-**Agents:**
+**Agents (deprecated; retained for compatibility):**
 - **paper-reader**: Analyzes research papers and answers questions about content
 - **paper-consolidator**: Consolidates multiple paper analysis outputs into unified reports
 
@@ -145,8 +162,8 @@ Document processing and AI-accessible content extraction.
 Safety guards and workflow enforcement hooks.
 
 **Hooks:**
-- **safety_guard.py**: Blocks dangerous `rm` commands and `.env` file access
-- **pre_git_hook.py**: Enforces branch naming conventions, blocks bulk `git add`, prevents Claude attribution in commits
+- **safety_guard.py**: Blocks dangerous `rm` commands
+- **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.json`
 - **system_notification.py**: Plays sound notifications on task completion
 
@@ -194,9 +211,13 @@ PyMOL molecular visualization control via MCP server.
 
 **Skills:**
 - **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis
+- **pymol-setup**: Installation instructions for the PyMOL socket plugin
 
-**Commands:**
-- **/pymol-skills:setup**: Installation instructions for PyMOL socket plugin
+### Claude Code Customization (`cc-customize`)
+
+**Skills:**
+- **model-config**: Configure model, effort level, and auto-compact threshold
+- **statusline-setup**: Configure the Claude Code statusline
 
 ## Plugin System Benefits
 
@@ -220,3 +241,4 @@ Each plugin can be used independently by referencing its directory:
 - `./task-loop`
 - `./productivity-skills`
 - `./pymol-skills`
+- `./cc-customize`

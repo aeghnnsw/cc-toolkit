@@ -1,354 +1,87 @@
-# Claude Code Toolkit
+# cc-toolkit
 
-## Project Overview
+This repository develops and publishes Claude Code and Codex plugins. See
+[README.md](README.md) for the plugin catalog and
+[CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, file placement,
+and verification commands. `AGENTS.md` is a symlink to this file; edit this
+file to update instructions for both hosts.
 
-**cc-toolkit** is a unified Claude Code plugin marketplace that extends Claude Code functionality. This is a modular plugin system that provides capabilities for development workflows, scientific content creation, and document processing.
+## Agent skills
 
-### Purpose
-- Store and version-control custom Claude Code plugins (skills, agents, hooks)
-- Enable discovery and reusability of modular capabilities through a unified marketplace
-- Provide systematic development workflow automation
-- Facilitate scientific content creation and document processing
-- Support personal workflow automation and development practices
+These documents configure agents working on cc-toolkit. They are shared
+project conventions; contributors can follow them with or without Matt
+Pocock's skills installed.
 
-### Key Technologies
-- Claude Code plugin system (official modular architecture)
-- GitHub Actions for CI/CD automation
-- Git worktrees for isolated development environments
-- GitHub CLI (gh) for issue and PR management
+### Issue tracker
 
-## Repository Structure
+Before creating or updating issues and pull requests, read
+[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). GitHub Issues
+tracks work; durable design documents can live in the repository.
 
-```
-cc-toolkit/
-├── .claude-plugin/
-│   └── marketplace.json                 # Plugin marketplace registry
-├── .github/
-│   └── workflows/
-│       └── claude.yml                   # Claude Code trigger automation
-├── cc-customize/                        # Claude Code customization plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   └── skills/
-│       ├── model-config/
-│       │   └── SKILL.md
-│       └── statusline-setup/
-│           ├── SKILL.md
-│           └── scripts/
-│               └── statusline-command.sh
-├── dev-skills/                          # Development workflow plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json                  # Plugin manifest
-│   └── skills/
-│       ├── pr-feedback/
-│       │   └── SKILL.md
-│       ├── repo-cleanup/
-│       │   └── SKILL.md
-│       └── step-workflow/
-│           └── SKILL.md
-├── creator-skills/                      # Scientific content creation plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   └── skills/
-│       ├── sci-figure-format/
-│       │   └── SKILL.md
-│       └── sci-slides/
-│           └── SKILL.md
-├── doc-skills/                          # Document processing plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── skills/
-│   │   ├── docling-pdf/
-│   │   │   └── SKILL.md
-│   │   └── paper-rename/
-│   │       └── SKILL.md
-│   └── agents/
-│       ├── paper-reader.md
-│       └── paper-consolidator.md
-├── productivity-skills/                 # Personal productivity plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   └── skills/
-│       ├── calendar-manager/
-│       │   └── SKILL.md
-│       ├── gtd-inbox/
-│       │   └── SKILL.md
-│       ├── gtd-next/
-│       │   └── SKILL.md
-│       ├── gtd-process/
-│       │   └── SKILL.md
-│       ├── gtd-project/
-│       │   └── SKILL.md
-│       └── reminder-manager/
-│           └── SKILL.md
-├── pymol-skills/                        # PyMOL molecular visualization plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   └── skills/
-│       ├── pymol-mcp/
-│       │   └── SKILL.md
-│       └── pymol-setup/
-│           └── SKILL.md
-├── logs/                                # Claude Code execution logs
-├── trees/                               # Git worktrees for active development
-└── README.md                            # Project overview
-```
+### Triage labels
 
-## Development Commands
+Before triaging issues, read
+[docs/agents/triage-labels.md](docs/agents/triage-labels.md) for the label
+mapping and how to handle labels that are absent from GitHub.
 
-### Setting Up for Development
-```bash
-# Clone the repository
-git clone git@github.com:aeghnnsw/cc-toolkit.git
+### Domain docs
 
-# Navigate to repository
-cd cc-toolkit
-```
+Before changing terminology or architecture, read
+[docs/agents/domain.md](docs/agents/domain.md), then the relevant decision
+records. The repository uses a single-context layout.
 
-### Creating a New Skill
-Skills are defined by a `SKILL.md` file placed in a plugin's `skills/` directory. Each plugin has its own `plugin.json` manifest that registers its skills and agents.
+## Development workflow
 
-Example skill structure:
-```
-<plugin-name>/
-├── .claude-plugin/
-│   └── plugin.json          # Plugin manifest
-└── skills/
-    └── my-new-skill/
-        └── SKILL.md         # Skill definition
-```
+1. Start each change with a GitHub issue. Reuse an existing issue when it
+   covers the work.
+2. Develop in a Git worktree under `trees/`. Branch names include an issue
+   number: `feat-<issue>-<description>`, `bugfix-<issue>-<description>`,
+   `doc-<issue>-<description>`, `refactor-<issue>-<description>`,
+   `chore-<issue>-<description>`, or `test-<issue>-<description>`.
+3. Verify the change before opening a PR using the relevant checks in
+   [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
+   suites for executable changes; validate content, links, and configuration
+   for documentation and metadata changes.
+4. Keep commits, issues, PR descriptions, and PR comments concise and
+   accurate. Explain the problem and resulting behavior, and link the issue.
+   Do not add AI authorship or generation attribution. Do not include a
+   test-plan section in PR descriptions.
+5. Use regular merges after review to preserve commit context. After merging,
+   use `repo-cleanup` to verify merged branches
+   (including squash merges), remove eligible worktrees and branches, prune
+   the upstream remote, and reconcile the default branch. Preserve dirty or
+   unverified work.
 
-### Cleaning Repository State
-Use `repo-cleanup` to remove merged worktrees and branches, prune the Default
-Branch upstream remote, and reconcile the local Default Branch.
-
-### Managing Worktrees
-The repository uses git worktrees stored in the `trees/` directory for isolated development:
+Create a worktree with an issue-specific name, for example:
 
 ```bash
-# Create a worktree for a new feature
-git worktree add trees/feat-<issue>-<description> feat-<issue>-<description>
-
-# Navigate into worktree
-cd trees/feat-<issue>-<description>
-
-# Complete your development work
-
-# Return to main repo
-cd /path/to/main/repo
-
-# Remove worktree after work is complete
-git worktree remove trees/feat-<issue>-<description>
+git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 ```
 
-### Publishing Changes
-```bash
-# Push branch to remote with tracking
-git push -u origin <branch-name>
+## Plugin changes
 
-# Create PR via GitHub CLI
-gh pr create --title "Brief title" --body "Description and closes #<issue>"
+- Keep each plugin self-contained. Put shipped skills, agents, hooks,
+  scripts, and their runtime resources inside that plugin's directory.
+- Update the relevant marketplace registry when adding, removing, or
+  renaming a plugin, or changing its source path:
+  `.claude-plugin/marketplace.json` for Claude Code and
+  `.agents/plugins/marketplace.json` for Codex.
+- Read the plugin's host-specific manifest before changing component paths.
+  Claude Code discovers conventional `skills/` and `agents/` directories;
+  some plugins use explicitly configured paths. Codex plugin manifests live
+  in `.codex-plugin/plugin.json` and declare their component paths.
+- Update the affected host's plugin version when shipping changes to that
+  plugin. Root contributor documentation does not require a plugin version
+  bump. Hosts can have different release versions.
+- When editing a skill, verify its frontmatter, invocation guidance, and
+  referenced resources. Record substantive behavior or policy changes in
+  the root [CHANGELOG.md](CHANGELOG.md).
+- Before adding agent-generated files, apply the storage policy in
+  [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git). Keep durable project
+  decisions and shared configuration discoverable from these instructions.
 
-# Merge PR after review
-gh pr merge <pr-number> --squash
-```
+## Automation
 
-### Managing the Plugin Marketplace
-
-#### Root Marketplace Registry
-The `.claude-plugin/marketplace.json` file maintains the plugin registry:
-
-```json
-{
-  "name": "cc-toolkit",
-  "plugins": [
-    {
-      "name": "dev-skills",
-      "source": "./dev-skills"
-    },
-    {
-      "name": "creator-skills",
-      "source": "./creator-skills"
-    },
-    {
-      "name": "doc-skills",
-      "source": "./doc-skills"
-    }
-  ]
-}
-```
-
-#### Plugin Manifest
-Each plugin has a `.claude-plugin/plugin.json` manifest:
-
-```json
-{
-  "name": "dev-skills",
-  "description": "Development workflow skills",
-  "version": "1.0.0"
-}
-```
-
-**Note:** Skills and agents are auto-discovered from their respective directories (`skills/` and `agents/`). You do NOT need to list them explicitly in `plugin.json`.
-
-To add a new skill to an existing plugin:
-1. Create the skill directory and `SKILL.md` in the plugin's `skills/` directory
-2. The skill will be automatically discovered
-3. Commit changes
-
-To add a new plugin:
-1. Create the plugin directory with `.claude-plugin/plugin.json`
-2. Add skills in `skills/` subdirectory (auto-discovered)
-3. Add agents in `agents/` subdirectory if needed (auto-discovered)
-4. Update root `marketplace.json` to reference the new plugin
-5. Commit changes
-
-### Testing/Verification
-Since this is a skill repository (not application code), testing consists of:
-- Verifying SKILL.md files have correct frontmatter and content
-- Checking marketplace.json validity
-- Ensuring workflow files are valid GitHub Actions YAML
-
-Manual verification:
-```bash
-# Validate JSON marketplace configuration
-cat .claude-plugin/marketplace.json | jq .
-
-# Validate YAML workflows
-# (GitHub will validate on push)
-```
-
-### No Build or Lint Steps
-This repository does not require:
-- Compilation/transpilation
-- Linting (markdown and JSON are simple text formats)
-- Installation of dependencies
-- Test execution
-
-It is a configuration and documentation repository.
-
-## Code Architecture
-
-### Plugin System Architecture
-The repository follows the official Claude Code plugin system with a modular architecture:
-
-1. **Marketplace Registry** (`.claude-plugin/marketplace.json`)
-   - Root registry pointing to plugin directories
-   - Enables discovery of all plugins in the marketplace
-   - Simple source-based plugin references
-
-2. **Plugin Manifest** (`<plugin>/.claude-plugin/plugin.json`)
-   - Each plugin has its own manifest
-   - Declares plugin name, description, version
-   - Skills and agents are auto-discovered from default directories
-   - Makes plugin self-contained and portable
-
-3. **Skill Definition** (`SKILL.md`)
-   - YAML frontmatter (name, description)
-   - Markdown documentation of workflow/capability
-   - Usage guidance for when/how to invoke
-   - Located in plugin's `skills/` subdirectory (auto-discovered)
-
-4. **Agent Definition** (`.md` files)
-   - Agent configuration and behavior
-   - Located in plugin's `agents/` subdirectory (auto-discovered)
-
-5. **Discovery Flow**
-   - Claude Code reads root marketplace.json
-   - Loads each plugin's plugin.json manifest
-   - Auto-discovers skills from `skills/` directory
-   - Auto-discovers agents from `agents/` directory
-   - Matches user requests to appropriate capabilities
-
-### Repository Cleanup Skill
-The `repo-cleanup` skill verifies merged branches across merge strategies,
-removes eligible local worktrees and branches, cleans the Default Branch upstream
-remote, and reports state that must be retained.
-
-### GitHub Actions Integration
-The repository includes one Claude Code automation workflow:
-
-**Claude Code Trigger Workflow** (claude.yml)
-- Triggers on comments, PR reviews, and issues
-- Responds to @claude mentions
-- Executes custom Claude Code commands based on context
-- Can read CI results on PRs
-- Flexible prompt and tool restrictions
-
-The workflow uses OAuth token authentication and limits GitHub permissions to the required scopes.
-
-## Development Patterns & Conventions
-
-### Branch Naming Convention
-All branches follow strict naming with prefixes:
-- `feat-<issue>-<description>` - New features
-- `bugfix-<issue>-<description>` - Bug fixes
-- `doc-<issue>-<description>` - Documentation
-- `refactor-<issue>-<description>` - Refactoring
-- `chore-<issue>-<description>` - Maintenance
-- `test-<issue>-<description>` - Tests
-
-Issue number is mandatory and used for linking.
-
-### Communication Style
-- Simple, concise issue and PR descriptions
-- Focus on "why" not "what"
-- No unnecessary boilerplate
-- No test plans in PR descriptions
-- No "Created by Claude Code" attribution messages
-- Plain, professional language
-
-### Git Workflow Principles
-1. **Issue-Driven**: Every change starts with a documented issue
-2. **Isolated Development**: Use worktrees to keep work separated
-3. **Consistent Naming**: Follow branch naming conventions strictly
-4. **Test Before PR**: Always run tests before creating PRs
-5. **Simple Communication**: Keep issues and PRs concise and clear
-6. **Clean History**: Use regular merges to preserve commit context
-7. **Proper Cleanup**: Remove worktrees and branches when done
-
-### Flexibility
-While the workflow is structured, adapt based on context:
-- Small changes may skip extensive brainstorming
-- Urgent fixes may proceed more quickly
-- Complex features may need longer development cycles
-- Multiple worktrees can run simultaneously for related changes
-
-## Configuration Rules
-
-### From User's Global CLAUDE.md
-The following rules apply to all commits, issues, and PRs:
-- Do not add "created by claude code" or similar attribution messages
-- Keep PR descriptions simple, concise and accurate
-- Do not create test plans in PR descriptions
-
-## Repository-Specific Notes
-
-### Worktree Directory
-The `trees/` directory contains active git worktrees. These are temporary working directories and should not be committed to version control (git worktrees are inherently local). The directory is listed in `.gitignore`.
-
-### Logs Directory
-The `logs/` directory contains Claude Code execution logs from GitHub Actions. These are local artifacts and not committed.
-
-### Marketplace and Plugin Configuration
-
-#### Root Marketplace
-The root `marketplace.json` must be updated whenever:
-- A new plugin is added to the marketplace
-- A plugin is removed or renamed
-- Plugin source paths change
-
-#### Plugin Manifests
-Each plugin's `plugin.json` must be updated whenever:
-- Plugin description or version changes
-- Hooks configuration changes
-
-**Note:** Skills and agents are auto-discovered from `skills/` and `agents/` directories. No manifest update is needed when adding or removing them.
-
-### Skill Documentation
-Each skill's `SKILL.md` file serves as both:
-- Documentation for humans understanding the skill
-- Context for Claude Code deciding when to invoke the skill
-- Guidance for Claude Code on how to execute the skill
-
-Well-written skill documentation is critical for discoverability and correct usage.
+[.github/workflows/claude.yml](.github/workflows/claude.yml) handles explicit
+`@claude` mentions on GitHub issues, comments, and PR reviews. Read the
+workflow when changing its triggers or permissions.
