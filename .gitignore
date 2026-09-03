@@ -1,6 +1,9 @@
 logs/
 trees/
 
+# Disposable development notes and output
+/.scratch/
+
 # Python caches
 __pycache__/
 *.pyc
