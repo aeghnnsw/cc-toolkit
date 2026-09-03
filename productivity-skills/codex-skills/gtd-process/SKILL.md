@@ -21,10 +21,10 @@ Only switch to single-item mode if the user explicitly asks for it (e.g. "just o
 
 ## Step 2: Read Inbox and Gather Context
 
-1. Read `~/.claude/productivity-skills/inbox.md` (shared with the Claude Code version of this skill — keep this exact path)
+1. Read `~/.gtd/inbox.md` (shared with the Claude Code version of this skill — keep this exact path)
 2. If file or directory does not exist, create directory and file:
    ```bash
-   mkdir -p ~/.claude/productivity-skills
+   mkdir -p ~/.gtd
    ```
    Then write an empty inbox file with header `# Inbox` and a blank line.
 3. If empty, inform user: "Inbox is empty. Nothing to process." and exit.

@@ -9,6 +9,7 @@
 
 ### Changed
 
+- productivity-skills: store the shared Claude Code and Codex GTD inbox at `~/.gtd/inbox.md`.
 - Repository: track shared agent guidance and the host-adapter decision, document contributor and plugin package boundaries, and reserve `.scratch/` for disposable development output.
 - dev-skills: store pressure-test sessions and conclusions under `docs/pressure-test` by default.
 - dev-skills: add explicit repository cleanup for Claude Code and Codex.
