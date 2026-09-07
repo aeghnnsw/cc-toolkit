@@ -3,131 +3,85 @@ name: gtd-overview
 description: Use when listing the whole GTD system read-only — every open project with its actions plus standalone actions not linked to any project.
 ---
 
-<!--
-Projects list: "Projects" in macOS Reminders
-Project naming: {CamelCaseSummary}-{YYYYMMDD} (e.g., VacationResearch-20260112)
-Action reference: #{FullProjectName} in notes field
-Project notes: "Goal: [end goal description]"
-Human context lists: @quick, @1pomo, @2pomo, @deep
-Agent context list: @agent (no duration, async)
-CLI: swift <plugin-root>/scripts/productivity-cli.swift
+Show every open GTD project and action in a compact, read-only report. Use rendered Markdown, with a summary first and one action table per project. Keep all records visible; this is an inventory, not a task recommendation.
 
-Key principle: Read-only overview. Display projects with nested actions, then standalone actions, then a summary. No modifications, no questions — direct user to the gtd-project or gtd-process skills for changes.
--->
+## Gather
 
-Display a complete read-only overview of the GTD system: every open project with its linked actions nested underneath, followed by all standalone actions not linked to any project.
-
-## CLI Tool
-
-Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
+Resolve `<plugin-root>` to the absolute installed plugin directory, two levels above this skill folder. It contains `scripts/` and `codex-skills/`.
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift <command>
+swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete
+swift <plugin-root>/scripts/productivity-cli.swift reminders overdue
 ```
 
-## Step 1: Gather Data
+Keep projects from `Projects` and actions from `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`. Match overdue results by reminder `id`. Ignore other lists. Missing lists need no setup.
 
-1. Query all incomplete reminders across every list in a single call (omitting the list argument returns all lists):
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete
-   ```
-   Each returned reminder carries a `list` field. Keep only rows from the GTD lists — "Projects" for projects and @quick, @1pomo, @2pomo, @deep, @agent for actions — and ignore rows from any other list. A missing list simply contributes no rows; do not create lists in this read-only skill.
+If the incomplete query fails, report that the overview is unavailable. If only the overdue query fails, show the inventory with an explicit “Overdue status unavailable” notice. Show overdue counts as “unavailable”, omit overdue ranking, and use only the action-presence labels in that case. Do not report a failed query as an empty or healthy system.
 
-2. Query overdue reminders (uses Apple's datetime-aware overdue detection):
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders overdue
-   ```
+## Group
 
-## Step 2: Group Actions
+- Match the full `#{ProjectName}` reference in action notes to an open project title, case-insensitively. Keep the exact stored names and IDs for later operations.
+- Put actions with no reference under **Standalone actions**.
+- Put references with no matching open project under **Unmatched project links**. Display the reference; it can indicate a renamed, completed, or deleted project. If more than one project matches, show the action here as ambiguous instead of guessing.
+- Extract each goal from `Goal:` in the project notes.
+- Retain the existing status rules: overdue project or action → **Overdue**; no linked actions → **No next action**; otherwise → **Active**. “Active” means actions exist, not that progress was verified.
 
-Parse the JSON output and classify every action from the context lists:
+Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
 
-1. **Project actions**: Notes field contains `#{ProjectName}` matching an open project (case-insensitive). Group under that project.
-2. **Orphaned actions**: Notes field contains a `#{...}` reference that matches no open project (project completed or deleted). Group into an "Orphaned" section.
-3. **Standalone actions**: Notes field contains no `#{...}` reference. Group into the "Standalone Actions" section.
+## Display
 
-For each project, determine status (evaluated in order of severity):
-- **Overdue** (⚠️): Any linked action OR the project itself appears in the overdue query results
-- **Stalled** (⚠️): Has 0 pending linked actions
-- **Healthy** (✓): Has 1+ pending linked actions, none overdue
+1. Start with totals: projects, actions, overdue actions, and projects with no next action. Include the overdue-project count when nonzero. Show unmatched-link count when present.
+2. Show projects with overdue records first, then projects with no actions, then the rest. Each project gets a heading with its full stored name, a short status line, its goal, and a table of all linked actions. If names repeat, append a short unique ID suffix to distinguish those headings.
+3. Use **Action | List | Due | Priority** columns. Show `—` for unset dates and priority. Use `High`, `Medium`, or `Low` for priorities 1, 5, or 9. Show a due time only when stored. Undated work is normal; give it no warning.
+4. Within each project, sort overdue actions first, then dated actions by due date, then undated actions. Break ties by priority, then title. Mark overdue dates with **Overdue** text. Use the same order within standalone lists.
+5. Show standalone actions in one table, grouped by list. Add unmatched links last with their original references. Omit empty sections.
+6. Escape pipes and line breaks in table cells. Preserve full action titles. Keep lengthy notes out of the report; display project goals as prose above the table. Use compact bullets instead of tables if the user requests a narrow display.
 
-Extract each project's end goal from its notes field (format: "Goal: [description]").
+Example layout (illustrative records, as of 7 Sep 2026):
 
-## Step 3: Display Overview
+# GTD overview
 
-Present projects sorted by urgency (overdue first, then stalled, then healthy), followed by standalone actions grouped by context list:
+**3 projects · 4 actions**
 
-```
-# GTD Overview
+Needs attention: 1 overdue action · 1 overdue project · 1 project without a next action.
 
-## Projects (3)
+### ClientInvoice-20260901
 
-1. ⚠️ ClientProject-20260110 [Medium] — OVERDUE
-   Goal: Invoice paid and project closed
-   • "Send invoice" (@quick) — OVERDUE (due 2026-01-10)
+**Overdue** · High priority · Project due: 10 Sep 2026
 
-2. ⚠️ ReviewQ1Roadmap-20260115 [High] — STALLED
-   Goal: Roadmap approved by stakeholders
-   (no pending actions)
+Goal: Invoice paid and project closed.
 
-3. ✓ VacationResearch-20260112 [High]
-   Goal: Flights and hotel booked for Hawaii trip
-   • "Research flights to Hawaii" (@1pomo)
-   • "Email hotel for rates" (@quick)
-   • "Analyze flight price trends" (@agent) — due 2026-01-20
+| Action | List | Due | Priority |
+| --- | --- | --- | --- |
+| Send the approved invoice to the client | @quick | **Overdue · 4 Sep 2026** | High |
 
-## Standalone Actions (3)
+### InsuranceRenewal-20260903
 
-@quick
-   • "Call dentist to schedule appointment" — due 2026-01-18
-@2pomo
-   • "Write blog post draft" [High]
-@agent
-   • "Summarize meeting notes" — OVERDUE (due 2026-01-12)
+**No next action** · Medium priority
 
-## Summary
+Goal: Insurance renewed before the current policy expires.
 
-Projects: 3 (1 overdue, 1 stalled, 1 healthy)
-Project actions: 4 | Standalone actions: 3 | Overdue: 2
-```
+No open actions linked to this project.
 
-If there are orphaned actions, add an `## Orphaned Actions` section after standalone actions, listing each with its dangling `#{ProjectName}` reference.
+### VacationResearch-20260905
 
-Empty states:
-- No projects and no actions: "GTD system is empty. Use the gtd-inbox skill to capture items and the gtd-process skill to organize them."
-- No projects but actions exist: skip the Projects section, note "No open projects."
-- Projects exist but no standalone actions: note "No standalone actions."
+**Active** · Medium priority
 
-## Step 4: Suggest Next Steps
+Goal: Compare flight options for the trip.
 
-After the overview, append one line pointing to follow-up skills based on what was found:
-- Overdue or stalled projects → "Run the gtd-project skill to reschedule overdue actions or add next actions."
-- Orphaned actions → "Orphaned actions reference completed projects — run the gtd-project skill to clean up."
-- Otherwise → "Run the gtd-next skill to pick what to work on."
+| Action | List | Due | Priority |
+| --- | --- | --- | --- |
+| Compare three flights for the chosen dates | @1pomo | — | Medium |
+| Summarize the cancellation terms for those flights | @agent | — | Medium |
 
-## Guidelines
+### Standalone actions
 
-- Read-only: never create, complete, edit, or delete reminders or lists
-- No user interaction: gather, group, display — done
-- Match project names case-insensitively when linking actions
-- Sort actions within a project by overdue first, then by due date, then by priority
-- Handle CLI errors gracefully: report which query failed and continue with available data
+| Action | List | Due | Priority |
+| --- | --- | --- | --- |
+| Call the dentist to request an appointment | @quick | — | — |
 
-## Reference: Context Lists
+## Finish
 
-| List | Type | Time Estimate |
-|------|------|---------------|
-| @quick | Human | Quick tasks (< 25 min) |
-| @1pomo | Human | 1 Pomodoro (25 min) |
-| @2pomo | Human | 2 Pomodoros (50 min) |
-| @deep | Human | Deep focus (3+ pomodoros) |
-| @agent | Agent | N/A (async, monitor progress) |
+If no GTD records exist, say “No open GTD projects or actions.” This does not mean the capture inbox is empty; this report covers Reminders only.
 
-## Reference: Priority Values
-
-| Display | Value |
-|---------|-------|
-| High | 1 |
-| Medium | 5 |
-| Low | 9 |
-| None | 0 |
+End with one short next step when useful: use `gtd-next` to choose work, or `gtd-project` to inspect a project that needs attention. Keep the report read-only. Do not create lists, change reminders, ask for a selection, or imply that displayed actions were started.

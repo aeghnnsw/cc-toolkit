@@ -138,7 +138,8 @@ In all cases, the user can override the suggestion by saying "complete project" 
    - **Task type**: Infer human vs agent from text. Agent-centric indicators: "generate", "draft", "analyze", "research", "summarize", "review code", "run tests", "scan", "convert", "process". Default to human-centric when ambiguous.
    - **Time estimate** (human only): Infer from complexity. "Email..." → @quick, "Research..." → @1pomo, "Write report..." → @2pomo, "Redesign..." → @deep. Skip for agent-centric tasks.
    - **Priority**: Inherit from project priority by default
-   - **Due date**: No due date unless the title implies urgency ("today", "by Friday", "urgent"). For agent-centric tasks, default to one week from today if no date implied.
+   - **Action title**: Use a concrete next step with an object and a clear stopping point. Preserve the project goal. Ask one focused question if the next step cannot be inferred.
+   - **Due date**: No due date for either task type unless the user specifies a deadline. “Urgent” can affect priority but does not supply a date. A planned work session is not a deadline.
 
 3. Present a single proposal for confirmation:
 
@@ -159,7 +160,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
    → Type: Agent
    → List: @agent
    → Priority: High (inherited from project)
-   → Due: 2026-01-20
+   → Due: No due date
 
    Confirm? [Yes / Modify / Skip]
    ```
@@ -178,7 +179,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
      --notes "#{ProjectName-20260112}" \
      --priority 1
    ```
-   Add `--due "2026-01-20 17:00"` only if a due date was inferred or confirmed.
+   Add `--due "2026-01-20"` only for a specified deadline. Include a time only when the user supplies one.
 
 5. Report: "Added action '[title]' to [ProjectName]"
 
@@ -193,8 +194,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
 2. Mark the selected action complete:
    ```bash
    swift <plugin-root>/scripts/productivity-cli.swift reminders complete \
-     --title "Action title" \
-     --list "@1pomo"
+     --id "<action-id>"
    ```
 
 3. Report: "Completed: '[action title]'"
@@ -211,15 +211,8 @@ In all cases, the user can override the suggestion by saying "complete project" 
    - If only one action (or arrived here via auto-infer for overdue), skip this question
 
 2. **For overdue reschedule** (arrived from auto-infer):
-   - Show current due date
-   - Infer a reasonable new date (tomorrow if 1 day overdue, next week if more)
-   - Present proposal:
-     ```
-     "Send invoice" is overdue (due 2026-01-10)
-     → Reschedule to: tomorrow 17:00
-     Confirm? [Yes / Pick different date]
-     ```
-   - Ask the user with options: "Yes", "Today", "Tomorrow", "This week", "Custom date"
+   - Show the current deadline. Keep it unless the user changes it.
+   - Ask the user for a new deadline or whether to remove the date if it was only a planning target. Use a date already supplied in the request without asking again.
 
 3. **For general edit** (user selected "Edit action"):
    - Show current properties
@@ -232,20 +225,16 @@ In all cases, the user can override the suggestion by saying "complete project" 
      - Priority: options "High", "Medium", "Low", "None" (maps to 1, 5, 9, 0)
      - Due date: options "No due date", "Today", "Tomorrow", "This week", "Custom date"
 
-4. To update, delete old action and create new one with updated properties:
+4. Update the selected reminder in place using its `id` from the query. Pass only changed fields:
    ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders delete \
-     --title "Old title" \
-     --list "@old-list"
-
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create \
+   swift <plugin-root>/scripts/productivity-cli.swift reminders update \
+     --id "<action-id>" \
      --title "New title" \
-     --list "@new-list" \
-     --notes "#{ProjectName}" \
-     --priority 5 \
-     --due "2026-01-15 17:00"
+     --list "@new-list"
    ```
-   If the create command fails after deletion, immediately retry with the same parameters. Report the original action details to the user so they can manually recover if needed.
+   Use `--due "2026-01-15"` to set a deadline or `--clear-due` to remove it. Use `--priority` only when changing priority. Omit `--notes` to preserve the project reference and other notes. Unspecified fields, including recurrence, stay unchanged.
+
+   If the update fails, report the error and retain the original reminder. If its ID is stale, refetch and identify the intended action before retrying. Do not fall back to a title-only mutation.
 
 5. Report: "Updated action '[title]'"
 
@@ -256,15 +245,13 @@ In all cases, the user can override the suggestion by saying "complete project" 
 1. Mark the project complete:
    ```bash
    swift <plugin-root>/scripts/productivity-cli.swift reminders complete \
-     --title "ProjectName-20260112" \
-     --list "Projects"
+     --id "<project-id>"
    ```
 
 2. Complete any remaining linked actions:
    ```bash
    swift <plugin-root>/scripts/productivity-cli.swift reminders complete \
-     --title "Action title" \
-     --list "@1pomo"
+     --id "<action-id>"
    ```
 
 3. Report: "Project '[ProjectName]' marked complete"
@@ -294,7 +281,9 @@ Projects completed: 1
 - Create missing reminder lists automatically before creating reminders
 - Handle CLI errors gracefully and report to user
 - Match project names case-insensitively
-- Use `yyyy-MM-dd HH:mm` for due dates, default time 17:00
+- Use `yyyy-MM-dd` for date-only deadlines and `yyyy-MM-dd HH:mm` when the user specifies a time.
+- Carry reminder IDs from queries into every complete or update command. Report success only after a successful CLI response. Refresh data before displaying the next overview.
+- Use prior explicit instructions to identify the project, action, and requested changes before asking a question.
 
 ## Reference: Context Lists
 

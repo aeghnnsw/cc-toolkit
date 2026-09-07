@@ -3,209 +3,92 @@ name: gtd-process
 description: Use when processing, triaging, or clarifying GTD inbox items into projects and context-list actions following the GTD clarify and organize workflow.
 ---
 
-Process GTD inbox items into projects or actions. The agent infers categorization, project assignment, priority, time estimate, and due date for each item — then presents a single confirmation for the user to approve or modify.
+Process GTD inbox items into concrete actions and projects. Present one batch proposal for approval or corrections. Honor existing explicit authorization.
 
 ## CLI Tool
 
-Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
+Run the Swift source directly. `<plugin-root>` is the installed plugin directory that contains `scripts/` and `codex-skills/` (two levels above this skill folder). Resolve it to an absolute path and substitute it in every command.
 
 ```bash
 swift <plugin-root>/scripts/productivity-cli.swift <command>
 ```
 
-## Step 1: Determine Processing Mode
+## Step 1: Read the Requested Items
 
-Default: **process all items** sequentially until the inbox is empty, every item has been presented this session, or the user selects "Stop" on the per-item confirmation.
+Read `~/.gtd/inbox.md` (shared with the Claude Code skill; keep this exact path). If missing, create it with `# Inbox` and a blank line. If empty, report that and exit.
 
-Only switch to single-item mode if the user explicitly asks for it (e.g. "just one item", "single item", "process the first one" — non-exhaustive). In that case, process the first item and exit via Step 6.
+Process all current items by default. If the user requests one item or a subset, use only that scope. Track each original item occurrence, including identical lines. Do not revisit skipped items in the same session. Stop when the user asks to stop.
 
-## Step 2: Read Inbox and Gather Context
+Read the available lists and existing projects:
 
-1. Read `~/.gtd/inbox.md` (shared with the Claude Code version of this skill — keep this exact path)
-2. If file or directory does not exist, create directory and file:
-   ```bash
-   mkdir -p ~/.gtd
-   ```
-   Then write an empty inbox file with header `# Inbox` and a blank line.
-3. If empty, inform user: "Inbox is empty. Nothing to process." and exit.
-4. Display numbered list of items.
-5. Ensure required lists exist, creating any that are missing:
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders lists
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "Projects"
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "@quick"
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "@1pomo"
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "@2pomo"
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "@deep"
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "@agent"
-   ```
-6. Fetch existing projects for context:
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete "Projects"
-   ```
-
-## Step 3: Analyze and Propose
-
-For each inbox item, analyze the text and infer:
-
-1. **Category**: Is this a new project (multi-step outcome), a project action (belongs to an existing project), or a single action (standalone task)?
-   - If existing projects were fetched, check if the item relates to any of them
-2. **Project assignment**: If it's a project action, which project does it belong to?
-3. **Action title**: Clean up the inbox text into a clear action title
-4. **Task type**: Is this human-centric or agent-centric?
-   - **Agent-centric indicators**: "generate", "draft", "analyze", "research", "summarize", "review code", "run tests", "scan", "convert", "process" — tasks that produce an artifact the user monitors and checks later
-   - **Human-centric indicators**: phone calls, meetings, physical tasks, decisions requiring real-time judgment
-   - Default to human-centric when ambiguous
-5. **Time estimate** (human-centric only): Infer from complexity — @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min). Skip for agent-centric tasks.
-6. **Priority**: Infer from urgency cues in the text (default: Medium)
-7. **Due date**: Infer from any time references in the text (default: one week from today)
-
-**For new projects**, also infer:
-- Project name: `{CamelCaseSummary}-{YYYYMMDD}`
-- End goal: What "done" looks like based on the item text
-
-Present the proposal and ask the user a single question: "Confirm or modify this processing:"
-
-**Human-centric example:**
-```
-Item: "Call dentist to schedule appointment"
-
-Proposed:
-  Type: Single Action
-  Task type: Human
-  Action: "Call dentist to schedule appointment"
-  List: @quick (~15 min)
-  Priority: Medium
-  Due: 2026-05-04
-
-Confirm or modify?
+```bash
+swift <plugin-root>/scripts/productivity-cli.swift reminders lists
+swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete "Projects"
 ```
 
-**Agent-centric example:**
-```
-Item: "Analyze Q1 sales data and generate summary report"
+If `Projects` is absent, there are no existing projects. Create missing lists only when needed for an approved proposal. Use only `Projects`, `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`.
 
-Proposed:
-  Type: Single Action
-  Task type: Agent
-  Action: "Analyze Q1 sales data and generate summary report"
-  List: @agent
-  Priority: Medium
-  Due: 2026-05-04
+## Step 2: Clarify and Propose a Batch
 
-Confirm or modify?
-```
+For each item, propose a standalone action, an action linked to an existing project, a new project with its first action, or leaving it in the inbox.
 
-**New project example:**
-```
-Item: "Research vacation flights by end of month"
+- Write an action with a concrete verb, an object, and a clear stopping point. Use only facts available from the item and context.
+- Preserve the user's goal. Researching flights does not authorize booking flights. Do not invent a larger project or additional commitments.
+- For a new project, state the intended outcome and name it `{CamelCaseSummary}-{YYYYMMDD}`. Its first action must be something the user or agent can start now.
+- Use `@agent` for work an agent can perform with the available inputs and access. Use human lists for calls, physical work, and decisions that need the user. Estimate human effort: `@quick` (<25 min), `@1pomo` (25 min), `@2pomo` (50 min), or `@deep` (90+ min).
+- Use priority from explicit urgency cues, or Medium by default. Project actions inherit project priority unless overridden.
+- Leave projects and actions undated by default, including agent tasks. Set a due date only for a real deadline supplied by the user. A preferred work date is not a deadline. Keep date-only deadlines as `YYYY-MM-DD`; add `HH:mm` only when the user supplied a time. Resolve relative deadlines from the current local date, or reuse a capture-time date annotation when available. Do not give a first action the project deadline unless that deadline also applies to the action.
+- Ask one focused question when missing information changes the action, outcome, or deadline and context cannot resolve it. Leave that item in the inbox while processing clear items. Leave skipped and non-actionable items there too, and state why. Do not force them into tasks.
 
-Proposed:
-  Type: New Project
-  Project name: VacationResearch-20260324
-  Goal: Flights researched and booked
-  Priority: Medium
-  Due: 2026-03-31
-  First action: "Search flight comparison sites" (@1pomo, Human)
+Show a compact numbered batch with the proposed action, project if any, list, priority, and deadline or "No deadline". Include the reason for each item left in the inbox.
 
-Confirm or modify?
+Example, when the route and dates are already known:
+
+```text
+Item: Research vacation flights
+Action: Compare flights for the agreed route and dates; save prices and travel times in a shortlist.
+List: @agent
+Priority: Medium
+Due: No deadline
 ```
 
-Options: "Confirm", "Modify", "Skip", "Stop"
+Ask the user once to approve the batch or give numbered corrections, skips, or a stop request.
 
-- **Confirm**: Execute the proposed processing (create project/action via CLI), then continue
-- **Modify**: User provides corrections, then execute with modifications, then continue
-- **Skip**: Leave item in inbox, advance to the next unpresented item
-- **Stop**: Leave current item in inbox and exit the processing loop entirely — unlike Skip, no further items are presented
+Apply clear corrections without another approval round. Skip items the user excludes. If the user stops, leave all unprocessed items in the inbox and exit. Do not repeat approval for work already explicitly authorized. An instruction to process the inbox alone does not approve an inferred proposal.
 
-For Skip and Stop, do not perform Step 4 or Step 5 — proceed directly to Step 6.
+## Step 3: Create the Approved Reminders
 
-## Step 4: Execute Processing
+Create each missing destination list with:
 
-Based on the confirmed or modified proposal:
+```bash
+swift <plugin-root>/scripts/productivity-cli.swift reminders create-list "<list>"
+```
 
-**For new projects:**
-1. Create project in Projects list:
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create \
-     --title "ProjectName-YYYYMMDD" \
-     --list "Projects" \
-     --priority 5 \
-     --notes "Goal: [end goal]" \
-     --due "YYYY-MM-DD 17:00"
-   ```
-2. Create first action in the appropriate context list (use the inferred list from Step 3):
-   ```bash
-   swift <plugin-root>/scripts/productivity-cli.swift reminders create \
-     --title "Action title" \
-     --list "<inferred list>" \
-     --notes "#{ProjectName-YYYYMMDD}" \
-     --priority 5
-   ```
-   Use `@agent` if the first action is agent-centric, otherwise use the inferred time-based list (@quick, @1pomo, @2pomo, @deep).
+For a new project, create its outcome reminder first:
 
-**For project actions (use the inferred list from Step 3):**
 ```bash
 swift <plugin-root>/scripts/productivity-cli.swift reminders create \
-  --title "Action title" \
-  --list "<inferred list>" \
-  --notes "#{ProjectName-YYYYMMDD}" \
+  --title "ProjectName-YYYYMMDD" \
+  --list "Projects" \
   --priority 5 \
-  --due "YYYY-MM-DD 17:00"
+  --notes "Goal: [approved outcome]"
 ```
 
-**For single actions (human-centric — use the inferred time-based list):**
+Create the standalone action, linked project action, or first action:
+
 ```bash
 swift <plugin-root>/scripts/productivity-cli.swift reminders create \
-  --title "Action title" \
-  --list "<inferred list>" \
-  --priority 5 \
-  --due "YYYY-MM-DD 17:00"
+  --title "[approved concrete action]" \
+  --list "[approved context list]" \
+  --priority 5
 ```
 
-**For single actions (agent-centric):**
-```bash
-swift <plugin-root>/scripts/productivity-cli.swift reminders create \
-  --title "Action title" \
-  --list "@agent" \
-  --priority 5 \
-  --due "YYYY-MM-DD 17:00"
-```
+For a linked action, add `--notes "#{ProjectName-YYYYMMDD}"`. Use `@agent` for approved agent tasks. Use the approved priority: 1=High, 5=Medium, 9=Low, 0=None. Add `--due "YYYY-MM-DD"` only for an approved deadline, or `--due "YYYY-MM-DD HH:mm"` when its time was supplied.
 
-Omit `--due` only if user explicitly requests no due date. Omit `--priority` if None (0).
+Check each command result. Record the reminder IDs from successful creates. If a create fails or its result is uncertain, retain the inbox item and report the partial result. Inspect the destination list before retrying an uncertain create. Reuse confirmed reminders and create only missing records. If processing must resume later, preserve the confirmed IDs with the retained inbox item so a later run can avoid duplicates.
 
-## Step 5: Remove from Inbox
+## Step 4: Remove Completed Items and Report
 
-Edit inbox.md to remove the processed item.
+Remove an inbox item only after every reminder required by its proposal is confirmed created. For a new project, both the project and first action must exist. Re-read the inbox before removal and edit only the processed occurrence. Preserve concurrent additions and identical items. If removal fails, report the successful reminder IDs and retain that information for recovery.
 
-## Step 6: Continue or Exit
-
-Track which inbox items have been presented in this session (by their original text). Exit (show summary of processed items) when any of these are true:
-- User selected "Stop" in Step 3
-- Inbox is empty
-- Every item currently in the inbox has already been presented this session (each was either processed or skipped) — this prevents an infinite loop when the user skips every item
-- Single-item mode was requested in Step 1 and the first item is done
-
-Otherwise, return to **Step 2** to refresh the inbox contents and the existing-projects context (Step 4 may have created a new project), then propose the next unpresented item in Step 3. Do **not** ask the user whether to continue.
-
-## Reference
-
-**Context lists (human):** @quick (< 25 min), @1pomo (25 min), @2pomo (50 min), @deep (90+ min)
-
-**Context list (agent):** @agent (no duration — async, monitor progress)
-
-**Priority values:** 1=High, 5=Medium, 9=Low, 0=None
-
-**Date format:** `yyyy-MM-dd HH:mm` (default time 17:00)
-
-**Project naming:** `{CamelCaseSummary}-{YYYYMMDD}`
-
-**Project linking:** `#{ProjectName-YYYYMMDD}` in action notes field
-
-## Guidelines
-
-- Every project must have a clear end goal
-- Create missing reminder lists automatically before creating reminders
-- Project actions inherit priority from the project unless overridden
-- Infer as much as possible from the inbox item text — minimize user interaction
-- Present one confirmation per item, not multiple sequential questions
+Report what was created and what remains, with reasons for skipped, unclear, non-actionable, or failed items. Finish after the requested batch. Do not ask whether to continue or loop through retained items.
