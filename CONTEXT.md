@@ -28,3 +28,16 @@ required for installed use.
 **Release validation**:
 Checks that shipped content changes include a plugin version increase for
 each affected host.
+
+## GTD language
+
+**GTD project**:
+A desired outcome that requires more than one action.
+
+**Next action**:
+A concrete step that can start with the available context and has an observable
+stopping point.
+
+**GTD deadline**:
+The date, and optional time, by which an outcome or action must be complete.
+A preferred work date is not a deadline.

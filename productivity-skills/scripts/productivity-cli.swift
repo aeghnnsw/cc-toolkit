@@ -37,6 +37,7 @@ struct ReminderListInfo: Codable {
 }
 
 struct ReminderInfo: Codable {
+    let id: String
     let title: String
     let list: String
     let dueDate: String?
@@ -50,6 +51,7 @@ struct ReminderInfo: Codable {
 struct ActionResult: Codable {
     let success: Bool
     let message: String
+    let id: String?
 }
 
 struct ErrorResponse: Codable {
@@ -93,8 +95,8 @@ func outputSuccess<T: Codable>(_ data: [T]) {
     outputJSON(SuccessResponse(success: true, data: data, count: data.count))
 }
 
-func outputResult(_ success: Bool, _ message: String) {
-    outputJSON(ActionResult(success: success, message: message))
+func outputResult(_ success: Bool, _ message: String, id: String? = nil) {
+    outputJSON(ActionResult(success: success, message: message, id: id))
     if !success { exit(1) }
 }
 
@@ -776,8 +778,9 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
 
         let reminderInfos = filtered.map { reminder -> ReminderInfo in
             var dueDateStr: String? = nil
-            if let dueDate = reminder.dueDateComponents?.date {
-                dueDateStr = dateFormatter.string(from: dueDate)
+            if let components = reminder.dueDateComponents,
+               let dueDate = Calendar.current.date(from: components) {
+                dueDateStr = (components.hour == nil ? dateOnlyFormatter : dateFormatter).string(from: dueDate)
             }
 
             let recurrence: RecurrenceInfo?
@@ -788,6 +791,7 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
             }
 
             return ReminderInfo(
+                id: reminder.calendarItemIdentifier,
                 title: reminder.title ?? "Untitled",
                 list: reminder.calendar.title,
                 dueDate: dueDateStr,
@@ -868,6 +872,11 @@ func getIncompleteReminders(listName: String?) {
     }
 }
 
+func isReminderOverdue(_ components: DateComponents?, now: Date) -> Bool {
+    guard let components = components, let due = Calendar.current.date(from: components) else { return false }
+    return due < (components.hour == nil ? startOfDay(now) : now)
+}
+
 func getOverdueReminders() {
     let access = requestReminderAccess()
     guard access.granted else {
@@ -877,8 +886,10 @@ func getOverdueReminders() {
 
     let calendars = store.calendars(for: .reminder)
     let now = Date()
-    let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: now, calendars: calendars)
-    switch fetchReminders(predicate: predicate) {
+    let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
+    switch fetchReminders(predicate: predicate, filter: { reminder in
+        isReminderOverdue(reminder.dueDateComponents, now: now)
+    }) {
     case .success(let reminders):
         outputSuccess(reminders)
     case .failure(.timeout):
@@ -915,10 +926,8 @@ func createReminder(_ args: [String: String]) {
     reminder.title = title
 
     if let dueDateStr = args["due"] {
-        guard let dueDate = parseDate(dueDateStr) else {
-            outputError("Invalid due date format: '\(dueDateStr)' - use yyyy-MM-dd or yyyy-MM-dd HH:mm")
-        }
-        reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
+        do { reminder.dueDateComponents = try parseReminderDueDate(dueDateStr) }
+        catch { outputError(error.localizedDescription) }
     }
 
     if let priorityStr = args["priority"] {
@@ -971,149 +980,192 @@ func createReminder(_ args: [String: String]) {
 
     do {
         try store.save(reminder, commit: true)
-        outputResult(true, "Reminder '\(title)' created successfully")
+        outputResult(true, "Reminder '\(title)' created successfully", id: reminder.calendarItemIdentifier)
     } catch {
         outputError("Failed to create reminder: \(error.localizedDescription)")
     }
 }
 
-func completeReminder(_ args: [String: String]) {
+// Keep selection separate from EventKit access so ambiguity can be tested safely.
+struct ReminderMutationError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+func uniqueReminderMatch<T>(_ matches: [T]) throws -> T {
+    guard !matches.isEmpty else {
+        throw ReminderMutationError(message: "Reminder not found. Refresh reminders and use its current --id.")
+    }
+    guard matches.count == 1 else {
+        throw ReminderMutationError(message: "Multiple reminders match. Use --id to select one reminder.")
+    }
+    return matches[0]
+}
+
+func findReminder(_ args: [String: String], completed: Bool? = nil) -> EKReminder {
+    let id = args["id"]
+    let title = args["title"]
+    guard (id != nil) != (title != nil), !(id ?? title ?? "").isEmpty else {
+        outputError("Specify exactly one nonempty selector: --id or --title")
+    }
     let access = requestReminderAccess()
     guard access.granted else {
-        let reason = access.error ?? "Unknown reason"
-        outputError("Reminder access denied: \(reason)")
-    }
-
-    guard let title = args["title"], !title.isEmpty else {
-        outputError("Missing or empty required argument: --title")
+        outputError("Reminder access denied: \(access.error ?? "Unknown reason")")
     }
 
     var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"], !listName.isEmpty {
+    if let listName = args["list"] {
         calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
-        if calendars.isEmpty {
-            outputError("Reminder list '\(listName)' not found")
+        guard !calendars.isEmpty else { outputError("Reminder list '\(listName)' not found") }
+    }
+    let predicate = store.predicateForReminders(in: calendars)
+    let semaphore = DispatchSemaphore(value: 0)
+    var fetched: [EKReminder]? = nil
+    store.fetchReminders(matching: predicate) { reminders in
+        fetched = reminders
+        semaphore.signal()
+    }
+    guard semaphore.wait(timeout: .now() + .seconds(30)) != .timedOut else {
+        outputError("Timeout searching for reminder")
+    }
+    guard let reminders = fetched else { outputError("Failed to fetch reminders from EventKit") }
+    // Resolve identity before checking completion state. Duplicate titles remain ambiguous.
+    let matches = reminders.filter { reminder in
+        if let id = id { return reminder.calendarItemIdentifier == id }
+        return reminder.title?.lowercased() == title?.lowercased()
+    }
+    do {
+        let reminder = try uniqueReminderMatch(matches)
+        if let completed = completed, reminder.isCompleted != completed {
+            outputError(completed ? "Reminder is not completed" : "Reminder is already completed")
+        }
+        return reminder
+    } catch { outputError(error.localizedDescription) }
+}
+
+func parseReminderMutationArgs(_ args: [String], update: Bool) throws -> [String: String] {
+    let allowed: Set<String> = update
+        ? ["id", "title", "list", "notes", "priority", "due", "clear-due"]
+        : ["id", "title", "list"]
+    var result: [String: String] = [:]
+    var index = 0
+    while index < args.count {
+        let option = args[index]
+        let key = String(option.dropFirst(2))
+        guard option.hasPrefix("--"), allowed.contains(key), result[key] == nil else {
+            throw ReminderMutationError(message: "Unknown or repeated argument: \(option)")
+        }
+        if key == "clear-due" {
+            result[key] = "true"
+            index += 1
+        } else {
+            guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else {
+                throw ReminderMutationError(message: "Missing value for \(option)")
+            }
+            result[key] = args[index + 1]
+            index += 2
+        }
+    }
+    return result
+}
+
+func parseReminderDueDate(_ value: String) throws -> DateComponents {
+    // Round-trip validation rejects invalid dates and trailing input.
+    let formatter = value.count == 10 ? dateOnlyFormatter : inputDateFormatter
+    guard let date = formatter.date(from: value), formatter.string(from: date) == value else {
+        throw ReminderMutationError(message: "Invalid due date: use yyyy-MM-dd or yyyy-MM-dd HH:mm")
+    }
+    let components: Set<Calendar.Component> = value.count == 10
+        ? [.year, .month, .day] : [.year, .month, .day, .hour, .minute]
+    return Calendar.current.dateComponents(components, from: date)
+}
+
+struct ReminderUpdate {
+    let title: String?
+    let list: String?
+    let notes: String?
+    let priority: Int?
+    let due: DateComponents?
+    let clearDue: Bool
+
+    init(_ args: [String: String]) throws {
+        title = args["title"]
+        list = args["list"]
+        notes = args["notes"]
+        clearDue = args["clear-due"] == "true"
+        if title == "" || list == "" {
+            throw ReminderMutationError(message: "Title and list must not be empty")
+        }
+        if let value = args["priority"] {
+            guard let number = Int(value), [0, 1, 5, 9].contains(number) else {
+                throw ReminderMutationError(message: "Invalid priority: use 0, 1, 5, or 9")
+            }
+            priority = number
+        } else { priority = nil }
+        if clearDue && args["due"] != nil {
+            throw ReminderMutationError(message: "Use either --due or --clear-due, not both")
+        }
+        if let value = args["due"] {
+            due = try parseReminderDueDate(value)
+        } else { due = nil }
+        guard title != nil || list != nil || notes != nil || priority != nil || due != nil || clearDue else {
+            throw ReminderMutationError(message: "Specify at least one field to update")
         }
     }
 
-    let predicate = store.predicateForReminders(in: calendars)
-    let semaphore = DispatchSemaphore(value: 0)
-    var foundReminder: EKReminder? = nil
-
-    store.fetchReminders(matching: predicate) { reminders in
-        foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() && !$0.isCompleted }
-        semaphore.signal()
+    func apply(to reminder: EKReminder, destination: EKCalendar?) {
+        if let title = title { reminder.title = title }
+        if let destination = destination { reminder.calendar = destination }
+        if let notes = notes { reminder.notes = notes }
+        if let priority = priority { reminder.priority = priority }
+        if clearDue { reminder.dueDateComponents = nil }
+        else if let due = due { reminder.dueDateComponents = due }
     }
+}
 
-    let timeout = DispatchTime.now() + .seconds(30)
-    if semaphore.wait(timeout: timeout) == .timedOut {
-        outputError("Timeout searching for reminder")
-    }
+func updateReminder(_ args: [String: String]) {
+    guard let id = args["id"], !id.isEmpty else { outputError("Missing or empty required argument: --id") }
+    do {
+        let update = try ReminderUpdate(args)
+        let reminder = findReminder(["id": id])
+        var destination: EKCalendar? = nil
+        if let list = update.list {
+            let matches = store.calendars(for: .reminder).filter { $0.title.lowercased() == list.lowercased() }
+            guard matches.count == 1 else {
+                outputError("Destination list '\(list)' must match exactly one reminder list")
+            }
+            destination = matches[0]
+        }
+        update.apply(to: reminder, destination: destination)
+        try store.save(reminder, commit: true)
+        outputResult(true, "Reminder '\(reminder.title ?? "Untitled")' updated", id: reminder.calendarItemIdentifier)
+    } catch { outputError("Failed to update reminder: \(error.localizedDescription)") }
+}
 
-    guard let reminder = foundReminder else {
-        outputError("Incomplete reminder '\(title)' not found")
-    }
-
+func completeReminder(_ args: [String: String]) {
+    let reminder = findReminder(args, completed: false)
     reminder.isCompleted = true
-
     do {
         try store.save(reminder, commit: true)
-        outputResult(true, "Reminder '\(title)' marked as complete")
-    } catch {
-        outputError("Failed to complete reminder: \(error.localizedDescription)")
-    }
+        outputResult(true, "Reminder '\(reminder.title ?? "Untitled")' marked as complete")
+    } catch { outputError("Failed to complete reminder: \(error.localizedDescription)") }
 }
 
 func uncompleteReminder(_ args: [String: String]) {
-    let access = requestReminderAccess()
-    guard access.granted else {
-        let reason = access.error ?? "Unknown reason"
-        outputError("Reminder access denied: \(reason)")
-    }
-
-    guard let title = args["title"], !title.isEmpty else {
-        outputError("Missing or empty required argument: --title")
-    }
-
-    var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"], !listName.isEmpty {
-        calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
-        if calendars.isEmpty {
-            outputError("Reminder list '\(listName)' not found")
-        }
-    }
-
-    let predicate = store.predicateForReminders(in: calendars)
-    let semaphore = DispatchSemaphore(value: 0)
-    var foundReminder: EKReminder? = nil
-
-    store.fetchReminders(matching: predicate) { reminders in
-        foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() && $0.isCompleted }
-        semaphore.signal()
-    }
-
-    let timeout = DispatchTime.now() + .seconds(30)
-    if semaphore.wait(timeout: timeout) == .timedOut {
-        outputError("Timeout searching for reminder")
-    }
-
-    guard let reminder = foundReminder else {
-        outputError("Completed reminder '\(title)' not found")
-    }
-
+    let reminder = findReminder(args, completed: true)
     reminder.isCompleted = false
-
     do {
         try store.save(reminder, commit: true)
-        outputResult(true, "Reminder '\(title)' marked as incomplete")
-    } catch {
-        outputError("Failed to uncomplete reminder: \(error.localizedDescription)")
-    }
+        outputResult(true, "Reminder '\(reminder.title ?? "Untitled")' marked as incomplete")
+    } catch { outputError("Failed to uncomplete reminder: \(error.localizedDescription)") }
 }
 
 func deleteReminder(_ args: [String: String]) {
-    let access = requestReminderAccess()
-    guard access.granted else {
-        let reason = access.error ?? "Unknown reason"
-        outputError("Reminder access denied: \(reason)")
-    }
-
-    guard let title = args["title"], !title.isEmpty else {
-        outputError("Missing or empty required argument: --title")
-    }
-
-    var calendars = store.calendars(for: .reminder)
-    if let listName = args["list"], !listName.isEmpty {
-        calendars = calendars.filter { $0.title.lowercased() == listName.lowercased() }
-        if calendars.isEmpty {
-            outputError("Reminder list '\(listName)' not found")
-        }
-    }
-
-    let predicate = store.predicateForReminders(in: calendars)
-    let semaphore = DispatchSemaphore(value: 0)
-    var foundReminder: EKReminder? = nil
-
-    store.fetchReminders(matching: predicate) { reminders in
-        foundReminder = reminders?.first { $0.title?.lowercased() == title.lowercased() }
-        semaphore.signal()
-    }
-
-    let timeout = DispatchTime.now() + .seconds(30)
-    if semaphore.wait(timeout: timeout) == .timedOut {
-        outputError("Timeout searching for reminder")
-    }
-
-    guard let reminder = foundReminder else {
-        outputError("Reminder '\(title)' not found")
-    }
-
+    let reminder = findReminder(args)
     do {
         try store.remove(reminder, commit: true)
-        outputResult(true, "Reminder '\(title)' deleted")
-    } catch {
-        outputError("Failed to delete reminder: \(error.localizedDescription)")
-    }
+        outputResult(true, "Reminder '\(reminder.title ?? "Untitled")' deleted")
+    } catch { outputError("Failed to delete reminder: \(error.localizedDescription)") }
 }
 
 func createReminderList(_ name: String) {
@@ -1173,12 +1225,16 @@ func printUsage() {
                        [--due <yyyy-MM-dd HH:mm>] [--priority <0|1|5|9>] [--notes <text>]
                        [--repeat <daily|weekly|monthly|yearly>] [--repeat-interval <N>]
                                               Create a new reminder
-      reminders complete --title <title> [--list <name>]
+      reminders complete (--id <id> | --title <title>) [--list <name>]
                                               Mark reminder as complete
-      reminders uncomplete --title <title> [--list <name>]
+      reminders uncomplete (--id <id> | --title <title>) [--list <name>]
                                               Mark reminder as incomplete
-      reminders delete --title <title> [--list <name>]
+      reminders delete (--id <id> | --title <title>) [--list <name>]
                                               Delete a reminder
+      reminders update --id <id> [--title <title>] [--list <destination>]
+                       [--notes <text>] [--priority <0|1|5|9>]
+                       [--due <yyyy-MM-dd[ HH:mm]> | --clear-due]
+                                              Update in place; other fields stay unchanged
       reminders create-list <name>            Create a new reminder list
 
     Priority values: 0=none, 1=high, 5=medium, 9=low
@@ -1197,7 +1253,11 @@ guard args.count >= 2 else {
 let category = args[0]
 let command = args[1]
 let remainingArgs = Array(args.dropFirst(2))
-let parsedArgs = parseArgs(remainingArgs)
+let parsedArgs: [String: String]
+if category == "reminders", ["update", "complete", "uncomplete", "delete"].contains(command) {
+    do { parsedArgs = try parseReminderMutationArgs(remainingArgs, update: command == "update") }
+    catch { outputError(error.localizedDescription) }
+} else { parsedArgs = parseArgs(remainingArgs) }
 
 switch (category, command) {
 // Calendar read commands
@@ -1243,6 +1303,8 @@ case ("reminders", "overdue"):
 // Reminder write commands
 case ("reminders", "create"):
     createReminder(parsedArgs)
+case ("reminders", "update"):
+    updateReminder(parsedArgs)
 case ("reminders", "complete"):
     completeReminder(parsedArgs)
 case ("reminders", "uncomplete"):

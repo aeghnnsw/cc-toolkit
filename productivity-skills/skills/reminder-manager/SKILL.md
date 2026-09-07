@@ -1,6 +1,6 @@
 ---
 name: reminder-manager
-version: 1.0.0
+version: 1.1.0
 description: This skill should be used when the user asks to "create reminder", "add task", "add todo", "set due date", "check pending tasks", "list reminder lists", "view overdue reminders", "mark task complete", "delete reminder", or wants to manage macOS Reminders app via EventKit CLI. Supports setting due dates, priorities, and notes. Requires macOS and Reminders.app access permissions.
 ---
 
@@ -146,38 +146,30 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
   --repeat-interval 2
 ```
 
-### Mark Reminder as Complete
+### Update a Reminder
+
+Read the current reminders and use the selected record's `id`. Pass only fields the user wants to change:
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete --title "Buy groceries"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders update --id "<reminder-id>" --title "Buy groceries for dinner"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders update --id "<reminder-id>" --list "Personal" --priority 1
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders update --id "<reminder-id>" --due "2026-09-10"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders update --id "<reminder-id>" --clear-due
 ```
 
-With specific list:
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete --title "Buy groceries" --list "Tasks"
-```
+Omitted fields stay unchanged, including notes and recurrence. Use `--notes ""` only to clear notes. Editing preserves the existing reminder; it does not delete and recreate it.
 
-### Mark Reminder as Incomplete
+### Complete, Reopen, or Delete a Reminder
 
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders uncomplete --title "Buy groceries"
-```
-
-With specific list:
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders uncomplete --title "Buy groceries" --list "Tasks"
-```
-
-### Delete a Reminder
+Use the ID from the latest query:
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete --title "Buy groceries"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete --id "<reminder-id>"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders uncomplete --id "<reminder-id>"
+swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete --id "<reminder-id>"
 ```
 
-With specific list:
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders delete --title "Buy groceries" --list "Tasks"
-```
+Legacy `--title "Buy groceries" --list "Tasks"` selectors remain available for these three commands. Ambiguous matches return an error. Use IDs for actions already selected from query results. Refetch if an ID becomes stale; identify the intended record before retrying.
 
 ### Create a New Reminder List
 
@@ -195,6 +187,7 @@ All commands return JSON. Success responses:
   "count": 5,
   "data": [
     {
+      "id": "<reminder-id>",
       "title": "Buy groceries",
       "list": "Tasks",
       "dueDate": "2025-01-15 17:00:00",
@@ -211,6 +204,7 @@ All commands return JSON. Success responses:
 **Recurring reminder response:**
 ```json
 {
+  "id": "<reminder-id>",
   "title": "Take medication",
   "list": "Health",
   "dueDate": "2026-01-20 08:00:00",
@@ -228,11 +222,12 @@ All commands return JSON. Success responses:
 }
 ```
 
-Action results:
+Create and update results include the reminder ID:
 ```json
 {
   "success": true,
-  "message": "Reminder 'Buy groceries' created successfully"
+  "message": "Reminder 'Buy groceries' created successfully",
+  "id": "<reminder-id>"
 }
 ```
 
@@ -254,7 +249,7 @@ Error responses:
 
 ## Date Format
 
-Use `yyyy-MM-dd HH:mm` for due dates:
+Omit `--due` when no date was requested. Use `yyyy-MM-dd` for a date-only reminder or `yyyy-MM-dd HH:mm` for a specified time:
 - `2025-01-15 17:00` - January 15, 2025 at 5:00 PM
 - `2025-01-15 09:00` - January 15, 2025 at 9:00 AM
 
@@ -262,9 +257,11 @@ Use `yyyy-MM-dd HH:mm` for due dates:
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--title` | Yes | Reminder title |
+| `--id` | Yes (update) | ID from a reminder query; preferred for complete, uncomplete, and delete |
+| `--title` | Yes (create) | Reminder title; optional new title for update |
 | `--list` | Yes (create) | Reminder list name |
-| `--due` | No | Due date/time |
+| `--due` | No | Due date or date/time |
+| `--clear-due` | No (update) | Remove the due date; mutually exclusive with `--due` |
 | `--priority` | No | Priority (0, 1, 5, or 9) |
 | `--notes` | No | Notes/description |
 | `--repeat` | No | Recurrence frequency: daily, weekly, monthly, yearly |
@@ -282,4 +279,4 @@ Use `yyyy-MM-dd HH:mm` for due dates:
 - Always list reminder lists first and confirm with user before create
 - List names are case-insensitive
 - The CLI uses EventKit for fast, native access to Reminders data
-- Searching by title finds the first matching reminder
+- Title selectors reject ambiguous matches. IDs identify one reminder.

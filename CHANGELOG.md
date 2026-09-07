@@ -15,6 +15,8 @@
 
 ### Changed
 
+- productivity-skills (Claude Code and Codex 6.2.0): keep GTD work undated unless a deadline is given, clarify concrete actions in batch proposals, recommend one action with alternatives, and display compact overview tables. Use reminder IDs and in-place edits to preserve existing data. See [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
+
 - productivity-skills: store the shared Claude Code and Codex GTD inbox at `~/.gtd/inbox.md`.
 - Repository: track shared agent guidance and the host-adapter decision, document contributor and plugin package boundaries, and reserve `.scratch/` for disposable development output.
 - dev-skills: store pressure-test sessions and conclusions under `docs/pressure-test` by default.

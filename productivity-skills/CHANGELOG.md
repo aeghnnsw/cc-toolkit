@@ -1,5 +1,14 @@
 # Changelog
 
+## [6.2.0] - 2026-09-07
+
+### Changed
+- Keep GTD projects and actions undated unless the user supplies a deadline.
+- Capture without duplicate confirmation and process concrete next actions in batches.
+- Recommend one action and up to two alternatives within available time.
+- Show overview totals and compact project action tables.
+- Update reminders in place by ID and reject ambiguous title selectors.
+
 ## [6.1.0] - 2026-09-03
 
 ### Changed
