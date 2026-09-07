@@ -39,13 +39,11 @@ cc-toolkit/
 │   ├── .codex-plugin/
 │   │   └── plugin.json
 │   ├── skills/
-│   │   ├── handoff/
 │   │   ├── repo-cleanup/
 │   │   └── step-workflow/
 │   └── codex-skills/
 │       ├── doc-update/
 │       ├── goal-rubric/
-│       ├── handoff/
 │       ├── matt-automode/
 │       ├── pressure-test/
 │       ├── repo-cleanup/
@@ -118,7 +116,6 @@ cc-toolkit/
 Development workflows, repository hygiene, documentation, and review.
 
 **Skills:**
-- **handoff**: Save concise continuation context for a fresh Claude Code or Codex session
 - **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, and reconcile the Default Branch
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
@@ -133,7 +130,6 @@ Development workflows, repository hygiene, documentation, and review.
 **Codex skills:**
 - **doc-update**
 - **goal-rubric**
-- **handoff**
 - **matt-automode**
 - **pressure-test**
 - **repo-cleanup**
