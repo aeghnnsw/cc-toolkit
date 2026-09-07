@@ -15,6 +15,7 @@
 
 ### Changed
 
+- dev-skills (Codex 1.4.1): require `matt-automode` to use `step-workflow` before planning and throughout the task, while preserving repository layout and naming conventions. See [#217](https://github.com/aeghnnsw/cc-toolkit/issues/217).
 - productivity-skills (Claude Code and Codex 6.2.0): keep GTD work undated unless a deadline is given, clarify concrete actions in batch proposals, recommend one action with alternatives, and display compact overview tables. Use reminder IDs and in-place edits to preserve existing data. See [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
 
 - productivity-skills: store the shared Claude Code and Codex GTD inbox at `~/.gtd/inbox.md`.

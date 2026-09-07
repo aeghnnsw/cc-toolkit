@@ -14,6 +14,11 @@ files. Read and follow each SKILL.md and its required references. Resolve skills
 by plugin and name; do not hard-code installation paths or versions. If a required
 skill is missing, report the blocker and stop.
 
+Before planning, use `dev-skills:step-workflow` to organize the working folder.
+Treat this mode as a request for step-based organization. Apply the skill
+throughout the task to planning files, scripts, outputs, tests, and documentation
+where repository layout and naming conventions permit.
+
 Replace the referenced skills' human interview and approval checkpoints with
 agent decisions. Research facts, choose suitable answers, and record assumptions
 and decisions in the planning artifacts. Continue between phases without asking
