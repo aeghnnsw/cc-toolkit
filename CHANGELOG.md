@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- dev-skills (Codex 1.3.0): add `matt-automode` to run Matt’s planning, ticket implementation, PR merge, and cleanup workflows without human checkpoints.
+
 ### Removed
 
 - productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
