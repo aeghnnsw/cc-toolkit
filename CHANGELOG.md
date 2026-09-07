@@ -9,6 +9,7 @@
 
 ### Removed
 
+- dev-skills (Claude Code 3.11.0, Codex 1.4.0): retire the borrowed `handoff` skill; use Matt’s original skill instead.
 - productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
 - GitHub Actions: remove the automatic Claude review from every pull request; keep on-demand `@claude` triggers.
 
@@ -18,7 +19,6 @@
 - Repository: track shared agent guidance and the host-adapter decision, document contributor and plugin package boundaries, and reserve `.scratch/` for disposable development output.
 - dev-skills: store pressure-test sessions and conclusions under `docs/pressure-test` by default.
 - dev-skills: add explicit repository cleanup for Claude Code and Codex.
-- dev-skills: add an explicit cross-platform handoff skill for Claude Code and Codex.
 - core-hooks: enforce pre-git and dangerous-removal policies under Grok Build by
   normalizing hook payloads and using cross-runtime blocking exits.
 - core-hooks: scope safety checks to real `rm` invocations, allow valid macOS
