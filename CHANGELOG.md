@@ -5,6 +5,7 @@
 ### Added
 
 - Repository: add read-only package and affected-host release validation with a shared local command, explicit resource rules, command-interface fixtures, and one fast pull-request job. See [#206](https://github.com/aeghnnsw/cc-toolkit/issues/206).
+- dev-skills (Codex 1.3.0): add `matt-automode` to run Matt’s planning, ticket implementation, PR merge, and cleanup workflows without human checkpoints.
 
 ### Removed
 

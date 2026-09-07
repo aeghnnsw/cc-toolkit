@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Development workflow skills for Codex.",
   "author": {
     "name": "Steven",
@@ -28,7 +28,7 @@
   "interface": {
     "displayName": "Dev Skills",
     "shortDescription": "Codex-ready development workflow skills.",
-    "longDescription": "Use Dev Skills for repository cleanup, concise handoffs, measurable goal rubrics, current-truth documentation updates, independent adversarial pressure tests, and sequential file organization.",
+    "longDescription": "Use Dev Skills for autonomous Matt planning-to-merge workflows, repository cleanup, concise handoffs, measurable goal rubrics, current-truth documentation updates, independent adversarial pressure tests, and sequential file organization.",
     "developerName": "Steven",
     "category": "Developer Tools",
     "capabilities": [
