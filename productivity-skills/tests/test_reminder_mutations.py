@@ -1,5 +1,6 @@
 """Compile production helpers with unsaved EventKit objects. Never request access or save."""
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -19,7 +20,8 @@ class ReminderMutationTests(unittest.TestCase):
             binary = pathlib.Path(temp) / "tests"
             build = subprocess.run(["swiftc", str(main), "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(build.returncode, 0, build.stderr)
-            result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, env={**os.environ, "TZ": "America/New_York"})
+            self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Reminder mutation checks passed", result.stdout)
 
 

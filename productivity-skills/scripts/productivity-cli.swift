@@ -777,11 +777,7 @@ func fetchReminders(predicate: NSPredicate, filter: ((EKReminder) -> Bool)? = ni
         let filtered = filter.map { reminders.filter($0) } ?? reminders
 
         let reminderInfos = filtered.map { reminder -> ReminderInfo in
-            var dueDateStr: String? = nil
-            if let components = reminder.dueDateComponents,
-               let dueDate = Calendar.current.date(from: components) {
-                dueDateStr = (components.hour == nil ? dateOnlyFormatter : dateFormatter).string(from: dueDate)
-            }
+            let dueDateStr = formatReminderDueDate(reminder.dueDateComponents)
 
             let recurrence: RecurrenceInfo?
             if let rules = reminder.recurrenceRules, let firstRule = rules.first {
@@ -828,7 +824,7 @@ func getTodayReminders() {
 
     let result = fetchReminders(predicate: predicate, filter: { reminder in
         guard !reminder.isCompleted,
-              let dueDate = reminder.dueDateComponents?.date else {
+              let dueDate = reminderDueDate(reminder.dueDateComponents) else {
             return false
         }
         return dueDate >= today && dueDate < tomorrow
@@ -872,8 +868,22 @@ func getIncompleteReminders(listName: String?) {
     }
 }
 
+func reminderDueDate(_ components: DateComponents?) -> Date? {
+    guard var components = components else { return nil }
+    if components.hour == nil {
+        // Date-only deadlines name a local day. Ignore EventKit timezone metadata.
+        components.timeZone = Calendar.current.timeZone
+    }
+    return Calendar.current.date(from: components)
+}
+
+func formatReminderDueDate(_ components: DateComponents?) -> String? {
+    guard let components = components, let due = reminderDueDate(components) else { return nil }
+    return (components.hour == nil ? dateOnlyFormatter : dateFormatter).string(from: due)
+}
+
 func isReminderOverdue(_ components: DateComponents?, now: Date) -> Bool {
-    guard let components = components, let due = Calendar.current.date(from: components) else { return false }
+    guard let components = components, let due = reminderDueDate(components) else { return false }
     return due < (components.hour == nil ? startOfDay(now) : now)
 }
 

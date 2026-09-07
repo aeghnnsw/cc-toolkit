@@ -26,7 +26,7 @@ If the incomplete query fails, report that the overview is unavailable. If only 
 - Extract each goal from `Goal:` in the project notes.
 - Retain the existing status rules: overdue project or action → **Overdue**; no linked actions → **No next action**; otherwise → **Active**. “Active” means actions exist, not that progress was verified.
 
-Count unique reminder IDs. Count overdue actions separately from overdue projects. Include unmatched actions in the action total.
+Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
 
 ## Display
 

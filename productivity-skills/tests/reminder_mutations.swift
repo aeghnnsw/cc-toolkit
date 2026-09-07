@@ -78,4 +78,16 @@ assert(json["id"] as? String == "stable-id")
 let created = ActionResult(success: true, message: "Created", id: "new-id")
 let createdJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(created)) as! [String: Any]
 assert(createdJSON["id"] as? String == "new-id" && createdJSON["success"] as? Bool == true)
+// A date-only deadline is a local calendar day, even when EventKit adds a timezone.
+assert(Calendar.current.timeZone.identifier == "America/New_York")
+let utcDay = DateComponents(timeZone: TimeZone(secondsFromGMT: 0), year: 2026, month: 9, day: 7)
+let localSeptember7 = parseDate("2026-09-07 12:00")!
+assert(formatReminderDueDate(utcDay) == "2026-09-07")
+assert(reminderDueDate(utcDay) == startOfDay(localSeptember7))
+assert(!isReminderOverdue(utcDay, now: localSeptember7), "UTC metadata must not move a date-only deadline to yesterday")
+assert(isReminderOverdue(utcDay, now: parseDate("2026-09-08 00:00")!))
+let utcTimed = DateComponents(timeZone: TimeZone(secondsFromGMT: 0), year: 2026, month: 9, day: 7, hour: 14, minute: 0)
+assert(formatReminderDueDate(utcTimed) == "2026-09-07 10:00:00")
+assert(isReminderOverdue(utcTimed, now: localSeptember7))
+assert(!isReminderOverdue(utcTimed, now: parseDate("2026-09-07 09:00")!))
 print("Reminder mutation checks passed")
