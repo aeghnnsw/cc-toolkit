@@ -1,0 +1,40 @@
+name: Package validation
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CONTEXT.md'
+      - 'CONTRIBUTING.md'
+      - 'README.md'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch comparison target
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --no-recurse-submodules origin "$BASE_SHA"
+
+      - name: Validate packages and releases
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/validate_packages.py --base "$BASE_SHA"

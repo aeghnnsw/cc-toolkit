@@ -71,14 +71,83 @@ what changed:
 - **Documentation:** check accuracy, relative links, referenced paths, and
   whitespace with `git diff --check`.
 - **Skills and metadata:** check skill frontmatter and resource paths;
-  parse affected manifests and marketplace registries as JSON. Confirm
-  registered source directories exist.
+  run the package and release validator described below.
 - **Executable code:** run the tests for the affected plugin. Core Hooks
   tests require Python and `uv` on `PATH`; task-loop CLI tests require
   Python 3.11+ and `httpx>=0.27` as declared by the CLI. The command below
   supplies that dependency through `uv`.
 - **GitHub Actions:** validate edited workflow YAML and check its triggers
   and permissions against the intended behavior.
+
+### Package and release validation
+
+Run this read-only command from the repository root with Python 3.11 or
+newer. It uses only the standard library and installs no dependencies:
+
+```bash
+python3 scripts/validate_packages.py --base origin/master
+```
+
+`--base` accepts the target branch ref or a commit SHA. The validator finds
+its merge base with `HEAD`. Local validation includes staged edits,
+unstaged edits, and new files that Git does not ignore. It checks the
+resulting working tree. It does not select versions or change files.
+
+The target ref and enough history to find the merge base must exist
+locally. Run `git fetch origin master` to update the usual target. For a
+shallow checkout, fetch the missing history before retrying. An unavailable
+ref or merge base fails validation with a correction message. The validator
+does not fetch history or skip release checks.
+
+Package validation checks all registered plugins, their JSON metadata,
+declared local paths, and explicitly required resources. It resolves
+symlinks to check package containment. Required paths must be tracked or
+new files that Git does not ignore. Ignored local files cannot satisfy the
+package contract. Optional discovery roots remain
+optional. Discovered skills need `---` header delimiters and one nonempty,
+single-line `name` and `description`. Names use lowercase letters, digits,
+and single separating hyphens. This is a narrow skill header contract, not
+full YAML validation. Agent headers do not use this contract. Declared JSON
+hook and MCP files and listed TOML and JSON resources are parsed.
+The validator does not check external links,
+interpret paths in prose or shell examples, infer code dependencies, or
+run plugins and host loaders.
+
+Release validation compares both package layouts across the merge base.
+Changed shipped content requires a greater numeric `major.minor.patch`
+version for each affected existing host registration. One increase covers
+the whole pull request. New registrations need a valid initial version.
+Removed registrations need no increase for the removed host. A source move
+preserves release history by plugin identity and host.
+
+[package-validation.json](package-validation.json) holds the ownership
+exceptions, required resources, and contributor-only exemptions. Update
+these rules when a package needs an explicit local contract. Plugin-root
+tests, `README.md`, and `CHANGELOG.md` are exempt by default. Required
+resources override exemptions. Markdown files are not exempt by extension.
+Unclassified plugin files affect all registered hosts. Failure diagnostics
+identify the relevant path or package and host. Version failures include
+the ownership reason and the version that must be exceeded. Fix the first
+reported error and rerun the command. The result includes elapsed execution
+time. See the [design](docs/design/package-validation.md) for the rule schema
+and ownership precedence. Terms are defined in [CONTEXT.md](CONTEXT.md).
+
+The [pull-request workflow](.github/workflows/package-validation.yml) runs
+the same command against the exact pull-request head and target SHA. It
+fetches the comparison history and runs one job with read-only repository
+permission. Changes limited to root contributor documents or `docs/` skip
+the job. Other paths remain eligible, including new plugin source
+directories. The job uses the runner's Python and runs no plugin runtime
+suites. The speed target is less than 10 seconds of validator execution;
+queue, checkout, and runner startup time are separate.
+
+Run the validator's command-interface fixtures when changing its behavior:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+### Plugin runtime tests
 
 Run the existing Python suites from the repository root:
 

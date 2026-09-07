@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "defaults": {
+    "exempt": ["tests/", "README.md", "CHANGELOG.md"]
+  },
+  "plugins": {
+    "cc-customize": {
+      "ownership": [],
+      "resources": [
+        {"path": "skills/statusline-setup/scripts/statusline-command.sh", "hosts": ["claude"]}
+      ]
+    },
+    "core-hooks": {
+      "ownership": [
+        {"path": "hooks/hooks.json", "hosts": ["claude"]},
+        {"path": "hooks/hooks.codex.json", "hosts": ["codex"]},
+        {"path": "scripts/", "hosts": ["claude", "codex"]}
+      ],
+      "resources": [
+        {"path": "hooks/hooks.json", "hosts": ["claude"]},
+        {"path": "scripts/hook_payload.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/post_tool_use.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/pre_git_hook.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/safety_guard.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/system_notification.py", "hosts": ["claude", "codex"]}
+      ]
+    },
+    "creator-skills": {
+      "ownership": [],
+      "resources": []
+    },
+    "dev-skills": {
+      "ownership": [],
+      "resources": [
+        {"path": "agents/eval-critic.md", "hosts": ["claude"]},
+        {"path": "skills/project-eval/references/angles.md", "hosts": ["claude"]},
+        {"path": "skills/project-eval/references/explore-mode.md", "hosts": ["claude"]},
+        {"path": "skills/project-eval/references/finding-format.md", "hosts": ["claude"]},
+        {"path": "skills/project-eval/references/focus-mode.md", "hosts": ["claude"]}
+      ]
+    },
+    "doc-skills": {
+      "ownership": [],
+      "resources": [
+        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]}
+      ]
+    },
+    "productivity-skills": {
+      "ownership": [
+        {"path": "scripts/", "hosts": ["claude", "codex"]}
+      ],
+      "resources": [
+        {"path": "scripts/productivity-cli.swift", "hosts": ["claude", "codex"]}
+      ]
+    },
+    "pymol-skills": {
+      "ownership": [],
+      "resources": [
+        {"path": "pymol_mcp_server.py", "hosts": ["claude"]},
+        {"path": "pymol-mcp-socket-plugin/__init__.py", "hosts": ["claude"]},
+        {"path": "pymol-mcp-socket-plugin/pymol_mcp_plugin.ui", "hosts": ["claude"]}
+      ]
+    },
+    "task-loop": {
+      "ownership": [
+        {"path": "cli/", "hosts": ["claude", "codex"]},
+        {"path": "db/", "hosts": ["claude", "codex"]},
+        {"path": "references/", "hosts": ["claude", "codex"]},
+        {"path": "codex-agents/", "hosts": ["codex"]},
+        {"path": "hooks/", "hosts": ["codex"]},
+        {"path": "scripts/sync_codex_agents.py", "hosts": ["codex"]}
+      ],
+      "resources": [
+        {"path": "cli/task-loop", "hosts": ["claude", "codex"]},
+        {"path": "db/schema.sql", "hosts": ["claude", "codex"]},
+        {"path": "references/pr-findings.md", "hosts": ["claude", "codex"]},
+        {"path": "agents/cycle-worker.md", "hosts": ["claude"]},
+        {"path": "claude-skills/create-cycle/assets/directions-template.md", "hosts": ["claude"]},
+        {"path": "claude-skills/create-cycle/assets/task-loop-skeleton.md", "hosts": ["claude"]},
+        {"path": "claude-skills/run-cycle/references/orchestrator-loop.md", "hosts": ["claude"]},
+        {"path": "claude-skills/specify-aims/assets/proposal-template.md", "hosts": ["claude"]},
+        {"path": "codex-agents/task-loop-cycle-worker.toml", "hosts": ["codex"]},
+        {"path": "codex-skills/create-cycle/assets/directions-template.md", "hosts": ["codex"]},
+        {"path": "codex-skills/create-cycle/assets/task-loop-skeleton.md", "hosts": ["codex"]},
+        {"path": "codex-skills/run-cycle/references/orchestrator-loop.md", "hosts": ["codex"]},
+        {"path": "codex-skills/specify-aims/assets/proposal-template.md", "hosts": ["codex"]},
+        {"path": "hooks/codex-session-start.py", "hosts": ["codex"]},
+        {"path": "scripts/sync_codex_agents.py", "hosts": ["codex"]}
+      ]
+    }
+  }
+}
