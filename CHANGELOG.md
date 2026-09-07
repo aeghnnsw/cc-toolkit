@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Repository: add read-only package and affected-host release validation with a shared local command, explicit resource rules, command-interface fixtures, and one fast pull-request job. See [#206](https://github.com/aeghnnsw/cc-toolkit/issues/206).
+
 ### Removed
 
 - productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
