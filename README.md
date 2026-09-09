@@ -116,7 +116,7 @@ cc-toolkit/
 Development workflows, repository hygiene, documentation, and review.
 
 **Skills:**
-- **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, and reconcile the Default Branch
+- **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, reconcile completed issues, and update the Default Branch
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
