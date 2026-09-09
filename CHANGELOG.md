@@ -15,6 +15,7 @@
 
 ### Changed
 
+- dev-skills (Codex 1.4.2): require `matt-automode` to link resolving PRs, verify ticket closure after merge, and close fully satisfied parent specs. Keep partial work open and report unresolved issues. See [#219](https://github.com/aeghnnsw/cc-toolkit/issues/219).
 - dev-skills (Codex 1.4.1): require `matt-automode` to use `step-workflow` before planning and throughout the task, while preserving repository layout and naming conventions. See [#217](https://github.com/aeghnnsw/cc-toolkit/issues/217).
 - productivity-skills (Claude Code and Codex 6.2.0): keep GTD work undated unless a deadline is given, clarify concrete actions in batch proposals, recommend one action with alternatives, and display compact overview tables. Use reminder IDs and in-place edits to preserve existing data. See [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
 
