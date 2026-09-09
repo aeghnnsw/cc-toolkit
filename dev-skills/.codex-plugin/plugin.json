@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Development workflow skills for Codex.",
   "author": {
     "name": "Steven",
@@ -37,7 +37,7 @@
       "Draft a measurable /goal rubric.",
       "Update existing documentation to current truth.",
       "Pressure-test this plan before implementation.",
-      "Clean merged worktrees and branches.",
+      "Clean merged worktrees and branches and reconcile completed issues.",
       "Organize this feature with numbered step-based file names."
     ]
   }
