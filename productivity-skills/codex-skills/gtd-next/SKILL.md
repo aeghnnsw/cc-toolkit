@@ -33,7 +33,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars today
 
 ## Read Candidates
 
-Read incomplete tasks from all context lists, including tasks without due dates:
+Read incomplete tasks from all context lists, including tasks without due dates. Read `@agent` only as a legacy source:
 
 ```bash
 swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete "@quick"
@@ -43,7 +43,7 @@ swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete "@deep"
 swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete "@agent"
 ```
 
-Use the title, notes, priority, due date, and project reference (`#{ProjectName}` in notes). Keep human tasks and `@agent` tasks separate. Context lists estimate human work time: `@quick` = 15 minutes, `@1pomo` = 25 minutes, `@2pomo` = 50 minutes, and `@deep` = 90 minutes.
+Use the title, notes, priority, due date, and project reference (`#{ProjectName}` in notes). Read [GTD planning](../../references/gtd-planning.md) for priority and human time rules. All current reminders represent human actions, including starting agent work and reviewing results. Infer a suggested human step for legacy `@agent` items without changing them. Use a stored action duration when available. Otherwise, context lists estimate human work time: `@quick` = 15 minutes, `@1pomo` = 25 minutes, `@2pomo` = 50 minutes, and `@deep` = 90 minutes.
 
 Report CLI failures and use only the data that was retrieved. A failed calendar query does not establish a free interval. A missing list does not establish that all lists are empty.
 
@@ -71,10 +71,26 @@ This is a suggested first step for “Prepare budget review.” You have the sou
 
 The supplier call is blocked until the contact number is available.
 
-### Optional Agent List
+### Actions That Involve Agents
 
-When `@agent` contains tasks, show up to three relevant items separately under **Agent candidates**. Show priority and due date where present. These are stored candidates, not dispatched work. Do not assign execution state or claim they are running.
+Starting agent work, answering an agent question, and reviewing a result are ordinary human actions in the time-based lists. Select them under the same rules as other actions. Show each action’s own human duration. Use the shared planning rules for dependencies and legacy `@agent` items.
 
 ### Full Agenda on Request
 
-For an explicit agenda request, arrange feasible human actions in sequential blocks within the bounded interval. Include five-minute breaks between 25-minute work sessions and retain transition time before events. A longer task can span sessions. Show estimated times and any suggested first steps clearly. If availability is unknown, state the bounded session assumption. Keep agent candidates separate.
+For an explicit agenda request, arrange feasible human actions in sequential blocks within the bounded interval. Label each block as Human focus, Start agent task, Support agent task, or Review agent result. Apply the shared human time budget to all blocks. Include five-minute breaks between 25-minute work sessions and retain transition time before events. A longer task can span sessions. Show estimates and assumptions clearly. If availability is unknown, state the bounded session assumption.
+
+Example for a confirmed 10:00–11:00 free interval before a meeting:
+
+| Time | Action type | Action |
+| --- | --- | --- |
+| 10:00–10:10 | Start agent task | Attach data and send the comparison brief |
+| 10:10–10:35 | Human focus | Draft the budget questions |
+| 10:35–10:40 | Break | Pause |
+| 10:40–10:45 | Human focus | Check the invoice totals |
+| 10:45–10:55 | Review agent result | Check the comparison if ready |
+| 10:55–11:00 | Transition | Prepare for the meeting |
+
+Human actions total 50 minutes. Break and transition total 10 minutes.
+Agent runtime is estimated at 30 minutes after startup and can overlap the
+focus block. If the result is late, use the review slot to draft three
+questions for the supplier independently. Defer the 10-minute review and show it as remaining work.

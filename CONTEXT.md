@@ -39,9 +39,18 @@ cannot load it through the host's skill tool.
 A desired outcome that requires more than one action.
 
 **Next action**:
-A concrete step that can start with the available context and has an observable
-stopping point.
+A concrete human step that can start with the available context and has an
+observable stopping point. Starting agent work and reviewing its result are
+next actions when their inputs are ready.
 
 **GTD deadline**:
 The date, and optional time, by which an outcome or action must be complete.
 A preferred work date is not a deadline.
+
+**Human action time**:
+The time the user spends on a next action, including starting, supporting, or
+reviewing agent work. Unattended agent runtime is separate.
+
+**Waiting outcome**:
+An incomplete outcome that depends on an external result and currently has no
+ready human next action.
