@@ -29,6 +29,10 @@ required for installed use.
 Checks that shipped content changes include a plugin version increase for
 each affected host.
 
+**User-invoked skill**:
+A skill that a host loads only when the user invokes it by name. The agent
+cannot load it through the host's skill tool.
+
 ## GTD language
 
 **GTD project**:

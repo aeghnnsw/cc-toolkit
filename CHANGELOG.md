@@ -6,6 +6,7 @@
 
 - Repository: add read-only package and affected-host release validation with a shared local command, explicit resource rules, command-interface fixtures, and one fast pull-request job. See [#206](https://github.com/aeghnnsw/cc-toolkit/issues/206).
 - dev-skills (Codex 1.3.0): add `matt-automode` to run Matt’s planning, ticket implementation, PR merge, and cleanup workflows without human checkpoints.
+- dev-skills (Claude Code 3.13.0): add `matt-automode` for Claude Code. Resolve user-invoked skills from the plugin registry and replace interactive checkpoints with agent decisions. Define "User-invoked skill" in the glossary. See [#223](https://github.com/aeghnnsw/cc-toolkit/issues/223).
 
 ### Removed
 
