@@ -16,7 +16,7 @@ swift <plugin-root>/scripts/productivity-cli.swift reminders overdue
 
 Keep projects from `Projects` and actions from `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`. All new actions use the time-based lists, including agent startup and review. Keep existing `@agent` records visible and label that list as legacy. Match overdue results by reminder `id`. Ignore other lists. Missing lists need no setup.
 
-If the incomplete query fails, report that the overview is unavailable. If only the overdue query fails, show the inventory with an explicit “Overdue status unavailable” notice. Show overdue counts as “unavailable”, omit overdue ranking, and use only the action-presence labels in that case. Do not report a failed query as an empty or healthy system.
+If the incomplete query fails, report that the overview is unavailable. If only the overdue query fails, show the inventory with an explicit “Overdue status unavailable” notice. Show overdue counts as “unavailable”, omit overdue ranking, and use Waiting, No next action, or Active from the available notes and action data in that case. Do not report a failed query as an empty or healthy system.
 
 ## Group
 
@@ -26,7 +26,7 @@ If the incomplete query fails, report that the overview is unavailable. If only 
 - Extract each goal from `Goal:` in the project notes.
 - Use **Overdue** when the project or a linked action is overdue. Otherwise use **Waiting** when notes or known state show an external result is pending and no human action is ready; **No next action** when no linked actions or waiting evidence exist; and **Active** otherwise. Show the pending result even when the main status is Overdue. “Active” means actions exist, not that progress was verified. Keep blocked and legacy reminders visible without treating them as ready work.
 
-Exclude Waiting projects from the count of projects with no next action. Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
+Exclude projects with waiting evidence and no ready human action from the count of projects with no next action, including those whose main status is Overdue. Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
 
 ## Display
 
