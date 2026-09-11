@@ -14,7 +14,7 @@ swift <plugin-root>/scripts/productivity-cli.swift reminders incomplete
 swift <plugin-root>/scripts/productivity-cli.swift reminders overdue
 ```
 
-Keep projects from `Projects` and actions from `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`. Match overdue results by reminder `id`. Ignore other lists. Missing lists need no setup.
+Keep projects from `Projects` and actions from `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`. All new actions use the time-based lists, including agent startup and review. Keep existing `@agent` records visible and label that list as legacy. Match overdue results by reminder `id`. Ignore other lists. Missing lists need no setup.
 
 If the incomplete query fails, report that the overview is unavailable. If only the overdue query fails, show the inventory with an explicit “Overdue status unavailable” notice. Show overdue counts as “unavailable”, omit overdue ranking, and use only the action-presence labels in that case. Do not report a failed query as an empty or healthy system.
 
@@ -24,16 +24,16 @@ If the incomplete query fails, report that the overview is unavailable. If only 
 - Put actions with no reference under **Standalone actions**.
 - Put references with no matching open project under **Unmatched project links**. Display the reference; it can indicate a renamed, completed, or deleted project. If more than one project matches, show the action here as ambiguous instead of guessing.
 - Extract each goal from `Goal:` in the project notes.
-- Retain the existing status rules: overdue project or action → **Overdue**; no linked actions → **No next action**; otherwise → **Active**. “Active” means actions exist, not that progress was verified.
+- Use **Overdue** when the project or a linked action is overdue. Otherwise use **Waiting** when notes or known state show an external result is pending and no human action is ready; **No next action** when no linked actions or waiting evidence exist; and **Active** otherwise. Show the pending result even when the main status is Overdue. “Active” means actions exist, not that progress was verified. Keep blocked and legacy reminders visible without treating them as ready work.
 
-Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
+Exclude Waiting projects from the count of projects with no next action. Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
 
 ## Display
 
 1. Start with totals: projects, actions, overdue actions, and projects with no next action. Include the overdue-project count when nonzero. Show unmatched-link count when present.
-2. Show projects with overdue records first, then projects with no actions, then the rest. Each project gets a heading with its full stored name, a short status line, its goal, and a table of all linked actions. If names repeat, append a short unique ID suffix to distinguish those headings.
+2. Show projects with overdue records first, then projects with no next action, then the rest. Each project gets a heading with its full stored name, a short status line, its goal, and a table of all linked actions. If names repeat, append a short unique ID suffix to distinguish those headings.
 3. Use **Action | List | Due | Priority** columns. Show `—` for unset dates and priority. Use `High`, `Medium`, or `Low` for priorities 1, 5, or 9. Show a due time only when stored. Undated work is normal; give it no warning.
-4. Within each project, sort overdue actions first, then dated actions by due date, then undated actions. Break ties by priority, then title. Mark overdue dates with **Overdue** text. Use the same order within standalone lists.
+4. Within each project, sort overdue actions first, then dated actions by due date, then undated actions. Break ties by High, Medium, Low, then unset priority, then title. This display order does not select the next action. Mark overdue dates with **Overdue** text. Use the same order within standalone lists.
 5. Show standalone actions in one table, grouped by list. Add unmatched links last with their original references. Omit empty sections.
 6. Escape pipes and line breaks in table cells. Preserve full action titles. Keep lengthy notes out of the report; display project goals as prose above the table. Use compact bullets instead of tables if the user requests a narrow display.
 
@@ -72,7 +72,7 @@ Goal: Compare flight options for the trip.
 | Action | List | Due | Priority |
 | --- | --- | --- | --- |
 | Compare three flights for the chosen dates | @1pomo | — | Medium |
-| Summarize the cancellation terms for those flights | @agent | — | Medium |
+| Send the agent the flights and request a cancellation summary | @quick | — | Medium |
 
 ### Standalone actions
 

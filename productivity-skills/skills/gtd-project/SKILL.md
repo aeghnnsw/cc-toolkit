@@ -1,22 +1,12 @@
 ---
 name: gtd-project
-version: 3.1.0
-description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "add agent task", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking, action management, and agent-centric task assignment.
+version: 3.1.1
+description: This skill should be used when the user asks to "review projects", "manage projects", "check project status", "add action to project", "add agent task", "complete project", or wants to review and manage GTD projects with a guided workflow including status tracking, action management, and human actions for agent work.
 ---
 
-<!--
-Projects list: "Projects" in macOS Reminders
-Project naming: {CamelCaseSummary}-{YYYYMMDD} (e.g., VacationResearch-20260112)
-Action reference: #{FullProjectName} in notes field
-Project notes: "Goal: [end goal description]"
-Human context lists: @quick, @1pomo, @2pomo, @deep
-Agent context list: @agent (no duration, async)
-CLI: swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift
-
-Key principle: Projects can have multiple parallel actions. Track all actionable tasks that can be worked on independently. Actions are either human-centric (pomodoro-timed) or agent-centric (async, no duration).
--->
-
 Review and manage GTD projects with infer-and-confirm workflow. The agent analyzes project state, proposes actions, and the user confirms or overrides — minimizing back-and-forth.
+
+Before proposing, editing, completing, or reviewing actions that involve agent work, read the [shared GTD planning policy](../../references/gtd-planning.md).
 
 ## CLI Tool
 
@@ -44,7 +34,6 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@1pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@2pomo"
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@deep"
-   swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "@agent"
    ```
 
 3. Query all open projects:
@@ -52,30 +41,33 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
    ```
 
-4. Query all context lists for actions:
+4. Query human context lists and read legacy `@agent` reminders if that list exists. Never create new `@agent` reminders or lists:
    ```bash
-   for context in "@quick" "@1pomo" "@2pomo" "@deep" "@agent"; do
+   for context in "@quick" "@1pomo" "@2pomo" "@deep"; do
      swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "$context"
    done
    ```
+
+   If `@agent` exists, query its incomplete reminders with the same command.
 
 5. For each project, find ALL linked actions by matching `#{ProjectName}` in the action's notes field:
    - Parse the JSON output from context list queries
    - Match the notes field against pattern `#{ProjectName}`
    - Collect ALL matching actions (not just one)
 
-6. Extract project end goal from project's notes field (format: "Goal: [description]")
+6. Read the project goal and waiting records from its notes. Use the shared planning policy to interpret waiting records. Check available evidence for output or a request for human support.
 
 7. Determine project status:
-   - **Healthy** (✓): Has 1+ pending actions, none overdue
-   - **Stalled** (⚠️): Has 0 pending actions linked to this project
-   - **Overdue** (⚠️): Any action OR project appears in the overdue query results
+   - **Healthy** (✓): Has at least one ready human action.
+   - **Waiting**: Has no ready human action, and notes or other evidence show that output is pending.
+   - **Stalled** (⚠️): Has no ready action and no supported waiting state.
+   - **Overdue** (⚠️): Any action or project appears in the overdue query. Show this deadline flag alongside its status, including Waiting. Preserve the deadline.
 
-   Statuses evaluated in order of severity: Overdue > Stalled > Healthy.
+   Show any waiting record even when other actions are ready. For legacy `@agent` reminders, use the shared policy and the existing confirmation flow to propose conversion. Update the same ID and preserve the original deliverable, project reference, and other notes.
 
 ## Step 2: Display Projects Overview
 
-Present all projects sorted by urgency (overdue first, then stalled, then healthy):
+Present overdue projects first, then stalled projects, then healthy and waiting projects. Show what each waiting project needs and any known source ID or link.
 
 ```
 # Projects Overview
@@ -96,7 +88,7 @@ Present all projects sorted by urgency (overdue first, then stalled, then health
    - Actions (3):
      • "Research flights to Hawaii" (@1pomo)
      • "Email hotel for rates" (@quick)
-     • "Analyze flight price trends" (@agent) — due 2026-01-20
+     • "Send the agent the flight price analysis request" (@quick) — due 2026-01-20
 
 Which project to work on? [1/2/3/Done]
 ```
@@ -113,11 +105,15 @@ Based on the selected project's state, **infer the most logical action automatic
 
 | Project State | Auto-Inferred Action | Rationale |
 |---------------|---------------------|-----------|
+| Waiting, including overdue | Report the waiting state and keep the project open | No human action is ready |
+| Output ready or support requested | Propose a concrete review or support action (Step 4a) | Human work is now actionable |
 | Overdue actions | Reschedule the specific overdue action(s) (Step 4c) | Overdue items need immediate attention |
-| Stalled (0 actions) | Add next action (Step 4a) | Stalled projects need a next action to move forward |
+| Stalled (no ready action or waiting state) | Add next action (Step 4a) | Stalled projects need a next action to move forward |
 | Healthy with actions | Present brief options | Multiple valid paths — ask user |
 
-**For overdue projects**: Identify the specific overdue action(s) and announce:
+**For waiting projects**: Report the pending deliverable and retain its deadline. Return to Step 2. Do not force an add-action loop or infer project completion. When output is ready or support is requested, propose that human action through Step 4a.
+
+**For overdue projects with ready actions**: Identify the specific overdue action(s) and announce:
 > "Project has overdue action 'Send invoice' (due 2026-01-10). Rescheduling — or would you rather mark the project complete / skip?"
 
 If multiple actions are overdue, process each one sequentially. If the project also has non-overdue actions, only target the overdue ones.
@@ -136,18 +132,16 @@ In all cases, the user can override the suggestion by saying "complete project" 
    - User provides action title
 
 2. **Infer all properties from the title text** (same pattern as gtd-process):
-   - **Task type**: Infer human vs agent from text. Agent-centric indicators: "generate", "draft", "analyze", "research", "summarize", "review code", "run tests", "scan", "convert", "process". Default to human-centric when ambiguous.
-   - **Time estimate** (human only): Infer from complexity. "Email..." → @quick, "Research..." → @1pomo, "Write report..." → @2pomo, "Redesign..." → @deep. Skip for agent-centric tasks.
-   - **Priority**: Inherit from project priority by default
+   - **Human time estimate**: Estimate the current action’s human effort. Use @quick, @1pomo, @2pomo, or @deep. Agent-related actions are concrete steps to start the agent, support its work, or review its output. Keep the original deliverable and asynchronous runtime, when known, in notes. Label uncertain durations as estimates; never treat unknown effort as zero.
+   - **Priority**: Treat labels as optional Reminders hints. Inherit project priority by default, including explicit None (0). Use Medium only when the project priority is unavailable.
    - **Action title**: Use a concrete next step with an object and a clear stopping point. Preserve the project goal. Ask one focused question if the next step cannot be inferred.
-   - **Due date**: No due date for either task type unless the user specifies a deadline. “Urgent” can affect priority but does not supply a date. A planned work session is not a deadline.
+   - **Due date**: No due date unless the user specifies a deadline. “Urgent” can affect priority but does not supply a date. A planned work session is not a deadline.
 
 3. Present a single proposal for confirmation:
 
-   **Human-centric example:**
+   **Human action example:**
    ```
    Action: "Email hotel for rates"
-   → Type: Human
    → List: @quick (~15 min)
    → Priority: High (inherited from project)
    → Due: No due date
@@ -155,11 +149,11 @@ In all cases, the user can override the suggestion by saying "complete project" 
    Confirm? [Yes / Modify / Skip]
    ```
 
-   **Agent-centric example:**
+   **Agent startup example:**
    ```
-   Action: "Analyze flight price trends"
-   → Type: Agent
-   → List: @agent
+   Action: "Send the agent the flight price analysis request"
+   → List: @quick (estimated 5 min)
+   → Notes: Agent deliverable: flight price trend analysis. Async runtime: Unknown.
    → Priority: High (inherited from project)
    → Due: No due date
 
@@ -168,7 +162,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
 
    Use **AskUserQuestion**: "Confirm this action?"
    - Options: "Yes", "Modify", "Skip"
-   - If "Modify": ask which property to change (includes "Task type"), then re-confirm
+   - If "Modify": ask which property to change, then re-confirm
    - If "Yes": create the action
    - If "Skip": return to Step 2
 
@@ -180,6 +174,10 @@ In all cases, the user can override the suggestion by saying "complete project" 
      --notes "#{ProjectName-20260112}" \
      --priority 1
    ```
+   Save the current action’s human effort estimate in `--notes`. Include the intended agent deliverable and asynchronous runtime, when known, in `--notes`. Preserve the project reference and other relevant notes. For an approved legacy conversion, update the existing reminder by ID using Step 4c. Do not create a replacement.
+
+   When creating a review action for ready output, first confirm that the action exists. Then remove only the resolved waiting record from the project notes. Preserve the goal and unrelated notes. If creation fails or is uncertain, retain the waiting record. If the notes update fails, report the partial result and reuse the confirmed action ID on retry.
+
    Add `--due "2026-01-20"` only for a specified deadline. Include a time only when the user supplies one.
 
 5. Report: "Added action '[title]' to [ProjectName]"
@@ -192,7 +190,9 @@ In all cases, the user can override the suggestion by saying "complete project" 
    - Options: List of actions for this project
    - If only one action, skip this question and complete it directly
 
-2. Mark the selected action complete:
+2. Before completing startup when later output or review remains, save a waiting record in the linked project notes: `Waiting for: <deliverable>; source: <task ID/link when known>`. Treat this as prose, not a parser format. Re-read and merge the notes to preserve the goal and unrelated content. Confirm the notes update before completing startup. If that update fails or is uncertain, leave startup open and report the error.
+
+   Completing startup does not complete the deliverable or project. Mark the selected human action complete:
    ```bash
    swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders complete \
      --id "<action-id>"
@@ -200,11 +200,13 @@ In all cases, the user can override the suggestion by saying "complete project" 
 
 3. Report: "Completed: '[action title]'"
 
-4. Check remaining actions:
+4. Check remaining actions. After agent startup, propose support or review only when it is actionable. Waiting for output is not a ready action. Keep the project open while its deliverable remains incomplete:
    - **If other actions remain**: Report "Project [ProjectName] has N remaining actions." Return to Step 2.
-   - **If no actions remain**: Auto-suggest adding the next action:
+   - **If no actions remain and a human step is actionable**: Auto-suggest adding the next action:
      > "No remaining actions — project will become stalled. Let's add the next action."
      Proceed to Step 4a. The user can select "Skip" in Step 4a's confirm prompt to decline and return to Step 2 (project becomes stalled).
+
+If the project is waiting for agent output, report the wait and return to Step 2. Do not create a premature review action.
 
 ## Step 4c: Reschedule / Edit Action
 
@@ -218,11 +220,10 @@ In all cases, the user can override the suggestion by saying "complete project" 
 3. **For general edit** (user selected "Edit action"):
    - Show current properties
    - Use **AskUserQuestion**: "What to edit?" with multiSelect
-     - Options: "Title", "Task type", "Time estimate", "Priority", "Due date", "Done editing"
+     - Options: "Title", "Time estimate", "Priority", "Due date", "Done editing"
    - For each selected property, gather the new value:
      - Title: ask for new title text
-     - Task type: options "Human", "Agent". Switching to agent moves task to @agent and removes time estimate. Switching to human requires selecting a time estimate.
-     - Time estimate (human only): options "Quick", "1 Pomodoro", "2 Pomodoros", "Deep" (maps to @quick, @1pomo, @2pomo, @deep)
+     - Time estimate: Options "Quick", "1 Pomodoro", "2 Pomodoros", "Deep" map to @quick, @1pomo, @2pomo, @deep. Estimate only the current action’s human effort. Update the effort estimate in notes with the list change so an old estimate cannot remain. Label uncertain values as estimates; never replace unknown effort with zero.
      - Priority: options "High", "Medium", "Low", "None" (maps to 1, 5, 9, 0)
      - Due date: options "No due date", "Today", "Tomorrow", "This week", "Custom date"
 
@@ -233,7 +234,7 @@ In all cases, the user can override the suggestion by saying "complete project" 
      --title "New title" \
      --list "@new-list"
    ```
-   Use `--due "2026-01-15"` to set a deadline or `--clear-due` to remove it. Use `--priority` only when changing priority. Omit `--notes` to preserve the project reference and other notes. Unspecified fields, including recurrence, stay unchanged.
+   Use `--due "2026-01-15"` to set a deadline or `--clear-due` to remove it. Use `--priority` only when changing priority. Omit `--notes` when notes are unchanged. When editing agent planning notes, merge the changes with the current notes and preserve the project reference and all unrelated content. Pass the full merged value with `--notes`. Unspecified fields, including recurrence, stay unchanged.
 
    If the update fails, report the error and retain the original reminder. If its ID is stale, refetch and identify the intended action before retrying. Do not fall back to a title-only mutation.
 
@@ -294,7 +295,7 @@ Projects completed: 1
 | @1pomo | Human | 1 Pomodoro (25 min) |
 | @2pomo | Human | 2 Pomodoros (50 min) |
 | @deep | Human | Deep focus (3+ pomodoros) |
-| @agent | Agent | N/A (async, monitor progress) |
+| @agent | Legacy only | Convert to the current human action through confirmation |
 
 ## Reference: Priority Values
 

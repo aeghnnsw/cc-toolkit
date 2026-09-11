@@ -16,6 +16,8 @@
 
 ### Changed
 
+- productivity-skills (Claude Code and Codex 6.3.0): store agent startup, support, and review as ordinary human actions in time-based lists. Use one human time budget, preserve waiting outcomes and legacy agent reminders, and explain GTD priority selection. See [#228](https://github.com/aeghnnsw/cc-toolkit/issues/228).
+
 - dev-skills (Claude Code 3.12.0, Codex 1.5.0): move completed ticket and parent-spec reconciliation into `repo-cleanup`. Keep PR closing references in `matt-automode` and delegate post-merge closure to cleanup. See [#221](https://github.com/aeghnnsw/cc-toolkit/issues/221).
 - dev-skills (Codex 1.4.2): require `matt-automode` to link resolving PRs, verify ticket closure after merge, and close fully satisfied parent specs. Keep partial work open and report unresolved issues. See [#219](https://github.com/aeghnnsw/cc-toolkit/issues/219).
 - dev-skills (Codex 1.4.1): require `matt-automode` to use `step-workflow` before planning and throughout the task, while preserving repository layout and naming conventions. See [#217](https://github.com/aeghnnsw/cc-toolkit/issues/217).
