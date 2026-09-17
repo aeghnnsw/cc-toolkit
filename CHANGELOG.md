@@ -4,6 +4,8 @@
 
 ### Added
 
+- pymol-skills (Codex 1.0.0): add the Codex manifest, marketplace registration, MCP launch configuration, and setup and visualization skills. Reuse the shared PyMOL bridge and socket plugin. See [#232](https://github.com/aeghnnsw/cc-toolkit/issues/232).
+
 - Repository: add read-only package and affected-host release validation with a shared local command, explicit resource rules, command-interface fixtures, and one fast pull-request job. See [#206](https://github.com/aeghnnsw/cc-toolkit/issues/206).
 - dev-skills (Codex 1.3.0): add `matt-automode` to run Matt’s planning, ticket implementation, PR merge, and cleanup workflows without human checkpoints.
 - dev-skills (Claude Code 3.13.0): add `matt-automode` for Claude Code. Resolve user-invoked skills from the plugin registry and replace interactive checkpoints with agent decisions. Define "User-invoked skill" in the glossary. See [#223](https://github.com/aeghnnsw/cc-toolkit/issues/223).
@@ -15,6 +17,8 @@
 - GitHub Actions: remove the automatic Claude review from every pull request; keep on-demand `@claude` triggers.
 
 ### Changed
+
+- pymol-skills (Claude Code 2.0.2, Codex 1.0.0): constrain the shared bridge to MCP 1.x, which provides its FastMCP API. Verify startup from a relocated package.
 
 - productivity-skills (Claude Code and Codex 6.3.0): store agent startup, support, and review as ordinary human actions in time-based lists. Use one human time budget, preserve waiting outcomes and legacy agent reminders, and explain GTD priority selection. See [#228](https://github.com/aeghnnsw/cc-toolkit/issues/228).
 

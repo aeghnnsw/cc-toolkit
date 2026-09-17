@@ -1,0 +1,35 @@
+{
+  "name": "pymol-skills",
+  "version": "1.0.0",
+  "description": "Control local PyMOL visualization and structural analysis through MCP.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "pymol",
+    "molecular-visualization",
+    "structural-biology",
+    "mcp"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "PyMOL Skills",
+    "shortDescription": "Control PyMOL from Codex.",
+    "longDescription": "Connect Codex to a local PyMOL socket plugin for molecular visualization and structural analysis.",
+    "developerName": "Steven",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Help me set up the PyMOL socket plugin.",
+      "Load protein 1UBQ and show it as a cartoon.",
+      "Align two structures in PyMOL."
+    ]
+  },
+  "mcpServers": "./mcp-config.codex.json"
+}

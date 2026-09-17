@@ -54,11 +54,14 @@
       ]
     },
     "pymol-skills": {
-      "ownership": [],
+      "ownership": [
+        {"path": "mcp-config.json", "hosts": ["claude"]},
+        {"path": "mcp-config.codex.json", "hosts": ["codex"]}
+      ],
       "resources": [
-        {"path": "pymol_mcp_server.py", "hosts": ["claude"]},
-        {"path": "pymol-mcp-socket-plugin/__init__.py", "hosts": ["claude"]},
-        {"path": "pymol-mcp-socket-plugin/pymol_mcp_plugin.ui", "hosts": ["claude"]}
+        {"path": "pymol_mcp_server.py", "hosts": ["claude", "codex"]},
+        {"path": "pymol-mcp-socket-plugin/__init__.py", "hosts": ["claude", "codex"]},
+        {"path": "pymol-mcp-socket-plugin/pymol_mcp_plugin.ui", "hosts": ["claude", "codex"]}
       ]
     },
     "task-loop": {

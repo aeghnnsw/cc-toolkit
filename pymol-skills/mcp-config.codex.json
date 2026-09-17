@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "pymol-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-project",
+        "--script",
+        "pymol_mcp_server.py"
+      ],
+      "cwd": ".",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
