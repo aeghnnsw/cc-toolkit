@@ -112,7 +112,12 @@ cc-toolkit/
 └── pymol-skills/                   # PyMOL molecular visualization plugin
     ├── .claude-plugin/
     │   └── plugin.json
-    └── skills/
+    ├── .codex-plugin/
+    │   └── plugin.json
+    ├── skills/
+    │   ├── pymol-mcp/
+    │   └── pymol-setup/
+    └── codex-skills/
         ├── pymol-mcp/
         └── pymol-setup/
 ```
@@ -213,7 +218,9 @@ Personal productivity automation using macOS Calendar and Reminders.
 - **gtd-overview**
 
 ### PyMOL Skills (`pymol-skills`)
-PyMOL molecular visualization control via MCP server.
+PyMOL molecular visualization control via MCP server for Claude Code and Codex.
+Both hosts share the local Python bridge and socket plugin. See the
+[installation guide](pymol-skills/README.md).
 
 **Skills:**
 - **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis
