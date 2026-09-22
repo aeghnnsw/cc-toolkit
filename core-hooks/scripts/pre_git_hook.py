@@ -16,17 +16,25 @@ VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
 
 # AI tool attribution that must not appear in commit messages or PR
 # descriptions/comments.
+#
+# Match attribution forms, not product names. A tool's name on its own is
+# descriptive and legitimate: "Add a Claude Code hook" states what a commit
+# changes in a repository that develops Claude Code plugins (issue #236).
+AI_TOOL_NAME = r'\[?(?:Claude(?:[ \t]+Code)?|Codex(?:[ \t]+CLI)?|Anthropic|OpenAI)\b'
 ATTRIBUTION_PATTERNS = [
-    # Claude Code
-    r'Generated (?:with|by) \[?Claude Code\]?',
+    # Attribution wording, e.g. `Generated with [Claude Code](...)`,
+    # `Co-authored by Codex`, `🤖 Created by Claude`.
+    r'(?:Generated|Created|Written|Authored|Co-?authored)'
+    r'[ \t]+(?:with|by)[ \t]+' + AI_TOOL_NAME,
+    # Attribution trailer, e.g. `Co-Authored-By: Claude <noreply@...>`. A
+    # trailer that names a person stays allowed.
+    r'Co-?Authored-?By:[^\n]*(?:Claude|Codex|Anthropic|OpenAI)\b',
+    # Attribution links and addresses.
     r'claude\.ai/code',
+    r'claude\.com/claude-code',
     r'noreply@anthropic\.com',
-    r'Claude Code',
-    # Codex / OpenAI
-    r'Generated (?:with|by) Codex',
-    r'noreply@openai\.com',
     r'openai\.com/codex',
-    r'Codex CLI',
+    r'noreply@openai\.com',
 ]
 
 # gh subcommands that introduce a PR body/comment where attribution can appear.

@@ -105,6 +105,16 @@ PROCESS_WRAPPERS = {
     ),
 }
 MAX_NESTED_SHELL_DEPTH = 8
+# `<<WORD`, `<<-WORD`, and the quoted or escaped delimiter forms. The plain
+# word stops at whitespace and at shell punctuation that cannot be part of a
+# delimiter, so a following redirection or operator is not consumed.
+HEREDOC_OPERATOR_RE = re.compile(
+    r"<<-?[ \t]*"
+    r"(?:'(?P<single>[^'\n]*)'"
+    r"|\"(?P<double>[^\"\n]*)\""
+    r"|(?P<plain>(?:\\.|[^\s'\"<>|&;()`\n])+))"
+)
+RM_MENTION_RE = re.compile(r"\brm\b", re.IGNORECASE)
 PROTECTED_SYSTEM_PATHS = (
     "/usr",
     "/var",
@@ -276,6 +286,128 @@ def _strip_shell_comments(command):
         )
         index += 1
     return "".join(result)
+
+
+def _heredoc_delimiters(line, quote):
+    """Return the heredoc delimiters that one command line opens.
+
+    Recognizes `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`, and `<<\\WORD`
+    outside quotes, in the order the shell reads their bodies. Also returns the
+    quote state at the end of the line, so a quoted string that spans lines
+    cannot be read as a heredoc operator.
+
+    Detection stays conservative, because a delimiter found where the shell
+    reads none would drop the following commands from inspection. `<<` is not
+    a heredoc operator in a here string (`<<<`), in a comment, inside an
+    arithmetic expansion (`$((1 << 3))`), or where the delimiter it would name
+    closes one.
+    """
+    delimiters = []
+    arithmetic_depth = 0
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if character == "\\" and quote != "'":
+            index += 2
+            continue
+        if character == "'":
+            if quote is None:
+                quote = "'"
+            elif quote == "'":
+                quote = None
+            index += 1
+            continue
+        if character == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+            index += 1
+            continue
+        if quote is not None:
+            index += 1
+            continue
+        if character == "#" and _can_start_comment(line, index):
+            break
+        if line.startswith("((", index):
+            arithmetic_depth += 1
+            index += 2
+            continue
+        if arithmetic_depth and line.startswith("))", index):
+            arithmetic_depth -= 1
+            index += 2
+            continue
+        if arithmetic_depth:
+            index += 1
+            continue
+        if line.startswith("<<<", index):
+            index += 3
+            continue
+        if line.startswith("<<", index):
+            match = HEREDOC_OPERATOR_RE.match(line, index)
+            if match is None or line[match.end():match.end() + 1] in (")", "]"):
+                index += 2
+                continue
+            delimiters.append(_heredoc_delimiter_word(match))
+            index = match.end()
+            continue
+        index += 1
+    return delimiters, quote
+
+
+def _can_start_comment(line, index):
+    if index == 0:
+        return True
+    previous = line[index - 1]
+    return previous.isspace() or previous in SHELL_PUNCTUATION
+
+
+def _heredoc_delimiter_word(match):
+    for group in ("single", "double"):
+        word = match.group(group)
+        if word is not None:
+            return word
+    return match.group("plain").replace("\\", "")
+
+
+def _strip_heredoc_bodies(command):
+    """Remove heredoc bodies so their text is never tokenized as shell code.
+
+    A heredoc body is data: the shell writes it to the command's standard
+    input. Tokenizing it failed on an ordinary apostrophe and blocked the whole
+    command (issue #236). Command substitutions are collected from the
+    unstripped text, so an expanded `$(rm -rf /)` in a body is still inspected.
+
+    Ending a body early keeps more text under inspection, so the delimiter
+    comparison ignores surrounding whitespace.
+    """
+    lines = command.split("\n")
+    kept = []
+    quote = None
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        kept.append(line)
+        delimiters, quote = _heredoc_delimiters(line, quote)
+        for delimiter in delimiters:
+            while index < len(lines):
+                body_line = lines[index]
+                index += 1
+                if body_line.strip() == delimiter:
+                    break
+    return "\n".join(kept)
+
+
+def _mentions_removal(command):
+    """Report whether text that failed tokenization can still invoke `rm`.
+
+    Quote characters and escaping backslashes are removed first, so a
+    quote- or backslash-obfuscated invocation (`r''m`, `r\\m`) still counts.
+    The check is deliberately broad: it runs only for text the tokenizer
+    rejected, where a false match blocks one command but a missed invocation
+    removes files.
+    """
+    collapsed = _remove_line_continuations(command)
+    collapsed = re.sub(r"[\\'\"]", "", collapsed)
+    return bool(RM_MENTION_RE.search(collapsed))
 
 
 def _command_segments(tokens):
@@ -890,22 +1022,29 @@ def _dangerous_segment_reason(segment, depth):
 def _dangerous_rm_reason(command, depth):
     if depth > MAX_NESTED_SHELL_DEPTH:
         return "unparseable rm command"
+    expanded_text = _strip_shell_comments(_remove_line_continuations(command))
+    for nested_command in _command_substitutions(expanded_text):
+        reason = _dangerous_rm_reason(nested_command, depth + 1)
+        if reason:
+            return reason
+
+    # Heredoc bodies are data. Strip them before tokenizing, and keep the
+    # stripped text for the fallback below so prose cannot decide the outcome.
+    executable_text = _strip_shell_comments(
+        _remove_line_continuations(_strip_heredoc_bodies(command))
+    )
     try:
-        executable_text = _remove_line_continuations(command)
-        executable_text = _strip_shell_comments(executable_text)
-        for nested_command in _command_substitutions(executable_text):
-            reason = _dangerous_rm_reason(nested_command, depth + 1)
-            if reason:
-                return reason
         segments = _command_segments(_shell_tokens(executable_text))
         for segment in segments:
             reason = _dangerous_segment_reason(segment, depth)
             if reason:
                 return reason
     except ValueError:
-        if re.search(r"\brm(?:\s|$)", command, re.IGNORECASE):
+        # The tokenizer reports malformed input, usually an unbalanced quote,
+        # as a ValueError. Block only when the command text can still invoke
+        # `rm`; text the tokenizer rejects removes nothing on its own.
+        if _mentions_removal(executable_text):
             return "unparseable rm command"
-        raise
     return None
 
 

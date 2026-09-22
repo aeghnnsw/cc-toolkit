@@ -28,6 +28,8 @@
   effort bug wording with the documented behavior. See
   [#234](https://github.com/aeghnnsw/cc-toolkit/issues/234).
 
+- core-hooks (Claude Code and Codex 1.0.13): stop two false positives. Match AI attribution forms in git operations instead of the bare product names `Claude Code` and `Codex CLI`, and keep heredoc bodies out of the shell tokenizer. Allow an unparseable command that cannot invoke `rm`, and keep blocking obfuscated removals and expanded removals inside a heredoc body. See [#236](https://github.com/aeghnnsw/cc-toolkit/issues/236).
+
 - pymol-skills (Claude Code 2.0.2, Codex 1.0.0): constrain the shared bridge to MCP 1.x, which provides its FastMCP API. Verify startup from a relocated package.
 
 - productivity-skills (Claude Code and Codex 6.3.0): store agent startup, support, and review as ordinary human actions in time-based lists. Use one human time budget, preserve waiting outcomes and legacy agent reminders, and explain GTD priority selection. See [#228](https://github.com/aeghnnsw/cc-toolkit/issues/228).
