@@ -48,8 +48,10 @@ with the session task list.
 ## Replace human checkpoints
 
 Autonomy replaces the human decision-maker. Keep the investigation, questioning,
-challenge, and phase order of the referenced skills. Make interview and approval
-decisions from evidence. Continue without routine human approval requests.
+challenge, and phase order of the referenced skills. Answer each grilling
+question with the recommended answer after the investigation and challenge
+below. This replaces the human response, not the grilling process. Continue
+without routine human approval requests.
 
 ### Investigate before deciding
 
@@ -72,19 +74,25 @@ affected question or passing the investigation gate.
 
 Use `mattpocock-skills:grill-with-docs` to build the design tree. Work its frontier
 in rounds: consider only questions whose prerequisites are settled. For each
-question, record the evidence, alternatives, recommended answer, challenge,
-chosen decision and rationale, and any unresolved items.
+question, investigate the relevant repository context before finalizing the
+recommendation. Trace affected behavior and consumers through implementation,
+interfaces, and tests. Resolve factual gaps that could change the answer. Record
+the evidence, alternatives, recommended answer, challenge, rationale, and any
+unresolved items.
 
-Test recommendations against source evidence, constraints, failure cases,
-compatibility, and affected consumers. Accept or revise them from those results.
-Recompute the frontier after each round. When evidence changes an earlier
+Test tentative recommendations against source evidence, constraints, failure
+cases, compatibility, and affected consumers. Update the recommendation when
+that investigation changes its basis. Then accept the resulting recommended
+answer as the autonomous response and record it as the decision. Recompute the
+frontier and continue the next grilling round. When evidence changes an earlier
 answer, reopen its dependent questions.
 
 Grilling is complete when all design-critical questions are resolved and all
 research that could change those decisions has returned and been evaluated.
-Record any remaining nonblocking assumptions and why they are safe. A generic
-checklist, a brief assumptions list, or automatic acceptance of recommendations
-does not satisfy this gate.
+Record any remaining nonblocking assumptions and why they are safe. Accepting
+recommended answers does not replace repository investigation or grilling
+rounds. A generic checklist or a brief assumptions list does not satisfy this
+gate.
 
 ## Phase gates
 
