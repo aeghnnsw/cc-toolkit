@@ -229,7 +229,7 @@ Both hosts share the local Python bridge and socket plugin. See the
 ### Claude Code Customization (`cc-customize`)
 
 **Skills:**
-- **model-config**: Configure model, effort level, and auto-compact threshold
+- **model-config**: Configure model, effort level, and auto-compact window
 - **statusline-setup**: Configure the Claude Code statusline
 - **claude-prompt-config**: Back up and replace the global Claude Code instruction file (`~/.claude/CLAUDE.md`) on this machine or a remote host
 

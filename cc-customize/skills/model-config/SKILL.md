@@ -1,193 +1,382 @@
 ---
 name: model-config
-version: 1.0.0
-description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "adjust auto compact", "change compact percentage", "set auto compact threshold", "configure auto compaction", "configure model settings", or wants to modify the model, effortLevel, or CLAUDE_AUTOCOMPACT_PCT_OVERRIDE settings in Claude Code.
+version: 2.0.0
+description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "set auto-compact window", "adjust auto compact", "compact earlier", "change compact threshold", "disable auto compact", "configure autocompact", or wants to modify the model, effort level, or auto-compact settings in Claude Code.
 ---
 
-Configure the default model, thinking effort level, and auto-compact threshold in `~/.claude/settings.json`.
+Configure the default model, effort level, and auto-compact window in
+`~/.claude/settings.json`.
 
 ## Background
 
-Three settings in `~/.claude/settings.json` control core Claude Code behavior:
+Claude Code reads these top-level keys from `~/.claude/settings.json`:
 
-- **model** (top-level key) — the default model ID used for all sessions
-- **effortLevel** (top-level key) — thinking depth for models that support extended thinking
-- **CLAUDE_AUTOCOMPACT_PCT_OVERRIDE** (inside the `env` block, as a string) — the percentage of context capacity at which Claude Code automatically compacts conversation history
+| Key | Type | Purpose |
+|---|---|---|
+| `model` | string | Default model for new sessions |
+| `effortLevel` | string | Default effort for models with no saved level |
+| `modelSettings` | object | Effort level saved per model (v2.1.251 and later) |
+| `ultracode` | boolean | Start sessions at `xhigh` effort with dynamic workflows |
+| `autoCompactEnabled` | boolean | Turn automatic compaction off or on |
+| `autoCompactWindow` | number | Token count at which automatic compaction runs |
 
-Supported models and their valid effort levels:
+Related environment variables go in the `env` block. Each one overrides the
+matching setting.
 
-| Model | Valid effort levels | Default effort | 1M context |
-|---|---|---|---|
-| claude-opus-4-7 | low, medium, high, xhigh, max | xhigh | yes |
-| claude-opus-4-6 | low, medium, high, max | high | yes |
-| claude-sonnet-4-6 | low, medium, high, max | high | yes |
-| claude-haiku-4-5-20251001 | not supported | — | no |
+### Auto-compact uses a token window
 
-### 1M Context Window
+The auto-compact window is a token count, not a percentage. Four places set
+it. This list shows the precedence, highest first:
 
-Opus 4.7, Opus 4.6, and Sonnet 4.6 support a 1 million token context window. To enable it, append `[1m]` to either a model alias or a full model name:
+1. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the environment, set either in the
+   shell or in the `env` block. It accepts a plain integer only. A value such
+   as `500k` reads as `500` and clamps to the 100,000 minimum.
+2. `claude --autocompact <auto|tokens>` at launch. It applies to one launch and
+   does not change the saved setting.
+3. `autoCompactWindow` in settings. The `/autocompact` command writes this key
+   to user settings.
+4. The window tuned for the model.
 
-- Aliases: `opus[1m]`, `sonnet[1m]`
-- Full names: `claude-opus-4-7[1m]`, `claude-opus-4-6[1m]`, `claude-sonnet-4-6[1m]`
+The `/autocompact` command and the `--autocompact` flag accept a window from
+100K to 1M tokens in three forms:
 
-Claude Code strips the `[1m]` suffix before sending the model ID to the API — it only controls the local context window behavior. On Max, Team, and Enterprise plans, Opus is automatically upgraded to 1M context even without the suffix, but using it makes the setting explicit.
+- A plain token count, such as `200000`
+- A `k` or `M` suffix, such as `500k` or `1M`
+- A bare number from 100 to 1000, meaning thousands, so `200` sets 200,000
 
-For auto-compact: the default behavior (no setting) triggers compaction at ~95% context capacity. The valid range is 1–83; values above 83 are silently capped internally.
+Claude Code caps the window at the model context window. `/autocompact auto`
+returns to the tuned window.
+
+Keep an explicitly set window at 200,000 tokens or more. In the v2.1.275
+binary, the check that starts proactive compaction returns false when the
+window source is not `auto` and the window is below 200,000 tokens, even though
+the documented minimum is 100,000. A session under that floor still compacts
+reactively, but it loses the smoother proactive pass. This floor is not
+documented; verify it against the installed version before you rely on it.
+
+### Default auto-compact thresholds
+
+Without an auto-compact window, Claude Code compacts when the conversation
+reaches the model context limit. These sessions compact earlier:
+
+- Models with a native 1M window, such as Fable 5.1, Fable 5, Sonnet 5, and
+  Opus 4.7 and later on the Anthropic API, compact at about 967K tokens
+- Sonnet 4.6 and Opus 4.6 without extended context compact at the 200K
+  boundary, and so do Opus 4.8 and Opus 5 when they run with a 200K window
+- With `CLAUDE_CODE_DISABLE_1M_CONTEXT=1`, models with a native 1M window
+  compact at the 200K boundary
+- Cloud sessions compact as the conversation approaches the model limit
+- Sessions on a model ID Claude Code does not recognize compact at the window
+  Claude Code assumes for that ID
+
+### The percentage override is limited
+
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` sets a percentage (1-100) of the auto-compact
+window at which compaction triggers. It has two limits:
+
+- It cannot raise the threshold. Values above the default percentage are
+  ignored.
+- It applies only in sessions that compact **before** the model context limit.
+
+A session that compacts at the model context limit ignores the variable
+completely. This is why a configured percentage can appear to have no effect.
+
+Users also report that the variable has no effect when it is set in the `env`
+block of `settings.json`, and works only when it is exported in the shell
+before launch. See
+[anthropics/claude-code#63186](https://github.com/anthropics/claude-code/issues/63186),
+closed as not planned. GUI-launched surfaces, such as the desktop app and the
+IDE extensions, do not read shell profiles, so the export workaround does not
+help there.
+
+Treat the variable as unreliable. Use `autoCompactWindow` instead, which
+applies to every session and every surface.
+
+If the user has `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` set, offer to replace it with
+an equivalent `autoCompactWindow` value. Compute the token count from the
+model context window, then round to a clean number.
+
+### Turn auto-compact off
+
+- `"autoCompactEnabled": false` in settings, or `DISABLE_AUTO_COMPACT=1` in the
+  `env` block, turns off automatic compaction. The manual `/compact` command
+  keeps working. Whichever of the two turns it off, the other cannot turn it
+  back on.
+- `DISABLE_COMPACT=1` turns off all compaction, including `/compact`.
+
+### Models and effort levels
+
+| Model | Effort levels | 1M context |
+|---|---|---|
+| `claude-fable-5-1`, `claude-fable-5` | low, medium, high, xhigh, max | native |
+| `claude-opus-5` | low, medium, high, xhigh, max | native on the Anthropic API |
+| `claude-opus-4-8`, `claude-opus-4-7` | low, medium, high, xhigh, max | native on the Anthropic API |
+| `claude-sonnet-5` | low, medium, high, xhigh, max | native, always on |
+| `claude-opus-4-6`, `claude-sonnet-4-6` | low, medium, high, max | `[1m]` variant only |
+| `claude-sonnet-4-5`, `claude-haiku-4-5` | not supported | no |
+
+The default effort level is `high` on every model that supports effort, except
+Opus 4.7, which defaults to `xhigh`. If the active model does not support the
+level you set, Claude Code falls back to the highest supported level at or
+below it.
+
+`max` is not accepted in `effortLevel` or `modelSettings`. Set
+`CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block to keep `max` across
+sessions. Set any other way, `max` applies to the current session only.
+
+`ultracode` is a Claude Code setting, not a model effort level. `"ultracode":
+true` runs sessions at `xhigh` effort and lets Claude plan dynamic workflows.
+It takes precedence over `effortLevel` and `modelSettings`.
+
+### Where effort levels are saved
+
+Since v2.1.251, `/effort low|medium|high|xhigh` saves the level under
+`modelSettings` for the active model, not under the top-level `effortLevel`:
+
+```json
+{
+  "modelSettings": {
+    "claude-opus-5": { "effortLevel": "medium" }
+  }
+}
+```
+
+Within one settings file, a model entry in `modelSettings` takes precedence
+over the top-level `effortLevel`. Use `effortLevel` as the default for models
+that have no saved entry.
+
+### 1M context window
+
+Fable 5.1, Fable 5, Sonnet 5, and Opus 4.7 and later run with the 1M window on
+every plan on the Anthropic API. Do not append `[1m]` to these models.
+
+Opus 4.6 and Sonnet 4.6 reach 1M only through the `[1m]` suffix, for example
+`claude-opus-4-6[1m]` or the `opus[1m]` alias. Access depends on the plan:
+Opus 4.6 with 1M context is included on Max, Team, and Enterprise; Sonnet 4.6
+with 1M context requires usage credits on every subscription plan.
+
+`CLAUDE_CODE_DISABLE_1M_CONTEXT=1` turns off 1M support and holds models with a
+native 1M window to a 200K window.
 
 ## Step 1: Fetch Current Model Information
 
-Use **WebFetch** to read `https://code.claude.com/docs/en/model-config` and extract the current list of supported models, their effort levels, and 1M context support. Parse the page content to identify:
+Use **WebFetch** to read `https://code.claude.com/docs/en/model-config` and
+extract the current model list, effort levels, 1M context support, and
+auto-compact defaults. Use
+`https://code.claude.com/docs/en/settings-reference` for setting types and
+ranges, and `https://code.claude.com/docs/en/env-vars` for environment
+variables.
 
-- Available model IDs
-- Which models support extended thinking and their valid effort levels
-- Which models support the `[1m]` suffix for 1M context window
-
-If WebFetch fails or the page format is unrecognizable, fall back to the hardcoded table in the Background section above. Inform the user: "Could not fetch latest model info; using built-in defaults."
+If WebFetch fails, fall back to the tables in the Background section and inform
+the user: "Could not fetch latest model info; using built-in defaults."
 
 ## Step 2: Read Current Settings
 
-Read `~/.claude/settings.json` to check the current configuration.
+Read `~/.claude/settings.json`.
 
 ## Step 3: Display Current Values
 
-Extract and display all three current values:
+Report each value, or mark it as not set:
 
-- **Model**: the value of the top-level `model` key, or "not set (Claude Code default)" if absent
-- **Effort level**: the value of the top-level `effortLevel` key, or "not set (model default)" if absent
-- **Auto-compact threshold**: the value of `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, or "not set (default: ~95%)" if absent
+- **Model**: the `model` key, or "not set (account default)"
+- **Effort level**: the entry for the active model in `modelSettings`, then the
+  `effortLevel` key, then "not set (model default)". Report
+  `env.CLAUDE_CODE_EFFORT_LEVEL` and `ultracode` when either is present,
+  because both override the settings.
+- **Auto-compact**: `autoCompactEnabled`, `autoCompactWindow`, and any of
+  `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
+  `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `env.DISABLE_AUTO_COMPACT`, and
+  `env.DISABLE_COMPACT`. Name which one wins.
+
+If `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set, warn the user that it applies only
+in sessions that compact before the model context limit.
 
 ## Step 4: Ask Which Settings to Change
 
-Use **AskUserQuestion** to ask:
-
-"Which setting(s) would you like to change? (model / effort / compact — or name multiple)"
-
-Parse the response and collect a list of the selected settings. Proceed through the applicable steps below in order, skipping any not selected.
+Use **AskUserQuestion** to ask which settings to change: model, effort,
+auto-compact, or several. Proceed through the applicable steps in order and
+skip the rest.
 
 ## Step 5: Update Model (if selected)
 
 ### Step 5a: Select Base Model
 
-Use **AskUserQuestion** to present the following choices:
+Use **AskUserQuestion** to present the models from Step 1, or these when the
+fetch failed:
 
 ```
-1. claude-opus-4-7
-2. claude-opus-4-6
-3. claude-sonnet-4-6
-4. claude-haiku-4-5-20251001
+1. claude-fable-5-1
+2. claude-opus-5
+3. claude-sonnet-5
+4. claude-haiku-4-5
 ```
 
-Include in the question text: "Or type a custom model ID directly."
+Include in the question text: "Or type a custom model ID or alias directly."
 
-Parse the user's response:
-
-- If 1–4, use the corresponding model ID.
-- If the user enters a model name matching one of options 1–4, use the corresponding model ID.
-- If the user enters a different model ID string, use that value exactly as a custom model ID.
-- If the input is empty or unrecognized, inform the user and ask again.
+Accept a number, a matching model name, or any other string as a custom model
+ID. Ask again if the input is empty or unrecognized.
 
 ### Step 5b: Enable 1M Context Window
 
-If the selected base model supports 1M context (check the model table in Background, or the data fetched in Step 1), use **AskUserQuestion** to ask:
+Check the selected model against the 1M context table:
 
-"Enable 1M context window? (yes / no)"
+- Native 1M model: inform the user that the model already runs at 1M on the
+  Anthropic API and do not append `[1m]`.
+- Opus 4.6 or Sonnet 4.6: ask whether to enable 1M context. If yes, append
+  `[1m]`. State the plan requirement for that model.
+- No 1M support: skip this sub-step.
 
-- If yes, append `[1m]` to the model ID (e.g., `claude-opus-4-6` → `claude-opus-4-6[1m]`).
-- If no, use the base model ID as-is.
-- Inform the user: "On Max, Team, and Enterprise plans, Opus models auto-upgrade to 1M context even without the suffix."
-
-If the selected model does not support 1M context (e.g., Haiku), skip this sub-step.
-
-For custom model IDs, inform the user they can manually append `[1m]` to any supported model for 1M context.
+For a custom model ID, tell the user that `[1m]` works on any model that
+supports the variant.
 
 ### Step 5c: Validate Selection
 
-- If the final model ID (with or without `[1m]`) equals the current setting, note "Already set to that model. No change needed." and skip the write for this field.
+If the final model ID equals the current setting, report "Already set to that
+model. No change needed." and skip the write for this field.
 
-Record the chosen model ID as the **target model** for Step 6. When determining the base model for effort level validation in Step 6, strip the `[1m]` suffix (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
+Record the chosen ID as the **target model**. Strip any `[1m]` suffix before
+you validate effort levels in Step 6.
 
 ## Step 6: Update Effort Level (if selected)
 
-Determine which model to validate against:
+Determine the reference model: the target model from Step 5, otherwise the
+current `model` value. Strip any `[1m]` suffix.
 
-- If the user changed the model in Step 5, use the newly selected model as the reference. Strip the `[1m]` suffix before validation (e.g., `claude-opus-4-6[1m]` → validate against `claude-opus-4-6`).
-- Otherwise, use the current `model` value from settings.json (also stripping any `[1m]` suffix). If no `model` key exists, treat as unknown.
+If the reference model does not support effort, such as Haiku 4.5, inform the
+user and skip this step. Offer to remove a stale `effortLevel` key or
+`modelSettings` entry.
 
-If the reference model is `claude-haiku-4-5-20251001`, inform the user: "Haiku 4.5 does not support effortLevel. Skipping effort configuration." If an `effortLevel` key currently exists in settings.json, ask the user if they want to remove it. Proceed to Step 7.
+Use **AskUserQuestion** to present the valid levels for the reference model
+from the table in Background. Validate the answer against that list and
+normalize it to lowercase.
 
-Use **AskUserQuestion** to present the valid effort levels for the reference model:
+Then ask about scope:
 
-- For `claude-opus-4-7`: `low`, `medium`, `high`, `xhigh`, `max` (default: xhigh)
-- For `claude-opus-4-6` or `claude-sonnet-4-6`: `low`, `medium`, `high`, `max` (default: high)
-- For unknown or custom model: `low`, `medium`, `high`, `xhigh`, `max` — note that validity depends on the model
+- **This model only**: write `modelSettings.<model>.effortLevel`. This matches
+  what `/effort` writes.
+- **All models without a saved level**: write the top-level `effortLevel`.
 
-Parse the response:
+**If the user selects `max`:** explain that `effortLevel` and `modelSettings`
+do not accept `max`, and that `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block
+is the documented way to keep it across sessions. Ask whether to set the
+environment variable or to skip. If the user sets it, remove any conflicting
+`effortLevel` key or `modelSettings` entry for that model.
 
-- If the value is not in the valid list for the reference model, inform the user of the valid options and ask again.
-- If the value equals the current setting, note "Already set to that level. No change needed." and skip the write for this field.
-- Normalize the value to lowercase before writing.
+## Step 7: Update Auto-Compact (if selected)
 
-**Known bug with `max`:** If the user selects `max`, warn them:
+### Step 7a: Choose the Change
 
-> "Note: `max` effort has a known bug where it does not persist correctly in settings.json. Preferred workaround: add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block in settings.json. Alternatively, add `export CLAUDE_CODE_EFFORT_LEVEL=max` to your shell profile. Would you like to set it via the env block, or skip?"
+Use **AskUserQuestion** to ask what to change:
 
-If the user chooses the env block workaround, write `CLAUDE_CODE_EFFORT_LEVEL` with value `"max"` to the `env` block in Step 8 instead of writing the `effortLevel` key. If an `effortLevel` key currently exists, remove it to avoid conflicts. If the user chooses to skip, do not write the `effortLevel` key.
+1. Set the auto-compact window
+2. Return to the window tuned for the model
+3. Turn auto-compact off
+4. Turn auto-compact on
 
-## Step 7: Update Auto-Compact Threshold (if selected)
+### Step 7b: Set the Window
 
-Use **AskUserQuestion** to ask:
+Ask for a token count. State the model context window and the current
+threshold so the user can judge the value. Accept `200000`, `500k`, `1M`, or a
+bare number from 100 to 1000 meaning thousands, and convert the answer to a
+plain integer.
 
-"Enter desired auto-compact percentage (1–83). Recommended: 60–75 for most work. Values above 83 are capped internally."
+Validate the integer:
 
-Parse the user's response as an integer:
+- Below `100000`: inform the user that the minimum is 100,000 and ask again.
+- Between `100000` and `199999`: warn the user that proactive compaction
+  appears to switch off below 200,000 tokens, and recommend `200000` or more.
+  Confirm the value before you write it.
+- Above `1000000`: inform the user that the maximum is 1,000,000 and ask again.
+- Above the model context window: inform the user that Claude Code caps the
+  window at the model context window, and confirm the value.
+- Equal to the current setting: report "Already set. No change needed." and
+  skip the write.
 
-- If not a valid integer, inform the user and ask again.
-- If the value is less than 1, inform the user the minimum is 1 and ask again.
-- If the value is greater than 83, inform the user: "The maximum effective value is 83 (Claude Code caps anything higher internally). Setting to 83." Use 83.
-- If the value equals the current setting, note "Already set to N%. No change needed." and skip the write for this field.
+Write the integer to the top-level `autoCompactWindow` key. Tell the user that
+`/autocompact <value>` does the same thing from inside a session.
+
+If `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set, warn the user that it
+overrides the setting, and offer to remove it.
+
+If `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set, offer to remove it, because
+`autoCompactWindow` replaces it and applies to every session.
+
+### Step 7c: Return to the Tuned Window
+
+Remove the `autoCompactWindow` key, and
+`env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` when present. This matches
+`/autocompact auto`.
+
+### Step 7d: Turn Auto-Compact Off or On
+
+Ask which scope the user wants:
+
+- **Automatic compaction only**: set `"autoCompactEnabled": false`. The manual
+  `/compact` command keeps working. Warn the user that a session which reaches
+  the context limit stops with a context-limit error instead of compacting.
+- **All compaction**: add `"DISABLE_COMPACT": "1"` to the `env` block. This
+  also disables `/compact`.
+
+To turn auto-compact back on, set `"autoCompactEnabled": true` and remove
+`DISABLE_AUTO_COMPACT` and `DISABLE_COMPACT` from the `env` block. Tell the
+user that `DISABLE_AUTO_COMPACT` overrides `autoCompactEnabled`, so leaving it
+in place keeps auto-compact off.
 
 ## Step 8: Write All Changes
 
-Read `~/.claude/settings.json` again (to get the latest state), then apply all collected changes in a single surgical update:
+Read `~/.claude/settings.json` again, then apply every collected change in one
+surgical update:
 
-- If `~/.claude/settings.json` does not exist, use the **Write** tool to create it with only the keys being set.
-- If the file exists, use the **Edit** tool for surgical updates.
-- For the `model` key: add or replace the top-level `model` key. Preserve all other top-level keys.
-- For the `effortLevel` key: add or replace the top-level `effortLevel` key. Preserve all other top-level keys. If the user chose the `max` env block workaround in Step 6, remove the `effortLevel` key instead.
-- For `CLAUDE_CODE_EFFORT_LEVEL` (max workaround): if the user chose the env block workaround in Step 6, add `"CLAUDE_CODE_EFFORT_LEVEL": "max"` to the `env` block.
-- For `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: if no `env` block exists, add one. Add or replace only the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key within `env`. Preserve all other keys in both the `env` block and the rest of the file.
+- If the file does not exist, use **Write** to create it with only the keys
+  being set.
+- If the file exists, use **Edit** for each key.
+- Add or replace only the target keys. Preserve every other key in the file and
+  in the `env` block.
+- If no `env` block exists and an environment variable is needed, add one.
 
-All values are JSON strings: `model`, `effortLevel`, and env var values must be quoted.
+`model` and `effortLevel` are JSON strings. `autoCompactWindow` is a JSON
+number. `autoCompactEnabled` and `ultracode` are JSON booleans. Every value in
+the `env` block is a string.
 
-Example partial result after setting all three:
+Example result:
 
 ```json
 {
-  "model": "claude-opus-4-7[1m]",
-  "effortLevel": "xhigh",
+  "model": "claude-fable-5-1",
+  "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5": { "effortLevel": "medium" }
+  },
+  "autoCompactWindow": 500000,
   "env": {
-    "EXISTING_KEY": "preserved",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
+    "EXISTING_KEY": "preserved"
   }
 }
 ```
 
-Only write keys that the user selected and that differ from the current value.
+Write only the keys the user selected that differ from the current value.
 
 ## Step 9: Confirm
 
-For each setting that was changed, report the new value. Then inform the user: "Restart Claude Code for changes to take effect."
+Report the new value of each changed setting. Then inform the user: "Restart
+Claude Code for changes to take effect."
 
-If nothing was changed, confirm: "No changes were made."
+`/autocompact` and `/effort` apply inside a running session. Mention them when
+the user wants the change now.
+
+If nothing changed, confirm: "No changes were made."
 
 ## Uninstall
 
-To revert to defaults, remove the relevant keys from `~/.claude/settings.json`:
+Remove these keys from `~/.claude/settings.json` to return to defaults:
 
-- Remove the top-level `model` key to restore Claude Code's default model selection.
-- Remove the top-level `effortLevel` key to restore the model's default thinking depth.
-- Remove the `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` key from the `env` block to restore the ~95% default compaction threshold.
-- Remove the `CLAUDE_CODE_EFFORT_LEVEL` key from the `env` block if present (set via the `max` effort workaround).
-- If the `env` block becomes empty after removal, remove the `env` block as well.
+- `model`, to restore the account default model
+- `effortLevel` and `modelSettings`, to restore the model default effort
+- `ultracode`, to turn off ultracode
+- `autoCompactWindow`, to restore the tuned auto-compact window
+- `autoCompactEnabled`, to restore automatic compaction
+- From the `env` block: `CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
+  `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT`,
+  `CLAUDE_CODE_EFFORT_LEVEL`, and `CLAUDE_CODE_DISABLE_1M_CONTEXT`
 
-Preserve all other keys in the file.
+If the `env` block becomes empty, remove it. Preserve all other keys.
