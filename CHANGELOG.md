@@ -19,6 +19,14 @@
 
 ### Changed
 
+- cc-customize (Claude Code 2.1.0): make `autoCompactWindow` the only auto-compact
+  threshold that `model-config` writes. Remove `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the settings `env` block whenever the skill
+  changes auto-compact, because the percentage override stacks with the window and
+  lowers the trigger. Report the real trigger, about 33,000 tokens below the window,
+  and report conflicting values in other settings files and shell profiles. See
+  [#243](https://github.com/aeghnnsw/cc-toolkit/issues/243).
+
 - cc-customize (Claude Code 2.0.0): configure auto-compact with the token-based
   `autoCompactWindow` setting and its `/autocompact`, `--autocompact`, and
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` overrides. State the precedence order and the

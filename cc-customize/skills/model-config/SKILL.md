@@ -1,6 +1,6 @@
 ---
 name: model-config
-version: 2.0.0
+version: 2.1.0
 description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "set auto-compact window", "adjust auto compact", "compact earlier", "change compact threshold", "disable auto compact", "configure autocompact", or wants to modify the model, effort level, or auto-compact settings in Claude Code.
 ---
 
@@ -18,15 +18,19 @@ Claude Code reads these top-level keys from `~/.claude/settings.json`:
 | `modelSettings` | object | Effort level saved per model (v2.1.251 and later) |
 | `ultracode` | boolean | Start sessions at `xhigh` effort with dynamic workflows |
 | `autoCompactEnabled` | boolean | Turn automatic compaction off or on |
-| `autoCompactWindow` | number | Token count at which automatic compaction runs |
+| `autoCompactWindow` | number | Window size that sets the auto-compact trigger |
 
 Related environment variables go in the `env` block. Each one overrides the
 matching setting.
 
 ### Auto-compact uses a token window
 
-The auto-compact window is a token count, not a percentage. Four places set
-it. This list shows the precedence, highest first:
+The auto-compact window is a token count, not a percentage. Use
+`autoCompactWindow` as the only auto-compact threshold. Never write
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`.
+
+Claude Code reads the window from four places. This list shows the precedence,
+highest first. Use it to find values that conflict with `autoCompactWindow`:
 
 1. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the environment, set either in the
    shell or in the `env` block. It accepts a plain integer only. A value such
@@ -47,7 +51,19 @@ The `/autocompact` command and the `--autocompact` flag accept a window from
 Claude Code caps the window at the model context window. `/autocompact auto`
 returns to the tuned window.
 
-Keep an explicitly set window at 200,000 tokens or more. In the v2.1.275
+### The trigger is lower than the window
+
+Claude Code does not compact at the window value. In v2.1.280:
+
+1. The effective window is the window minus a summary reserve of up to 20,000
+   tokens.
+2. The trigger is the effective window minus 13,000 tokens.
+
+For `autoCompactWindow: 400000`, the effective window is 380,000 and the
+trigger is about 367,000. To compact at a chosen point, set the window about
+33,000 tokens above that point.
+
+Keep an explicitly set window at 200,000 tokens or more. In the v2.1.280
 binary, the check that starts proactive compaction returns false when the
 window source is not `auto` and the window is below 200,000 tokens, even though
 the documented minimum is 100,000. A session under that floor still compacts
@@ -69,32 +85,27 @@ reaches the model context limit. These sessions compact earlier:
 - Sessions on a model ID Claude Code does not recognize compact at the window
   Claude Code assumes for that ID
 
-### The percentage override is limited
+### Do not use the percentage override
 
-`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` sets a percentage (1-100) of the auto-compact
-window at which compaction triggers. It has two limits:
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is a legacy variable. Claude Code stores it
+internally as `testPctOverride`. It sets the trigger to a percentage (1-100) of
+the effective window and can only lower the trigger:
 
-- It cannot raise the threshold. Values above the default percentage are
-  ignored.
-- It applies only in sessions that compact **before** the model context limit.
+```text
+trigger = min(effective window x pct / 100, effective window - 13,000)
+```
 
-A session that compacts at the model context limit ignores the variable
-completely. This is why a configured percentage can appear to have no effect.
+The variable stacks with `autoCompactWindow`; it does not replace it. With
+`autoCompactWindow: 400000` and an override of `40`, the trigger drops from
+about 367,000 to about 152,000 tokens.
 
-Users also report that the variable has no effect when it is set in the `env`
-block of `settings.json`, and works only when it is exported in the shell
-before launch. See
-[anthropics/claude-code#63186](https://github.com/anthropics/claude-code/issues/63186),
-closed as not planned. GUI-launched surfaces, such as the desktop app and the
-IDE extensions, do not read shell profiles, so the export workaround does not
-help there.
+Never write this variable. Remove it from the settings `env` block whenever the
+skill changes auto-compact. Report any value set outside that file.
 
-Treat the variable as unreliable. Use `autoCompactWindow` instead, which
-applies to every session and every surface.
-
-If the user has `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` set, offer to replace it with
-an equivalent `autoCompactWindow` value. Compute the token count from the
-model context window, then round to a clean number.
+If the override is the only threshold set, offer a window that keeps the same
+trigger. Compute the effective window as the model context window minus
+20,000, apply the percentage, then add 33,000. For example, 40% on a 1M model
+gives 0.4 x 980,000 = 392,000, so the matching window is `425000`.
 
 ### Turn auto-compact off
 
@@ -174,6 +185,16 @@ the user: "Could not fetch latest model info; using built-in defaults."
 
 Read `~/.claude/settings.json`.
 
+Then search for `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the other places that can set them:
+
+- `~/.claude/settings.local.json`
+- The project's `.claude/settings.json` and `.claude/settings.local.json`
+- The shell profiles `~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.bashrc`, and
+  `~/.bash_profile`
+
+A value in any of these places stacks with or overrides `autoCompactWindow`.
+
 ## Step 3: Display Current Values
 
 Report each value, or mark it as not set:
@@ -183,13 +204,13 @@ Report each value, or mark it as not set:
   `effortLevel` key, then "not set (model default)". Report
   `env.CLAUDE_CODE_EFFORT_LEVEL` and `ultracode` when either is present,
   because both override the settings.
-- **Auto-compact**: `autoCompactEnabled`, `autoCompactWindow`, and any of
-  `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
-  `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `env.DISABLE_AUTO_COMPACT`, and
-  `env.DISABLE_COMPACT`. Name which one wins.
+- **Auto-compact**: `autoCompactEnabled`, `autoCompactWindow`, the trigger it
+  gives (the window minus about 33,000 tokens), and any of
+  `env.DISABLE_AUTO_COMPACT` and `env.DISABLE_COMPACT`.
 
-If `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set, warn the user that it applies only
-in sessions that compact before the model context limit.
+If Step 2 found `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` or
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, report each one as a conflict. Name the file
+and show the trigger that results from the combination.
 
 ## Step 4: Ask Which Settings to Change
 
@@ -276,7 +297,8 @@ Use **AskUserQuestion** to ask what to change:
 ### Step 7b: Set the Window
 
 Ask for a token count. State the model context window and the current
-threshold so the user can judge the value. Accept `200000`, `500k`, `1M`, or a
+trigger so the user can judge the value. Remind the user that the trigger is
+about 33,000 tokens below the window. Accept `200000`, `500k`, `1M`, or a
 bare number from 100 to 1000 meaning thousands, and convert the answer to a
 plain integer.
 
@@ -292,19 +314,23 @@ Validate the integer:
 - Equal to the current setting: report "Already set. No change needed." and
   skip the write.
 
-Write the integer to the top-level `autoCompactWindow` key. Tell the user that
-`/autocompact <value>` does the same thing from inside a session.
+Write the integer to the top-level `autoCompactWindow` key. In the same write,
+remove `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
+from the `env` block, and tell the user what you removed. `autoCompactWindow`
+must be the only threshold.
 
-If `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set, warn the user that it
-overrides the setting, and offer to remove it.
+If Step 2 found either variable outside `~/.claude/settings.json`, give the
+user the file and line, and ask them to remove it. The skill does not edit
+shell profiles or project files.
 
-If `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is set, offer to remove it, because
-`autoCompactWindow` replaces it and applies to every session.
+Report the new trigger. Tell the user that `/autocompact <value>` sets the same
+key from inside a session.
 
 ### Step 7c: Return to the Tuned Window
 
-Remove the `autoCompactWindow` key, and
-`env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` when present. This matches
+Remove the `autoCompactWindow` key. Also remove
+`env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
+when present, so that the tuned window applies unchanged. This matches
 `/autocompact auto`.
 
 ### Step 7d: Turn Auto-Compact Off or On
