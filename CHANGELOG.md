@@ -18,6 +18,16 @@
 
 ### Changed
 
+- cc-customize (Claude Code 2.0.0): configure auto-compact with the token-based
+  `autoCompactWindow` setting and its `/autocompact`, `--autocompact`, and
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW` overrides. State the precedence order and the
+  per-model defaults, and mark `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` unreliable because
+  it cannot raise the threshold and applies only in sessions that compact before the
+  model context limit. Refresh the model, effort, and 1M context tables for Fable 5.1,
+  Opus 5, and Sonnet 5, add `modelSettings` and `ultracode`, and replace the `max`
+  effort bug wording with the documented behavior. See
+  [#234](https://github.com/aeghnnsw/cc-toolkit/issues/234).
+
 - pymol-skills (Claude Code 2.0.2, Codex 1.0.0): constrain the shared bridge to MCP 1.x, which provides its FastMCP API. Verify startup from a relocated package.
 
 - productivity-skills (Claude Code and Codex 6.3.0): store agent startup, support, and review as ordinary human actions in time-based lists. Use one human time budget, preserve waiting outcomes and legacy agent reminders, and explain GTD priority selection. See [#228](https://github.com/aeghnnsw/cc-toolkit/issues/228).
