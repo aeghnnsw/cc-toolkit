@@ -46,11 +46,11 @@ records. The repository uses a single-context layout.
    accurate. Explain the problem and resulting behavior, and link the issue.
    Do not add AI authorship or generation attribution. Do not include a
    test-plan section in PR descriptions.
-5. Use regular merges after review to preserve commit context. After merging,
-   use `repo-cleanup` to verify merged branches
-   (including squash merges), remove eligible worktrees and branches, prune
-   the upstream remote, and reconcile the default branch. Preserve dirty or
-   unverified work.
+5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
+   per change on the default branch. After merging, use `repo-cleanup` to
+   verify merged branches (including squash merges), remove eligible
+   worktrees and branches, prune the upstream remote, and reconcile the
+   default branch. Preserve dirty or unverified work.
 
 Create a worktree with an issue-specific name, for example:
 
