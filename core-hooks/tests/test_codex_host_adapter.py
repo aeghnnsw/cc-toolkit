@@ -88,8 +88,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 check=False,
             )
 
-    def test_codex_adapter_has_the_1_0_12_release_version(self):
-        self.assertEqual(load_manifest()["version"], "1.0.12")
+    def test_codex_adapter_has_the_1_0_13_release_version(self):
+        self.assertEqual(load_manifest()["version"], "1.0.13")
 
     def test_manifest_selects_only_the_codex_hook_configuration(self):
         manifest = load_manifest()
