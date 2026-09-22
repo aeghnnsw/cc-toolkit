@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.0.0
+version: 1.0.1
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 disable-model-invocation: true
 ---
@@ -47,29 +47,88 @@ with the session task list.
 
 ## Replace human checkpoints
 
-Replace the referenced skills' interview and approval checkpoints with agent
-decisions. Do not call `AskUserQuestion`, and do not end the turn to wait for
-input. When the grilling skill poses a round of numbered questions, answer each
-one with the answer it recommends. Treat "check with the user", "quiz the
-user", "confirm the seams", and "ask for the fixed point" as decisions to make. Research facts, choose suitable
-answers, and record assumptions and decisions in the numbered planning files.
-Continue between phases without asking for input or approval. Use sub-agents
-where a referenced skill calls for them; keep orchestration in this session.
+Autonomy replaces the human decision-maker. Keep the investigation, questioning,
+challenge, and phase order of the referenced skills. Answer each grilling
+question with the recommended answer after the investigation and challenge
+below. This replaces the human response, not the grilling process. Continue
+without routine human approval requests.
 
-## Phases
+### Investigate before deciding
 
-1. `mattpocock-skills:grill-with-docs`: resolve the design questions and record
-   the domain terms and decisions.
-2. `mattpocock-skills:to-spec`: choose the testing seams and publish the spec.
-3. `mattpocock-skills:to-tickets`: choose the ticket breakdown and publish it
-   with blocking dependencies. Track the parent spec, all task tickets, and their
-   PRs through completion. Preserve the parent during ticket publication.
-4. `mattpocock-skills:implement`: complete every ticket in dependency order.
-   Follow its testing and code-review workflow. Fix actionable findings, open
-   PRs, and merge after required checks and review pass. Follow repository rules.
-5. `dev-skills:repo-cleanup`: run after the implementation is merged. Pass the
-   tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
-   state and verify closure alongside Git cleanup.
+Inspect the relevant implementation, public interfaces, tests, canonical docs,
+glossary, and ADRs. Read relevant issues, comments, and merged PRs to recover the
+latest decisions and their rationale. Check for superseding decisions. Resolve
+conflicts between historical documents and current behavior explicitly; neither
+age nor current code alone proves the intended behavior.
+
+In the numbered planning files, separate verified facts, design decisions,
+assumptions, and unresolved questions. Cite source paths, symbols, tests, or
+issue and PR links for consequential factual claims.
+
+Use parallel sub-agents for independent read-only investigations. A pending
+finding that can change a design decision is an unsettled prerequisite. Continue
+independent research and planning, but wait for that finding before resolving the
+affected question or passing the investigation gate.
+
+### Grill in rounds
+
+Use `mattpocock-skills:grill-with-docs` to build the design tree. Work its frontier
+in rounds: consider only questions whose prerequisites are settled. For each
+question, investigate the relevant repository context before finalizing the
+recommendation. Trace affected behavior and consumers through implementation,
+interfaces, and tests. Resolve factual gaps that could change the answer. Record
+the evidence, alternatives, recommended answer, challenge, rationale, and any
+unresolved items.
+
+Test tentative recommendations against source evidence, constraints, failure
+cases, compatibility, and affected consumers. Update the recommendation when
+that investigation changes its basis. Then accept the resulting recommended
+answer as the autonomous response and record it as the decision. Recompute the
+frontier and continue the next grilling round. When evidence changes an earlier
+answer, reopen its dependent questions.
+
+Grilling is complete when all design-critical questions are resolved and all
+research that could change those decisions has returned and been evaluated.
+Record any remaining nonblocking assumptions and why they are safe. Accepting
+recommended answers does not replace repository investigation or grilling
+rounds. A generic checklist or a brief assumptions list does not satisfy this
+gate.
+
+## Phase gates
+
+Before each transition, record a completion check in the planning files. Include
+the gate status, evidence references, remaining work, and the next permitted
+action. Keep the checks in execution order. Existing artifacts can satisfy a
+gate only after their content and current validity have been checked.
+
+| Phase | Required completion check |
+| --- | --- |
+| 1. Investigation and grilling | Evidence supports the resolved decisions. No design-critical question or consequential research result remains open. Record domain terms and decisions through `grill-with-docs`. |
+| 2. Spec | Use `mattpocock-skills:to-spec`. Publish scope and testing seams derived from the resolved decisions. Record the published spec reference and verify its content. |
+| 3. Tickets | Use `mattpocock-skills:to-tickets`. Publish tickets with dependencies and acceptance criteria. Record their references and verify coverage of the spec. Track the parent spec, tickets, and PRs through completion. Preserve the parent during ticket publication. |
+| 4. Implementation | Before starting each ticket, verify gates 1–3 and that ticket's blockers are satisfied. Use `mattpocock-skills:implement` and its testing and code-review workflow. Fix actionable findings. Open PRs and merge only after required checks and review pass. Follow repository rules. |
+| 5. Cleanup | After implementation is merged, use `dev-skills:repo-cleanup`. Pass the tracked tickets, parent spec, and merged PRs for issue reconciliation and Git cleanup. |
+
+Implementation includes assigning coding work to a sub-agent. Keep coding and
+coding delegation blocked until gates 1–3 pass and the ticket's blockers are
+satisfied. Read-only investigation and planning can run in parallel before then.
+Keep orchestration in this session.
+
+If later evidence invalidates a decision, pause dependent implementation,
+including active coding sub-agents. Reopen the affected planning gate and its
+downstream gates. Update decisions, the published spec, and tickets as needed.
+Record new completion checks before resuming dependent work.
+
+## Report progress accurately
+
+Distinguish completed phases from pending or blocked work. Report each gate's
+status with its supporting evidence. Artifact existence alone does not prove
+completion or correct phase order. If implementation started early, report the
+ordering failure, pause dependent work, and complete the missing gates before
+resuming. Later publication cannot make the earlier execution compliant.
+
+Distinguish instruction and scenario checks from demonstrated agent behavior.
+Report what was actually observed and any validation limits.
 
 ## PR issue references
 
