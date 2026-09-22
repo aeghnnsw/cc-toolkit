@@ -19,6 +19,8 @@
 
 ### Changed
 
+- dev-skills (Claude Code 3.13.1, Codex 1.5.1): require evidence-based investigation and grilling gates in `matt-automode`. Block coding delegation until the spec and tickets are published and blockers are satisfied. Reopen affected gates when evidence changes, and report phase order accurately. See [#241](https://github.com/aeghnnsw/cc-toolkit/issues/241).
+
 - cc-customize (Claude Code 2.0.0): configure auto-compact with the token-based
   `autoCompactWindow` setting and its `/autocompact`, `--autocompact`, and
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` overrides. State the precedence order and the
