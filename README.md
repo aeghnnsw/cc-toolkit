@@ -32,7 +32,7 @@ cc-toolkit/
 │   ├── agents/                     # Shared development skill configuration
 │   ├── adr/                        # Accepted architecture decisions
 │   └── superpowers/                # Design and planning documents
-├── cc-customize/                   # Claude Code model and statusline skills
+├── cc-customize/                   # Claude Code model, statusline, and prompt config skills
 ├── dev-skills/                     # Development workflow plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
@@ -231,6 +231,7 @@ Both hosts share the local Python bridge and socket plugin. See the
 **Skills:**
 - **model-config**: Configure model, effort level, and auto-compact threshold
 - **statusline-setup**: Configure the Claude Code statusline
+- **claude-prompt-config**: Back up and replace the global Claude Code instruction file (`~/.claude/CLAUDE.md`) on this machine or a remote host
 
 ## Plugin System Benefits
 

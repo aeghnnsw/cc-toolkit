@@ -4,6 +4,7 @@
 
 ### Added
 
+- cc-customize (Claude Code 1.3.0): add `claude-prompt-config` to back up and replace the global `~/.claude/CLAUDE.md` on the local machine or on an SSH host. Ship the maintained file as a skill asset and write in one direction only.
 - pymol-skills (Codex 1.0.0): add the Codex manifest, marketplace registration, MCP launch configuration, and setup and visualization skills. Reuse the shared PyMOL bridge and socket plugin. See [#232](https://github.com/aeghnnsw/cc-toolkit/issues/232).
 
 - Repository: add read-only package and affected-host release validation with a shared local command, explicit resource rules, command-interface fixtures, and one fast pull-request job. See [#206](https://github.com/aeghnnsw/cc-toolkit/issues/206).
