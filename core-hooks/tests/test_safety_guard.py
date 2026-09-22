@@ -440,6 +440,91 @@ class SafetyGuardTests(unittest.TestCase):
             "rm /tmp/candidate.json > /var/log/safety-guard-output"
         )
 
+    # --- #236 regressions: heredoc bodies are data, not shell code ---
+
+    def test_allows_heredoc_body_with_apostrophe(self):
+        self.assert_allowed(
+            "cat > notes.md <<'EOF'\n"
+            "Back up a target's file first.\n"
+            "EOF"
+        )
+
+    def test_allows_heredoc_body_describing_removals(self):
+        # An apostrophe used to break tokenization, and the prose fallback then
+        # matched `rm` in the body text, so the command was blocked as an
+        # unparseable removal.
+        self.assert_allowed(
+            "gh issue create --body-file - <<'EOF'\n"
+            "Safe explicit removals like 'rm -rf specific_folder' are allowed.\n"
+            "A heredoc body that mentions a target's rm command is not one.\n"
+            "EOF"
+        )
+
+    def test_allows_unquoted_and_indented_heredoc_bodies(self):
+        commands = (
+            "cat > notes.md <<EOF\nIt's data, not a command.\nEOF",
+            "cat > notes.md <<-\tEOF\n\tIt's indented data.\n\tEOF",
+            'cat > notes.md <<"EOF"\nIt\'s quoted data.\nEOF',
+            "cat > notes.md << EOF\nIt's spaced data.\nEOF",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command)
+
+    def test_blocks_command_substitution_inside_heredoc_body(self):
+        # An unquoted heredoc expands its body, so a substitution there still
+        # runs. Stripping the body must not hide it.
+        self.assert_blocked(
+            "cat > notes.md <<EOF\nremoved $(rm -rf /) today\nEOF",
+            "root directory",
+        )
+
+    def test_blocks_removal_after_heredoc_terminator(self):
+        self.assert_blocked(
+            "cat > notes.md <<'EOF'\n"
+            "A target's file.\n"
+            "EOF\n"
+            "rm -rf /var/log/example",
+            "protected system path /var",
+        )
+
+    def test_blocks_removal_after_text_that_only_looks_like_a_heredoc(self):
+        # A delimiter detected where the shell reads none would drop every
+        # following line from inspection.
+        commands = (
+            # Arithmetic left shift, not a heredoc named `3`.
+            "echo $((1 << 3))\nrm -rf /var/log/example",
+            "echo $((1 << 3 + 2))\nrm -rf /var/log/example",
+            # A comment, not a heredoc named `EOF`.
+            "# use <<EOF to start a heredoc\nrm -rf /var/log/example",
+            "echo ready  # <<EOF\nrm -rf /var/log/example",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
+    def test_blocks_removal_after_heredoc_body_ending_in_backslash(self):
+        # A quoted delimiter keeps a trailing backslash literal, so the next
+        # line still terminates the body.
+        self.assert_blocked(
+            "cat > notes.md <<'EOF'\n"
+            "a target's data\\\n"
+            "EOF\n"
+            "rm -rf /var/log/example",
+            "protected system path /var",
+        )
+
+    def test_blocks_removal_after_here_string_and_quoted_operator(self):
+        # A here string keeps its data on the same line, and a `<<` inside
+        # quotes is text. Neither opens a body that could swallow the removal.
+        commands = (
+            'grep -q ready <<< "status"\nrm -rf /var/log/example',
+            'echo "use << to start a heredoc"\nrm -rf /var/log/example',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_blocked(command, "protected system path /var")
+
     def test_blocks_malformed_rm_shell_text(self):
         self.assert_blocked(
             'rm "/var/log/example',
@@ -447,10 +532,10 @@ class SafetyGuardTests(unittest.TestCase):
         )
         self.assert_blocked(
             'r\\\nm -rf "/var/log/example',
-            "shell command safety analysis failed",
+            "unparseable rm command",
         )
 
-    def test_unexpected_parser_exception_fails_closed(self):
+    def load_module(self):
         spec = importlib.util.spec_from_file_location(
             "safety_guard_under_test",
             SCRIPT,
@@ -461,7 +546,10 @@ class SafetyGuardTests(unittest.TestCase):
             spec.loader.exec_module(module)
         finally:
             sys.path.pop(0)
+        return module
 
+    def test_unexpected_parser_exception_fails_closed(self):
+        module = self.load_module()
         commands = (
             "rm -rf /var/log/example",
             "r\\\nm -rf /var/log/example",
@@ -470,30 +558,47 @@ class SafetyGuardTests(unittest.TestCase):
             "rm>/tmp/out -rf /var/log/example",
             "echo ready",
         )
-        parser_errors = (
-            RuntimeError("synthetic parser failure"),
-            ValueError("synthetic malformed shell input"),
+        with mock.patch.object(
+            module,
+            "_shell_tokens",
+            side_effect=RuntimeError("synthetic parser failure"),
+        ):
+            for command in commands:
+                with self.subTest(command=command):
+                    self.assertEqual(
+                        module.dangerous_rm_reason(command),
+                        "shell command safety analysis failed",
+                    )
+
+    def test_malformed_shell_input_blocks_only_removals(self):
+        """Malformed input blocks a removal the tokenizer could not read.
+
+        `ValueError` is how the tokenizer reports malformed input, including an
+        obfuscated removal. Text it rejects without a removal command removes
+        nothing, so it stays allowed (issue #236).
+        """
+        module = self.load_module()
+        removals = (
+            "rm -rf /var/log/example",
+            "r\\\nm -rf /var/log/example",
+            "r\\m -rf /var/log/example",
+            "r''m -rf /var/log/example",
+            "rm>/tmp/out -rf /var/log/example",
         )
-        for parser_error in parser_errors:
-            with mock.patch.object(
-                module,
-                "_shell_tokens",
-                side_effect=parser_error,
-            ):
-                for command in commands:
-                    expected = "shell command safety analysis failed"
-                    if isinstance(parser_error, ValueError) and command.startswith(
-                        "rm "
-                    ):
-                        expected = "unparseable rm command"
-                    with self.subTest(
-                        command=command,
-                        parser_error=type(parser_error).__name__,
-                    ):
-                        self.assertEqual(
-                            module.dangerous_rm_reason(command),
-                            expected,
-                        )
+        with mock.patch.object(
+            module,
+            "_shell_tokens",
+            side_effect=ValueError("synthetic malformed shell input"),
+        ):
+            for command in removals:
+                with self.subTest(command=command):
+                    self.assertEqual(
+                        module.dangerous_rm_reason(command),
+                        "unparseable rm command",
+                    )
+            for command in ("echo ready", "git commit -m \"it's ready\""):
+                with self.subTest(command=command):
+                    self.assertIsNone(module.dangerous_rm_reason(command))
 
     def test_allows_explicit_tmp_file_for_claude_bash(self):
         self.assert_allowed(

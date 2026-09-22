@@ -391,6 +391,73 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertIn("badname", result.stderr)
 
+    # --- #236 regressions: product names are not attribution ---
+
+    def test_allows_descriptive_ai_tool_mention_in_commit(self):
+        # This repository develops Claude Code and Codex plugins, so a tool
+        # name in a commit message describes the change (issue #236).
+        for command in [
+            'git commit -m "Add a skill that backs up the global Claude Code instruction file"',
+            'git commit -m "core-hooks: document the Codex CLI hook payload"',
+            'git commit -m "Support Claude Code and Codex marketplace registries"',
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertNotIn("hookSpecificOutput", response)
+                self.assertIn(
+                    "Contribution Guidelines",
+                    response.get("systemMessage", ""),
+                )
+
+    def test_allows_descriptive_ai_tool_mention_in_pull_request_body(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {
+                    "command": 'gh pr create --title "Add Codex CLI support" --body "Ship the Claude Code hooks for the Codex CLI."'
+                },
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+
+    def test_blocks_attribution_forms(self):
+        for message in [
+            "Generated with [Claude Code](https://claude.com/claude-code)",
+            "Created by Claude",
+            "Written with Codex CLI",
+            "Co-authored by Codex",
+            "Co-Authored-By: Claude <claude@example.invalid>",
+            "See https://claude.ai/code for details",
+            "Reported-by: agent <noreply@anthropic.com>",
+        ]:
+            with self.subTest(message=message):
+                result = run_blocked_hook(
+                    {
+                        "tool_name": "Bash",
+                        "tool_input": {
+                            "command": f'git commit -m "Fix typo" -m "{message}"'
+                        },
+                    }
+                )
+                self.assertIn("AI tool attribution detected", result.stderr)
+
+    def test_allows_human_co_author_trailer(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {
+                    "command": 'git commit -m "Fix typo" -m "Co-Authored-By: Jamie Doe <jamie@example.invalid>"'
+                },
+            }
+        )
+        self.assertNotIn("hookSpecificOutput", response)
+        self.assertIn(
+            "Contribution Guidelines",
+            response.get("systemMessage", ""),
+        )
+
     def test_codex_hooks_match_exec_command_for_git_guard(self):
         hooks = json.loads(CODEX_HOOKS.read_text())
         matchers = [
