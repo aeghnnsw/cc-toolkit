@@ -47,6 +47,13 @@ The `/autocompact` command and the `--autocompact` flag accept a window from
 Claude Code caps the window at the model context window. `/autocompact auto`
 returns to the tuned window.
 
+Keep an explicitly set window at 200,000 tokens or more. In the v2.1.275
+binary, the check that starts proactive compaction returns false when the
+window source is not `auto` and the window is below 200,000 tokens, even though
+the documented minimum is 100,000. A session under that floor still compacts
+reactively, but it loses the smoother proactive pass. This floor is not
+documented; verify it against the installed version before you rely on it.
+
 ### Default auto-compact thresholds
 
 Without an auto-compact window, Claude Code compacts when the conversation
@@ -276,6 +283,9 @@ plain integer.
 Validate the integer:
 
 - Below `100000`: inform the user that the minimum is 100,000 and ask again.
+- Between `100000` and `199999`: warn the user that proactive compaction
+  appears to switch off below 200,000 tokens, and recommend `200000` or more.
+  Confirm the value before you write it.
 - Above `1000000`: inform the user that the maximum is 1,000,000 and ask again.
 - Above the model context window: inform the user that Claude Code caps the
   window at the model context window, and confirm the value.
