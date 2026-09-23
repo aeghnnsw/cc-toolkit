@@ -5,14 +5,18 @@
 # and the session token total is updated in a detached background process.
 
 INPUT=$(cat)
-SETTINGS="$HOME/.claude/settings.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SETTINGS="$CONFIG_DIR/settings.json"
 [ -f "$SETTINGS" ] || SETTINGS=/dev/null
 
-# Parse every field in one jq call into shell variables.
-eval "$(printf '%s' "$INPUT" | jq -r --slurpfile s "$SETTINGS" '
+# Parse every field in one jq call into shell variables. Numeric fields are
+# digits or empty, so they are safe in bash arithmetic. Invalid settings JSON
+# is ignored.
+eval "$(printf '%s' "$INPUT" | jq -r --rawfile s "$SETTINGS" '
   def n: if . == null then "" else tostring end;
-  def pct: if . == null then "" else floor | tostring end;
-  {
+  def num: if type == "number" then floor | tostring else "" end;
+  ((try ($s | fromjson) catch null) // {}) as $set
+  | {
     MODEL:      (.model.display_name // .model.id // "Claude"),
     SESSION:    (.session_id // "x"),
     SESS_NAME:  (.session_name | n),
@@ -25,29 +29,42 @@ eval "$(printf '%s' "$INPUT" | jq -r --slurpfile s "$SETTINGS" '
     WT_NAME:    (.worktree.name // .workspace.git_worktree | n),
     PR_NUM:     (.pr.number | n),
     PR_STATE:   (.pr.review_state | n),
-    CTX_SIZE:   (.context_window.context_window_size // 0 | n),
-    CTX_IN:     (.context_window.total_input_tokens // 0 | n),
-    ACW:        ($s[0].autoCompactWindow // 0 | n),
-    COST:       (.cost.total_cost_usd // 0 | . * 100 | round | n),
-    RL5:        (.rate_limits.five_hour.used_percentage | pct),
-    RL5_AT:     (.rate_limits.five_hour.resets_at | n),
-    RL7:        (.rate_limits.seven_day.used_percentage | pct),
-    RL7_AT:     (.rate_limits.seven_day.resets_at | n),
-    SPEND:      (.rate_limits.spend_limit.used_percentage | pct),
+    CTX_SIZE:   (.context_window.context_window_size | num),
+    CTX_IN:     (.context_window.total_input_tokens | num),
+    ACW:        ($set.autoCompactWindow | num),
+    AC_ON:      ($set.autoCompactEnabled | n),
+    COST:       (.cost.total_cost_usd // 0 | . * 100 | round | num),
+    RL5:        (.rate_limits.five_hour.used_percentage | num),
+    RL5_AT:     (.rate_limits.five_hour.resets_at | num),
+    RL7:        (.rate_limits.seven_day.used_percentage | num),
+    RL7_AT:     (.rate_limits.seven_day.resets_at | num),
+    SPEND:      (.rate_limits.spend_limit.used_percentage | num),
     PC_WARM:    (.prompt_cache.warm | n),
     PC_TTL:     (.prompt_cache.ttl | n),
-    PC_EXP:     (.prompt_cache.expires_at | n),
-    PC_HIT:     (.prompt_cache.hit_ratio | if . == null then "" else . * 100 | floor | tostring end),
-    PC_MISS:    (.prompt_cache.misses | n)
+    PC_EXP:     (.prompt_cache.expires_at | num),
+    PC_HIT:     (.prompt_cache.hit_ratio | if type == "number" then . * 100 | num else "" end),
+    PC_MISS:    (.prompt_cache.misses | num)
   } | to_entries[] | "\(.key)=\(.value | @sh)"
-')"
+' 2>/dev/null)"
 
 NOW=$(date +%s)
-DIM="\033[2m"; RST="\033[0m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
+DIM=$'\033[2m'; RST=$'\033[0m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; CYAN=$'\033[36m'
 SEP=" ${DIM}│${RST} "
-STATE="${TMPDIR:-/tmp}/cc-statusline-${USER:-$(id -un)}/${SESSION}"
-mkdir -p "$STATE/files" 2>/dev/null
-printf '%s' "$INPUT" > "$STATE/last-input.json" 2>/dev/null   # for debugging
+
+# File mtime in epoch seconds (GNU stat, then BSD/macOS stat).
+mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
+
+# Per-session state in a private directory. When the directory is not ours
+# (another user created it first), run without state.
+umask 077
+STATE=""
+ROOT="${TMPDIR:-/tmp}/cc-statusline-$(id -u)"
+mkdir -p "$ROOT" 2>/dev/null
+if [ -d "$ROOT" ] && [ ! -L "$ROOT" ] && [ -O "$ROOT" ] && chmod 700 "$ROOT" 2>/dev/null; then
+  STATE="$ROOT/${SESSION//[^A-Za-z0-9_-]/_}"
+  mkdir -p "$STATE/files" 2>/dev/null || STATE=""
+fi
+[ -n "$STATE" ] && printf '%s' "$INPUT" > "$STATE/last-input.json" 2>/dev/null   # for debugging
 
 # 10-char bar, colored by percentage.
 make_bar() {
@@ -57,11 +74,8 @@ make_bar() {
   for ((i=0; i<filled; i++)); do bar+="█"; done
   for ((i=filled; i<10; i++)); do bar+="░"; done
   if (( pct >= 90 )); then color=$RED; elif (( pct >= 50 )); then color=$YELLOW; fi
-  printf '%b%s%b' "$color" "$bar" "$RST"
+  printf '%s%s%s' "$color" "$bar" "$RST"
 }
-
-# File mtime in epoch seconds (GNU stat, then BSD/macOS stat).
-mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
 
 # 1234 -> 1.2K, 1234567 -> 1.2M
 fmt_k() {
@@ -102,6 +116,8 @@ update_tokens() {
     key=$dir/files/${f##*/}
     off=0 last=- i=0 cw=0 cr=0 out=0
     [ -f "$key" ] && read -r off last i cw cr out < "$key"
+    [[ $off =~ ^[0-9]+$ && $i =~ ^[0-9]+$ && $cw =~ ^[0-9]+$ && $cr =~ ^[0-9]+$ && $out =~ ^[0-9]+$ ]] \
+      || { off=0 last=- i=0 cw=0 cr=0 out=0; }
     size=$(( $(wc -c < "$f") ))
     (( size > off )) || continue
     chunk=$(tail -c +$((off + 1)) "$f" | head -c $((size - off)); echo x)
@@ -127,22 +143,29 @@ update_tokens() {
     > "$dir/total.tmp" && mv "$dir/total.tmp" "$dir/total"
 }
 
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  export -f update_tokens mtime
-  DETACH=""; command -v setsid >/dev/null && DETACH=setsid
-  $DETACH bash -c 'update_tokens "$@"' _ "$TRANSCRIPT" "$STATE" </dev/null >/dev/null 2>&1 &
+# Start the token counter at most every 2 s. Without setsid (macOS) it stays
+# in this process group and can be cancelled; the next run resumes the count.
+TOTAL_TOK=""
+if [ -n "$STATE" ]; then
+  if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && (( NOW - $(mtime "$STATE/total") >= 2 )); then
+    export -f update_tokens mtime
+    DETACH=""; command -v setsid >/dev/null && DETACH=setsid
+    $DETACH bash -c 'update_tokens "$@"' _ "$TRANSCRIPT" "$STATE" </dev/null >/dev/null 2>&1 &
+  fi
+  TOTAL_TOK=$(cat "$STATE/total" 2>/dev/null)
+  [[ $TOTAL_TOK =~ ^[0-9]+$ ]] || TOTAL_TOK=""
 fi
-TOTAL_TOK=$(cat "$STATE/total" 2>/dev/null)
 
-# Git status, cached per session for 5 s (git is slow on NFS).
+# Git status of tracked files, cached per session for 5 s (git is slow on NFS).
 GIT_INFO=""
 if [ -n "$CWD" ]; then
-  CACHE="$STATE/git"
-  if [ -f "$CACHE" ] && (( NOW - $(mtime "$CACHE") < 5 )) \
+  CACHE="${STATE:+$STATE/git}"
+  if [ -n "$CACHE" ] && [ -f "$CACHE" ] && (( NOW - $(mtime "$CACHE") < 5 )) \
      && [ "$(head -1 "$CACHE")" = "$CWD" ]; then
     GIT_INFO=$(sed -n 2p "$CACHE")
   else
-    if ST=$(git -C "$CWD" --no-optional-locks status --porcelain=v2 --branch 2>/dev/null); then
+    if ST=$(git -C "$CWD" --no-optional-locks status --porcelain=v2 --branch \
+              --untracked-files=no 2>/dev/null); then
       BR="" OID="" AB="" DIRTY=""
       while IFS= read -r l; do
         case $l in
@@ -152,21 +175,21 @@ if [ -n "$CWD" ]; then
                              (( ${1#+} > 0 )) && AB+=" ↑${1#+}"
                              (( ${2#-} > 0 )) && AB+=" ↓${2#-}" ;;
           "#"*) ;;
-          *) DIRTY="*" ;;
+          *) DIRTY="*"; break ;;          # headers come first; one change is enough
         esac
       done <<< "$ST"
       [ "$BR" = "(detached)" ] && BR="@${OID:0:7}"
       GIT_INFO="${BR}${DIRTY}${AB}"
     fi
-    printf '%s\n%s\n' "$CWD" "$GIT_INFO" > "$CACHE" 2>/dev/null
+    [ -n "$CACHE" ] && printf '%s\n%s\n' "$CWD" "$GIT_INFO" > "$CACHE" 2>/dev/null
   fi
 fi
 
 # Task list of this session: completed / total.
 TASKS=""
-TASK_FILES=("$HOME/.claude/tasks/$SESSION"/*.json)
+TASK_FILES=("$CONFIG_DIR/tasks/$SESSION"/*.json)
 if [ -f "${TASK_FILES[0]}" ]; then
-  DONE=$(grep -lE '"status": *"completed"' "${TASK_FILES[@]}" 2>/dev/null | wc -l)
+  DONE=$(( $(grep -lE '"status": *"completed"' "${TASK_FILES[@]}" 2>/dev/null | wc -l) ))
   TASKS="$DONE/${#TASK_FILES[@]}"
 fi
 
@@ -182,12 +205,29 @@ L1+="${SEP}${CWD##*/}"
 [ -n "$WT_NAME" ] && L1+="${SEP}${DIM}wt:${RST}${WT_NAME}"
 [ -n "$PR_NUM" ] && L1+="${SEP}${DIM}PR${RST} #${PR_NUM}${PR_STATE:+ ${DIM}${PR_STATE}${RST}}"
 [ -n "$VIM" ] && L1+="${SEP}${VIM}"
-printf '%b\n' "$L1"
+printf '%s\n' "$L1"
 
-# ── Line 2: context vs auto-compact window │ 5h │ 7d │ spend limit
-LIMIT=$CTX_SIZE
-(( ACW > 0 )) && { (( LIMIT == 0 || ACW < LIMIT )) && LIMIT=$ACW; }
-[ -n "$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" ] && LIMIT=$(( LIMIT * ${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE%.*} / 100 ))
+# ── Line 2: context vs auto-compact trigger │ 5h │ 7d │ spend limit
+# Window: CLAUDE_CODE_AUTO_COMPACT_WINDOW (min 100K), else autoCompactWindow,
+# else the model context window; capped at the model context window.
+# Trigger: window - 20K summary reserve - 13K. CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+# (1-100) can only lower it. With auto-compact off, show the window.
+CTX_SIZE=${CTX_SIZE:-0} CTX_IN=${CTX_IN:-0} ACW=${ACW:-0}
+WIN=$CTX_SIZE
+if [[ $CLAUDE_CODE_AUTO_COMPACT_WINDOW =~ ^[0-9]+ ]]; then
+  WIN=$(( 10#${BASH_REMATCH[0]} )); (( WIN < 100000 )) && WIN=100000
+elif (( ACW > 0 )); then
+  WIN=$ACW
+fi
+(( CTX_SIZE > 0 && WIN > CTX_SIZE )) && WIN=$CTX_SIZE
+LIMIT=$WIN
+if (( WIN > 33000 )) && [ "$AC_ON" != "false" ] && [ -z "$DISABLE_AUTO_COMPACT" ]; then
+  EFF=$(( WIN - 20000 )); LIMIT=$(( EFF - 13000 ))
+  if [[ $CLAUDE_AUTOCOMPACT_PCT_OVERRIDE =~ ^[0-9]+ ]]; then
+    P=$(( 10#${BASH_REMATCH[0]} ))
+    (( P >= 1 && P <= 100 && EFF * P / 100 < LIMIT )) && LIMIT=$(( EFF * P / 100 ))
+  fi
+fi
 CTX_PCT=0
 (( LIMIT > 0 )) && CTX_PCT=$(( CTX_IN * 100 / LIMIT ))
 L2="  ${DIM}Context${RST} $(make_bar "$CTX_PCT") ${CTX_PCT}%"
@@ -201,7 +241,7 @@ if [ -n "$RL7" ]; then
   [ -n "$RL7_AT" ] && L2+="${DIM} ($(fmt_dur $((RL7_AT - NOW))))${RST}"
 fi
 [ -n "$SPEND" ] && L2+="${SEP}${DIM}spend:${RST} $(make_bar "$SPEND") ${SPEND}%"
-printf '%b\n' "$L2"
+printf '%s\n' "$L2"
 
 # ── Line 3: tasks │ prompt cache │ total tokens │ total cost
 L3=""
@@ -218,6 +258,7 @@ if [ -n "$PC_WARM" ]; then
   L3+="${DIM}cache${PC_TTL:+ ${PC_TTL}}:${RST} ${PC}${SEP}"
 fi
 if [ -n "$TOTAL_TOK" ]; then TOK_FMT=$(fmt_k "$TOTAL_TOK"); else TOK_FMT="…"; fi
+COST=${COST:-0}
 L3+="${DIM}tokens${RST} ${TOK_FMT}"
 L3+="${SEP}${DIM}cost${RST} \$$((COST / 100)).$(printf '%02d' $((COST % 100)))"
-printf '%b\n' "  $L3"
+printf '%s\n' "  $L3"

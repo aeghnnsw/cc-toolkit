@@ -12,10 +12,11 @@ The statusline displays 3 lines. Each item shows only when Claude Code sends its
 
 1. **Session** — `[Opus 5.5 · high · fast] │ my-session │ my-project git:(main* ↑1) │ wt:feat-1 │ PR #12 approved │ INSERT`
    - Model, effort level, `fast` mode, and `no-think` when thinking is off.
-   - Session name, project directory, and git branch. `*` marks uncommitted changes. `↑`/`↓` count commits ahead of and behind the upstream. A detached HEAD shows as `@<short-sha>`.
+   - Session name, project directory, and git branch. `*` marks uncommitted changes to tracked files. `↑`/`↓` count commits ahead of and behind the upstream. A detached HEAD shows as `@<short-sha>`.
    - Worktree name, PR number and review state, and vim mode.
-2. **Usage bars** — `Context ██░░░░░░░░ 19% (76.7K/400.0K) │ 5h: … (4h 33m) │ 7d: … (2d 10h) │ spend: …`
-   - Context usage is measured against the auto-compact trigger: the smaller of the model context window and `autoCompactWindow` from `~/.claude/settings.json`. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers the limit when set.
+2. **Usage bars** — `Context ███░░░░░░░ 31% (113.8K/367.0K) │ 5h: … (4h 33m) │ 7d: … (2d 10h) │ spend: …`
+   - Context usage is measured against the auto-compact trigger, the point where Claude Code compacts. The trigger is the window minus about 33,000 tokens (a 20,000-token summary reserve plus a 13,000-token margin). The window is `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else `autoCompactWindow` from the user `settings.json`, else the model context window. It is capped at the model context window. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` can only lower the trigger. When auto-compact is off, the bar uses the window.
+   - The script does not read project settings files or the `--autocompact` launch flag. When the window is set there, the bar uses the wrong limit.
    - 5-hour and 7-day rate limits with reset countdowns, and the spend limit.
    - Bars are green below 50%, yellow from 50%, and red from 90%.
 3. **Session totals** — `tasks 3/5 │ cache 1h: warm 59m hit 91% │ tokens 648.0K │ cost $0.67`
@@ -32,7 +33,9 @@ Claude Code cancels a statusline run that is still busy when the next update arr
 - Git status is cached for 5 seconds per session.
 - A detached background process adds the new transcript lines to the token total. It reads only the bytes added since its last run.
 
-Per-session state is kept in `${TMPDIR:-/tmp}/cc-statusline-$USER/<session-id>/`. The last input JSON is saved there as `last-input.json` for debugging.
+Per-session state is kept in `${TMPDIR:-/tmp}/cc-statusline-<uid>/<session-id>/`. The script sets the directory to mode 700. If another user owns the directory, the script keeps no state: the token total shows `…` and git status is not cached. The last input JSON is saved there as `last-input.json` for debugging.
+
+The script reads `settings.json` and the session task list from `${CLAUDE_CONFIG_DIR:-~/.claude}`. If `settings.json` is not valid JSON, the script ignores it.
 
 ## Prerequisites
 
