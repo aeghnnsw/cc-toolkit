@@ -1,7 +1,7 @@
 ---
 name: repo-cleanup
 version: 1.2.0
-description: Clean merged worktrees and branches, reconcile completed issues, and update the Default Branch.
+description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, and updates the Default Branch.
 ---
 
 # Repository Cleanup
