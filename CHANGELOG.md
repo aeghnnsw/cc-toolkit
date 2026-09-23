@@ -19,6 +19,8 @@
 
 ### Changed
 
+- dev-skills (Claude Code 3.14.0): remove `disable-model-invocation` from `repo-cleanup` and `matt-automode`. The agent can now start both skills with the Skill tool, so `matt-automode` and other workflows can run `repo-cleanup` after a merge without a separate user message. See [#247](https://github.com/aeghnnsw/cc-toolkit/issues/247).
+
 - cc-customize (Claude Code 2.2.0): replace the `statusline-setup` script with the statusline in daily use. Parse the input with one `jq` call, cache git status, and count session tokens in a background process so runs finish before Claude Code cancels them. Add session name, worktree, PR, vim mode, spend limit, prompt-cache state, task progress, and session token total. Measure context against the auto-compact trigger (the window minus about 33,000 tokens). Replace the per-request token breakdown with the session token total. Keep state in a private per-user directory and accept only digits from state files. Ignore an invalid `settings.json`, honor `CLAUDE_CONFIG_DIR`, and count only tracked files as git changes. Fall back to BSD `stat` and a `mkdir` lock on macOS. See [#245](https://github.com/aeghnnsw/cc-toolkit/issues/245).
 
 - cc-customize (Claude Code 2.1.0): make `autoCompactWindow` the only auto-compact

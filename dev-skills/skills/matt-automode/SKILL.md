@@ -1,8 +1,7 @@
 ---
 name: matt-automode
-version: 1.0.0
+version: 1.1.0
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
-disable-model-invocation: true
 ---
 
 # Matt Automode

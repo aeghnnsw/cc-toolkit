@@ -1,8 +1,7 @@
 ---
 name: repo-cleanup
-version: 1.1.0
+version: 1.2.0
 description: Clean merged worktrees and branches, reconcile completed issues, and update the Default Branch.
-disable-model-invocation: true
 ---
 
 # Repository Cleanup
