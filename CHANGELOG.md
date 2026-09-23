@@ -19,6 +19,8 @@
 
 ### Changed
 
+- cc-customize (Claude Code 2.2.0): replace the `statusline-setup` script with the statusline in daily use. Parse the input with one `jq` call, cache git status, and count session tokens in a background process so runs finish before Claude Code cancels them. Add session name, worktree, PR, vim mode, spend limit, prompt-cache state, task progress, and session token total. Measure context against the auto-compact window. Replace the per-request token breakdown with the session token total. Fall back to BSD `stat` and a `mkdir` lock on macOS. See [#245](https://github.com/aeghnnsw/cc-toolkit/issues/245).
+
 - cc-customize (Claude Code 2.1.0): make `autoCompactWindow` the only auto-compact
   threshold that `model-config` writes. Remove `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the settings `env` block whenever the skill
