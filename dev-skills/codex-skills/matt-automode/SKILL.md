@@ -24,12 +24,14 @@ versions.
   `agents/openai.yaml` sets `policy.allow_implicit_invocation: false`, so Codex
   omits it from the list. This policy stops Codex from choosing the skill on its
   own. It does not restrict an explicit invocation or reading the skill file.
-  Find the plugin root in the skill roots table, which lists the installed
-  version for the plugin's other skills. If no skill from the plugin is listed,
-  confirm that `config.toml` in the Codex home (`CODEX_HOME`, default
-  `~/.codex`) enables `<plugin>@<marketplace>`, then use its installed version
-  under `plugins/cache/<marketplace>/<plugin>/`. Find `<skill>/SKILL.md` under
-  the plugin root.
+  To find the plugin root, take the skill roots table entry of another skill
+  from the same plugin. Keep its path up to the version directory
+  (`plugins/cache/<marketplace>/<plugin>/<version>`). If no skill from the
+  plugin is listed, confirm that `config.toml` in the Codex home (`CODEX_HOME`,
+  default `~/.codex`) enables `<plugin>@<marketplace>`, then use its installed
+  version under `plugins/cache/<marketplace>/<plugin>/`. Skills can be nested
+  below the plugin root, so search it recursively for a `<skill>` directory
+  that contains `SKILL.md`.
 - Read each `SKILL.md` and every file it references, then follow it. Resolve
   each skill that it names in the same way.
 - If no enabled plugin provides the skill, report the blocker and stop.
