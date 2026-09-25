@@ -10,10 +10,33 @@ request to use this mode delegates design decisions, issue publication,
 implementation, PR creation, merge, issue closure, and repository cleanup within
 the task scope.
 
-Find the skills below in the available skills list or installed plugin skill
-files. Read and follow each SKILL.md and its required references. Resolve skills
-by plugin and name; do not hard-code installation paths or versions. If a required
-skill is missing, report the blocker and stop.
+## Resolve skills in Codex
+
+The user's request to use this mode explicitly invokes every skill this file
+names. Load and follow each one without a separate user invocation. Do not ask
+the user to invoke them.
+
+Resolve each skill by plugin and name. Do not hard-code installation paths or
+versions.
+
+- If the skill appears in the available skills list, open its `SKILL.md`.
+- If it does not appear, it can be a user-invoked skill: its
+  `agents/openai.yaml` sets `policy.allow_implicit_invocation: false`, so Codex
+  omits it from the list. This policy stops Codex from choosing the skill on its
+  own. It does not restrict an explicit invocation or reading the skill file.
+  To find the plugin root, take the skill roots table entry of another skill
+  from the same plugin. Keep its path up to the version directory
+  (`plugins/cache/<marketplace>/<plugin>/<version>`). If no skill from the
+  plugin is listed, confirm that `config.toml` in the Codex home (`CODEX_HOME`,
+  default `~/.codex`) enables `<plugin>@<marketplace>`, then use its installed
+  version under `plugins/cache/<marketplace>/<plugin>/`. Skills can be nested
+  below the plugin root, so search it recursively for a `<skill>` directory
+  that contains `SKILL.md`.
+- Read each `SKILL.md` and every file it references, then follow it. Resolve
+  each skill that it names in the same way.
+- If no enabled plugin provides the skill, report the blocker and stop.
+
+## Workflow
 
 Before planning, use `dev-skills:step-workflow` to organize the working folder.
 Treat this mode as a request for step-based organization. Apply the skill

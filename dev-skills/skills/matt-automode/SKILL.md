@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.1.0
+version: 1.1.1
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
@@ -12,6 +12,10 @@ implementation, PR creation, merge, issue closure, and repository cleanup within
 the task scope.
 
 ## Resolve skills in Claude Code
+
+The user's request to use this mode explicitly invokes every skill this file
+names. Load and follow each one without a separate user invocation. Do not ask
+the user to invoke them.
 
 Resolve each skill below by plugin and name. Do not hard-code installation
 paths or versions.
