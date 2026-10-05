@@ -19,7 +19,7 @@
 
 ### Changed
 
-- dev-skills (Codex 1.6.0, Claude Code 3.15.0): make `code-review`, `retro`, and `pr` explicit phases in `matt-automode`. Review previous implementation sessions for navigation delays and stale docs, including after successful work. Publish and merge PRs after retro, then reconcile issues and clean the repository. See [#252](https://github.com/aeghnnsw/cc-toolkit/issues/252).
+- dev-skills (Codex 1.6.0, Claude Code 3.15.0): make `code-review`, `retro`, and `pr` explicit phases in `matt-automode`. Review previous implementation sessions for navigation delays and stale docs, including after successful work. Select sessions by repository metadata before searching their text. Publish and merge PRs after retro, then reconcile issues and clean the repository. See [#252](https://github.com/aeghnnsw/cc-toolkit/issues/252).
 
 - dev-skills (Codex 1.5.1, Claude Code 3.14.1): state in `matt-automode` that the user's request to use the mode explicitly invokes every skill it names, so the agent loads them without asking the user to invoke them. In Codex, resolve a skill hidden by `policy.allow_implicit_invocation: false` from the installed plugin files; the policy stops only implicit selection. Codex previously stopped and asked the user to invoke Matt Pocock's user-invoked skills by hand. See [#249](https://github.com/aeghnnsw/cc-toolkit/issues/249).
 

@@ -81,7 +81,9 @@ are merged.
    > use retro skill read previous implementation sessions and find ways to make my repo easier to navigate. Find where agents take too long to find relevant information, or rely on out-of-date docs.
    > Improving navigability is such an underrated way to save tokens and update docs.
 
-   Scope the session history to this repository. Report the sessions read,
+   Select this repository's implementation sessions, including worktrees, by
+   recorded workspace or repository metadata before searching their text. Use
+   task prompts and actions to judge relevance. Report the sessions read,
    navigation findings, and any unavailable history. If previous sessions are
    unavailable, report that limit and review the current implementation session.
    Apply in-scope navigation and documentation fixes, run affected checks, and
