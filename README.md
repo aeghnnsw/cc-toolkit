@@ -133,7 +133,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
 - **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
-- **matt-automode**: Run Matt’s planning, ticket implementation, PR merge, and cleanup workflows without human checkpoints; requires the Matt skills plugin
+- **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; requires the Matt skills plugin
 - **pressure-test** (Codex): Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **project-eval**: Dispatch evaluator agents for multi-angle project review

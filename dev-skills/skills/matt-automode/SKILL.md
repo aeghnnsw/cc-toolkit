@@ -1,15 +1,15 @@
 ---
 name: matt-automode
-version: 1.1.1
-description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
+version: 1.2.0
+description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, code review, a navigation retrospective, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
 # Matt Automode
 
 Use for tasks the user trusts the agent to complete autonomously. The user's
 request to use this mode delegates design decisions, issue publication,
-implementation, PR creation, merge, issue closure, and repository cleanup within
-the task scope.
+implementation, code review, a navigation retrospective, PR creation, merge,
+issue closure, and repository cleanup within the task scope.
 
 ## Resolve skills in Claude Code
 
@@ -61,16 +61,35 @@ where a referenced skill calls for them; keep orchestration in this session.
 
 ## Phases
 
+Run steps 4–7 for each ticket in dependency order. Run cleanup after all tickets
+are merged.
+
 1. `mattpocock-skills:grill-with-docs`: resolve the design questions and record
    the domain terms and decisions.
 2. `mattpocock-skills:to-spec`: choose the testing seams and publish the spec.
 3. `mattpocock-skills:to-tickets`: choose the ticket breakdown and publish it
    with blocking dependencies. Track the parent spec, all task tickets, and their
    PRs through completion. Preserve the parent during ticket publication.
-4. `mattpocock-skills:implement`: complete every ticket in dependency order.
-   Follow its testing and code-review workflow. Fix actionable findings, open
-   PRs, and merge after required checks and review pass. Follow repository rules.
-5. `dev-skills:repo-cleanup`: run after the implementation is merged. Pass the
+4. `mattpocock-skills:implement`: complete the next ready ticket. Follow its
+   testing workflow and prepare the changes for review.
+5. `mattpocock-skills:code-review`: review the changes against a fixed comparison
+   commit and the ticket spec. This phase fulfills `implement`'s code-review
+   requirement. Fix actionable Standards and Spec findings before continuing.
+6. `mattpocock-skills:retro`: run after code review, including successful
+   implementations. Use this prompt:
+
+   > use retro skill read previous implementation sessions and find ways to make my repo easier to navigate. Find where agents take too long to find relevant information, or rely on out-of-date docs.
+   > Improving navigability is such an underrated way to save tokens and update docs.
+
+   Scope the session history to this repository. Report the sessions read,
+   navigation findings, and any unavailable history. If previous sessions are
+   unavailable, report that limit and review the current implementation session.
+   Apply in-scope navigation and documentation fixes, then run affected checks
+   and `code-review` on those edits before the PR phase. Report other candidates
+   as follow-up work.
+7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
+   changes. Merge after required checks and review pass. Follow repository rules.
+8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
    tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
    state and verify closure alongside Git cleanup.
 
@@ -84,9 +103,11 @@ work. Follow the configured tracker's equivalent closure mechanism elsewhere.
 
 ## Finish
 
-Finish when all tickets are implemented, merged, and verified closed, any fully
-satisfied parent spec is verified closed, and cleanup has reported its results.
-Report issue and PR links, plus any issue left open and its remaining work.
+Finish when all tickets have completed implementation, code review, retro, and
+PR merge, all tickets and any fully satisfied parent spec are verified
+closed, and cleanup has reported its results. Report review results, retro
+findings and session-history limits, issue and PR links, and any issue left open
+with its remaining work.
 If progress is blocked by missing access, an enforced restriction, or
 repeated failures with no viable next step, report the blocker and retain the
 work. This mode does not bypass tool permissions or repository protections.
