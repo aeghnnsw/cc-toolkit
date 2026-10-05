@@ -58,7 +58,7 @@ are merged.
    with blocking dependencies. Track the parent spec, all task tickets, and their
    PRs through completion. Preserve the parent during ticket publication.
 4. `mattpocock-skills:implement`: complete the next ready ticket. Follow its
-   testing workflow and prepare the changes for review.
+   testing workflow and commit the changes for review.
 5. `mattpocock-skills:code-review`: review the changes against a fixed comparison
    commit and the ticket spec. This phase fulfills `implement`'s code-review
    requirement. Fix actionable Standards and Spec findings before continuing.
@@ -71,9 +71,9 @@ are merged.
    Scope the session history to this repository. Report the sessions read,
    navigation findings, and any unavailable history. If previous sessions are
    unavailable, report that limit and review the current implementation session.
-   Apply in-scope navigation and documentation fixes, then run affected checks
-   and `code-review` on those edits before the PR phase. Report other candidates
-   as follow-up work.
+   Apply in-scope navigation and documentation fixes, run affected checks, and
+   commit those edits. Run `code-review` again and verify that its diff includes
+   those edits before the PR phase. Report other candidates as follow-up work.
 7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
    changes. Merge after required checks and review pass. Follow repository rules.
 8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
