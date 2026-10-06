@@ -67,6 +67,8 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   renaming a plugin, or changing its source path:
   `.claude-plugin/marketplace.json` for Claude Code and
   `.agents/plugins/marketplace.json` for Codex.
+- When adding, removing, or renaming a plugin or a skill, update its
+  entries in [README.md](README.md).
 - Read the plugin's host-specific manifest before changing component paths.
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
@@ -76,10 +78,12 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   bump. Hosts can have different release versions.
 - When editing a skill, verify its frontmatter and invocation guidance. Run
   the [root tests](CONTRIBUTING.md#package-and-release-validation) to check
-  its links and referenced resources. Record substantive behavior or
-  policy changes in the root [CHANGELOG.md](CHANGELOG.md). For a skill with
-  Claude and Codex copies, follow
+  its links and referenced resources. For a skill with Claude and Codex
+  copies, follow
   [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
+- Record substantive behavior or policy changes in the root
+  [CHANGELOG.md](CHANGELOG.md). Use the
+  [entry format](CONTRIBUTING.md#changelog-entries).
 - Before adding agent-generated files, apply the storage policy in
   [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git). Keep durable project
   decisions and shared configuration discoverable from these instructions.
