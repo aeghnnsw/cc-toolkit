@@ -36,12 +36,13 @@ paths.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator rejects Claude-only keys. Run the validator on
-  Codex copies only. Codex installs the validator at
+  skill-creator validator rejects Claude-only keys. Run the skill-creator
+  validator on Codex copies only. Codex installs the skill-creator
+  validator at
   `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`.
-  `CODEX_HOME` defaults to `~/.codex`. The validator takes one skill
-  directory as its argument. The validator imports PyYAML. To supply
-  PyYAML, run the validator through `uv` from the repository root:
+  `CODEX_HOME` defaults to `~/.codex`. The skill-creator validator takes
+  one skill directory as its argument. To supply its PyYAML dependency,
+  run the skill-creator validator through `uv` from the repository root:
 
   ```bash
   uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>
@@ -66,11 +67,10 @@ paths.
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
 
-### Changelog entries
+## Changelog entries
 
-Record substantive behavior or policy changes in the root
-[CHANGELOG.md](CHANGELOG.md), not in a plugin directory. Add each entry
-under `## [Unreleased]`, in `### Added`, `### Removed`, or `### Changed`.
+The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
+Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`, or `### Changed`.
 Put the newest entry first. Use this form:
 
 ```text
@@ -102,6 +102,11 @@ Before committing generated documentation, check its claims against the
 current project, remove unused template assumptions, and add a pointer from
 the relevant instructions. An installed development skill's configuration
 belongs in Git when it expresses conventions shared by this repository.
+
+A design, plan, or conclusion under `docs/` records decisions as of when it
+was written, and later work can supersede part of it. Before relying on one,
+read any status or superseded note at its top, and confirm current behavior
+in the code it describes.
 
 Do not blanket-ignore `docs/`, `docs/agents/`, or `docs/adr/`. Git ignores
 control tracking; they do not define which files belong in a plugin package.

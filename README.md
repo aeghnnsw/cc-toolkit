@@ -20,36 +20,41 @@ Matt Pocock's development skills.
 
 ```
 cc-toolkit/
-├── .claude-plugin/marketplace.json     # Claude Code plugin registry
-├── .agents/plugins/marketplace.json    # Codex plugin registry
-├── .github/workflows/                  # Package validation and @claude workflows
-├── CLAUDE.md                           # Shared contributor instructions
-├── AGENTS.md                           # Symlink to CLAUDE.md
-├── CONTRIBUTING.md                     # Repository boundaries and verification
-├── CONTEXT.md                          # Domain glossary
-├── CHANGELOG.md                        # Changes to all plugins and the repository
-├── package-validation.json             # Package and release validation rules
-├── scripts/                            # Contributor tools, including the package validator
-├── tests/                              # Root tests for the validator and skill links
+├── .claude-plugin/marketplace.json   # Claude Code plugin registry
+├── .agents/plugins/marketplace.json  # Codex plugin registry
+├── .github/workflows/                # @claude automation and PR package validation
+├── .gitignore                        # Exclusions shared by all contributors
+├── README.md                         # Overview and plugin catalog
+├── CLAUDE.md                         # Shared contributor instructions
+├── AGENTS.md                         # Symlink to CLAUDE.md
+├── CONTRIBUTING.md                   # Repository boundaries and verification
+├── CONTEXT.md                        # Glossary of agreed domain terms
+├── CHANGELOG.md                      # Plugin and repository changes
+├── package-validation.json           # Package and release validation rules
+├── scripts/validate_packages.py      # Package and release validator
+├── tests/                            # Validator and skill link tests
 ├── docs/
-│   ├── agents/                         # Shared development skill configuration
-│   ├── adr/                            # Accepted architecture decisions
-│   ├── design/                         # Current design documents
-│   └── superpowers/                    # Dated design specs and plans
-├── cc-customize/                       # Claude Code customization plugin
-├── core-hooks/                         # Safety and workflow hooks plugin
-├── creator-skills/                     # Scientific content creation plugin
-├── dev-skills/                         # Development workflow plugin
-├── doc-skills/                         # Document processing plugin
-├── productivity-skills/                # Personal productivity plugin
-├── pymol-skills/                       # PyMOL molecular visualization plugin
-└── task-loop/                          # Supabase-backed task-loop workflow plugin
+│   ├── adr/                          # Accepted architecture decisions
+│   ├── agents/                       # Issue tracker, triage, and domain conventions
+│   ├── design/                       # Durable designs, such as package validation
+│   └── superpowers/                  # Dated specs, plans, and conclusions; some superseded
+├── cc-customize/                     # Claude Code model, statusline, and prompt config skills
+├── core-hooks/                       # Safety and workflow hooks plugin
+├── creator-skills/                   # Scientific content creation plugin
+├── dev-skills/                       # Development workflow plugin
+├── doc-skills/                       # Document processing plugin
+├── productivity-skills/              # Personal productivity plugin
+├── pymol-skills/                     # PyMOL molecular visualization plugin
+└── task-loop/                        # Supabase-backed task-loop workflow plugin
 ```
 
-Each plugin directory holds its host manifests and components.
-[Available Plugins](#available-plugins) lists the components of each plugin.
-For the skill directories of each host, see
-[Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
+Each plugin directory holds `.claude-plugin/plugin.json`, a
+`.codex-plugin/plugin.json` when the plugin supports Codex, and its
+components, resources, and any tests (see
+[Repository and package boundaries](CONTRIBUTING.md#repository-and-package-boundaries)).
+[Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts) names each
+host's skill directory, and [Available Plugins](#available-plugins) describes
+each plugin and lists its skills.
 
 ## Available Plugins
 
