@@ -45,10 +45,11 @@ ATTRIBUTION_PATTERNS = [
 PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
 
 # A bulk `git add` at the start of one command segment (see split_commands).
-# A subshell `(` or a control prefix can come before git, e.g. `(git add .)`
-# or `if ...; then git add -A; fi`.
+# A subshell `(`, a control prefix, or `time` can come before git, e.g.
+# `(git add .)` or `if ...; then git add -A; fi`.
+BULK_ADD_PREFIXES = sorted(CONTROL_PREFIXES | {"time"})
 BULK_ADD_RE = re.compile(
-    r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in sorted(CONTROL_PREFIXES)) + r')\s+)*'
+    r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in BULK_ADD_PREFIXES) + r')\s+)*'
     r'git\s+add\s+(?:-A|--all|\.(?=[\s)<>]|$)|\./(?=[\s)<>]|$))'
 )
 

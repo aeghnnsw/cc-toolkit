@@ -508,12 +508,25 @@ class PreGitHookTests(unittest.TestCase):
             "if true; then git add -A; fi",
             "for f in a; do git add .; done",
             "! git add --all",
+            "time git add -A",
         ]:
             with self.subTest(command=command):
                 result = run_blocked_hook(
                     {"tool_name": "Bash", "tool_input": {"command": command}}
                 )
                 self.assertIn("Bulk git add operations are prohibited", result.stderr)
+
+    def test_codex_exec_command_uses_the_same_bulk_add_rule(self):
+        def codex_payload(cmd):
+            return {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "exec_command",
+                "tool_input": {"cmd": cmd},
+            }
+
+        run_hook_raw(codex_payload('git commit -m "Block git add -A in the hook"'))
+        result = run_blocked_hook(codex_payload("git status && git add -A"))
+        self.assertIn("Bulk git add operations are prohibited", result.stderr)
 
     def test_allows_named_files_that_start_with_a_dot(self):
         for command in ["git add .gitignore", "git add ./src/file.py", "git add -- README.md"]:
