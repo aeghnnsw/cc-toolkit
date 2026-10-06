@@ -13,9 +13,8 @@ import time
 try:
     import tomllib
 except ModuleNotFoundError:
-    command = shlex.join(['uv', 'run', '--no-project', '--python', '>=3.11', 'python', *sys.argv])
-    sys.exit(f'FAIL: the validator needs Python 3.11 or newer for tomllib; '
-             f'this is Python {sys.version.split()[0]}. Run:\n{command}')
+    sys.exit(f'FAIL: the validator needs Python 3.11 or newer for tomllib; this is Python {sys.version.split()[0]}. '
+             'Run:\n' + shlex.join(['uv', 'run', '--no-project', '--python', '>=3.11', 'python', *sys.argv]))
 
 
 REGISTRIES = {'claude': '.claude-plugin/marketplace.json', 'codex': '.agents/plugins/marketplace.json'}
