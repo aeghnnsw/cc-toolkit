@@ -21,7 +21,7 @@
 
 ### Changed
 
-- Repository: keep one changelog. Replace `productivity-skills/CHANGELOG.md`, which stopped at 6.2.0, with a pointer to the root `CHANGELOG.md`. Document the entry format and a runnable Codex skill validator command in CONTRIBUTING.md. Reduce the README repository tree to top-level directories and contributor tools. See [#268](https://github.com/aeghnnsw/cc-toolkit/issues/268).
+- Repository: keep one changelog. Replace `productivity-skills/CHANGELOG.md`, which stopped at 6.2.0, with a pointer to the root `CHANGELOG.md`. Document the entry format and a runnable Codex skill validator command in CONTRIBUTING.md. Reduce the README repository tree to top-level directories and contributor tools. Keep the README plugin catalog as the one list of components, and link it from CLAUDE.md. See [#268](https://github.com/aeghnnsw/cc-toolkit/issues/268).
 
 - core-hooks (Claude Code and Codex 1.0.14): block a bulk `git add` only when it runs as a command. The git policy hook no longer blocks a heredoc body or a quoted argument that mentions `git add -A`, `--all`, `.`, or `./`. It still blocks these forms at the start of a command and after `&&`, `||`, `;`, `|`, `&`, or a newline. A subshell `(`, `{`, `!`, `time`, or a control keyword such as `then` can come before `git`. A bulk add inside `bash -c`, `eval`, `$(...)`, or a `case` branch, or after `sudo`, `env`, or a variable assignment, no longer blocks. See [#262](https://github.com/aeghnnsw/cc-toolkit/issues/262).
 

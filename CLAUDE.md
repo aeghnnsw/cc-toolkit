@@ -67,6 +67,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   renaming a plugin, or changing its source path:
   `.claude-plugin/marketplace.json` for Claude Code and
   `.agents/plugins/marketplace.json` for Codex.
+- When adding, removing, or renaming a skill, agent, or hook, update the
+  plugin's entry in the README
+  [Available Plugins](README.md#available-plugins) catalog.
 - Read the plugin's host-specific manifest before changing component paths.
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
