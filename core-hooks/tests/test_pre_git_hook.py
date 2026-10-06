@@ -466,6 +466,8 @@ class PreGitHookTests(unittest.TestCase):
             "python3 - <<'EOF'\nprint('git add -A')\nEOF",
             "cat > notes.md <<'EOF'\ngit add .\nEOF",
             "cat <<EOF > notes.md\ngit add --all && git add ./\nEOF\ngit status",
+            # The usual commit form: a heredoc in a quoted substitution.
+            "git commit -m \"$(cat <<'EOF'\nfix: explain the policy\n\ngit add -A stages every file.\nEOF\n)\"",
         ]:
             with self.subTest(command=command):
                 run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
@@ -495,6 +497,7 @@ class PreGitHookTests(unittest.TestCase):
             "echo x | git add ./",
             "git status & git add .",
             "git status\ngit add -A && git commit -m 'x'",
+            "git add .>/dev/null",
             # A bulk add after a heredoc body is a real command.
             "cat <<'EOF' > notes.md\ngit add -A\nEOF\ngit add .",
             # An apostrophe in the body must not hide the command after it.
@@ -503,6 +506,7 @@ class PreGitHookTests(unittest.TestCase):
             "(git add .)",
             "{ git add ./; }",
             "if true; then git add -A; fi",
+            "for f in a; do git add .; done",
             "! git add --all",
         ]:
             with self.subTest(command=command):
