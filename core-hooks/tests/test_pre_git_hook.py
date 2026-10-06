@@ -23,7 +23,7 @@ def load_hook_module():
 
 
 def run_hook_process(payload):
-    # The timeout turns a regex that backtracks without end into a failure.
+    # The timeout turns a regex that backtracks without end into a test error.
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
@@ -583,7 +583,7 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
-    def test_reads_worktree_path_past_options(self):
+    def test_allows_valid_worktree_branch_after_options(self):
         # An option or a redirection is not the path or the commit-ish, so the
         # valid name is checked and the naming advisory fires.
         for command in [

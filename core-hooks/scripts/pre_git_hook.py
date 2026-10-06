@@ -67,8 +67,8 @@ WORD_RE = re.compile(REDIRECTION + '|' + SHELL_WORD)
 # Git options between `git` and its subcommand, e.g. `git -C dir` or
 # `git -c key=value` (#272). The listed options can take a separate value;
 # any other option is a flag with an optional `=value`. A separate value
-# cannot start with `-`, so each word has one parse: with two, a run such as
-# `git -C -C -C ...` backtracks exponentially.
+# cannot start with `-`. Otherwise each `-C` in `git -C -C -C ...` is a flag
+# or a value, and a failed match backtracks exponentially.
 GIT_GLOBAL_OPTION = (
     r'(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+(?!-)' + SHELL_WORD
     + r'|--?[A-Za-z][\w-]*(?:=' + SHELL_WORD + r')?'
@@ -78,7 +78,7 @@ GIT_COMMAND = SEGMENT_START + r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t
 # Branch creations at the start of one command segment. A branch name ends at
 # whitespace or shell punctuation, so `(git checkout -b x)` names `x`. A
 # segment has no unquoted newline (see split_commands); [ \t]+ separators also
-# keep a quoted newline from joining two words.
+# keep a quoted newline from joining two words (see issue #104).
 BRANCH_NAME = r'([^\s;|&()<>]+)'
 CHECKOUT_RE = re.compile(GIT_COMMAND + r'checkout[ \t]+-b[ \t]+' + BRANCH_NAME)
 SWITCH_RE = re.compile(GIT_COMMAND + r'switch[ \t]+-c[ \t]+' + BRANCH_NAME)
