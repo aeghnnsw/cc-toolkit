@@ -23,12 +23,14 @@ def load_hook_module():
 
 
 def run_hook_process(payload):
+    # The timeout turns a regex that backtracks without end into a failure.
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
         text=True,
         capture_output=True,
         check=False,
+        timeout=30,
     )
 
 
@@ -50,6 +52,14 @@ def run_blocked_hook(payload):
     )
     assert result.stderr.strip(), "Blocked hook must explain the denial on stderr"
     return result
+
+
+def codex_payload(cmd):
+    return {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "exec_command",
+        "tool_input": {"cmd": cmd},
+    }
 
 
 class PreGitHookTests(unittest.TestCase):
@@ -517,13 +527,6 @@ class PreGitHookTests(unittest.TestCase):
                 self.assertIn("Bulk git add operations are prohibited", result.stderr)
 
     def test_codex_exec_command_uses_the_same_bulk_add_rule(self):
-        def codex_payload(cmd):
-            return {
-                "hook_event_name": "PreToolUse",
-                "tool_name": "exec_command",
-                "tool_input": {"cmd": cmd},
-            }
-
         run_hook_raw(codex_payload('git commit -m "Block git add -A in the hook"'))
         result = run_blocked_hook(codex_payload("git status && git add -A"))
         self.assertIn("Bulk git add operations are prohibited", result.stderr)
@@ -563,6 +566,9 @@ class PreGitHookTests(unittest.TestCase):
             # A creation after a heredoc body is a real command.
             "cat <<'EOF' > notes.md\nhi\nEOF\ngit checkout -b badname",
             "cat <<EOF > notes.md\ndon't stop\nEOF\ngit switch -c badname",
+            # A pipe or a background `&` also starts a command.
+            "git status | git branch badname",
+            "sleep 1 & git checkout -b badname",
             # Grouping and control keywords come before a command word.
             "(git checkout -b badname)",
             "{ git branch badname; }",
@@ -577,16 +583,15 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
-    def test_allows_worktree_options_before_the_path(self):
-        # An option is not the path, so the valid name is checked and the
-        # naming advisory fires.
+    def test_reads_worktree_path_past_options(self):
+        # An option or a redirection is not the path or the commit-ish, so the
+        # valid name is checked and the naming advisory fires.
         for command in [
             "git worktree add -q trees/bugfix-1-x -b bugfix-1-x",
             "git worktree add -f --lock trees/x -b feat-1-x",
             "git worktree add --lock --reason 'ci build' trees/feat-1-x",
             "git worktree add --quiet -b feat-1-x trees/x",
             "git worktree add -q trees/feat-1-x/",
-            # A redirection target is not the commit-ish.
             "git worktree add -q trees/feat-1-x > log.txt 2>&1",
         ]:
             with self.subTest(command=command):
@@ -663,14 +668,14 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertEqual(result.stdout.strip(), "")
 
-    def test_codex_exec_command_uses_the_same_branch_rule(self):
-        def codex_payload(cmd):
-            return {
-                "hook_event_name": "PreToolUse",
-                "tool_name": "exec_command",
-                "tool_input": {"cmd": cmd},
-            }
+    def test_reads_many_git_global_options_quickly(self):
+        # Option words that could also be option values must not make a
+        # pattern that fails (here, checkout) backtrack exponentially.
+        command = "git " + "-C -c --git-dir " * 30 + "branch badname"
+        result = run_blocked_hook({"tool_name": "Bash", "tool_input": {"command": command}})
+        self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
+    def test_codex_exec_command_uses_the_same_branch_rule(self):
         run_hook_raw(codex_payload("cat > notes.md <<'EOF'\ngit checkout -b badname\nEOF"))
         result = run_blocked_hook(codex_payload("git -C /repo checkout -b badname"))
         self.assertIn("Branch name 'badname' is invalid", result.stderr)
