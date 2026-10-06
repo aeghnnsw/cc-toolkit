@@ -912,11 +912,19 @@ class PreGitHookTests(unittest.TestCase):
                     {"tool_name": "Bash", "tool_input": {"command": command}}
                 )
                 self.assertIn("Branch name 'badname' is invalid", result.stderr)
+        # A long bundle of short options is read in linear time too; `-d` in
+        # the bundle detaches the worktree.
+        command = "git worktree add -" + "d" * 100000 + "1 trees/badname"
+        result = run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+        self.assertEqual(result.stdout.strip(), "")
 
     def test_reads_no_words_after_a_shell_comment(self):
         # A word that starts with `#` starts a comment, so later words are not
         # arguments of the git command.
-        run_hook_raw({"tool_name": "Bash", "tool_input": {"command": "git checkout main # -b badname"}})
+        result = run_hook_raw(
+            {"tool_name": "Bash", "tool_input": {"command": "git checkout main # -b badname"}}
+        )
+        self.assertEqual(result.stdout.strip(), "")
         for command in [
             "git worktree add trees/badname # from main",
             "git branch badname # for the fix",

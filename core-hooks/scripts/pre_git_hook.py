@@ -113,18 +113,18 @@ CREATE_OPTIONS = {
 WORKTREE_CREATE_OPTIONS = GitOptions(set('bB'), set())
 
 # `git branch` options that list or delete branches or change a setting, so
-# the command creates no branch, and options that rename or copy a branch
-# (#281). git 2.52 keeps creation mode with any other option, such as `-f`,
-# `--track`, `--no-color`, or `--sort=<key>`. Of those, `--sort` and
-# `--format` can take a separate value.
+# the command creates no branch (#281). git 2.52 keeps creation mode with any
+# other option, such as `-f`, `--track`, `--no-color`, or `--sort=<key>`.
 BRANCH_OTHER_MODES = GitOptions(set('ladDru'), {
     '--list', '--all', '--remotes', '--delete', '--contains', '--no-contains',
     '--merged', '--no-merged', '--points-at', '--set-upstream',
     '--set-upstream-to', '--unset-upstream', '--edit-description',
     '--show-current',
 })
+# `git branch` options that rename or copy a branch.
 BRANCH_RENAME_MODES = GitOptions(set('mMcC'), {'--move', '--copy'})
-BRANCH_VALUE_OPTIONS = {'--sort', '--format'}
+# `git branch` options in creation mode that can take a separate value.
+BRANCH_VALUE_OPTIONS = GitOptions(set(), {'--sort', '--format'})
 
 
 def block(reason):
@@ -215,6 +215,11 @@ def shell_words(text):
             yield QUOTED_PART_RE.sub(r'\1\2', word)
 
 
+def short_option_letters(word):
+    """Return the letters of a short option or bundle such as `-fq`, or ''."""
+    return word[1:] if word.startswith('-') and not word.startswith('--') else ''
+
+
 def option_value(word, words, options):
     """Return the value that `word` gives one of `options`, or None.
 
@@ -229,10 +234,9 @@ def option_value(word, words, options):
         name, equals, value = word.partition('=')
         if name in options.names:
             return value if equals else next(words, None)
-    elif word.startswith('-'):
-        for index, letter in enumerate(word[1:], start=2):
-            if letter in options.letters:
-                return word[index:] or next(words, None)
+    for index, letter in enumerate(short_option_letters(word), start=2):
+        if letter in options.letters:
+            return word[index:] or next(words, None)
     return None
 
 
@@ -287,10 +291,10 @@ def branch_created_by_git_branch(words):
             if option in BRANCH_OTHER_MODES.names:
                 return None
             rename = rename or option in BRANCH_RENAME_MODES.names
-            if option in BRANCH_VALUE_OPTIONS and not equals:
+            if option in BRANCH_VALUE_OPTIONS.names and not equals:
                 next(words, None)  # skip the option value
         elif word.startswith('-'):
-            letters = set(word[1:])  # a bundle such as `-fq`
+            letters = set(short_option_letters(word))
             if letters & BRANCH_OTHER_MODES.letters:
                 return None
             rename = rename or bool(letters & BRANCH_RENAME_MODES.letters)
@@ -319,7 +323,7 @@ def branch_created_by_worktree_add(words):
             return name
         if word == '--reason':
             next(words, None)  # skip the option value
-        elif word == '--detach' or re.fullmatch(r'-[A-Za-z]*d[A-Za-z]*', word):
+        elif word == '--detach' or 'd' in short_option_letters(word):
             detach = True  # `--detach`, `-d`, or a bundle such as `-fd`
         elif not word.startswith('-'):
             positional.append(word)

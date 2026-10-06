@@ -28,8 +28,8 @@ repository.
 
 The Core Hooks policy scripts that check your shell commands are the
 installed copy. A denial names its path, such as
-`core-hooks/1.0.13/scripts/pre_git_hook.py`. A false positive that this
-checkout fixes keeps blocking until that copy updates. To update the Claude
+`core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
+keeps blocking a command that this checkout allows. To update the Claude
 Code copy, run `claude plugin marketplace update cc-toolkit`, then
 `claude plugin update core-hooks@cc-toolkit`, and restart the session.
 
