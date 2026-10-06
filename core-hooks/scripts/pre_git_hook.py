@@ -44,14 +44,46 @@ ATTRIBUTION_PATTERNS = [
 # chained (; && ||), piped, or newline-separated commands.
 PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
 
-# A bulk `git add` at the start of one command segment (see split_commands).
-# A subshell `(`, a control prefix, or `time` can come before git, e.g.
-# `(git add .)` or `if ...; then git add -A; fi`.
-BULK_ADD_PREFIXES = sorted(CONTROL_PREFIXES | {"time"})
-BULK_ADD_RE = re.compile(
-    r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in BULK_ADD_PREFIXES) + r')\s+)*'
-    r'git\s+add\s+(?:-A|--all|\.(?=[\s)<>]|$)|\./(?=[\s)<>]|$))'
+# Shell syntax that can come before the command word of one command segment
+# (see split_commands): a subshell `(`, a control prefix, or `time`, e.g.
+# `(git add .)` or `if ...; then git switch -c x; fi`.
+COMMAND_PREFIXES = sorted(CONTROL_PREFIXES | {"time"})
+SEGMENT_START = (
+    r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in COMMAND_PREFIXES) + r')\s+)*'
 )
+
+# A bulk `git add` at the start of one command segment.
+BULK_ADD_RE = re.compile(
+    SEGMENT_START + r'git\s+add\s+(?:-A|--all|\.(?=[\s)<>]|$)|\./(?=[\s)<>]|$))'
+)
+
+# The words of a segment for option parsing: a redirection operator such as
+# `>`, `2>&`, or `<`, or a shell word, which can contain quoted text.
+REDIRECTION = r'\d*[<>]+&?'
+SHELL_WORD = r'''(?:"[^"]*"|'[^']*'|[^\s;|&()<>'"])+'''
+REDIRECTION_RE = re.compile(REDIRECTION)
+WORD_RE = re.compile(REDIRECTION + '|' + SHELL_WORD)
+
+# Git options between `git` and its subcommand, e.g. `git -C dir` or
+# `git -c key=value` (#272). The listed options can take a separate value;
+# any other option is a flag with an optional `=value`. A separate value
+# cannot start with `-`. Otherwise each `-C` in `git -C -C -C ...` is a flag
+# or a value, and a failed match backtracks exponentially.
+GIT_GLOBAL_OPTION = (
+    r'(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+(?!-)' + SHELL_WORD
+    + r'|--?[A-Za-z][\w-]*(?:=' + SHELL_WORD + r')?'
+)
+GIT_COMMAND = SEGMENT_START + r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t]+'
+
+# Branch creations at the start of one command segment. A branch name ends at
+# whitespace or shell punctuation, so `(git checkout -b x)` names `x`. A
+# segment has no unquoted newline (see split_commands); [ \t]+ separators also
+# keep a quoted newline from joining two words (see issue #104).
+BRANCH_NAME = r'([^\s;|&()<>]+)'
+CHECKOUT_RE = re.compile(GIT_COMMAND + r'checkout[ \t]+-b[ \t]+' + BRANCH_NAME)
+SWITCH_RE = re.compile(GIT_COMMAND + r'switch[ \t]+-c[ \t]+' + BRANCH_NAME)
+WORKTREE_ADD_RE = re.compile(GIT_COMMAND + r'worktree[ \t]+add(?=[ \t]|$)')
+BRANCH_RE = re.compile(GIT_COMMAND + r'branch[ \t]+')
 
 
 def block(reason):
@@ -114,59 +146,86 @@ def split_commands(command):
     return [seg.strip() for seg in segments if seg.strip()]
 
 
-def extract_branch_name(command):
-    # [^\s;|&]+ instead of \S+ to stop at shell metacharacters (; && || |).
-    # [ \t]+ (not \s+) for separators so a newline cannot pull in the next
-    # command's first token as a false branch name (see issue #104).
-    m = re.search(r'git checkout -b[ \t]+([^\s;|&]+)', command)
-    if m:
-        return m.group(1)
+def command_segments(command):
+    """Split `command` into command segments after removing heredoc bodies.
 
-    m = re.search(r'git switch -c[ \t]+([^\s;|&]+)', command)
-    if m:
-        return m.group(1)
+    A heredoc body is data, and a quoted argument stays inside its segment.
+    So text that only mentions a git command is not read as one (#262, #272).
+    """
+    return split_commands(strip_heredoc_bodies(command))
 
-    if 'git worktree add' in command:
-        m = re.search(r'git worktree add[ \t]+[^\s;|&]+[ \t]+(?:-b|--branch)[ \t]+([^\s;|&]+)', command)
+
+def extract_branch_name(segment):
+    """Return the branch that one command segment creates, or None.
+
+    Each pattern matches at the segment start, so a git command inside a
+    quoted argument does not count (#272).
+    """
+    for pattern in (CHECKOUT_RE, SWITCH_RE):
+        m = pattern.match(segment)
         if m:
             return m.group(1)
-        m = re.search(r'git worktree add[ \t]+[^\s;|&]+[ \t]+([a-zA-Z][\w-]*)', command)
-        if m:
-            return m.group(1)
-        m = re.search(r'git worktree add[ \t]+([^\s;|&]+)', command)
-        if m:
-            return os.path.basename(m.group(1))
+
+    m = WORKTREE_ADD_RE.match(segment)
+    if m:
+        return extract_worktree_branch_name(segment[m.end():])
+
+    m = BRANCH_RE.match(segment)
+    if not m:
         return None
+    arguments = segment[m.end():]
 
-    # Rename/copy: short flags (-m/-M/-c/-C) and long flags (--move/--copy)
-    m = re.search(r'git branch[ \t]+(?:-[mMcC]|--move|--copy)[ \t]+[^\s;|&]+[ \t]+([^\s;|&]+)', command)
+    # Rename/copy: short flags (-m/-M/-c/-C) and long flags (--move/--copy).
+    # With two names, the second is the new branch.
+    m = re.match(
+        r'(?:-[mMcC]|--move|--copy)[ \t]+' + BRANCH_NAME + r'(?:[ \t]+' + BRANCH_NAME + r')?',
+        arguments,
+    )
     if m:
-        return m.group(1)
-    m = re.search(r'git branch[ \t]+(?:-[mMcC]|--move|--copy)[ \t]+([^\s;|&]+)', command)
-    if m:
-        return m.group(1)
+        return m.group(2) or m.group(1)
 
     # Bare creation — skip read-only/delete flags. Callers pass one command at a
-    # time (see split_commands / check_branch_names), so a listing/delete here
-    # cannot mask a real creation elsewhere in a compound command.
-    if re.search(r'git branch[ \t]+(-[ladDvrV]|--list|--all|--delete|--remotes)', command):
+    # time (see command_segments / check_branch_names), so a listing/delete
+    # here cannot mask a real creation elsewhere in a compound command.
+    if re.match(r'-[ladDvrV]|--list|--all|--delete|--remotes', arguments):
         return None
-    m = re.search(r'git branch[ \t]+(?!-)([^\s;|&]+)', command)
+    m = re.match(r'(?!-)' + BRANCH_NAME, arguments)
     if m:
         return m.group(1)
+    return None
+
+
+def extract_worktree_branch_name(arguments):
+    """Return the branch that `git worktree add <arguments>` creates, or None.
+
+    Options can come before or after the path (#272). `-b` or `-B` names the
+    branch, and `--detach` creates none. Otherwise a name-like commit-ish
+    names it, and then the basename of the path.
+    """
+    words = iter(WORD_RE.findall(arguments))
+    positional = []
+    detach = False
+    for word in words:
+        if REDIRECTION_RE.fullmatch(word) or word == '--reason':
+            next(words, None)  # skip the redirection target or option value
+        elif word in ('-b', '-B'):
+            return next(words, None)
+        elif word in ('-d', '--detach'):
+            detach = True
+        elif not word.startswith('-'):
+            positional.append(word)
+    if detach or not positional:
+        return None
+    if len(positional) > 1:
+        m = re.match(r'[a-zA-Z][\w-]*', positional[1])
+        if m:
+            return m.group(0)
+    return os.path.basename(positional[0].rstrip('/'))
 
 
 def has_bulk_add(command):
-    """Report whether a segment of `command` starts with a bulk `git add`.
-
-    Heredoc bodies are removed before the split, and a quoted argument stays
-    inside its segment. So text that only mentions `git add -A` is not a bulk
-    add (#262).
-    """
-    return any(
-        BULK_ADD_RE.match(segment)
-        for segment in split_commands(strip_heredoc_bodies(command))
-    )
+    """Report whether a segment of `command` starts with a bulk `git add`."""
+    return any(BULK_ADD_RE.match(segment) for segment in command_segments(command))
 
 
 def check_branch_names(command):
@@ -180,7 +239,7 @@ def check_branch_names(command):
     """
     invalid = None
     saw_valid = False
-    for segment in split_commands(command):
+    for segment in command_segments(command):
         name = extract_branch_name(segment)
         if not name:
             continue
