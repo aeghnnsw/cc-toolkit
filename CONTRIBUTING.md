@@ -70,8 +70,8 @@ paths.
 ## Changelog entries
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
-Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`, or `### Changed`.
-Put the newest entry first. Use this form:
+Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
+or `### Changed`. Put the newest entry first. Use this form:
 
 ```text
 - <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
