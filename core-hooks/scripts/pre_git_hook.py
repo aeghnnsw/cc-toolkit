@@ -34,8 +34,8 @@ ATTRIBUTION_PATTERNS = [
     # The match starts at a line start and skips to the first trailer on the
     # line; a later trailer reaches no text that the first one misses. A
     # search from every trailer would read the rest of the line again from
-    # each one, which is quadratic (#280). `(?:(?!X)[^\n])*` stops at the
-    # first X without an atomic group, which needs Python 3.11.
+    # each one, which is quadratic (#280). `(?:(?!X)[^\n])*` cannot pass the
+    # first X. It needs no atomic group, which Python 3.11 added.
     r'(?m)^(?:(?!' + CO_AUTHOR_TRAILER + r')[^\n])*' + CO_AUTHOR_TRAILER
     + r'[^\n]*(?:Claude|Codex|Anthropic|OpenAI)\b',
     # Attribution links and addresses.
@@ -53,7 +53,7 @@ ATTRIBUTION_PATTERNS = [
 #
 # As with the attribution trailer, the match starts after one of those
 # separators (or at the start) and skips to the first `gh` word, so a failed
-# search reads each command once (#280).
+# search takes linear time (#280).
 PR_CONTRIBUTION_RE = re.compile(
     r'(?:\A|(?<=[;&|\n]))(?:(?!\bgh\b)[^;&|\n])*'
     r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b'
