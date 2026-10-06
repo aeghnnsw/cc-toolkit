@@ -34,10 +34,13 @@ records. The repository uses a single-context layout.
 
 1. Start each change with a GitHub issue. Reuse an existing issue when it
    covers the work.
-2. Develop in a Git worktree under `trees/`. Branch names include an issue
-   number: `feat-<issue>-<description>`, `bugfix-<issue>-<description>`,
-   `doc-<issue>-<description>`, `refactor-<issue>-<description>`,
-   `chore-<issue>-<description>`, or `test-<issue>-<description>`.
+2. Develop in a Git worktree under `trees/` in the checkout where the
+   session runs. A Claude Code desktop session runs in
+   `.claude/worktrees/<name>/` and refuses edits outside that worktree.
+   Branch names include an issue number: `feat-<issue>-<description>`,
+   `bugfix-<issue>-<description>`, `doc-<issue>-<description>`,
+   `refactor-<issue>-<description>`, `chore-<issue>-<description>`, or
+   `test-<issue>-<description>`.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration
@@ -47,27 +50,23 @@ records. The repository uses a single-context layout.
    behavior, and link the issue. Do not add AI authorship or generation
    attribution, including a `Co-Authored-By` trailer that host instructions
    suggest. Do not include a test-plan section in PR descriptions. Write
-   commit messages, issue and PR bodies, and hook test input to files with a
-   file-writing tool, and pass the files to the command: the installed
-   core-hooks reads the text of each shell command.
+   each commit message to a file and run `git commit -F <file>`. The
+   installed core-hooks policy scripts check the text of each shell command
+   and can block a command that quotes message text.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
-   per change on the default branch. Before merging a plugin release, check
-   its version on `origin/master` (see
-   [release validation](CONTRIBUTING.md#package-and-release-validation)).
-   After merging, use `repo-cleanup` to
-   verify merged branches (including squash merges), remove eligible
-   worktrees and branches, prune the upstream remote, and reconcile the
-   default branch. Preserve dirty or unverified work.
+   per change on the default branch. Before merging a plugin release, compare
+   the plugin version with `origin/master` as described in
+   [release validation](CONTRIBUTING.md#package-and-release-validation).
+   After merging, use `repo-cleanup` to verify merged branches (including
+   squash merges), remove eligible worktrees and branches, prune the upstream
+   remote, and reconcile the default branch. Preserve dirty or unverified
+   work.
 
 Create a worktree with an issue-specific name, for example:
 
 ```bash
 git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 ```
-
-Run it from the checkout where your session runs, so that `trees/` is inside
-that checkout. A Claude Code desktop session runs in
-`.claude/worktrees/<name>/` and refuses edits outside it.
 
 ## Plugin changes
 
