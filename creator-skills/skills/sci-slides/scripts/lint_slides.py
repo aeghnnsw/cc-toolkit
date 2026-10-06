@@ -142,13 +142,23 @@ def outside_fences(lines: list[str]):
             yield line, in_fence
 
 
-def split_markdown(lines: list[str], flavour: Flavour) -> list[list[str]]:
+def separator_chunks(lines: list[str]) -> list[list[str]]:
     chunks: list[list[str]] = [[]]
     for line, code in outside_fences(lines):
         if not code and SEPARATOR.match(line):
             chunks.append([])
         else:
             chunks[-1].append(line)
+    return chunks
+
+
+def is_yaml(chunk: list[str]) -> bool:
+    content = [line for line in chunk if line.strip()]
+    return bool(content) and all(YAML_LINE.match(line) for line in content)
+
+
+def split_markdown(lines: list[str], flavour: Flavour) -> list[list[str]]:
+    chunks = separator_chunks(lines)
     if flavour.heading_split:
         split: list[list[str]] = []
         for chunk in chunks:
@@ -164,9 +174,19 @@ def split_markdown(lines: list[str], flavour: Flavour) -> list[list[str]]:
             split.append(current)
         chunks = split
     chunks = [chunk for chunk in chunks if any(line.strip() for line in chunk)]
-    if flavour.yaml_chunks:
-        chunks = [chunk for chunk in chunks if not all(YAML_LINE.match(l) for l in chunk if l.strip())]
-    return chunks
+    if not flavour.yaml_chunks:
+        return chunks
+    # Slidev: a YAML block between separators is the front matter of the next
+    # chunk, which is that slide's body even when it looks like YAML too.
+    slides: list[list[str]] = []
+    after_front_matter = False
+    for chunk in chunks:
+        if is_yaml(chunk) and not after_front_matter:
+            after_front_matter = True
+            continue
+        slides.append(chunk)
+        after_front_matter = False
+    return slides
 
 
 def parse_markdown_slide(lines: list[str], flavour: Flavour) -> Slide:
@@ -238,11 +258,13 @@ def parse_markdown(path: Path) -> list[Slide]:
                 break
     keys = front_keys or set()
     quarto = path.suffix.lower() in (".qmd", ".rmd") or "format" in keys
-    has_separators = any(SEPARATOR.match(line) for line, code in outside_fences(lines) if not code)
+    chunks = separator_chunks(lines)
+    layout_blocks = any(is_yaml(c) and any(l.startswith("layout:") for l in c) for c in chunks)
+    slidev = not quarto and "marp" not in keys and (front_keys is not None or layout_blocks)
     flavour = Flavour(
-        heading_split=quarto or not has_separators,
-        yaml_chunks=front_keys is not None and "marp" not in keys and not quarto,
-        note_lines=front_keys is None,
+        heading_split=quarto or len(chunks) == 1,
+        yaml_chunks=slidev,
+        note_lines=front_keys is None and not slidev,
     )
     slides = markdown_slides("\n".join(lines), flavour)
     # Quarto and Pandoc build a title slide from the front matter title.
@@ -273,6 +295,7 @@ class _Section:
     has_child: bool = False
     markdown_start: int | None = None  # offset after the start tag of a data-markdown section
     markdown_file: str = ""
+    separators: tuple[str, ...] = ()  # data-separator and data-separator-vertical patterns
 
 
 @dataclass
@@ -326,6 +349,9 @@ class _RevealParser(HTMLParser):
             if "data-markdown" in attributes:
                 section.markdown_start = self._offset() + len(self.get_starttag_text() or "")
                 section.markdown_file = attributes.get("data-markdown") or ""
+                section.separators = tuple(
+                    attributes[name] for name in ("data-separator", "data-separator-vertical") if attributes.get(name)
+                )
             self._sections.append(section)
             return
         slide = self._section.slide if self._section else None
@@ -395,13 +421,24 @@ class _RevealParser(HTMLParser):
             self.slides.append(section.slide)
 
     def _markdown(self, section: _Section) -> list[Slide]:
+        # reveal.js splits an external file on "---" lines, and an inline
+        # section only when it sets a separator attribute.
         if section.markdown_file:
+            if re.match(r"[a-z][a-z0-9+.-]*://", section.markdown_file, re.IGNORECASE):
+                raise LintError(f"data-markdown source {section.markdown_file} is remote; lint the Markdown file itself")
             return markdown_slides(read_text(self._base / section.markdown_file), REVEAL_MARKDOWN)
         raw = self._raw[section.markdown_start:self._offset()]
         template = TEMPLATE.search(raw)
         if template:
             raw = html.unescape(template.group(2)) if template.group(1).lower() == "textarea" else template.group(2)
-        return markdown_slides(raw, REVEAL_MARKDOWN)
+        parts = [raw]
+        for pattern in section.separators:
+            try:
+                parts = [piece for part in parts for piece in re.split(pattern, part, flags=re.MULTILINE)]
+            except re.error as error:
+                raise LintError(f"data-separator {pattern!r} is not a usable pattern: {error}") from None
+        slides = [parse_markdown_slide(part.splitlines(), REVEAL_MARKDOWN) for part in parts if part.strip()]
+        return slides or [Slide()]
 
     def _flush_loose(self) -> None:
         text = clean(" ".join(self._loose))
@@ -615,7 +652,7 @@ def parse_pptx_slide(package: zipfile.ZipFile, part: str) -> Slide:
             slide.images.append(properties.get("descr") if properties is not None else None)
     slide.source_text = " ".join(furniture_text)
     for rel_type, target in relationships(package, part).values():
-        if rel_type.endswith("/notesSlide"):
+        if rel_type.endswith("/notesSlide") and target in package.namelist():
             for shape in read_xml(package, target).iter(P + "sp"):
                 if placeholder_type(shape) == "body":
                     slide.notes += " " + " ".join(paragraph_text(p) for p in shape.iter(A + "p"))

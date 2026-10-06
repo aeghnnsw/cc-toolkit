@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 import subprocess
 import sys
@@ -185,20 +186,34 @@ class LintSlidesHtmlTest(unittest.TestCase):
 
     def test_data_markdown_sections(self) -> None:
         inline = (
-            "<section data-markdown><textarea data-template>\n"
+            '<section data-markdown data-separator="^---$"><textarea data-template>\n'
             "## How well does docking rank binders?\n\n- Scores &amp; ranks\n\n---\n\n"
             "## Recall drops by 40% on unseen kinases\n\nNote:\n" + LONG_NOTES + "\n"
+            "</textarea></section>"
+        )
+        single = (
+            "<section data-markdown><textarea data-template>\n"
+            "## Recall drops by 40% on unseen kinases\n\n---\n\n- Recall falls from 0.82 to 0.49\n"
             "</textarea></section>"
         )
         external = '<section data-markdown="part.md"></section>'
         deck = (
             f'<div class="slides"><section>{TITLE_SLIDE}</section>{inline}'
-            f"<section>{CLEAN_SLIDE}</section>{external}</div>"
+            f"<section>{CLEAN_SLIDE}</section>{single}{external}</div>"
         )
-        part = "## Why does recall drop?\n\n- x\n"
+        part = "## Why does recall drop?\n\n- x\n\n---\n\n## Recall falls, not rises\n"
         code, findings, output, _ = run_lint("talk.html", deck, extra={"part.md": part})
         self.assertEqual(code, 1, output)
-        self.assertEqual(findings, {(2, "title-question"), (3, "notes-words"), (5, "title-question")})
+        self.assertEqual(
+            findings,
+            {(2, "title-question"), (3, "notes-words"), (6, "title-question"), (7, "contrast-form")},
+        )
+
+    def test_remote_data_markdown_is_an_error(self) -> None:
+        deck = '<div class="slides"><section data-markdown="https://example.com/talk.md"></section></div>'
+        code, _, output, _ = run_lint("talk.html", deck)
+        self.assertEqual(code, 2, output)
+        self.assertIn("is remote", output)
 
 
 class LintSlidesMarkdownTest(unittest.TestCase):
@@ -317,6 +332,11 @@ class LintSlidesMarkdownTest(unittest.TestCase):
                 "-->",
                 "",
                 "---",
+                "layout: center",
+                "---",
+                "Takeaway: docking fails on unseen kinases",
+                "",
+                "---",
                 "## How well does docking rank binders?",
                 "",
                 "- Benchmark of 120 kinases",
@@ -324,7 +344,26 @@ class LintSlidesMarkdownTest(unittest.TestCase):
         )
         code, findings, output, _ = run_lint("slides.md", deck)
         self.assertEqual(code, 1, output)
-        self.assertEqual(findings, {(2, "notes-words"), (3, "title-question")})
+        self.assertEqual(findings, {(2, "notes-words"), (3, "title-missing"), (4, "title-question")})
+
+    def test_slidev_without_headmatter(self) -> None:
+        deck = "\n".join(
+            [
+                "# Kinase selectivity",
+                "",
+                "---",
+                "layout: center",
+                "---",
+                "## Recall drops by 40% on unseen kinases",
+                "",
+                "Note: values are means of 3 runs",
+                "",
+                "---",
+                "## Why does recall drop?",
+            ]
+        )
+        code, findings, output, _ = run_lint("slides.md", deck)
+        self.assertEqual((code, findings), (1, {(3, "title-question")}), output)
 
     def test_reveal_markdown_notes_separator(self) -> None:
         deck = "\n".join(
@@ -430,6 +469,23 @@ class LintSlidesErrorTest(unittest.TestCase):
     def test_unreadable_pptx(self) -> None:
         code, _, output, _ = run_lint("talk.pptx", b"not a zip file")
         self.assert_error(code, output)
+
+    def test_missing_pptx_notes_part_is_skipped(self) -> None:
+        deck = pptx_deck(
+            [
+                pptx_shape("Kinase selectivity in docking", ph='type="ctrTitle"'),
+                pptx_shape("How well does docking rank binders?", ph='type="title"'),
+            ],
+            notes={2: "Short note"},
+        )
+        with zipfile.ZipFile(io.BytesIO(deck)) as source:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as target:
+                for item in source.infolist():
+                    if not item.filename.startswith("ppt/notesSlides/"):
+                        target.writestr(item, source.read(item))
+        code, findings, output, _ = run_lint("talk.pptx", buffer.getvalue())
+        self.assertEqual((code, findings), (1, {(2, "title-question")}), output)
 
     def test_corrupt_pptx_part(self) -> None:
         deck = pptx_deck([pptx_shape("Kinase selectivity in docking", ph='type="ctrTitle"')], notes={})
