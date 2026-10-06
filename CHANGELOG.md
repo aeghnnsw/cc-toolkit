@@ -21,7 +21,7 @@
 
 ### Changed
 
-- Repository: reduce the README "Repository Structure" tree to root files, contributor tools, `docs/` folders, and one line per plugin, so it no longer changes with each skill. The plugin catalog keeps the skill lists. CONTRIBUTING.md asks readers to check a design's status notes before relying on it. See [#268](https://github.com/aeghnnsw/cc-toolkit/issues/268).
+- Repository: reduce the README "Repository Structure" tree to root files, contributor tools, `docs/` folders, and one line per plugin, so it no longer changes with each skill. The plugin catalog keeps the skill lists. CONTRIBUTING.md asks readers to check a `docs/` design, plan, or conclusion for a status or superseded note and to confirm current behavior in the code. See [#268](https://github.com/aeghnnsw/cc-toolkit/issues/268).
 
 - core-hooks (Claude Code and Codex 1.0.14): block a bulk `git add` only when it runs as a command. The git policy hook no longer blocks a heredoc body or a quoted argument that mentions `git add -A`, `--all`, `.`, or `./`. It still blocks these forms at the start of a command and after `&&`, `||`, `;`, `|`, `&`, or a newline. A subshell `(`, `{`, `!`, `time`, or a control keyword such as `then` can come before `git`. A bulk add inside `bash -c`, `eval`, `$(...)`, or a `case` branch, or after `sudo`, `env`, or a variable assignment, no longer blocks. See [#262](https://github.com/aeghnnsw/cc-toolkit/issues/262).
 

@@ -77,10 +77,10 @@ current project, remove unused template assumptions, and add a pointer from
 the relevant instructions. An installed development skill's configuration
 belongs in Git when it expresses conventions shared by this repository.
 
-A design, plan, or conclusion under `docs/` records decisions as of its
-date, and later work can supersede part of it. Before relying on one, read
-any status or superseded note at its top, and confirm current behavior in
-the plugin source.
+A design, plan, or conclusion under `docs/` records decisions as of when it
+was written, and later work can supersede part of it. Before relying on one,
+read any status or superseded note at its top, and confirm current behavior
+in the code it describes.
 
 Do not blanket-ignore `docs/`, `docs/agents/`, or `docs/adr/`. Git ignores
 control tracking; they do not define which files belong in a plugin package.

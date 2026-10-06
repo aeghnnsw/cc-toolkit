@@ -32,12 +32,12 @@ cc-toolkit/
 ├── CHANGELOG.md                      # Plugin and repository changes
 ├── package-validation.json           # Package and release validation rules
 ├── scripts/validate_packages.py      # Package and release validator
-├── tests/                            # Validator fixtures and skill link test
+├── tests/                            # Validator and skill link tests
 ├── docs/
 │   ├── adr/                          # Accepted architecture decisions
 │   ├── agents/                       # Issue tracker, triage, and domain conventions
 │   ├── design/                       # Durable designs, such as package validation
-│   └── superpowers/                  # Dated specs and plans; some are superseded
+│   └── superpowers/                  # Dated specs, plans, and conclusions; some superseded
 ├── cc-customize/                     # Claude Code model, statusline, and prompt config skills
 ├── core-hooks/                       # Safety and workflow hooks plugin
 ├── creator-skills/                   # Scientific content creation plugin
@@ -49,10 +49,12 @@ cc-toolkit/
 ```
 
 Each plugin directory holds `.claude-plugin/plugin.json`, a
-`.codex-plugin/plugin.json` when the plugin supports Codex, its components,
-and any tests. [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts)
-names each host's skill directory, and [Available Plugins](#available-plugins)
-lists each plugin's skills.
+`.codex-plugin/plugin.json` when the plugin supports Codex, and its
+components, resources, and any tests (see
+[Repository and package boundaries](CONTRIBUTING.md#repository-and-package-boundaries)).
+[Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts) names each
+host's skill directory, and [Available Plugins](#available-plugins) describes
+each plugin and lists its skills.
 
 ## Available Plugins
 
