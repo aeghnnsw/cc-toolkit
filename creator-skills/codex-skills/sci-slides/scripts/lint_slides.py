@@ -128,8 +128,6 @@ class Flavour:
     note_lines: bool  # reveal.js starts the notes at a "Note:" line
 
 
-
-
 def md_inline(text: str) -> str:
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = TAG.sub(" ", text)
@@ -331,7 +329,9 @@ class _Section:
     has_child: bool = False
     markdown_start: int | None = None  # offset after the start tag of a data-markdown section
     markdown_file: str = ""
-    notes_separator: str | None = None  # data-separator-notes; reveal.js matches it ignoring case
+    # data-separator-notes, matched ignoring case. The lint starts the notes at the
+    # first match; reveal.js makes notes only when the pattern matches once.
+    notes_separator: str | None = None
     separator: str | None = None  # the pattern reveal.js splits this data-markdown section on
 
 
