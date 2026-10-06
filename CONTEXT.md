@@ -17,6 +17,11 @@ Plugin content intended for installed use, including skills, agents, hooks,
 scripts, and required resources. Tests and contributor-only files are not
 shipped content for release validation.
 
+**Required resource**:
+A plugin file that installed use needs and host discovery does not find,
+such as a file that a skill links to or runs. It is required for each host
+that ships the skill or component that uses it.
+
 **Affected host**:
 A registered host whose shipped plugin content changes. Shared runtime
 changes affect each host that uses that runtime.

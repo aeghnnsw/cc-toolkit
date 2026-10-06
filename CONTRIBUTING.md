@@ -46,8 +46,15 @@ paths.
   same in both copies.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
-  ships it. The validator requires only listed resources; it does not find
-  them from links in prose.
+  ships it. A link to a `SKILL.md` that the same host discovers needs no
+  entry. The validator requires only listed resources; it does not find
+  them from links in prose. The root test
+  [test_skill_links.py](tests/test_skill_links.py) finds them. From each
+  discovered skill, it follows relative Markdown links and
+  `${CLAUDE_PLUGIN_ROOT}/`, `<plugin-root>/`, and `<skill-dir>/` paths
+  through the Markdown files the skill reaches. Each target must exist
+  inside the plugin, match a heading anchor if the link has one, and be
+  listed for the host.
 
 ## What belongs in Git
 
@@ -98,8 +105,9 @@ what changed:
 
 - **Documentation:** check accuracy, relative links, referenced paths, and
   whitespace with `git diff --check`.
-- **Skills and metadata:** check skill frontmatter and resource paths;
-  run the package and release validator described below.
+- **Skills and metadata:** check skill frontmatter; run the package and
+  release validator and the root tests described below. The root tests
+  check skill links and resource registration.
 - **Executable code:** run the tests for the affected plugin. Core Hooks
   tests require Python and `uv` on `PATH`; task-loop CLI tests require
   Python 3.11+ and `httpx>=0.27` as declared by the CLI. The command below
@@ -176,7 +184,9 @@ directories. The job uses the runner's Python and runs no plugin runtime
 suites. The speed target is less than 10 seconds of validator execution;
 queue, checkout, and runner startup time are separate.
 
-Run the validator's command-interface fixtures when changing its behavior:
+Run the root tests when you change the validator, a skill, or
+`package-validation.json`. They contain the validator's command-interface
+fixtures and the skill link test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'

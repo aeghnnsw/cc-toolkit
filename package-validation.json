@@ -58,6 +58,7 @@
         {"path": "scripts/", "hosts": ["claude", "codex"]}
       ],
       "resources": [
+        {"path": "references/gtd-planning.md", "hosts": ["claude", "codex"]},
         {"path": "scripts/productivity-cli.swift", "hosts": ["claude", "codex"]}
       ]
     },
@@ -67,6 +68,7 @@
         {"path": "mcp-config.codex.json", "hosts": ["codex"]}
       ],
       "resources": [
+        {"path": "README.md", "hosts": ["codex"]},
         {"path": "pymol_mcp_server.py", "hosts": ["claude", "codex"]},
         {"path": "pymol-mcp-socket-plugin/__init__.py", "hosts": ["claude", "codex"]},
         {"path": "pymol-mcp-socket-plugin/pymol_mcp_plugin.ui", "hosts": ["claude", "codex"]}
