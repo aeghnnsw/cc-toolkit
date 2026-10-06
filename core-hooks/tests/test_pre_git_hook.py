@@ -704,6 +704,200 @@ class PreGitHookTests(unittest.TestCase):
         result = run_blocked_hook({"tool_name": "Bash", "tool_input": {"command": command}})
         self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
+    # --- #281: every branch creation form, quoted names, worktree commit-ish ---
+
+    def test_blocks_invalid_name_in_checkout_and_switch_creation_forms(self):
+        # Options can come before or after the creating option, and its value
+        # can be separate, stuck, or follow a bundle of flags.
+        for command in [
+            "git checkout -B badname",
+            "git checkout --orphan badname",
+            "git checkout --orphan=badname",
+            "git checkout -q -b badname",
+            "git checkout --track -b badname origin/main",
+            "git checkout -bbadname",
+            "git checkout -qb badname",
+            "git switch -C badname",
+            "git switch --create badname",
+            "git switch --create=badname",
+            "git switch --force-create badname",
+            "git switch --orphan badname",
+            "git switch -q -c badname",
+            "git switch --no-guess -c badname",
+            "git switch -qc badname",
+            "git -C /repo switch --create badname",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
+    def test_allows_valid_name_in_checkout_and_switch_creation_forms(self):
+        for command in [
+            "git checkout -B feat-1-x",
+            "git checkout -q -b bugfix-2-y",
+            "git checkout --orphan=doc-3-z",
+            "git switch --create refactor-4-w",
+            "git switch -qc chore-5-v",
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch Naming Convention", response.get("systemMessage", ""))
+
+    def test_allows_checkout_and_switch_without_a_branch_creation(self):
+        # After `--`, checkout reads paths, not options.
+        for command in [
+            "git checkout -q main",
+            "git checkout -- -b",
+            "git switch --detach HEAD~1",
+            "git switch -",
+        ]:
+            with self.subTest(command=command):
+                result = run_hook_raw(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertEqual(result.stdout.strip(), "")
+
+    def test_blocks_invalid_name_after_git_branch_creation_options(self):
+        # git creates a branch for each of these forms (git 2.52).
+        for command in [
+            "git branch -f badname",
+            "git branch --force badname HEAD~1",
+            "git branch --track badname origin/main",
+            "git branch --track=inherit badname origin/main",
+            "git branch -t badname origin/main",
+            "git branch --no-track badname origin/main",
+            "git branch -q badname",
+            "git branch -fq badname",
+            "git branch -v badname",
+            "git branch --create-reflog badname",
+            "git branch -- badname",
+            "git branch -f -m old badname",
+            "git -C /repo branch -f badname",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
+    def test_allows_valid_name_after_git_branch_creation_options(self):
+        for command in [
+            "git branch -f feat-1-x",
+            "git branch --track bugfix-2-y origin/main",
+            "git branch -M old doc-3-z",
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch Naming Convention", response.get("systemMessage", ""))
+
+    def test_allows_git_branch_commands_without_a_branch_creation(self):
+        # These list, delete, or change upstream or description settings.
+        for command in [
+            "git branch -l 'bad*'",
+            "git branch -vv",
+            "git branch -D badname",
+            "git branch -a",
+            "git branch --contains HEAD",
+            "git branch -u origin/main",
+            "git branch --set-upstream-to=origin/main badname",
+            "git branch --edit-description",
+            "git branch --show-current",
+        ]:
+            with self.subTest(command=command):
+                result = run_hook_raw(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertEqual(result.stdout.strip(), "")
+
+    def test_blocks_quoted_invalid_name_without_its_quotes(self):
+        # The shell removes one level of quotes, so git sees `badname`.
+        for command in [
+            'git checkout -b "badname"',
+            "git switch -c 'badname'",
+            'git branch "badname"',
+            "git branch -m old 'badname'",
+            'git worktree add -b "badname" trees/x',
+            'git worktree add "trees/badname"',
+            "git checkout -b bad\"name\"",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
+    def test_allows_quoted_valid_name(self):
+        for command in [
+            'git checkout -b "feat-1-x"',
+            "git switch -c 'bugfix-2-y'",
+            'git branch -m old "doc-3-z"',
+            "git checkout -b feat-\"1\"-x",
+            'git worktree add "trees/feat-1-x"',
+            "git worktree add -b 'feat-1-x' \"trees/x\"",
+            'git checkout "-b" feat-1-x',
+        ]:
+            with self.subTest(command=command):
+                response = run_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch Naming Convention", response.get("systemMessage", ""))
+
+    def test_allows_worktree_from_a_commit_ish(self):
+        # With a commit-ish, git creates a branch only by copying the name of
+        # an existing remote-tracking branch, and it ignores the path name.
+        for command in [
+            "git worktree add trees/x HEAD",
+            "git worktree add trees/x origin/main",
+            "git worktree add trees/x HEAD~1",
+            "git worktree add trees/badname 1a2b3c4",
+            "git worktree add -f trees/x main",
+            "git worktree add trees/x v1.2.0",
+        ]:
+            with self.subTest(command=command):
+                result = run_hook_raw(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertEqual(result.stdout.strip(), "")
+
+    def test_blocks_named_worktree_branch_with_a_commit_ish(self):
+        for command in [
+            "git worktree add -b badname trees/x origin/main",
+            "git worktree add -qB badname trees/x HEAD",
+            "git worktree add --orphan trees/badname",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
+    def test_reads_many_options_and_quoted_parts_quickly(self):
+        # Long runs of options or quoted parts must be read in linear time.
+        for command in [
+            "git checkout " + "-q " * 5000 + "-b badname",
+            "git switch " + "--no-guess " * 5000 + "--create=badname",
+            "git branch " + "-f " * 5000 + "badname",
+            "git worktree add " + "--lock " * 5000 + "trees/badname",
+            "git checkout -b bad" + '""' * 5000 + "name",
+            "git checkout -b badname " + "'\"" * 5000,
+        ]:
+            with self.subTest(command=command[:40]):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
+    def test_codex_exec_command_checks_every_creation_form(self):
+        run_hook_raw(codex_payload("git worktree add trees/x origin/main"))
+        result = run_blocked_hook(codex_payload("git switch --create 'badname'"))
+        self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
     def test_codex_exec_command_uses_the_same_branch_rule(self):
         run_hook_raw(codex_payload("cat > notes.md <<'EOF'\ngit checkout -b badname\nEOF"))
         result = run_blocked_hook(codex_payload("git -C /repo checkout -b badname"))

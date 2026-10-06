@@ -78,6 +78,8 @@ REDIRECTION = r'\d*[<>]+&?'
 SHELL_WORD = r'''(?:"[^"]*"|'[^']*'|[^\s;|&()<>'"])+'''
 REDIRECTION_RE = re.compile(REDIRECTION)
 WORD_RE = re.compile(REDIRECTION + '|' + SHELL_WORD)
+# One quoted part of a shell word; the group holds the text inside the quotes.
+QUOTED_PART_RE = re.compile(r'''"([^"]*)"|'([^']*)\'''')
 
 # Git options between `git` and its subcommand, e.g. `git -C dir` or
 # `git -c key=value` (#272). The listed options can take a separate value;
@@ -90,15 +92,29 @@ GIT_GLOBAL_OPTION = (
 )
 GIT_COMMAND = SEGMENT_START + r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t]+'
 
-# Branch creations at the start of one command segment. A branch name ends at
-# whitespace or shell punctuation, so `(git checkout -b x)` names `x`. A
-# segment has no unquoted newline (see split_commands); [ \t]+ separators also
-# keep a quoted newline from joining two words (see issue #104).
-BRANCH_NAME = r'([^\s;|&()<>]+)'
-CHECKOUT_RE = re.compile(GIT_COMMAND + r'checkout[ \t]+-b[ \t]+' + BRANCH_NAME)
-SWITCH_RE = re.compile(GIT_COMMAND + r'switch[ \t]+-c[ \t]+' + BRANCH_NAME)
-WORKTREE_ADD_RE = re.compile(GIT_COMMAND + r'worktree[ \t]+add(?=[ \t]|$)')
-BRANCH_RE = re.compile(GIT_COMMAND + r'branch[ \t]+')
+# A git subcommand that can create a branch, at the start of one command
+# segment. Its arguments are read as shell words (see shell_words). A segment
+# has no unquoted newline (see split_commands); [ \t]+ separators also keep a
+# quoted newline from joining two words (see issue #104).
+GIT_SUBCOMMAND_RE = re.compile(
+    GIT_COMMAND + r'(?P<subcommand>checkout|switch|branch|worktree[ \t]+add)(?=[ \t]|$)'
+)
+
+# Options that name the branch that a subcommand creates (#281): short option
+# letters, then long options. Each takes the branch name as its value.
+CHECKOUT_CREATE_OPTIONS = ('bB', ('--orphan',))
+SWITCH_CREATE_OPTIONS = ('cC', ('--create', '--force-create', '--orphan'))
+WORKTREE_CREATE_OPTIONS = ('bB', ())
+
+# `git branch` options that keep its creation mode, and options that rename
+# or copy a branch (#281). git 2.52 creates a branch with each of them.
+BRANCH_CREATE_LETTERS = set('ftqv')
+BRANCH_CREATE_OPTIONS = {
+    '--force', '--track', '--no-track', '--quiet', '--verbose',
+    '--create-reflog', '--recurse-submodules',
+}
+BRANCH_RENAME_LETTERS = set('mMcC')
+BRANCH_RENAME_OPTIONS = {'--move', '--copy'}
 
 
 def block(reason):
@@ -170,71 +186,135 @@ def command_segments(command):
     return split_commands(strip_heredoc_bodies(command))
 
 
-def extract_branch_name(segment):
-    """Return the branch that one command segment creates, or None.
+def shell_words(text):
+    """Yield the words of `text` as the command receives them.
 
-    Each pattern matches at the segment start, so a git command inside a
-    quoted argument does not count (#272).
+    A redirection operator and its target are skipped. As in the shell, each
+    quoted part of a word loses one level of quotes, so `"feat-1-x"` and
+    `feat-"1"-x` give `feat-1-x` (#281). Variables and backslash escapes are
+    not expanded.
     """
-    for pattern in (CHECKOUT_RE, SWITCH_RE):
-        m = pattern.match(segment)
-        if m:
-            return m.group(1)
+    words = iter(WORD_RE.findall(text))
+    for word in words:
+        if REDIRECTION_RE.fullmatch(word):
+            next(words, None)  # skip the redirection target
+        else:
+            yield QUOTED_PART_RE.sub(r'\1\2', word)
 
-    m = WORKTREE_ADD_RE.match(segment)
-    if m:
-        return extract_worktree_branch_name(segment[m.end():])
 
-    m = BRANCH_RE.match(segment)
-    if not m:
-        return None
-    arguments = segment[m.end():]
+def option_value(word, words, options):
+    """Return the value that `word` gives one of `options`, or None.
 
-    # Rename/copy: short flags (-m/-M/-c/-C) and long flags (--move/--copy).
-    # With two names, the second is the new branch.
-    m = re.match(
-        r'(?:-[mMcC]|--move|--copy)[ \t]+' + BRANCH_NAME + r'(?:[ \t]+' + BRANCH_NAME + r')?',
-        arguments,
-    )
-    if m:
-        return m.group(2) or m.group(1)
-
-    # Bare creation — skip read-only/delete flags. Callers pass one command at a
-    # time (see command_segments / check_branch_names), so a listing/delete
-    # here cannot mask a real creation elsewhere in a compound command.
-    if re.match(r'-[ladDvrV]|--list|--all|--delete|--remotes', arguments):
-        return None
-    m = re.match(r'(?!-)' + BRANCH_NAME, arguments)
-    if m:
-        return m.group(1)
+    `options` holds short option letters and long options that take a value.
+    As in git, a short option can end a bundle of flags, and its value can be
+    stuck to it (`-qb name`, `-bname`). The other short options of checkout,
+    switch, and `worktree add` take no separate value. A long option takes
+    `--name value` or `--name=value`. A separate value is the next word in
+    `words`.
+    """
+    letters, long_options = options
+    if word.startswith('--'):
+        name, equals, value = word.partition('=')
+        if name in long_options:
+            return value if equals else next(words, None)
+    elif word.startswith('-'):
+        for index, letter in enumerate(word[1:], start=2):
+            if letter in letters:
+                return word[index:] or next(words, None)
     return None
 
 
-def extract_worktree_branch_name(arguments):
-    """Return the branch that `git worktree add <arguments>` creates, or None.
+def option_branch_name(words, options):
+    """Return the branch that the first creating option in `words` names.
+
+    `options` holds the short option letters and the long options that name
+    a branch. Reading stops at `--`; checkout reads paths after it.
+    """
+    for word in words:
+        if word == '--':
+            return None
+        name = option_value(word, words, options)
+        if name is not None:
+            return name
+    return None
+
+
+def extract_branch_name(segment):
+    """Return the branch that one command segment creates, or None.
+
+    The pattern matches at the segment start, so a git command inside a
+    quoted argument does not count (#272).
+    """
+    m = GIT_SUBCOMMAND_RE.match(segment)
+    if not m:
+        return None
+    arguments = segment[m.end():]
+    subcommand = m.group('subcommand')
+    if subcommand == 'checkout':
+        return option_branch_name(shell_words(arguments), CHECKOUT_CREATE_OPTIONS)
+    if subcommand == 'switch':
+        return option_branch_name(shell_words(arguments), SWITCH_CREATE_OPTIONS)
+    if subcommand == 'branch':
+        return extract_branch_subcommand_name(shell_words(arguments))
+    return extract_worktree_branch_name(shell_words(arguments))
+
+
+def extract_branch_subcommand_name(words):
+    """Return the branch that `git branch <words>` creates, or None.
+
+    Each option must keep creation mode or rename or copy a branch. Any other
+    option lists or deletes branches or changes a setting, so the command
+    creates none. Callers pass one command at a time (see check_branch_names),
+    so a listing here cannot mask a creation elsewhere in a compound command.
+    With a rename or copy option and two names, the second is the new branch.
+    """
+    rename = False
+    names = []
+    for word in words:
+        if word == '--':
+            names.extend(words)
+        elif word.startswith('--'):
+            option = word.partition('=')[0]
+            if option in BRANCH_RENAME_OPTIONS:
+                rename = True
+            elif option not in BRANCH_CREATE_OPTIONS:
+                return None
+        elif word.startswith('-'):
+            letters = set(word[1:])  # a bundle such as `-fq`
+            if not letters <= BRANCH_CREATE_LETTERS | BRANCH_RENAME_LETTERS:
+                return None
+            rename = rename or bool(letters & BRANCH_RENAME_LETTERS)
+        else:
+            names.append(word)
+    if rename and len(names) > 1:
+        return names[1]
+    return names[0] if names else None
+
+
+def extract_worktree_branch_name(words):
+    """Return the branch that `git worktree add <words>` creates, or None.
 
     Options can come before or after the path (#272). `-b` or `-B` names the
-    branch, and `--detach` creates none. Otherwise a name-like commit-ish
-    names it, and then the basename of the path.
+    branch, and `--detach` creates none. Otherwise a path alone names the
+    branch after its basename. A commit-ish after the path names no branch
+    (#281): git then creates a branch only by copying the name of an existing
+    remote-tracking branch, as `git checkout <name>` does, so the command
+    line cannot choose a new name.
     """
-    words = iter(WORD_RE.findall(arguments))
     positional = []
     detach = False
     for word in words:
-        if REDIRECTION_RE.fullmatch(word) or word == '--reason':
-            next(words, None)  # skip the redirection target or option value
-        elif word in ('-b', '-B'):
-            return next(words, None)
+        name = option_value(word, words, WORKTREE_CREATE_OPTIONS)
+        if name is not None:
+            return name
+        if word == '--reason':
+            next(words, None)  # skip the option value
         elif word in ('-d', '--detach'):
             detach = True
         elif not word.startswith('-'):
             positional.append(word)
-    if detach or not positional:
+    if detach or len(positional) != 1:
         return None
-    if len(positional) > 1:
-        m = re.match(r'[a-zA-Z][\w-]*', positional[1])
-        if m:
-            return m.group(0)
     return os.path.basename(positional[0].rstrip('/'))
 
 
