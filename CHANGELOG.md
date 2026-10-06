@@ -19,6 +19,8 @@
 
 ### Changed
 
+- creator-skills (Claude Code and Codex 1.1.0): rebuild `sci-slides` as a five-step workflow with a completion criterion per step. Read or save the presenter's standing rules in `slide-rules.md`, ask for missing brief items in one message, and set a slide budget from the speaking time. Move the rules to two references: slide text (one-line assertion titles, plain wording, claims that match their numbers, definitions, reused-figure context, schematics, notes) and design. Review each section for meaning right after drafting it, then review the whole deck. Remove unsupported statistics and text that repeated the workflow. Give both hosts one description and add a host parity test. See [#256](https://github.com/aeghnnsw/cc-toolkit/issues/256).
+
 - dev-skills (Codex 1.6.0, Claude Code 3.15.0): make `code-review`, `retro`, and `pr` explicit phases in `matt-automode`. Review previous implementation sessions for navigation delays and stale docs, including after successful work. Select sessions by repository metadata before searching their text. Publish and merge PRs after retro, then reconcile issues and clean the repository. See [#252](https://github.com/aeghnnsw/cc-toolkit/issues/252).
 
 - dev-skills (Codex 1.5.1, Claude Code 3.14.1): state in `matt-automode` that the user's request to use the mode explicitly invokes every skill it names, so the agent loads them without asking the user to invoke them. In Codex, resolve a skill hidden by `policy.allow_implicit_invocation: false` from the installed plugin files; the policy stops only implicit selection. Codex previously stopped and asked the user to invoke Matt Pocock's user-invoked skills by hand. See [#249](https://github.com/aeghnnsw/cc-toolkit/issues/249).
