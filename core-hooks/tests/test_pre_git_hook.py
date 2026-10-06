@@ -634,6 +634,7 @@ class PreGitHookTests(unittest.TestCase):
         for command in [
             "git worktree add --detach trees/x",
             "git worktree add -d trees/x HEAD~1",
+            "git worktree add -fd trees/badname",
         ]:
             with self.subTest(command=command):
                 result = run_hook_raw(
@@ -765,7 +766,14 @@ class PreGitHookTests(unittest.TestCase):
         # git creates a branch for each of these forms (git 2.52).
         for command in [
             "git branch -f badname",
+            "git branch --force badname",
             "git branch --force badname HEAD~1",
+            "git branch --no-color badname",
+            "git branch -i badname",
+            "git branch --abbrev=7 badname",
+            "git branch --sort=refname badname",
+            "git branch --sort refname badname",
+            "git branch --no-create-reflog badname",
             "git branch --track badname origin/main",
             "git branch --track=inherit badname origin/main",
             "git branch -t badname origin/main",
@@ -799,13 +807,23 @@ class PreGitHookTests(unittest.TestCase):
     def test_allows_git_branch_commands_without_a_branch_creation(self):
         # These list, delete, or change upstream or description settings.
         for command in [
+            "git branch -l",
             "git branch -l 'bad*'",
+            "git branch --list 'bad*'",
             "git branch -vv",
+            "git branch -D old",
             "git branch -D badname",
+            "git branch -dr origin/badname",
             "git branch -a",
+            "git branch -r",
             "git branch --contains HEAD",
+            "git branch --no-contains HEAD",
+            "git branch --merged main",
+            "git branch --sort=-committerdate",
+            "git branch --format '%(refname:short)'",
             "git branch -u origin/main",
             "git branch --set-upstream-to=origin/main badname",
+            "git branch --unset-upstream badname",
             "git branch --edit-description",
             "git branch --show-current",
         ]:
@@ -849,13 +867,15 @@ class PreGitHookTests(unittest.TestCase):
                 self.assertIn("Branch Naming Convention", response.get("systemMessage", ""))
 
     def test_allows_worktree_from_a_commit_ish(self):
-        # With a commit-ish, git creates a branch only by copying the name of
-        # an existing remote-tracking branch, and it ignores the path name.
+        # With a commit-ish, git makes a local branch only by copying the name
+        # of an existing remote-tracking branch, which is not a branch
+        # creation, and it ignores the path name.
         for command in [
             "git worktree add trees/x HEAD",
             "git worktree add trees/x origin/main",
             "git worktree add trees/x HEAD~1",
             "git worktree add trees/badname 1a2b3c4",
+            "git worktree add trees/x main",
             "git worktree add -f trees/x main",
             "git worktree add trees/x v1.2.0",
         ]:
@@ -893,8 +913,23 @@ class PreGitHookTests(unittest.TestCase):
                 )
                 self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
+    def test_reads_no_words_after_a_shell_comment(self):
+        # A word that starts with `#` starts a comment, so later words are not
+        # arguments of the git command.
+        run_hook_raw({"tool_name": "Bash", "tool_input": {"command": "git checkout main # -b badname"}})
+        for command in [
+            "git worktree add trees/badname # from main",
+            "git branch badname # for the fix",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Branch name 'badname' is invalid", result.stderr)
+
     def test_codex_exec_command_checks_every_creation_form(self):
-        run_hook_raw(codex_payload("git worktree add trees/x origin/main"))
+        result = run_hook_raw(codex_payload("git worktree add trees/x origin/main"))
+        self.assertEqual(result.stdout.strip(), "")
         result = run_blocked_hook(codex_payload("git switch --create 'badname'"))
         self.assertIn("Branch name 'badname' is invalid", result.stderr)
 
