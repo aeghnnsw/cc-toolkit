@@ -229,7 +229,7 @@ class PackageValidationTests(unittest.TestCase):
                 "raise ModuleNotFoundError(\"No module named 'tomllib'\", name='tomllib')\n")
             result = self.run_check('abc123', env={**os.environ, 'PYTHONPATH': shadow})
         self.assertEqual(result.returncode, 1)
-        self.assertIn(f'this is Python {sys.version.split()[0]}.', result.stderr)
+        self.assertIn(f'Python {sys.version.split()[0]} is running.', result.stderr)
         self.assertIn(f"uv run --no-project --python '>=3.11' python {shlex.quote(str(COMMAND))} --base abc123",
                       result.stderr)
 

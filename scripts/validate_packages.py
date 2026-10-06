@@ -13,7 +13,7 @@ import time
 try:
     import tomllib
 except ModuleNotFoundError:
-    sys.exit(f'FAIL: the validator needs Python 3.11 or newer for tomllib; this is Python {sys.version.split()[0]}. '
+    sys.exit(f'FAIL: the validator needs Python 3.11 or newer for tomllib. Python {sys.version.split()[0]} is running. '
              'Run:\n' + shlex.join(['uv', 'run', '--no-project', '--python', '>=3.11', 'python', *sys.argv]))
 
 
