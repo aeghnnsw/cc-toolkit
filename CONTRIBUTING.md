@@ -46,10 +46,9 @@ paths.
   same in both copies.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
-  ships it. Edit the file as text and keep one entry object per line. A
-  link to a `SKILL.md` that the same host discovers needs no entry. The
-  validator requires only listed resources; it does not find them from
-  links in prose. The skill link test,
+  ships it. A link to a `SKILL.md` that the same host discovers needs no
+  entry. The validator requires only listed resources; it does not find
+  them from links in prose. The skill link test,
   [tests/test_skill_links.py](tests/test_skill_links.py), checks this rule.
   It follows relative Markdown links and `${CLAUDE_PLUGIN_ROOT}/`,
   `<plugin-root>/`, and `<skill-dir>/` paths from each discovered skill and
@@ -166,9 +165,11 @@ preserves release history by plugin identity and host.
 
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
-these rules when a package needs an explicit local contract. Plugin-root
-tests, `README.md`, and `CHANGELOG.md` are exempt by default. Required
-resources override exemptions. Markdown files are not exempt by extension.
+these rules when a package needs an explicit local contract. Edit the file
+as text and keep one entry object per line, so rule diffs stay small.
+Plugin-root tests, `README.md`, and `CHANGELOG.md` are exempt by default.
+Required resources override exemptions. Markdown files are not exempt by
+extension.
 Unclassified plugin files affect all registered hosts. Failure diagnostics
 identify the relevant path or package and host. Version failures include
 the ownership reason and the version that must be exceeded. Fix the first

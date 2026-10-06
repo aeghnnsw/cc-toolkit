@@ -14,8 +14,9 @@ validator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(validator)
 
 FENCE = re.compile(r'^[ \t]*(```|~~~).*?^[ \t]*\1', re.MULTILINE | re.DOTALL)
-# An inline link or image destination, or a reference definition.
-LINK = re.compile(r'\]\(\s*<?([^\s)>]+)|^[ \t]*\[[^\]]+\]:[ \t]*<?([^\s>]+)', re.MULTILINE)
+# An inline link or image destination, or a reference definition; footnotes are not links.
+LINK = re.compile(r'\]\(\s*(?:<([^>\n]+)>|([^\s)]+))|^[ \t]*\[(?!\^)[^\]]+\]:[ \t]*(?:<([^>\n]+)>|(\S+))',
+                  re.MULTILINE)
 SCHEME = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*:')
 HEADING = re.compile(r'^#{1,6}\s+(.+?)(?:\s+#+)?\s*$', re.MULTILINE)
 RUN_PATH = re.compile(r'(\$\{CLAUDE_PLUGIN_ROOT\}|<plugin-root>|<skill-dir>)/([\w./-]+)')
@@ -48,12 +49,12 @@ def inside(package, path):
 
 def anchors(document):
     """Return GitHub-style heading anchors; a repeated heading gets a numeric suffix."""
-    seen = Counter()
+    counts = Counter()
     result = set()
     for heading in HEADING.findall(FENCE.sub('', document.read_text(encoding='utf-8'))):
         slug = re.sub(r'[^\w\- ]', '', heading.strip().lower()).replace(' ', '-')
-        result.add(f'{slug}-{seen[slug]}' if seen[slug] else slug)
-        seen[slug] += 1
+        result.add(f'{slug}-{counts[slug]}' if counts[slug] else slug)
+        counts[slug] += 1
     return result
 
 
@@ -84,7 +85,7 @@ class SkillLinkTests(unittest.TestCase):
         cls.skills = [(package, skill) for package, _, skills in cls.registrations for skill in skills]
         cls.discovered = {(package.host, skill) for package, skill in cls.skills}
 
-    def reference_test(self, package, reference):
+    def subtest_for(self, package, reference):
         return self.subTest(host=package.host, document=reference.document.relative_to(ROOT).as_posix(),
                             target=reference.text)
 
@@ -100,7 +101,7 @@ class SkillLinkTests(unittest.TestCase):
         for package, skill in self.skills:
             for reference in references(package, skill):
                 checked += 1
-                with self.reference_test(package, reference):
+                with self.subtest_for(package, reference):
                     self.assertTrue(inside(package, reference.target), 'target is outside the plugin package')
                     self.assertTrue(reference.target.is_file(),
                                     f'missing file {reference.target.relative_to(ROOT).as_posix()}')
@@ -119,7 +120,7 @@ class SkillLinkTests(unittest.TestCase):
                         or not target.is_file() or not inside(package, target)):
                     continue  # Same document, host-discovered skill, or reported by the resolve test.
                 relative = target.relative_to(ROOT / package.source).as_posix()
-                with self.reference_test(package, reference):
+                with self.subtest_for(package, reference):
                     self.assertTrue(any(validator.matches(relative, path) for path in resources),
                                     f'list {relative} for {package.host} under {package.name} resources '
                                     f'in {validator.RULES_PATH}')
