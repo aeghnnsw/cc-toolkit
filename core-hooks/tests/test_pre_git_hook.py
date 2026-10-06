@@ -458,6 +458,81 @@ class PreGitHookTests(unittest.TestCase):
             response.get("systemMessage", ""),
         )
 
+    # --- #262: only a real `git add` invocation is a bulk add ---
+
+    def test_allows_bulk_add_text_in_heredoc_body(self):
+        # A heredoc body is data, even when a line looks like a command.
+        for command in [
+            "python3 - <<'EOF'\nprint('git add -A')\nEOF",
+            "cat > notes.md <<'EOF'\ngit add .\nEOF",
+            "cat <<EOF > notes.md\ngit add --all && git add ./\nEOF\ngit status",
+            # The usual commit form: a heredoc in a quoted substitution.
+            "git commit -m \"$(cat <<'EOF'\nfix: explain the policy\n\ngit add -A stages every file.\nEOF\n)\"",
+        ]:
+            with self.subTest(command=command):
+                run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
+    def test_allows_bulk_add_text_in_quoted_argument(self):
+        # A separator inside quotes does not start a command, and a quoted
+        # line break does not either.
+        for command in [
+            'git commit -m "Block git add -A in the hook"',
+            "git commit -m 'Explain why git add . is blocked'",
+            'echo "stage files; git add --all"',
+            'gh pr comment 1 --body "Do not run git add ./"',
+            'git commit -m "Subject\ngit add -A\n"',
+        ]:
+            with self.subTest(command=command):
+                run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
+    def test_blocks_real_bulk_add_in_simple_and_compound_commands(self):
+        for command in [
+            "git add -A",
+            "git add --all",
+            "git add .",
+            "git add ./",
+            "git status && git add -A",
+            "git status || git add .",
+            "cd repo; git add --all",
+            "echo x | git add ./",
+            "git status & git add .",
+            "git status\ngit add -A && git commit -m 'x'",
+            "git add .>/dev/null",
+            # A bulk add after a heredoc body is a real command.
+            "cat <<'EOF' > notes.md\ngit add -A\nEOF\ngit add .",
+            # An apostrophe in the body must not hide the command after it.
+            "cat <<EOF > notes.md\ndon't stage\nEOF\ngit add -A",
+            # Grouping and control keywords come before a command word.
+            "(git add .)",
+            "{ git add ./; }",
+            "if true; then git add -A; fi",
+            "for f in a; do git add .; done",
+            "! git add --all",
+            "time git add -A",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Bulk git add operations are prohibited", result.stderr)
+
+    def test_codex_exec_command_uses_the_same_bulk_add_rule(self):
+        def codex_payload(cmd):
+            return {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "exec_command",
+                "tool_input": {"cmd": cmd},
+            }
+
+        run_hook_raw(codex_payload('git commit -m "Block git add -A in the hook"'))
+        result = run_blocked_hook(codex_payload("git status && git add -A"))
+        self.assertIn("Bulk git add operations are prohibited", result.stderr)
+
+    def test_allows_named_files_that_start_with_a_dot(self):
+        for command in ["git add .gitignore", "git add ./src/file.py", "git add -- README.md"]:
+            with self.subTest(command=command):
+                run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
     def test_codex_hooks_match_exec_command_for_git_guard(self):
         hooks = json.loads(CODEX_HOOKS.read_text())
         matchers = [

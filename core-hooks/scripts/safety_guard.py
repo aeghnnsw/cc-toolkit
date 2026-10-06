@@ -2,6 +2,12 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
+"""Block dangerous `rm` commands.
+
+This module also owns shell-parsing code that other hooks import. For
+example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
+`CONTROL_PREFIXES`.
+"""
 
 import json
 import os
@@ -367,13 +373,14 @@ def _heredoc_delimiter_word(match):
     return match.group("plain").replace("\\", "")
 
 
-def _strip_heredoc_bodies(command):
-    """Remove heredoc bodies so their text is never tokenized as shell code.
+def strip_heredoc_bodies(command):
+    """Remove heredoc bodies so their text is never parsed as shell code.
 
     A heredoc body is data: the shell writes it to the command's standard
-    input. Tokenizing it failed on an ordinary apostrophe and blocked the whole
-    command (issue #236). Command substitutions are collected from the
-    unstripped text, so an expanded `$(rm -rf /)` in a body is still inspected.
+    input. Tokenizing it failed on an ordinary apostrophe (issue #236), and
+    matching it blocked a mention of a bulk `git add` (issue #262). The shell
+    still expands `$(...)` in an unquoted body, so a caller that checks
+    expansions reads them from the unstripped text, as the rm check does.
 
     Ending a body early keeps more text under inspection, so the delimiter
     comparison ignores surrounding whitespace.
@@ -1031,7 +1038,7 @@ def _dangerous_rm_reason(command, depth):
     # Heredoc bodies are data. Strip them before tokenizing, and keep the
     # stripped text for the fallback below so prose cannot decide the outcome.
     executable_text = _strip_shell_comments(
-        _remove_line_continuations(_strip_heredoc_bodies(command))
+        _remove_line_continuations(strip_heredoc_bodies(command))
     )
     try:
         segments = _command_segments(_shell_tokens(executable_text))

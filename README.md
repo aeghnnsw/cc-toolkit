@@ -81,8 +81,10 @@ cc-toolkit/
 │   ├── .codex-plugin/
 │   │   └── plugin.json
 │   ├── hooks/
-│   │   └── hooks.json
+│   │   ├── hooks.json
+│   │   └── hooks.codex.json
 │   └── scripts/
+│       ├── hook_payload.py
 │       ├── safety_guard.py
 │       ├── pre_git_hook.py
 │       ├── post_tool_use.py

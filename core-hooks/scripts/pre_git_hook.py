@@ -10,6 +10,7 @@ import re
 import sys
 
 from hook_payload import get_shell_command
+from safety_guard import CONTROL_PREFIXES, strip_heredoc_bodies
 
 
 VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
@@ -42,6 +43,15 @@ ATTRIBUTION_PATTERNS = [
 # spaces between tokens, while the excluded chars stop it from matching across
 # chained (; && ||), piped, or newline-separated commands.
 PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
+
+# A bulk `git add` at the start of one command segment (see split_commands).
+# A subshell `(`, a control prefix, or `time` can come before git, e.g.
+# `(git add .)` or `if ...; then git add -A; fi`.
+BULK_ADD_PREFIXES = sorted(CONTROL_PREFIXES | {"time"})
+BULK_ADD_RE = re.compile(
+    r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in BULK_ADD_PREFIXES) + r')\s+)*'
+    r'git\s+add\s+(?:-A|--all|\.(?=[\s)<>]|$)|\./(?=[\s)<>]|$))'
+)
 
 
 def block(reason):
@@ -146,6 +156,19 @@ def extract_branch_name(command):
         return m.group(1)
 
 
+def has_bulk_add(command):
+    """Report whether a segment of `command` starts with a bulk `git add`.
+
+    Heredoc bodies are removed before the split, and a quoted argument stays
+    inside its segment. So text that only mentions `git add -A` is not a bulk
+    add (#262).
+    """
+    return any(
+        BULK_ADD_RE.match(segment)
+        for segment in split_commands(strip_heredoc_bodies(command))
+    )
+
+
 def check_branch_names(command):
     """Inspect every sub-command for a branch being created.
 
@@ -177,7 +200,7 @@ def main():
 
     command = get_shell_command(input_data)
     if command:
-        if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
+        if has_bulk_add(command):
             block(
                 "Bulk git add operations are prohibited. "
                 "Use specific file names instead of 'git add .', 'git add -A', "
