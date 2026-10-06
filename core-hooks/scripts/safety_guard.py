@@ -367,7 +367,7 @@ def _heredoc_delimiter_word(match):
     return match.group("plain").replace("\\", "")
 
 
-def _strip_heredoc_bodies(command):
+def strip_heredoc_bodies(command):
     """Remove heredoc bodies so their text is never tokenized as shell code.
 
     A heredoc body is data: the shell writes it to the command's standard
@@ -1031,7 +1031,7 @@ def _dangerous_rm_reason(command, depth):
     # Heredoc bodies are data. Strip them before tokenizing, and keep the
     # stripped text for the fallback below so prose cannot decide the outcome.
     executable_text = _strip_shell_comments(
-        _remove_line_continuations(_strip_heredoc_bodies(command))
+        _remove_line_continuations(strip_heredoc_bodies(command))
     )
     try:
         segments = _command_segments(_shell_tokens(executable_text))

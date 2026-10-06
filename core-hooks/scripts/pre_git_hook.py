@@ -10,6 +10,7 @@ import re
 import sys
 
 from hook_payload import get_shell_command
+from safety_guard import strip_heredoc_bodies
 
 
 VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
@@ -42,6 +43,14 @@ ATTRIBUTION_PATTERNS = [
 # spaces between tokens, while the excluded chars stop it from matching across
 # chained (; && ||), piped, or newline-separated commands.
 PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
+
+# A bulk `git add` at the start of one command segment (see split_commands).
+# Grouping characters and control keywords can come before the command word,
+# e.g. `(git add .)` or `if ...; then git add -A; fi`.
+BULK_ADD_RE = re.compile(
+    r'(?:[!({]\s*|(?:if|then|elif|else|while|until|do|time)\s+)*'
+    r'git\s+add\s+(?:-A|--all|\.(?=[\s)]|$)|\./(?=[\s)]|$))'
+)
 
 
 def block(reason):
@@ -146,6 +155,19 @@ def extract_branch_name(command):
         return m.group(1)
 
 
+def has_bulk_add(command):
+    """Report whether any command in `command` runs a bulk `git add`.
+
+    Only a command word counts: heredoc bodies are removed, and quoted text
+    stays inside the segment of the command that receives it. So a commit
+    message or script that mentions `git add -A` is not a bulk add (#262).
+    """
+    return any(
+        BULK_ADD_RE.match(segment)
+        for segment in split_commands(strip_heredoc_bodies(command))
+    )
+
+
 def check_branch_names(command):
     """Inspect every sub-command for a branch being created.
 
@@ -177,7 +199,7 @@ def main():
 
     command = get_shell_command(input_data)
     if command:
-        if re.search(r'git add\s+(-A|--all|\.(?:\s|$)|\.\/(?:\s|$))', command):
+        if has_bulk_add(command):
             block(
                 "Bulk git add operations are prohibited. "
                 "Use specific file names instead of 'git add .', 'git add -A', "
