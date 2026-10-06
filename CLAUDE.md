@@ -44,7 +44,7 @@ records. The repository uses a single-context layout.
    for documentation and metadata changes.
 4. Stage changed files by name. Keep commits, issues, PR descriptions, and
    PR comments concise and accurate. Explain the problem and resulting
-   behavior, and link the issue. Leave out AI authorship and generation
+   behavior, and link the issue. Do not add AI authorship or generation
    attribution, including a `Co-Authored-By` trailer that host instructions
    suggest. Do not include a test-plan section in PR descriptions.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit

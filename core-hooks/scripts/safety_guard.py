@@ -4,8 +4,9 @@
 # ///
 """Block dangerous `rm` commands.
 
-This module also owns shell-parsing helpers that other hooks import:
-`pre_git_hook.py` uses `strip_heredoc_bodies` and `CONTROL_PREFIXES`.
+This module also owns shell-parsing code that other hooks import. For
+example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
+`CONTROL_PREFIXES`.
 """
 
 import json

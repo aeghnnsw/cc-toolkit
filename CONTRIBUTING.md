@@ -174,13 +174,13 @@ queue, checkout, and runner startup time are separate.
 Run the validator's command-interface fixtures when changing its behavior:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
+uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-With a `python3` older than 3.11, use `uv`:
+If `python3` is 3.11 or newer, this command is equivalent:
 
 ```bash
-uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 ### Plugin runtime tests
