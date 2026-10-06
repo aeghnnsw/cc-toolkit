@@ -20,109 +20,37 @@ Matt Pocock's development skills.
 
 ```
 cc-toolkit/
-├── .claude-plugin/
-│   └── marketplace.json           # Claude Code plugin registry
-├── .agents/
-│   └── plugins/
-│       └── marketplace.json       # Codex plugin registry
-├── CLAUDE.md                       # Shared contributor instructions
-├── AGENTS.md                       # Symlink to CLAUDE.md
-├── CONTRIBUTING.md                 # Repository boundaries and verification
+├── .claude-plugin/marketplace.json     # Claude Code plugin registry
+├── .agents/plugins/marketplace.json    # Codex plugin registry
+├── .github/workflows/                  # Package validation and @claude workflows
+├── CLAUDE.md                           # Shared contributor instructions
+├── AGENTS.md                           # Symlink to CLAUDE.md
+├── CONTRIBUTING.md                     # Repository boundaries and verification
+├── CONTEXT.md                          # Domain glossary
+├── CHANGELOG.md                        # Changes to all plugins and the repository
+├── package-validation.json             # Package and release validation rules
+├── scripts/                            # Contributor tools, such as the package validator
+├── tests/                              # Root tests for the validator and skill links
 ├── docs/
-│   ├── agents/                     # Shared development skill configuration
-│   ├── adr/                        # Accepted architecture decisions
-│   └── superpowers/                # Design and planning documents
-├── cc-customize/                   # Claude Code model, statusline, and prompt config skills
-├── dev-skills/                     # Development workflow plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── .codex-plugin/
-│   │   └── plugin.json
-│   ├── skills/
-│   │   ├── discord-setup/
-│   │   ├── discuss-with-codex/
-│   │   ├── doc-update/
-│   │   ├── goal-rubric/
-│   │   ├── matt-automode/
-│   │   ├── pr-feedback/
-│   │   ├── project-eval/
-│   │   ├── repo-cleanup/
-│   │   └── step-workflow/
-│   └── codex-skills/
-│       ├── doc-update/
-│       ├── goal-rubric/
-│       ├── matt-automode/
-│       ├── pressure-test/
-│       ├── repo-cleanup/
-│       └── step-workflow/
-├── creator-skills/                 # Scientific content creation plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── .codex-plugin/
-│   │   └── plugin.json
-│   ├── skills/
-│   │   ├── sci-figure-format/
-│   │   └── sci-slides/
-│   └── codex-skills/
-│       ├── sci-figure-format/
-│       └── sci-slides/
-├── doc-skills/                     # Document processing plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── skills/
-│   │   ├── docling-pdf/
-│   │   └── paper-rename/
-│   └── agents/
-│       ├── paper-reader.md
-│       └── paper-consolidator.md
-├── core-hooks/                     # Safety and workflow hooks plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── .codex-plugin/
-│   │   └── plugin.json
-│   ├── hooks/
-│   │   ├── hooks.json
-│   │   └── hooks.codex.json
-│   └── scripts/
-│       ├── hook_payload.py
-│       ├── safety_guard.py
-│       ├── pre_git_hook.py
-│       ├── post_tool_use.py
-│       └── system_notification.py
-├── task-loop/                      # Supabase-backed task-loop workflow plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── .codex-plugin/
-│   │   └── plugin.json
-│   ├── claude-skills/
-│   ├── codex-skills/
-│   ├── codex-agents/
-│   ├── hooks/
-│   ├── scripts/
-│   └── cli/
-├── productivity-skills/            # Personal productivity plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── .codex-plugin/
-│   │   └── plugin.json
-│   ├── skills/
-│   │   ├── calendar-manager/
-│   │   └── reminder-manager/
-│   └── codex-skills/
-│       ├── calendar-manager/
-│       └── reminder-manager/
-└── pymol-skills/                   # PyMOL molecular visualization plugin
-    ├── .claude-plugin/
-    │   └── plugin.json
-    ├── .codex-plugin/
-    │   └── plugin.json
-    ├── skills/
-    │   ├── pymol-mcp/
-    │   └── pymol-setup/
-    └── codex-skills/
-        ├── pymol-mcp/
-        └── pymol-setup/
+│   ├── agents/                         # Shared development skill configuration
+│   ├── adr/                            # Accepted architecture decisions
+│   ├── design/                         # Current design documents
+│   └── superpowers/                    # Dated design specs and plans
+├── cc-customize/                       # Claude Code customization plugin
+├── core-hooks/                         # Safety and workflow hooks plugin
+├── creator-skills/                     # Scientific content creation plugin
+├── dev-skills/                         # Development workflow plugin
+├── doc-skills/                         # Document processing plugin
+├── productivity-skills/                # Personal productivity plugin
+├── pymol-skills/                       # PyMOL molecular visualization plugin
+└── task-loop/                          # Supabase-backed task-loop workflow plugin
 ```
+
+Each plugin directory holds its manifests and components. The Claude Code
+manifest is `.claude-plugin/plugin.json`. A plugin that supports Codex also
+has `.codex-plugin/plugin.json`. Claude Code skills live in `skills/`
+(`claude-skills/` in task-loop), and Codex skills live in `codex-skills/`.
+[Available Plugins](#available-plugins) lists the skills of each plugin.
 
 ## Available Plugins
 

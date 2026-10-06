@@ -77,7 +77,8 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - When editing a skill, verify its frontmatter and invocation guidance. Run
   the [root tests](CONTRIBUTING.md#package-and-release-validation) to check
   its links and referenced resources. Record substantive behavior or
-  policy changes in the root [CHANGELOG.md](CHANGELOG.md). For a skill with
+  policy changes in the root [CHANGELOG.md](CHANGELOG.md) in the
+  [entry format](CONTRIBUTING.md#changelog-entries). For a skill with
   Claude and Codex copies, follow
   [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
 - Before adding agent-generated files, apply the storage policy in

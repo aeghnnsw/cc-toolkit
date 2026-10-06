@@ -36,9 +36,19 @@ paths.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator (`scripts/quick_validate.py` in Codex's
-  `skill-creator` skill) rejects Claude-only keys, so run it on Codex
-  copies only. The repository validator checks the headers of both.
+  skill-creator validator rejects Claude-only keys, so run it on Codex
+  copies only. Codex installs it at
+  `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`;
+  `CODEX_HOME` defaults to `~/.codex`. The validator takes one skill
+  directory and needs PyYAML, which `uv` supplies. Run it from the
+  repository root:
+
+  ```bash
+  uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>
+  ```
+
+  A valid copy prints `Skill is valid!`. The repository validator checks
+  the headers of both copies.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -55,6 +65,22 @@ paths.
   through the Markdown files that the skill reaches. Each target must be a
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
+
+### Changelog entries
+
+Record plugin and repository changes in the root
+[CHANGELOG.md](CHANGELOG.md), not in a plugin directory. Add each entry
+under `## [Unreleased]`, in `### Added`, `### Changed`, or `### Removed`.
+Put the newest entry first. Use this form:
+
+```text
+- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
+```
+
+When both hosts ship the same version, write
+`Claude Code and Codex <version>`. When the versions differ, write
+`<Host> <version>, <Host> <version>`. Start a root change with
+`Repository:` and give no version.
 
 ## What belongs in Git
 
