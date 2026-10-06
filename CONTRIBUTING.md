@@ -162,6 +162,9 @@ If `python3` is 3.11 or newer, this command is equivalent:
 python3 scripts/validate_packages.py --base origin/master
 ```
 
+With `python3` older than 3.11, the validator stops with exit status 1 and
+prints the `uv` command that repeats the same arguments.
+
 `--base` accepts the target branch ref or a commit SHA. The validator finds
 its merge base with `HEAD`. Local validation includes staged edits,
 unstaged edits, and new files that Git does not ignore. It checks the

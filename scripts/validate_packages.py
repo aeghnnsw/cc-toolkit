@@ -6,10 +6,15 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import subprocess
 import sys
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    sys.exit(f'FAIL: the validator needs Python 3.11 or newer for tomllib. Python {sys.version.split()[0]} is running. '
+             'Run:\n' + shlex.join(['uv', 'run', '--no-project', '--python', '>=3.11', 'python', *sys.argv]))
 
 
 REGISTRIES = {'claude': '.claude-plugin/marketplace.json', 'codex': '.agents/plugins/marketplace.json'}
