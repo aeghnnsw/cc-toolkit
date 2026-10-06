@@ -209,6 +209,35 @@ class LintSlidesHtmlTest(unittest.TestCase):
             {(2, "title-question"), (3, "notes-words"), (6, "title-question"), (7, "contrast-form")},
         )
 
+    def test_data_markdown_separator_attributes(self) -> None:
+        external = '<section data-markdown="ext.md" data-separator="^\\n\\n\\n"></section>'
+        grouped = (
+            '<section data-markdown data-separator="(---)"><textarea data-template>\n'
+            "## Why does recall drop?\n\n---\n\n## Recall falls, not rises\n"
+            "</textarea></section>"
+        )
+        vertical = (
+            '<section data-markdown data-separator-vertical="^--$"><textarea data-template>\n'
+            "## Is recall lower on new kinases?\n\n---\n\n## Recall falls, not rises\n\n--\n\n"
+            "## Which kinases fail?\n</textarea></section>"
+        )
+        deck = f'<div class="slides"><section>{TITLE_SLIDE}</section>{external}{grouped}{vertical}</div>'
+        ext = "## How well does docking rank binders?\n\n- x\n\n\n\n## Is recall lower on new kinases?\n"
+        code, findings, output, _ = run_lint("talk.html", deck, extra={"ext.md": ext})
+        self.assertEqual(code, 1, output)
+        self.assertEqual(
+            findings,
+            {
+                (2, "title-question"),
+                (3, "title-question"),
+                (4, "title-question"),
+                (5, "contrast-form"),
+                (6, "title-question"),
+                (7, "contrast-form"),
+                (8, "title-question"),
+            },
+        )
+
     def test_remote_data_markdown_is_an_error(self) -> None:
         deck = '<div class="slides"><section data-markdown="https://example.com/talk.md"></section></div>'
         code, _, output, _ = run_lint("talk.html", deck)
@@ -352,7 +381,7 @@ class LintSlidesMarkdownTest(unittest.TestCase):
                 "# Kinase selectivity",
                 "",
                 "---",
-                "layout: center",
+                "transition: fade",
                 "---",
                 "## Recall drops by 40% on unseen kinases",
                 "",

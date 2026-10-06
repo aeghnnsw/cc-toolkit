@@ -111,6 +111,11 @@ NOTES_DIV = re.compile(r"^\s*:::+\s*(?:\{[^}]*\.notes[^}]*\}|notes)\s*$")
 DIV_FENCE = re.compile(r"^\s*:::+")
 NOTE_LINE = re.compile(r"^\s*notes?:\s*(.*)$", re.IGNORECASE)
 TAG = re.compile(r"<[^>]+>")
+REVEAL_SEPARATOR = r"\r?\n---\r?\n"
+SLIDEV_KEYS = {
+    "layout", "class", "transition", "background", "clicks", "hideInToc", "level",
+    "routeAlias", "preload", "zoom", "dragPos", "src",
+}
 
 
 @dataclass(frozen=True)
@@ -243,8 +248,34 @@ def parse_markdown_slide(lines: list[str], flavour: Flavour) -> Slide:
     return slide
 
 
-def markdown_slides(text: str, flavour: Flavour) -> list[Slide]:
-    return [parse_markdown_slide(chunk, flavour) for chunk in split_markdown(text.splitlines(), flavour)]
+def reveal_separator(attributes: dict) -> str | None:
+    """Return the pattern reveal.js splits a data-markdown section on.
+
+    reveal.js splits an external file, or an inline section with any separator
+    attribute, on one pattern: data-separator (default "---" lines) or
+    data-separator-vertical. It keeps any other inline section as one slide.
+    """
+    names = ("data-separator", "data-separator-vertical", "data-separator-notes")
+    if not attributes.get("data-markdown") and not any(attributes.get(name) for name in names):
+        return None
+    pattern = attributes.get("data-separator") or REVEAL_SEPARATOR
+    vertical = attributes.get("data-separator-vertical")
+    return f"{pattern}|{vertical}" if vertical else pattern
+
+
+def split_on(pattern: str, text: str) -> list[str]:
+    """Split ``text`` at each match of a reveal.js separator pattern."""
+    try:
+        matches = list(re.finditer(pattern, text, re.MULTILINE))
+    except re.error as error:
+        raise LintError(f"data-separator {pattern!r} is not a usable pattern: {error}") from None
+    pieces, last = [], 0
+    for match in matches:
+        if match.end() > match.start():
+            pieces.append(text[last:match.start()])
+            last = match.end()
+    pieces.append(text[last:])
+    return pieces
 
 
 def parse_markdown(path: Path) -> list[Slide]:
@@ -259,14 +290,16 @@ def parse_markdown(path: Path) -> list[Slide]:
     keys = front_keys or set()
     quarto = path.suffix.lower() in (".qmd", ".rmd") or "format" in keys
     chunks = separator_chunks(lines)
-    layout_blocks = any(is_yaml(c) and any(l.startswith("layout:") for l in c) for c in chunks)
-    slidev = not quarto and "marp" not in keys and (front_keys is not None or layout_blocks)
+    slide_front_matter = any(
+        is_yaml(chunk) and any(line.split(":", 1)[0].strip() in SLIDEV_KEYS for line in chunk) for chunk in chunks
+    )
+    slidev = not quarto and "marp" not in keys and (front_keys is not None or slide_front_matter)
     flavour = Flavour(
         heading_split=quarto or len(chunks) == 1,
         yaml_chunks=slidev,
         note_lines=front_keys is None and not slidev,
     )
-    slides = markdown_slides("\n".join(lines), flavour)
+    slides = [parse_markdown_slide(chunk, flavour) for chunk in split_markdown(lines, flavour)]
     # Quarto and Pandoc build a title slide from the front matter title.
     if quarto and "title" in keys:
         slides.insert(0, Slide())
@@ -295,7 +328,7 @@ class _Section:
     has_child: bool = False
     markdown_start: int | None = None  # offset after the start tag of a data-markdown section
     markdown_file: str = ""
-    separators: tuple[str, ...] = ()  # data-separator and data-separator-vertical patterns
+    separator: str | None = None  # the pattern reveal.js splits this data-markdown section on
 
 
 @dataclass
@@ -349,9 +382,7 @@ class _RevealParser(HTMLParser):
             if "data-markdown" in attributes:
                 section.markdown_start = self._offset() + len(self.get_starttag_text() or "")
                 section.markdown_file = attributes.get("data-markdown") or ""
-                section.separators = tuple(
-                    attributes[name] for name in ("data-separator", "data-separator-vertical") if attributes.get(name)
-                )
+                section.separator = reveal_separator(attributes)
             self._sections.append(section)
             return
         slide = self._section.slide if self._section else None
@@ -421,22 +452,17 @@ class _RevealParser(HTMLParser):
             self.slides.append(section.slide)
 
     def _markdown(self, section: _Section) -> list[Slide]:
-        # reveal.js splits an external file on "---" lines, and an inline
-        # section only when it sets a separator attribute.
         if section.markdown_file:
             if re.match(r"[a-z][a-z0-9+.-]*://", section.markdown_file, re.IGNORECASE):
                 raise LintError(f"data-markdown source {section.markdown_file} is remote; lint the Markdown file itself")
-            return markdown_slides(read_text(self._base / section.markdown_file), REVEAL_MARKDOWN)
-        raw = self._raw[section.markdown_start:self._offset()]
-        template = TEMPLATE.search(raw)
-        if template:
-            raw = html.unescape(template.group(2)) if template.group(1).lower() == "textarea" else template.group(2)
-        parts = [raw]
-        for pattern in section.separators:
-            try:
-                parts = [piece for part in parts for piece in re.split(pattern, part, flags=re.MULTILINE)]
-            except re.error as error:
-                raise LintError(f"data-separator {pattern!r} is not a usable pattern: {error}") from None
+            raw = read_text(self._base / section.markdown_file)
+        else:
+            raw = self._raw[section.markdown_start:self._offset()]
+            template = TEMPLATE.search(raw)
+            if template:
+                inner = template.group(2)
+                raw = html.unescape(inner) if template.group(1).lower() == "textarea" else inner
+        parts = split_on(section.separator, raw) if section.separator else [raw]
         slides = [parse_markdown_slide(part.splitlines(), REVEAL_MARKDOWN) for part in parts if part.strip()]
         return slides or [Slide()]
 
