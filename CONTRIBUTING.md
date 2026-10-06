@@ -215,5 +215,14 @@ The PyMOL startup suite requires `uv` and access to download missing script
 dependencies. It checks MCP initialization and tool discovery without changing
 the PyMOL scene. A running PyMOL instance is not required.
 
+To replay one Core Hooks payload, write it to a file with the file editor
+and run the script on it. Exit status 2 means the hook blocks the command.
+The installed copy of the hook checks your own shell commands, so a payload
+written inline can be blocked before it reaches the script under test.
+
+```bash
+python3 core-hooks/scripts/pre_git_hook.py < payload.json
+```
+
 Keep validation proportional to the change. Documentation-only changes
 normally need the documentation and configuration checks above.

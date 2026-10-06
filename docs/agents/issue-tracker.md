@@ -7,7 +7,10 @@ designs and decision records in `docs/` from their issue.
 ## Skill integration
 
 - When a skill says to publish to the issue tracker, create a GitHub issue.
-- When a skill says to fetch a ticket, use `gh issue view <number> --comments`.
+- When a skill says to fetch a ticket, use
+  `gh issue view <number> --json title,body,labels,state,comments`. Outside a
+  terminal, `--comments` prints only the comments, so an issue without
+  comments returns nothing.
 - Pull requests propose changes; they are not a separate request intake queue.
   Resolve an ambiguous number with `gh pr view <number>`, falling back to
   `gh issue view <number>`.
