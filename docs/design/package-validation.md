@@ -168,6 +168,11 @@ skill headers; shared and host-specific changes; exemptions; unknown files;
 version rules; resource changes and source moves; registration lifecycle;
 missing history; and staged, unstaged, and new files.
 
+The [skill link test](../../tests/test_skill_links.py) imports the
+validator module. It reuses registry loading, skill discovery, rule
+validation, and path matching to check links in discovered skills. Keep
+these functions compatible, or change the test with them.
+
 Run the fixture suite during validator development. Measure the command
 against the actual repository before adoption. See
 [contributor verification](../../CONTRIBUTING.md#verification) for commands
