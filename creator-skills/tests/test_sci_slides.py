@@ -27,7 +27,7 @@ def split_skill(path: Path) -> tuple[dict[str, str], str]:
     return fields, body
 
 
-def resources(skill_dir: Path) -> dict[str, bytes]:
+def supporting_files(skill_dir: Path) -> dict[str, bytes]:
     return {
         path.relative_to(skill_dir).as_posix(): path.read_bytes()
         for path in sorted(skill_dir.rglob("*"))
@@ -48,23 +48,22 @@ class SciSlidesParityTest(unittest.TestCase):
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
         self.assertEqual(bodies["claude"], bodies["codex"])
 
-    def test_descriptions_match(self) -> None:
+    def test_name_and_description_match(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
         self.assertEqual(fields["claude"]["name"], "sci-slides")
         self.assertEqual(fields["codex"]["name"], "sci-slides")
         self.assertEqual(fields["claude"]["description"], fields["codex"]["description"])
 
-    def test_resources_match(self) -> None:
-        claude = resources(HOST_SKILLS["claude"])
-        codex = resources(HOST_SKILLS["codex"])
+    def test_supporting_files_match(self) -> None:
+        claude = supporting_files(HOST_SKILLS["claude"])
+        codex = supporting_files(HOST_SKILLS["codex"])
         self.assertEqual(sorted(claude), sorted(codex))
         for name in claude:
             self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
 
     def test_relative_links_resolve(self) -> None:
         for skill_dir in HOST_SKILLS.values():
-            documents = [skill_dir / "SKILL.md"] + sorted(skill_dir.rglob("*.md"))
-            for document in documents:
+            for document in sorted(skill_dir.rglob("*.md")):
                 for target in LINK.findall(document.read_text(encoding="utf-8")):
                     if re.match(r"[a-z]+:", target):
                         continue
@@ -76,7 +75,7 @@ class SciSlidesParityTest(unittest.TestCase):
                             headings = HEADING.findall(linked.read_text(encoding="utf-8"))
                             self.assertIn(fragment, [anchor(h) for h in headings])
 
-    def test_resources_registered_per_host(self) -> None:
+    def test_supporting_files_registered_per_host(self) -> None:
         rules = json.loads((REPO_ROOT / "package-validation.json").read_text(encoding="utf-8"))
         registered = {
             (entry["path"], host)
@@ -84,7 +83,7 @@ class SciSlidesParityTest(unittest.TestCase):
             for host in entry["hosts"]
         }
         for host, skill_dir in HOST_SKILLS.items():
-            for name in resources(skill_dir):
+            for name in supporting_files(skill_dir):
                 path = (skill_dir / name).relative_to(PLUGIN_ROOT).as_posix()
                 self.assertIn((path, host), registered)
 

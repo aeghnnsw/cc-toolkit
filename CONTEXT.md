@@ -67,8 +67,8 @@ The maximum number of content slides for a talk, set from its speaking time.
 
 **Standing rules**:
 A presenter's rules that apply to every deck in a project, such as template,
-wording, and label conventions. They live with the project, not in the shared
-skill.
+wording, and label conventions, as distinct from the general rules that apply
+to any presenter.
 
 **Meaning review**:
 A review that checks each claim against what its number or figure measures, in

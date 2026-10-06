@@ -1,21 +1,20 @@
 # Slide design rules
 
-Defaults for layout and visuals. A standing rule or the template overrides a
-default here.
+Default rules for layout and visuals.
 
 ## Contents
 
-- [One message per slide](#one-message-per-slide)
+- [One finding per slide](#one-finding-per-slide)
 - [Typography](#typography)
 - [Text density](#text-density)
 - [Visual evidence](#visual-evidence)
-- [Adapting published figures](#adapting-published-figures)
+- [Adapting a reused figure](#adapting-a-reused-figure)
 - [Graphs and tables](#graphs-and-tables)
 - [Equations](#equations)
 
-## One message per slide
+## One finding per slide
 
-Each slide carries one message: its assertion title and the visual evidence for
+Each slide carries one finding: its assertion title and the visual evidence for
 it. Working memory holds about three to four chunks at once, so split a slide
 that needs more. Mayer's multimedia principles give the reasons:
 
@@ -36,6 +35,8 @@ Show only content that the audience can read from the farthest seat.
 
 ## Text density
 
+Write slide text as keywords and short phrases, not full sentences.
+
 | Element | Maximum |
 | --- | --- |
 | Text lines per slide | 9; 6 or fewer is better |
@@ -48,25 +49,23 @@ speech competes with it. Replace text with visual evidence where possible.
 
 ## Visual evidence
 
-- Show one visual message per slide.
 - Prefer one large, simple figure to a multi-panel figure.
 - Remove decoration: clip art, background patterns, shadows, gradients, 3D
   effects, and gridlines that no reading of a value needs.
 - Annotate directly: put arrows and labels at the feature that matters.
 
-## Adapting published figures
+## Adapting a reused figure
 
 A reader controls how long they study a journal figure; an audience gets a few
-seconds. To adapt a figure:
+seconds. To adapt a reused figure:
 
-1. Name the point that the figure supports.
-2. Keep only the panels and data series that show that point.
+1. Name the finding that the figure supports.
+2. Keep only the panels and data series that show that finding.
 3. Enlarge the labels to the minimum font size.
-4. Annotate the feature that carries the point.
+4. Annotate the feature that carries the finding.
 5. Redraw the figure when simplifying is not enough.
 
-Then give it its source, purpose, and marker definitions (see
-[Figures and schematics](slide-text.md#figures-and-schematics)).
+Then apply the [figure rules](slide-text.md#figures-and-schematics).
 
 ## Graphs and tables
 
