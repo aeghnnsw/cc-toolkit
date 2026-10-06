@@ -36,7 +36,9 @@ paths.
   copies only. The repository validator checks the headers of both.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
-  and `<plugin-root>/...` in the Codex copy.
+  and `<plugin-root>/...` in the Codex copy. A command that runs a file
+  inside the skill directory can write `<skill-dir>/...`, which reads the
+  same in both copies.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
   ships it. The validator requires only listed resources; it does not find

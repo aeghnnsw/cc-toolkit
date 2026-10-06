@@ -4,6 +4,7 @@
 
 ### Added
 
+- creator-skills (Claude Code and Codex 1.2.0): add a standard-library lint script to `sci-slides` and run it at the start of each section review. It reads reveal.js HTML (including `data-markdown` sections), Marp, Slidev, reveal.js, and Quarto Markdown, LaTeX Beamer, and PPTX decks. It reports missing, long, question, and unrounded titles, the "X, not Y" form, too many bullets, words, or text lines, images without alt text or a source line, and long notes. Each threshold has a flag, so standing rules can change it. Exit status 0 means no findings, 1 means findings, and 2 means an error. Add an alt-text rule to the design reference. See [#257](https://github.com/aeghnnsw/cc-toolkit/issues/257).
 - cc-customize (Claude Code 1.3.0): add `claude-prompt-config` to back up and replace the global `~/.claude/CLAUDE.md` on the local machine or on an SSH host. Ship the maintained file as a skill asset and write in one direction only.
 - pymol-skills (Codex 1.0.0): add the Codex manifest, marketplace registration, MCP launch configuration, and setup and visualization skills. Reuse the shared PyMOL bridge and socket plugin. See [#232](https://github.com/aeghnnsw/cc-toolkit/issues/232).
 
@@ -18,8 +19,6 @@
 - GitHub Actions: remove the automatic Claude review from every pull request; keep on-demand `@claude` triggers.
 
 ### Changed
-
-- creator-skills (Claude Code and Codex 1.2.0): add a standard-library lint script to `sci-slides` and run it at the start of each section review. It reads reveal.js HTML, Marp, Slidev, reveal.js, and Quarto Markdown, LaTeX Beamer, and PPTX decks. It reports missing, long, question, and unrounded titles, the "X, not Y" form, too many bullets, words, or text lines, images without alt text or a source line, and long notes. Thresholds are flags, so standing rules can change them. Exit status 0 means no findings, 1 means findings, and 2 means an error. See [#257](https://github.com/aeghnnsw/cc-toolkit/issues/257).
 
 - creator-skills (Claude Code and Codex 1.1.0): rebuild `sci-slides` as a five-step workflow with a completion criterion per step. Read or save the presenter's standing rules in `slide-rules.md`, ask for missing brief items in one message, and set a slide budget from the speaking time. Move the rules to two references: slide text (one-line assertion titles, plain wording, claims that match their numbers, definitions, reused-figure context, schematics, notes) and design. Review each section for meaning right after drafting it, then review the whole deck. Remove unsupported statistics and text that repeated the workflow. Give both hosts one description and add a host parity test. See [#256](https://github.com/aeghnnsw/cc-toolkit/issues/256).
 

@@ -53,6 +53,8 @@ speech competes with it. Replace text with visual evidence where possible.
 - Remove decoration: clip art, background patterns, shadows, gradients, 3D
   effects, and gridlines that no reading of a value needs.
 - Annotate directly: put arrows and labels at the feature that matters.
+- In HTML and PPTX decks, give each image alt text that says what it shows.
+  A file name is not alt text.
 
 ## Adapting a reused figure
 

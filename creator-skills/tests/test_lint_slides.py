@@ -21,8 +21,13 @@ R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
-def run_lint(name: str, content: str | bytes, *args: str) -> tuple[int, set, str]:
+def run_lint(
+    name: str, content: str | bytes, *args: str, extra: dict | None = None
+) -> tuple[int, set, str, str]:
+    """Run the lint on one deck; return the exit code, findings, all output, and stdout."""
     with tempfile.TemporaryDirectory() as tmp:
+        for extra_name, extra_text in (extra or {}).items():
+            (Path(tmp) / extra_name).write_text(extra_text, encoding="utf-8")
         deck = Path(tmp) / name
         if isinstance(content, bytes):
             deck.write_bytes(content)
@@ -34,7 +39,7 @@ def run_lint(name: str, content: str | bytes, *args: str) -> tuple[int, set, str
             text=True,
         )
     findings = {(int(slide), rule) for slide, rule in FINDING.findall(result.stdout)}
-    return result.returncode, findings, result.stdout + result.stderr
+    return result.returncode, findings, result.stdout + result.stderr, result.stdout
 
 
 def html_deck(*sections: str) -> str:
@@ -97,8 +102,8 @@ def pptx_picture(alt: str | None) -> str:
 
 class LintSlidesHtmlTest(unittest.TestCase):
     def test_clean_deck_reports_nothing(self) -> None:
-        code, findings, output = run_lint("talk.html", html_deck(TITLE_SLIDE, CLEAN_SLIDE))
-        self.assertEqual((code, findings), (0, set()), output)
+        code, findings, output, stdout = run_lint("talk.html", html_deck(TITLE_SLIDE, CLEAN_SLIDE))
+        self.assertEqual((code, findings, stdout), (0, set(), ""), output)
 
     def test_title_rules(self) -> None:
         deck = html_deck(
@@ -108,12 +113,21 @@ class LintSlidesHtmlTest(unittest.TestCase):
             "<h2>Docking recall drops sharply on kinases from families that were absent in training</h2><p>x</p>",
             "<h2>Recall reaches 87.34% on the held-out set</h2><p>x</p>",
             "<p>Text with no title</p>",
+            "<h2>The screen finds 12,347 hits</h2><p>x</p>",
+            "<h2>Recall improved after the 2021 release</h2><p>x</p>",
         )
-        code, findings, output = run_lint("talk.html", deck)
+        code, findings, output, _ = run_lint("talk.html", deck)
         self.assertEqual(code, 1, output)
         self.assertEqual(
             findings,
-            {(2, "title-question"), (3, "contrast-form"), (4, "title-length"), (5, "title-precision"), (6, "title-missing")},
+            {
+                (2, "title-question"),
+                (3, "contrast-form"),
+                (4, "title-length"),
+                (5, "title-precision"),
+                (6, "title-missing"),
+                (7, "title-precision"),
+            },
         )
 
     def test_text_figure_and_notes_rules(self) -> None:
@@ -126,7 +140,7 @@ class LintSlidesHtmlTest(unittest.TestCase):
             '<img src="fig.png">'
             f'<aside class="notes">{LONG_NOTES}</aside>'
         )
-        code, findings, output = run_lint("talk.html", html_deck(TITLE_SLIDE, slide))
+        code, findings, output, _ = run_lint("talk.html", html_deck(TITLE_SLIDE, slide))
         self.assertEqual(code, 1, output)
         self.assertEqual(
             findings,
@@ -145,17 +159,46 @@ class LintSlidesHtmlTest(unittest.TestCase):
             TITLE_SLIDE,
             f"<section>{CLEAN_SLIDE}</section><section><h2>Why does recall drop?</h2><p>x</p></section>",
         )
-        code, findings, output = run_lint("talk.html", deck)
+        code, findings, output, _ = run_lint("talk.html", deck)
         self.assertEqual((code, findings), (1, {(3, "title-question")}), output)
 
     def test_first_slide_is_exempt_from_title_rules(self) -> None:
         deck = html_deck("<h1>Can docking rank kinase binders?</h1>", CLEAN_SLIDE)
-        code, findings, output = run_lint("talk.html", deck)
+        code, findings, output, _ = run_lint("talk.html", deck)
         self.assertEqual((code, findings), (0, set()), output)
 
     def test_threshold_flags(self) -> None:
-        code, findings, output = run_lint("talk.html", html_deck(TITLE_SLIDE, CLEAN_SLIDE), "--max-title-chars", "20")
+        code, findings, output, _ = run_lint("talk.html", html_deck(TITLE_SLIDE, CLEAN_SLIDE), "--max-title-chars", "20")
         self.assertEqual((code, findings), (1, {(2, "title-length")}), output)
+        precise = html_deck(TITLE_SLIDE, "<h2>Recall reaches 87.34% on the held-out set</h2><p>x</p>")
+        code, findings, output, _ = run_lint("talk.html", precise, "--max-title-sig-figs", "4")
+        self.assertEqual((code, findings), (0, set()), output)
+
+    def test_inline_markup_stays_on_one_line(self) -> None:
+        slide = (
+            "<h2>Recall drops by 40% on unseen kinases</h2>"
+            "<div>Recall is <b>high</b> on <em>seen</em> kinases and <b>low</b> on <em>new</em> ones</div>"
+            "<div>Recall falls, <em>not</em> rises</div>"
+        )
+        code, findings, output, _ = run_lint("talk.html", html_deck(TITLE_SLIDE, slide))
+        self.assertEqual((code, findings), (1, {(2, "contrast-form")}), output)
+
+    def test_data_markdown_sections(self) -> None:
+        inline = (
+            "<section data-markdown><textarea data-template>\n"
+            "## How well does docking rank binders?\n\n- Scores &amp; ranks\n\n---\n\n"
+            "## Recall drops by 40% on unseen kinases\n\nNote:\n" + LONG_NOTES + "\n"
+            "</textarea></section>"
+        )
+        external = '<section data-markdown="part.md"></section>'
+        deck = (
+            f'<div class="slides"><section>{TITLE_SLIDE}</section>{inline}'
+            f"<section>{CLEAN_SLIDE}</section>{external}</div>"
+        )
+        part = "## Why does recall drop?\n\n- x\n"
+        code, findings, output, _ = run_lint("talk.html", deck, extra={"part.md": part})
+        self.assertEqual(code, 1, output)
+        self.assertEqual(findings, {(2, "title-question"), (3, "notes-words"), (5, "title-question")})
 
 
 class LintSlidesMarkdownTest(unittest.TestCase):
@@ -189,7 +232,7 @@ class LintSlidesMarkdownTest(unittest.TestCase):
                 "<!-- Short note -->",
             ]
         )
-        code, findings, output = run_lint("talk.md", deck)
+        code, findings, output, _ = run_lint("talk.md", deck)
         self.assertEqual(code, 1, output)
         self.assertEqual(
             findings,
@@ -219,10 +262,91 @@ class LintSlidesMarkdownTest(unittest.TestCase):
                 "Note: keep this short",
             ]
         )
-        code, findings, output = run_lint("talk.qmd", deck)
+        code, findings, output, _ = run_lint("talk.qmd", deck)
         self.assertEqual(code, 1, output)
         # Quarto builds slide 1 from the front matter title.
         self.assertEqual(findings, {(2, "contrast-form"), (2, "notes-words")})
+
+
+    def test_marp_keeps_headings_and_note_text_on_their_slide(self) -> None:
+        deck = "\n".join(
+            [
+                "---",
+                "marp: true",
+                "---",
+                "# Kinase selectivity",
+                "",
+                "## A. Speaker",
+                "",
+                "---",
+                "## Recall drops by 40% on unseen kinases",
+                "",
+                "Note: values are means of 3 runs",
+                "",
+                "![Recall by family](recall.png)",
+                "",
+                "Source: Smith et al. 2021",
+                "",
+                "---",
+                "## Why does recall drop?",
+                "",
+                "- Benchmark of 120 kinases",
+            ]
+        )
+        code, findings, output, _ = run_lint("talk.md", deck)
+        self.assertEqual((code, findings), (1, {(3, "title-question")}), output)
+
+    def test_slidev_frontmatter_blocks(self) -> None:
+        deck = "\n".join(
+            [
+                "---",
+                "theme: seriph",
+                "title: Kinase selectivity",
+                "---",
+                "# Kinase selectivity",
+                "",
+                "---",
+                "layout: center",
+                "---",
+                "## Recall drops by 40% on unseen kinases",
+                "",
+                "- Recall falls from 0.82 to 0.49",
+                "",
+                "<!--",
+                LONG_NOTES,
+                "-->",
+                "",
+                "---",
+                "## How well does docking rank binders?",
+                "",
+                "- Benchmark of 120 kinases",
+            ]
+        )
+        code, findings, output, _ = run_lint("slides.md", deck)
+        self.assertEqual(code, 1, output)
+        self.assertEqual(findings, {(2, "notes-words"), (3, "title-question")})
+
+    def test_reveal_markdown_notes_separator(self) -> None:
+        deck = "\n".join(
+            [
+                "# Kinase selectivity",
+                "",
+                "---",
+                "",
+                "## Recall drops by 40% on unseen kinases",
+                "",
+                "- Recall falls from 0.82 to 0.49",
+                "",
+                "notes: " + LONG_NOTES,
+                "",
+                "---",
+                "",
+                "Takeaway: recall drops on new kinases",
+            ]
+        )
+        code, findings, output, _ = run_lint("talk.md", deck)
+        self.assertEqual(code, 1, output)
+        self.assertEqual(findings, {(2, "notes-words"), (3, "title-missing")})
 
 
 class LintSlidesBeamerTest(unittest.TestCase):
@@ -245,9 +369,13 @@ class LintSlidesBeamerTest(unittest.TestCase):
   \includegraphics{recall.pdf}
   \footcite{smith2021}
 \end{frame}
+\begin{frame}{Recall drops on\\ unseen kinases}
+  \includegraphics{recall.pdf}
+  \parencite{smith2021}
+\end{frame}
 \end{document}
 """
-        code, findings, output = run_lint("talk.tex", deck)
+        code, findings, output, _ = run_lint("talk.tex", deck)
         self.assertEqual(code, 1, output)
         self.assertEqual(findings, {(2, "title-question"), (2, "figure-source"), (2, "notes-words")})
 
@@ -264,12 +392,24 @@ class LintSlidesPptxTest(unittest.TestCase):
             + pptx_picture("Recall by kinase family")
             + pptx_shape("Source: Smith et al. 2021"),
         ]
+        slides.append(
+            pptx_shape("Recall drops on unseen kinases", ph='type="title"')
+            + pptx_picture("recall_plot.png")
+            + pptx_shape("Source: Smith et al. 2021")
+        )
         deck = pptx_deck(slides, notes={2: LONG_NOTES, 3: "Short note"})
-        code, findings, output = run_lint("talk.pptx", deck)
+        code, findings, output, _ = run_lint("talk.pptx", deck)
         self.assertEqual(code, 1, output)
         self.assertEqual(
             findings,
-            {(2, "title-question"), (2, "bullet-count"), (2, "image-alt"), (2, "figure-source"), (2, "notes-words")},
+            {
+                (2, "title-question"),
+                (2, "bullet-count"),
+                (2, "image-alt"),
+                (2, "figure-source"),
+                (2, "notes-words"),
+                (4, "image-alt"),
+            },
         )
 
 
@@ -280,15 +420,21 @@ class LintSlidesErrorTest(unittest.TestCase):
         self.assertNotIn("Traceback", output)
 
     def test_unknown_format(self) -> None:
-        code, _, output = run_lint("talk.key", "x")
+        code, _, output, _ = run_lint("talk.key", "x")
         self.assert_error(code, output)
 
     def test_no_slides(self) -> None:
-        code, _, output = run_lint("talk.html", "<html><body><p>No sections</p></body></html>")
+        code, _, output, _ = run_lint("talk.html", "<html><body><p>No sections</p></body></html>")
         self.assert_error(code, output)
 
     def test_unreadable_pptx(self) -> None:
-        code, _, output = run_lint("talk.pptx", b"not a zip file")
+        code, _, output, _ = run_lint("talk.pptx", b"not a zip file")
+        self.assert_error(code, output)
+
+    def test_corrupt_pptx_part(self) -> None:
+        deck = pptx_deck([pptx_shape("Kinase selectivity in docking", ph='type="ctrTitle"')], notes={})
+        corrupt = deck.replace(b"Kinase selectivity", b"Kinase selectivitx")
+        code, _, output, _ = run_lint("talk.pptx", corrupt)
         self.assert_error(code, output)
 
     def test_missing_file(self) -> None:

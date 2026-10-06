@@ -82,8 +82,9 @@ python3 <skill-dir>/scripts/lint_slides.py <deck-file>
 
 Here `<skill-dir>` is this skill's directory. Add a flag for each threshold
 that a standing rule changes; `--help` lists the flags. The lint finds
-mechanical faults only. Treat each finding for the section's slides as a
-candidate for the form pass.
+mechanical faults only. Check each finding for the section's slides in the pass
+that covers its rule. When the lint exits with status 2 or cannot run, report
+the reason and run the passes without it.
 
 Read each slide as an audience member who sees only that slide and the slides
 before it. Run these passes on each slide, and record each finding with its
@@ -120,8 +121,8 @@ Repeat steps 3 and 4 until every section is drafted and reviewed.
   first use.
 - **Layout:** when a renderer is available, render the deck and inspect each
   slide: each title fits one line, no text overflows, and each label is
-  readable. Otherwise, use the lint's title-length and text-line findings,
-  and report that the layout was not rendered.
+  readable. Otherwise, use the lint's title-length and text-line findings
+  when the lint ran, and report that the layout was not rendered.
 
 Fix each failure, then run that check again.
 
