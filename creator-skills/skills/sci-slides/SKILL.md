@@ -1,6 +1,6 @@
 ---
 name: sci-slides
-version: 1.1.0
+version: 1.2.0
 description: Use when creating, revising, or reviewing slides for an academic or STEM talk (conference talk, lab meeting, thesis defence, or journal club), including the talk's story and length, slide titles, claims about data, reused figures, and slide design.
 ---
 
@@ -73,10 +73,22 @@ sources, and notes.
 
 ### 4. Review the section
 
-Review the section that you drafted before you draft the next one. Read each
-slide as an audience member who sees only that slide and the slides before it.
-Run these passes on each slide, and record each finding with its slide, rule,
-and fix:
+Review the section that you drafted before you draft the next one. When the
+deck is reveal.js HTML, Markdown (Marp, Slidev, reveal.js, or Quarto), Beamer,
+or PPTX, first run the lint (Python 3.9 or newer, standard library only):
+
+```bash
+python3 <skill-dir>/scripts/lint_slides.py <deck-file>
+```
+
+Here `<skill-dir>` is this skill's directory. Add a flag for each threshold
+that a standing rule changes; `--help` lists the flags. The lint finds
+mechanical faults only. Treat each finding for the section's slides as a
+candidate for the form pass.
+
+Read each slide as an audience member who sees only that slide and the slides
+before it. Run these passes on each slide, and record each finding with its
+slide, rule, and fix:
 
 1. **Meaning review.** For each title and sentence, name the quantity behind
    it and apply [claims and evidence](references/slide-text.md#claims-and-evidence).
@@ -109,7 +121,8 @@ Repeat steps 3 and 4 until every section is drafted and reviewed.
   first use.
 - **Layout:** when a renderer is available, render the deck and inspect each
   slide: each title fits one line, no text overflows, and each label is
-  readable. Otherwise, report that the layout was not checked.
+  readable. Otherwise, use the lint's title-length and text-line findings,
+  and report that the layout was not rendered.
 
 Fix each failure, then run that check again.
 
