@@ -85,7 +85,7 @@ audience fit in [Wording](#wording) limits explanations, not glosses.
 - Give each reused figure a source line on the slide: authors, year, and
   venue.
 - Let the title state the finding that the figure supports.
-- Define each marker in the figure (see [Definitions](#definitions)) and adapt
+- Gloss each marker in the figure (see [Definitions](#definitions)) and adapt
   the figure for the screen (see
   [Adapting a reused figure](design.md#adapting-a-reused-figure)).
 - Label each schematic as a schematic. Put no invented numbers in it: show

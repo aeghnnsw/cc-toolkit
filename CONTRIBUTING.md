@@ -31,14 +31,16 @@ paths.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator rejects Claude-only keys, so run it on Codex
+  skill-creator validator (`scripts/quick_validate.py` in Codex's
+  `skill-creator` skill) rejects Claude-only keys, so run it on Codex
   copies only. The repository validator checks the headers of both.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy.
-- **Registration.** List each file that a skill needs under the plugin's
-  `resources` in `package-validation.json`, once per host that ships it. The
-  validator does not follow links in prose; it checks only listed files.
+- **Registration.** List each file that a skill links to or runs under the
+  plugin's `resources` in `package-validation.json`, once per host that
+  ships it. The validator requires only listed resources; it does not find
+  them from links in prose.
 
 ## What belongs in Git
 
@@ -173,8 +175,11 @@ Run the validator's command-interface fixtures when changing its behavior:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-With a `python3` older than 3.11, use
-`uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'`.
+With a `python3` older than 3.11, use `uv`:
+
+```bash
+uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
+```
 
 ### Plugin runtime tests
 

@@ -111,7 +111,7 @@ Repeat steps 3 and 4 until every section is drafted and reviewed.
   slide: each title fits one line, no text overflows, and each label is
   readable. Otherwise, report that the layout was not checked.
 
-Fix each failure and check it again.
+Fix each failure, then run that check again.
 
 Done when: the four checks pass, and the report to the user gives the slide
 budget, the slide count, the assumptions, and the open findings.
