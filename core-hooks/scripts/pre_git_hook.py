@@ -22,6 +22,7 @@ VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
 # descriptive and legitimate: "Add a Claude Code hook" states what a commit
 # changes in a repository that develops Claude Code plugins (issue #236).
 AI_TOOL_NAME = r'\[?(?:Claude(?:[ \t]+Code)?|Codex(?:[ \t]+CLI)?|Anthropic|OpenAI)\b'
+CO_AUTHOR_TRAILER = r'Co-?Authored-?By:'
 ATTRIBUTION_PATTERNS = [
     # Attribution wording, e.g. `Generated with [Claude Code](...)`,
     # `Co-authored by Codex`, `🤖 Created by Claude`.
@@ -29,7 +30,14 @@ ATTRIBUTION_PATTERNS = [
     r'[ \t]+(?:with|by)[ \t]+' + AI_TOOL_NAME,
     # Attribution trailer, e.g. `Co-Authored-By: Claude <noreply@...>`. A
     # trailer that names a person stays allowed.
-    r'Co-?Authored-?By:[^\n]*(?:Claude|Codex|Anthropic|OpenAI)\b',
+    #
+    # The match starts at a line start and skips to the first trailer on the
+    # line; a later trailer reaches no text that the first one misses. A
+    # search from every trailer would read the rest of the line again from
+    # each one, which is quadratic (#280). `(?:(?!X)[^\n])*` stops at the
+    # first X without an atomic group, which needs Python 3.11.
+    r'(?m)^(?:(?!' + CO_AUTHOR_TRAILER + r')[^\n])*' + CO_AUTHOR_TRAILER
+    + r'[^\n]*(?:Claude|Codex|Anthropic|OpenAI)\b',
     # Attribution links and addresses.
     r'claude\.ai/code',
     r'claude\.com/claude-code',
@@ -42,7 +50,14 @@ ATTRIBUTION_PATTERNS = [
 # [^;&|\n]* tolerates global flags (e.g. `gh -R owner/repo pr edit`) and extra
 # spaces between tokens, while the excluded chars stop it from matching across
 # chained (; && ||), piped, or newline-separated commands.
-PR_CONTRIBUTION_RE = re.compile(r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b')
+#
+# As with the attribution trailer, the match starts after one of those
+# separators (or at the start) and skips to the first `gh` word, so a failed
+# search reads each command once (#280).
+PR_CONTRIBUTION_RE = re.compile(
+    r'(?:\A|(?<=[;&|\n]))(?:(?!\bgh\b)[^;&|\n])*'
+    r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b'
+)
 
 # Shell syntax that can come before the command word of one command segment
 # (see split_commands): a subshell `(`, a control prefix, or `time`, e.g.
