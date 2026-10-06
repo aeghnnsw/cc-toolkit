@@ -74,11 +74,11 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - Update the affected host's plugin version when shipping changes to that
   plugin. Root contributor documentation does not require a plugin version
   bump. Hosts can have different release versions.
-- When editing a skill, verify its frontmatter, invocation guidance, and
-  referenced resources. Record substantive behavior or policy changes in
-  the root [CHANGELOG.md](CHANGELOG.md). For a skill with Claude and Codex
-  copies, follow
-  [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
+- When editing a skill, verify its frontmatter and invocation guidance, and
+  run the root tests to check its links and referenced resources. Record
+  substantive behavior or policy changes in the root
+  [CHANGELOG.md](CHANGELOG.md). For a skill with Claude and Codex copies,
+  follow [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
 - Before adding agent-generated files, apply the storage policy in
   [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git). Keep durable project
   decisions and shared configuration discoverable from these instructions.
