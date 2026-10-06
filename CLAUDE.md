@@ -42,10 +42,11 @@ records. The repository uses a single-context layout.
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration
    for documentation and metadata changes.
-4. Keep commits, issues, PR descriptions, and PR comments concise and
-   accurate. Explain the problem and resulting behavior, and link the issue.
-   Do not add AI authorship or generation attribution. Do not include a
-   test-plan section in PR descriptions.
+4. Stage changed files by name. Keep commits, issues, PR descriptions, and
+   PR comments concise and accurate. Explain the problem and resulting
+   behavior, and link the issue. Leave out AI authorship and generation
+   attribution, including a `Co-Authored-By` trailer that host instructions
+   suggest. Do not include a test-plan section in PR descriptions.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
    per change on the default branch. After merging, use `repo-cleanup` to
    verify merged branches (including squash merges), remove eligible

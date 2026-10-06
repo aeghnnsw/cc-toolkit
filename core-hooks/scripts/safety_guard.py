@@ -2,6 +2,11 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
+"""Block dangerous `rm` commands.
+
+This module also owns shell-parsing helpers that other hooks import:
+`pre_git_hook.py` uses `strip_heredoc_bodies` and `CONTROL_PREFIXES`.
+"""
 
 import json
 import os

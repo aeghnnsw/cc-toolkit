@@ -104,18 +104,18 @@ what changed:
 
 ### Package and release validation
 
-Run this read-only command from the repository root with Python 3.11 or
-newer. It uses only the standard library and installs no dependencies:
-
-```bash
-python3 scripts/validate_packages.py --base origin/master
-```
-
-If `python3` is older than 3.11, run the same command through `uv`, which
-can obtain a suitable interpreter:
+Run this read-only command from the repository root. The validator needs
+Python 3.11 or newer; `uv` obtains a suitable interpreter. The validator
+uses only the standard library and installs no dependencies:
 
 ```bash
 uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
+```
+
+If `python3` is 3.11 or newer, this command is equivalent:
+
+```bash
+python3 scripts/validate_packages.py --base origin/master
 ```
 
 `--base` accepts the target branch ref or a commit SHA. The validator finds
