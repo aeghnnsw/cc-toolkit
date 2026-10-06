@@ -21,6 +21,11 @@ Keep development and publishing in this repository. Use branches and
 worktrees for changes and the host-specific manifests for plugin releases.
 A root documentation change does not require changing plugin versions.
 
+Installed copies under `~/.claude/plugins/cache/` and
+`~/.codex/plugins/cache/` are release snapshots. They can lag this checkout,
+and each update replaces them. Read and edit the plugin directory in this
+repository.
+
 ### Skills for both hosts
 
 A skill that ships to Claude Code and Codex has one copy per host:
