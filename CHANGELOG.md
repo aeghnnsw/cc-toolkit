@@ -4,6 +4,7 @@
 
 ### Added
 
+- creator-skills (Claude Code and Codex 1.2.0): add a standard-library lint script to `sci-slides` and run it at the start of each section review. It reads reveal.js HTML (including `data-markdown` sections), Marp, Slidev, reveal.js, and Quarto Markdown, LaTeX Beamer, and PPTX decks. It reports missing, long, question, and unrounded titles, the "X, not Y" form, too many bullets, words, or text lines, images without alt text or a source line, and long notes. Each threshold has a flag, so standing rules can change it. Exit status 0 means no findings, 1 means findings, and 2 means an error. Add an alt-text rule to the design reference. See [#257](https://github.com/aeghnnsw/cc-toolkit/issues/257).
 - cc-customize (Claude Code 1.3.0): add `claude-prompt-config` to back up and replace the global `~/.claude/CLAUDE.md` on the local machine or on an SSH host. Ship the maintained file as a skill asset and write in one direction only.
 - pymol-skills (Codex 1.0.0): add the Codex manifest, marketplace registration, MCP launch configuration, and setup and visualization skills. Reuse the shared PyMOL bridge and socket plugin. See [#232](https://github.com/aeghnnsw/cc-toolkit/issues/232).
 

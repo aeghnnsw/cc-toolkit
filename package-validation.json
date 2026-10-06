@@ -31,8 +31,10 @@
       "resources": [
         {"path": "skills/sci-slides/references/design.md", "hosts": ["claude"]},
         {"path": "skills/sci-slides/references/slide-text.md", "hosts": ["claude"]},
+        {"path": "skills/sci-slides/scripts/lint_slides.py", "hosts": ["claude"]},
         {"path": "codex-skills/sci-slides/references/design.md", "hosts": ["codex"]},
-        {"path": "codex-skills/sci-slides/references/slide-text.md", "hosts": ["codex"]}
+        {"path": "codex-skills/sci-slides/references/slide-text.md", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-slides/scripts/lint_slides.py", "hosts": ["codex"]}
       ]
     },
     "dev-skills": {
