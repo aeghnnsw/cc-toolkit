@@ -197,6 +197,12 @@ the whole pull request. New registrations need a valid initial version.
 Removed registrations need no increase for the removed host. A source move
 preserves release history by plugin identity and host.
 
+Release validation compares only with the merge base, so it does not see
+a version that another pull request released after the merge base. Before
+merging, run `git fetch origin master` and compare each version you raised
+with the one on `origin/master`. If `origin/master` has that version or a
+greater one, raise yours above it.
+
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
 these rules when a package needs an explicit local contract. Edit the file
@@ -244,6 +250,9 @@ python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
 python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
 uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'
 ```
+
+When you raise the core-hooks Codex version, also change the version that
+`core-hooks/tests/test_codex_host_adapter.py` pins.
 
 The PyMOL startup suite requires `uv` and access to download missing script
 dependencies. It checks MCP initialization and tool discovery without changing

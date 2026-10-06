@@ -468,6 +468,35 @@ class PreGitHookTests(unittest.TestCase):
             response.get("systemMessage", ""),
         )
 
+    # --- #280: attribution checks stay linear on long commands ---
+
+    def test_blocks_attribution_after_an_earlier_trailer_or_gh_word(self):
+        # The patterns search on from the first trailer on a line and the first
+        # `gh` word in a command segment, so later text must still count.
+        for command in [
+            'git commit -m "Fix typo" -m "Co-Authored-By: Jamie Doe, Co-Authored-By: Claude"',
+            'echo gh; gh pr edit 1 --body "Generated with Claude Code"',
+            'GH_REPO=cli/gh gh pr edit 1 --body "Generated with Claude Code"',
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("AI tool attribution detected", result.stderr)
+
+    def test_reads_long_attribution_lookalikes_quickly(self):
+        # A failed search must not rescan the rest of the line or segment from
+        # each trailer or `gh` word. That quadratic search took about 200 s on
+        # each command, past the process timeout.
+        with self.subTest("trailers"):
+            command = 'git commit -m "' + "Co-Authored-By: x " * 25000 + '"'
+            response = run_hook({"tool_name": "Bash", "tool_input": {"command": command}})
+            self.assertIn("Contribution Guidelines", response.get("systemMessage", ""))
+        with self.subTest("gh words"):
+            command = "gh pr " * 50000
+            result = run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+            self.assertEqual(result.stdout.strip(), "")
+
     # --- #262: only a real `git add` invocation is a bulk add ---
 
     def test_allows_bulk_add_text_in_heredoc_body(self):
