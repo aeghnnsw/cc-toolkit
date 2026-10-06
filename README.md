@@ -160,6 +160,10 @@ Both hosts share the local Python bridge and socket plugin. See the
 - **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis
 - **pymol-setup**: Installation instructions for the PyMOL socket plugin
 
+**Codex skills:**
+- **pymol-mcp**
+- **pymol-setup**
+
 ### Claude Code Customization (`cc-customize`)
 
 **Skills:**

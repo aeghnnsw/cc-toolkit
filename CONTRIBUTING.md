@@ -36,9 +36,20 @@ paths.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator (`scripts/quick_validate.py` in Codex's
-  `skill-creator` skill) rejects Claude-only keys, so run it on Codex
-  copies only. The repository validator checks the headers of both.
+  skill-creator validator rejects Claude-only keys. Run the skill-creator
+  validator on Codex copies only. Codex installs the skill-creator
+  validator at
+  `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`.
+  `CODEX_HOME` defaults to `~/.codex`. The skill-creator validator takes
+  one skill directory as its argument. To supply its PyYAML dependency,
+  run the skill-creator validator through `uv` from the repository root:
+
+  ```bash
+  uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>
+  ```
+
+  A valid copy prints `Skill is valid!`. The repository validator checks
+  the headers of both copies.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -55,6 +66,21 @@ paths.
   through the Markdown files that the skill reaches. Each target must be a
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
+
+## Changelog entries
+
+The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
+Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
+or `### Changed`. Put the newest entry first. Use this form:
+
+```text
+- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
+```
+
+When both hosts ship the same version, write
+`Claude Code and Codex <version>`. When the versions differ, write
+`Claude Code <version>, Codex <version>`. Start a change outside the
+plugin directories with `Repository:` and give no version.
 
 ## What belongs in Git
 
