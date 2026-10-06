@@ -21,6 +21,25 @@ Keep development and publishing in this repository. Use branches and
 worktrees for changes and the host-specific manifests for plugin releases.
 A root documentation change does not require changing plugin versions.
 
+### Skills for both hosts
+
+A skill that ships to Claude Code and Codex has one copy per host:
+`skills/<name>/` (`claude-skills/<name>/` in task-loop) and
+`codex-skills/<name>/`. Change both copies in the same pull request. Keep
+differences host-specific, such as tool names, invocation, and plugin-root
+paths.
+
+- **Frontmatter.** Claude copies carry `name`, `description`, and usually
+  `version`. Codex copies carry only `name` and `description`. The Codex
+  skill-creator validator rejects Claude-only keys, so run it on Codex
+  copies only. The repository validator checks the headers of both.
+- **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
+  plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
+  and `<plugin-root>/...` in the Codex copy.
+- **Registration.** List each file that a skill needs under the plugin's
+  `resources` in `package-validation.json`, once per host that ships it. The
+  validator does not follow links in prose; it checks only listed files.
+
 ## What belongs in Git
 
 Classify a file by its purpose and expected lifetime, regardless of whether
@@ -88,6 +107,13 @@ newer. It uses only the standard library and installs no dependencies:
 python3 scripts/validate_packages.py --base origin/master
 ```
 
+If `python3` is older than 3.11, run the same command through `uv`, which
+can obtain a suitable interpreter:
+
+```bash
+uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
+```
+
 `--base` accepts the target branch ref or a commit SHA. The validator finds
 its merge base with `HEAD`. Local validation includes staged edits,
 unstaged edits, and new files that Git does not ignore. It checks the
@@ -146,6 +172,9 @@ Run the validator's command-interface fixtures when changing its behavior:
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+With a `python3` older than 3.11, use
+`uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'`.
 
 ### Plugin runtime tests
 
