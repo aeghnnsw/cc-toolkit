@@ -15,6 +15,10 @@ designs and decision records in `docs/` from their issue.
   Resolve an ambiguous number with `gh pr view <number>`, falling back to
   `gh issue view <number>`.
 - For triage, use the mapping in [triage-labels.md](triage-labels.md).
+- To make an issue a sub-issue of a parent issue, get the issue's REST id
+  with `gh api repos/aeghnnsw/cc-toolkit/issues/<number> --jq .id`. The id
+  is not the issue number. Then run
+  `gh api -X POST repos/aeghnnsw/cc-toolkit/issues/<parent>/sub_issues -F sub_issue_id=<id>`.
 
 For multiline issues, PR descriptions, and comments, write the text to a
 temporary file and pass `--body-file`. Follow the branch and communication

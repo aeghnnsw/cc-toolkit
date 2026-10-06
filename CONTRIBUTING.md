@@ -26,6 +26,13 @@ Installed copies under `~/.claude/plugins/cache/` and
 and each update replaces them. Read and edit the plugin directory in this
 repository.
 
+The Core Hooks policy scripts that check your shell commands are the
+installed copy. A denial names its path, such as
+`core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
+keeps blocking a command that this checkout allows. To update the Claude
+Code copy, run `claude plugin marketplace update cc-toolkit`, then
+`claude plugin update core-hooks@cc-toolkit`, and restart the session.
+
 ### Skills for both hosts
 
 A skill that ships to Claude Code and Codex has one copy per host:
@@ -266,10 +273,11 @@ a hook before a tool runs, for example:
 {"tool_name": "Bash", "tool_input": {"command": "git status"}}
 ```
 
-Write the payload with a file-writing tool, not a shell command. The
-installed copy of each policy script also checks your shell commands, so it
-can block a command whose text contains the payload. Then run a policy
-script on the payload. `pre_git_hook.py` checks git policy, and
+Write the payload, and any probe script whose text contains git commands or
+attribution lines, with a file-writing tool, not a shell command. The
+installed policy scripts check the text of each shell command, and some
+checks read heredoc bodies and `python -c` code. Then run a policy script on
+the payload. `pre_git_hook.py` checks git policy, and
 `safety_guard.py` checks `rm` commands. Exit status 2 means the policy
 script blocks the command:
 

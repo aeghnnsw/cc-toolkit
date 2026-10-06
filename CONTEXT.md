@@ -81,3 +81,10 @@ addition to checking the number against its source.
 
 **Reused figure**:
 A figure from a paper or another earlier source that a slide shows.
+
+## Git policy language
+
+**Branch creation**:
+A git command whose own arguments name a new or reset local branch. A command
+that copies the name of an existing remote-tracking branch is not a branch
+creation.
