@@ -238,6 +238,23 @@ class LintSlidesHtmlTest(unittest.TestCase):
             },
         )
 
+    def test_data_markdown_indent_and_notes_separator(self) -> None:
+        indented = (
+            "<section data-markdown>\n      <textarea data-template>\n"
+            "        ## Why does recall drop?\n\n        - Recall falls\n"
+            "      </textarea>\n    </section>"
+        )
+        notes = (
+            '<section data-markdown data-separator-notes="^Speaker:"><textarea data-template>\n'
+            f"## Recall drops by 40% on unseen kinases\n\nNote: means of 3 runs\n\nSpeaker: {LONG_NOTES}\n"
+            "</textarea></section>"
+        )
+        deck = f'<div class="slides"><section>{TITLE_SLIDE}</section>{indented}{notes}</div>'
+        code, findings, output, _ = run_lint("talk.html", deck)
+        self.assertEqual(code, 1, output)
+        self.assertEqual(findings, {(2, "title-question"), (3, "notes-words")})
+        self.assertIn("90 words", output)
+
     def test_remote_data_markdown_is_an_error(self) -> None:
         deck = '<div class="slides"><section data-markdown="https://example.com/talk.md"></section></div>'
         code, _, output, _ = run_lint("talk.html", deck)

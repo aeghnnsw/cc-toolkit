@@ -20,6 +20,7 @@ import html
 import posixpath
 import re
 import sys
+import textwrap
 import zipfile
 import zlib
 from dataclasses import dataclass, field
@@ -127,7 +128,6 @@ class Flavour:
     note_lines: bool  # reveal.js starts the notes at a "Note:" line
 
 
-REVEAL_MARKDOWN = Flavour(heading_split=False, yaml_chunks=False, note_lines=True)
 
 
 def md_inline(text: str) -> str:
@@ -263,14 +263,17 @@ def reveal_separator(attributes: dict) -> str | None:
     return f"{pattern}|{vertical}" if vertical else pattern
 
 
+def compile_separator(pattern: str, flags: int) -> re.Pattern:
+    try:
+        return re.compile(pattern, flags)
+    except re.error as error:
+        raise LintError(f"separator {pattern!r} is not a usable pattern: {error}") from None
+
+
 def split_on(pattern: str, text: str) -> list[str]:
     """Split ``text`` at each match of a reveal.js separator pattern."""
-    try:
-        matches = list(re.finditer(pattern, text, re.MULTILINE))
-    except re.error as error:
-        raise LintError(f"data-separator {pattern!r} is not a usable pattern: {error}") from None
     pieces, last = [], 0
-    for match in matches:
+    for match in compile_separator(pattern, re.MULTILINE).finditer(text):
         if match.end() > match.start():
             pieces.append(text[last:match.start()])
             last = match.end()
@@ -328,6 +331,7 @@ class _Section:
     has_child: bool = False
     markdown_start: int | None = None  # offset after the start tag of a data-markdown section
     markdown_file: str = ""
+    notes_separator: str | None = None  # data-separator-notes; reveal.js matches it ignoring case
     separator: str | None = None  # the pattern reveal.js splits this data-markdown section on
 
 
@@ -383,6 +387,7 @@ class _RevealParser(HTMLParser):
                 section.markdown_start = self._offset() + len(self.get_starttag_text() or "")
                 section.markdown_file = attributes.get("data-markdown") or ""
                 section.separator = reveal_separator(attributes)
+                section.notes_separator = attributes.get("data-separator-notes") or None
             self._sections.append(section)
             return
         slide = self._section.slide if self._section else None
@@ -462,8 +467,21 @@ class _RevealParser(HTMLParser):
             if template:
                 inner = template.group(2)
                 raw = html.unescape(inner) if template.group(1).lower() == "textarea" else inner
+            # reveal.js removes the indentation of inline Markdown before parsing it.
+            raw = textwrap.dedent(raw)
         parts = split_on(section.separator, raw) if section.separator else [raw]
-        slides = [parse_markdown_slide(part.splitlines(), REVEAL_MARKDOWN) for part in parts if part.strip()]
+        notes = section.notes_separator
+        notes_pattern = compile_separator(notes, re.MULTILINE | re.IGNORECASE) if notes else None
+        flavour = Flavour(heading_split=False, yaml_chunks=False, note_lines=notes_pattern is None)
+        slides = []
+        for part in parts:
+            if not part.strip():
+                continue
+            match = notes_pattern.search(part) if notes_pattern else None
+            slide = parse_markdown_slide(part[: match.start() if match else None].splitlines(), flavour)
+            if match:
+                slide.notes += " " + part[match.end():]
+            slides.append(slide)
         return slides or [Slide()]
 
     def _flush_loose(self) -> None:
