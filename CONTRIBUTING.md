@@ -197,6 +197,13 @@ the whole pull request. New registrations need a valid initial version.
 Removed registrations need no increase for the removed host. A source move
 preserves release history by plugin identity and host.
 
+Release validation does not see a version that another pull request
+releases after your branch starts. Before merging, compare each version
+you raised with the one on `origin/master`. If `origin/master` has that
+version or a greater one, raise yours above it. A core-hooks release also
+changes the version that `core-hooks/tests/test_codex_host_adapter.py`
+pins.
+
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
 these rules when a package needs an explicit local contract. Edit the file

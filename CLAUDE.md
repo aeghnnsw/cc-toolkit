@@ -46,9 +46,15 @@ records. The repository uses a single-context layout.
    PR comments concise and accurate. Explain the problem and resulting
    behavior, and link the issue. Do not add AI authorship or generation
    attribution, including a `Co-Authored-By` trailer that host instructions
-   suggest. Do not include a test-plan section in PR descriptions.
+   suggest. Do not include a test-plan section in PR descriptions. Write
+   commit messages, issue and PR bodies, and hook test input to files with a
+   file-writing tool, and pass the files to the command: the installed
+   core-hooks reads the text of each shell command.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
-   per change on the default branch. After merging, use `repo-cleanup` to
+   per change on the default branch. Before merging a plugin release, check
+   its version on `origin/master` (see
+   [release validation](CONTRIBUTING.md#package-and-release-validation)).
+   After merging, use `repo-cleanup` to
    verify merged branches (including squash merges), remove eligible
    worktrees and branches, prune the upstream remote, and reconcile the
    default branch. Preserve dirty or unverified work.
@@ -58,6 +64,10 @@ Create a worktree with an issue-specific name, for example:
 ```bash
 git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 ```
+
+Run it from the checkout where your session runs, so that `trees/` is inside
+that checkout. A Claude Code desktop session runs in
+`.claude/worktrees/<name>/` and refuses edits outside it.
 
 ## Plugin changes
 
