@@ -1,6 +1,6 @@
 # Changelog
 
-Productivity Skills changes are in the repository
+Productivity Skills changes are in the cc-toolkit root
 [CHANGELOG.md](https://github.com/aeghnnsw/cc-toolkit/blob/master/CHANGELOG.md).
 Find the entries that start with `productivity-skills`.
 

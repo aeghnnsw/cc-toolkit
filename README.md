@@ -29,7 +29,7 @@ cc-toolkit/
 ├── CONTEXT.md                          # Domain glossary
 ├── CHANGELOG.md                        # Changes to all plugins and the repository
 ├── package-validation.json             # Package and release validation rules
-├── scripts/                            # Contributor tools, such as the package validator
+├── scripts/                            # Contributor tools, including the package validator
 ├── tests/                              # Root tests for the validator and skill links
 ├── docs/
 │   ├── agents/                         # Shared development skill configuration
@@ -46,11 +46,10 @@ cc-toolkit/
 └── task-loop/                          # Supabase-backed task-loop workflow plugin
 ```
 
-Each plugin directory holds its manifests and components. The Claude Code
-manifest is `.claude-plugin/plugin.json`. A plugin that supports Codex also
-has `.codex-plugin/plugin.json`. Claude Code skills live in `skills/`
-(`claude-skills/` in task-loop), and Codex skills live in `codex-skills/`.
-[Available Plugins](#available-plugins) lists the skills of each plugin.
+Each plugin directory holds its host manifests and components.
+[Available Plugins](#available-plugins) lists the components of each plugin.
+For the skill directories of each host, see
+[Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
 
 ## Available Plugins
 

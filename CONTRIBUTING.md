@@ -36,12 +36,12 @@ paths.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator rejects Claude-only keys, so run it on Codex
-  copies only. Codex installs it at
-  `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`;
+  skill-creator validator rejects Claude-only keys. Run the validator on
+  Codex copies only. Codex installs the validator at
+  `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`.
   `CODEX_HOME` defaults to `~/.codex`. The validator takes one skill
-  directory and needs PyYAML, which `uv` supplies. Run it from the
-  repository root:
+  directory as its argument. The validator imports PyYAML. To supply
+  PyYAML, run the validator through `uv` from the repository root:
 
   ```bash
   uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>
@@ -68,9 +68,9 @@ paths.
 
 ### Changelog entries
 
-Record plugin and repository changes in the root
+Record substantive behavior or policy changes in the root
 [CHANGELOG.md](CHANGELOG.md), not in a plugin directory. Add each entry
-under `## [Unreleased]`, in `### Added`, `### Changed`, or `### Removed`.
+under `## [Unreleased]`, in `### Added`, `### Removed`, or `### Changed`.
 Put the newest entry first. Use this form:
 
 ```text
@@ -79,8 +79,8 @@ Put the newest entry first. Use this form:
 
 When both hosts ship the same version, write
 `Claude Code and Codex <version>`. When the versions differ, write
-`<Host> <version>, <Host> <version>`. Start a root change with
-`Repository:` and give no version.
+`Claude Code <version>, Codex <version>`. Start a change outside the
+plugin directories with `Repository:` and give no version.
 
 ## What belongs in Git
 
