@@ -46,8 +46,15 @@ paths.
   same in both copies.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
-  ships it. The validator requires only listed resources; it does not find
-  them from links in prose.
+  ships it. A link to a `SKILL.md` that the same host discovers needs no
+  entry. The validator requires only listed resources; it does not find
+  them from links in prose. The skill link test,
+  [tests/test_skill_links.py](tests/test_skill_links.py), checks this rule.
+  It follows relative Markdown links and `${CLAUDE_PLUGIN_ROOT}/`,
+  `<plugin-root>/`, and `<skill-dir>/` paths from each discovered skill and
+  through the Markdown files that the skill reaches. Each target must be a
+  file inside the plugin. A link anchor must match a heading. The target
+  must be listed for the host.
 
 ## What belongs in Git
 
@@ -98,8 +105,9 @@ what changed:
 
 - **Documentation:** check accuracy, relative links, referenced paths, and
   whitespace with `git diff --check`.
-- **Skills and metadata:** check skill frontmatter and resource paths;
-  run the package and release validator described below.
+- **Skills and metadata:** check skill frontmatter; run the package and
+  release validator and the root tests described below. The root tests
+  include the skill link test.
 - **Executable code:** run the tests for the affected plugin. Core Hooks
   tests require Python and `uv` on `PATH`; task-loop CLI tests require
   Python 3.11+ and `httpx>=0.27` as declared by the CLI. The command below
@@ -157,9 +165,11 @@ preserves release history by plugin identity and host.
 
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
-these rules when a package needs an explicit local contract. Plugin-root
-tests, `README.md`, and `CHANGELOG.md` are exempt by default. Required
-resources override exemptions. Markdown files are not exempt by extension.
+these rules when a package needs an explicit local contract. Edit the file
+as text and keep one entry object per line, so rule diffs stay small.
+Plugin-root tests, `README.md`, and `CHANGELOG.md` are exempt by default.
+Required resources override exemptions. Markdown files are not exempt by
+extension.
 Unclassified plugin files affect all registered hosts. Failure diagnostics
 identify the relevant path or package and host. Version failures include
 the ownership reason and the version that must be exceeded. Fix the first
@@ -176,7 +186,9 @@ directories. The job uses the runner's Python and runs no plugin runtime
 suites. The speed target is less than 10 seconds of validator execution;
 queue, checkout, and runner startup time are separate.
 
-Run the validator's command-interface fixtures when changing its behavior:
+Run the root tests when you change the validator, a skill, or
+`package-validation.json`. The root tests contain the validator's
+command-interface fixtures and the skill link test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
