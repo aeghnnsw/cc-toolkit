@@ -21,6 +21,8 @@
 
 ### Changed
 
+- Repository: stop the package and release validator with a message, not a traceback, when Python is older than 3.11 and has no `tomllib`. The message gives the running Python version and the `uv run --no-project --python '>=3.11' python ...` command that repeats the same arguments. See [#270](https://github.com/aeghnnsw/cc-toolkit/issues/270).
+
 - Repository: make contributor tools and the changelog easier to find. Reduce the README "Repository Structure" tree to root files, contributor tools, `docs/` folders, and one line per plugin, so it no longer changes with each skill. The plugin catalog keeps the skill lists and now lists the PyMOL Codex skills. Replace `productivity-skills/CHANGELOG.md`, which stopped at 6.2.0, with a pointer to the root `CHANGELOG.md`. CONTRIBUTING.md documents the changelog entry format and a runnable Codex skill-creator validator command. CONTRIBUTING.md also asks readers to check a `docs/` design, plan, or conclusion for a status or superseded note and to confirm current behavior in the code. See [#268](https://github.com/aeghnnsw/cc-toolkit/issues/268).
 
 - core-hooks (Claude Code and Codex 1.0.14): block a bulk `git add` only when it runs as a command. The git policy hook no longer blocks a heredoc body or a quoted argument that mentions `git add -A`, `--all`, `.`, or `./`. It still blocks these forms at the start of a command and after `&&`, `||`, `;`, `|`, `&`, or a newline. A subshell `(`, `{`, `!`, `time`, or a control keyword such as `then` can come before `git`. A bulk add inside `bash -c`, `eval`, `$(...)`, or a `case` branch, or after `sudo`, `env`, or a variable assignment, no longer blocks. See [#262](https://github.com/aeghnnsw/cc-toolkit/issues/262).

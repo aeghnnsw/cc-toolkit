@@ -1,6 +1,8 @@
 """Package validation behavior at the command interface."""
 import json
+import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -45,9 +47,9 @@ class PackageValidationTests(unittest.TestCase):
         self.git('add', '.')
         self.git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'Fixture change')
 
-    def run_check(self, base='baseline'):
+    def run_check(self, base='baseline', env=None):
         result = subprocess.run([sys.executable, str(COMMAND), '--base', base], cwd=self.root,
-                                text=True, capture_output=True)
+                                text=True, capture_output=True, env=env)
         self.assertNotIn('Traceback', result.stderr)
         return result
 
@@ -220,6 +222,15 @@ class PackageValidationTests(unittest.TestCase):
         result = self.run_check()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('baseline', result.stderr)
+
+    def test_python_without_tomllib_names_the_uv_command(self):
+        with tempfile.TemporaryDirectory() as shadow:
+            Path(shadow, 'tomllib.py').write_text(
+                "raise ModuleNotFoundError(\"No module named 'tomllib'\", name='tomllib')\n")
+            result = self.run_check('abc123', env={**os.environ, 'PYTHONPATH': shadow})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"uv run --no-project --python '>=3.11' python {shlex.quote(str(COMMAND))} --base abc123",
+                      result.stderr)
 
     def test_version_only_increases_pass_and_regressions_fail(self):
         self.bump(value='1.0.1')
