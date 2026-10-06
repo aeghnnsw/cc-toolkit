@@ -54,3 +54,25 @@ reviewing agent work. Unattended agent runtime is separate.
 **Waiting outcome**:
 An incomplete outcome that depends on an external result and currently has no
 ready human next action.
+
+## Slide language
+
+**Assertion title**:
+A one-line slide title that states the slide's finding, with its main number
+when the slide has one. A topic, question, or contrast title is not an
+assertion title.
+
+**Slide budget**:
+The maximum number of content slides for a talk, set from its speaking time.
+
+**Standing rules**:
+A presenter's rules that apply to every deck in a project, such as template,
+wording, and label conventions. They live with the project, not in the shared
+skill.
+
+**Meaning review**:
+A review that checks each claim against what its number or figure measures, in
+addition to checking the number against its source.
+
+**Reused figure**:
+A figure from a paper or another earlier source that a slide shows.

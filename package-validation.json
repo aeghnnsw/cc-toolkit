@@ -28,7 +28,12 @@
     },
     "creator-skills": {
       "ownership": [],
-      "resources": []
+      "resources": [
+        {"path": "skills/sci-slides/references/design.md", "hosts": ["claude"]},
+        {"path": "skills/sci-slides/references/slide-text.md", "hosts": ["claude"]},
+        {"path": "codex-skills/sci-slides/references/design.md", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-slides/references/slide-text.md", "hosts": ["codex"]}
+      ]
     },
     "dev-skills": {
       "ownership": [],

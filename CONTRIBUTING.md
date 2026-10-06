@@ -152,6 +152,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Run the existing Python suites from the repository root:
 
 ```bash
+python3 -m unittest discover -s creator-skills/tests -p 'test_*.py'
 python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
 python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
 uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'
