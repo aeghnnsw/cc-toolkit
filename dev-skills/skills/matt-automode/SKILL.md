@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.3.0
+version: 1.3.1
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, code review, a navigation retrospective, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
@@ -53,14 +53,63 @@ with the session task list.
 
 ## Replace human checkpoints
 
-Replace the referenced skills' interview and approval checkpoints with agent
-decisions. Do not call `AskUserQuestion`, and do not end the turn to wait for
-input. When the grilling skill poses a round of numbered questions, answer each
-one with the answer it recommends. Treat "check with the user", "quiz the
-user", "confirm the seams", and "ask for the fixed point" as decisions to make. Research facts, choose suitable
-answers, and record assumptions and decisions in the numbered planning files.
-Continue between phases without asking for input or approval. Use sub-agents
-where a referenced skill calls for them; keep orchestration in this session.
+Autonomy replaces the human decision-maker. It does not remove the
+investigation, questioning, challenge, or phase order of the referenced skills.
+Do not call `AskUserQuestion`, and do not end the turn to wait for input. Treat
+"check with the user", "quiz the user", "confirm the seams", and "ask for the
+fixed point" as decisions to make. Make each decision only after the
+investigation and challenge below, and record it in the numbered planning
+files. Continue between phases without routine approval requests. Use
+sub-agents where a referenced skill calls for them; keep orchestration in this
+session.
+
+### Investigate before deciding
+
+Inspect the relevant implementation, public interfaces, tests, canonical docs,
+glossary, and ADRs. Read relevant issues, comments, and merged PRs to recover the
+latest decisions and their rationale. Check for superseding decisions. Resolve
+conflicts between historical documents and current behavior explicitly; neither
+age nor current code alone proves the intended behavior.
+
+In the numbered planning files, separate verified facts, design decisions,
+assumptions, and unresolved questions. Cite source paths, symbols, tests, or
+issue and PR links for consequential factual claims.
+
+Use parallel sub-agents for independent read-only investigations. A pending
+finding that can change a design decision is an unsettled prerequisite. Continue
+independent research and planning, but wait for that finding before resolving the
+affected question or passing gate 1.
+
+### Grill in rounds
+
+Use `mattpocock-skills:grill-with-docs` to build the design tree. Work its
+frontier in rounds: consider only questions whose prerequisites are settled. For
+each question, investigate the relevant repository context before settling the
+answer. Trace affected behavior and consumers through implementation,
+interfaces, and tests. Resolve factual gaps that could change the answer. Record
+the evidence, alternatives, recommended answer, challenge, rationale, and any
+unresolved items.
+
+Treat a recommended answer as a candidate, not a decision. This includes the
+grilling skill's recommendation and any answer in an existing file that this
+run has not tested. Test the candidate against source evidence, constraints,
+alternatives, failure cases, compatibility, and affected consumers. Change it
+when that test changes its basis. Then record the tested answer as the
+decision, recompute the frontier, and continue the next round. When evidence
+changes an earlier answer, reopen its dependent questions.
+
+If the available evidence cannot settle a design-critical question, choose the
+answer that the evidence supports best. When two or more answers have about
+equal support, choose the one that is easiest to reverse. Record the evidence
+gap, the alternatives, and the risk with the decision. This resolves the
+question; do not stop for human input.
+
+Grilling is complete when all design-critical questions are resolved and all
+research that could change those decisions has returned and been evaluated.
+Record any remaining nonblocking assumptions and why they are safe. A
+recommended answer does not replace repository investigation or grilling
+rounds. A generic checklist or a brief assumptions list does not satisfy this
+gate.
 
 ## Phases
 
@@ -97,6 +146,56 @@ are merged.
 8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
    tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
    state and verify closure alongside Git cleanup.
+
+## Phase gates
+
+Each step has a start condition and a completion check. Gate N is the
+completion check of step N. Before each transition, record the completion check
+in the numbered planning files. Include the gate status, evidence references,
+remaining work, and the next permitted action. Keep the checks in execution
+order. Existing artifacts can satisfy a gate only after their content and
+current validity have been checked.
+
+| Step | Start only when | Complete when |
+| --- | --- | --- |
+| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, and `grill-with-docs` has recorded the domain terms and decisions. |
+| 2. Spec | Gate 1 passed. | The spec is published with scope and testing seams derived from the resolved decisions. Its reference is recorded and its content verified. |
+| 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
+| 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |
+| 5. Code review | Gate 4 passed for this ticket. | The review ran against a recorded comparison commit and the ticket spec. Fixes for actionable Standards and Spec findings are committed, and the tests pass after the fixes. |
+| 6. Retro | Gate 5 passed for this ticket. | The sessions read, navigation findings, and history limits are recorded. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` diff includes them, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
+| 7. PR | Gate 6 passed for this ticket. | The PR is open with its issue references, the required checks and required reviews pass, and the PR is merged. Its link is recorded. |
+| 8. Cleanup | Gate 7 passed for every ticket. | Cleanup reported its results. The tickets and any fully satisfied parent spec are verified closed. |
+
+Steps 4–7 are the implementation of one ticket. Implementation includes
+assigning coding work to a sub-agent and fixing review or retro findings. Keep
+coding and coding delegation for a ticket blocked until the step 4 start
+condition holds for that ticket. Read-only investigation and planning can run in
+parallel before then.
+
+If later evidence invalidates a decision, stop dependent work, including active
+coding sub-agents. Dependent work is any ticket, code, or decision that relies
+on the invalid decision. Reopen the planning gate where that decision was made
+and the gates after it. Update decisions, the published spec, and tickets as
+needed. Record new completion checks before resuming dependent work, and run
+each affected ticket through steps 4–7 again. For a ticket that is already
+merged, publish a new ticket for the change. A reopened gate blocks only
+dependent work. Tickets that do not rely on the invalid decision keep their
+passed gates and can continue.
+
+## Report progress accurately
+
+Distinguish completed phases from pending or blocked work. Report each gate's
+status with its supporting evidence. Artifact existence alone does not prove
+completion or correct phase order. If implementation started early, report the
+ordering failure, stop dependent work, including coding sub-agents, and
+complete the missing gates before resuming. Treat code written early as
+unreviewed: check it against the decisions, spec, and ticket, and run its
+ticket through steps 4–7. Later publication cannot make the earlier execution
+compliant.
+
+Distinguish instruction and scenario checks from demonstrated agent behavior.
+Report what was actually observed and any validation limits.
 
 ## PR issue references
 
