@@ -1,5 +1,9 @@
 # task-loop Foundation (Phase 0 + Phase 1) Implementation Plan
 
+> **Superseded in part (2026-10-14, issue #284).** The `dev-skills:discuss-with-codex`
+> skill is now [`dev-skills:pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md).
+> Read [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** De-risk the experimental Agent-Teams primitives (Phase 0 spike), then build and test the single-sequencer **control protocol** (Phase 1) that the whole orchestrator/worker system rests on.

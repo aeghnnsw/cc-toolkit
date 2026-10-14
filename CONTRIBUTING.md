@@ -80,6 +80,21 @@ paths.
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
 
+## Repository search
+
+From the repository root, search with `git grep`. It reads only the tracked
+files of the current worktree, so it skips the other worktrees under
+`trees/` and `.claude/worktrees/`. A recursive `grep` from the main checkout
+can read those worktrees and match many copies of the same file. To also
+search new files that are not yet added, pass `--untracked`.
+
+Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
+describe replaced behavior. To search current text only, exclude them:
+
+```bash
+git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md'
+```
+
 ## Changelog entries
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.

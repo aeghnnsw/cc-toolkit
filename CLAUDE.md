@@ -2,9 +2,9 @@
 
 This repository develops and publishes Claude Code and Codex plugins. See
 [README.md](README.md) for the plugin catalog and
-[CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, file placement,
-and verification commands. `AGENTS.md` is a symlink to this file; edit this
-file to update instructions for both hosts.
+[CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, search, file
+placement, and verification commands. `AGENTS.md` is a symlink to this file;
+edit this file to update instructions for both hosts.
 
 ## Agent skills
 
@@ -14,7 +14,7 @@ Pocock's skills installed.
 
 ### Issue tracker
 
-Before creating or updating issues and pull requests, read
+Before reading, creating, or updating issues and pull requests, read
 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). GitHub Issues
 tracks work; durable design documents can live in the repository.
 
@@ -81,7 +81,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - Read the plugin's host-specific manifest before changing component paths.
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
-  in `.codex-plugin/plugin.json` and declare their component paths.
+  in `.codex-plugin/plugin.json` and declare their component paths. Some
+  resources outside these paths belong to one host, such as task-loop's Codex
+  agents. See [host ownership](docs/design/package-validation.md#host-ownership).
 - Update the affected host's plugin version when shipping changes to that
   plugin. Root contributor documentation does not require a plugin version
   bump. Hosts can have different release versions.

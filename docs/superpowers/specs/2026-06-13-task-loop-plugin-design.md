@@ -14,6 +14,10 @@
 > `/run-cycle` resume**). The run-cycle skill + its `references/` are the live source; the prose here
 > is retained for history.
 
+> **Superseded in part (2026-10-14, issue #284).** The `dev-skills:discuss-with-codex`
+> skill is now [`dev-skills:pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md).
+> Read [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md).
+
 ## 1. Overview
 
 `task-loop` generalizes the METBG "study loop" — a proven autonomous, resumable
