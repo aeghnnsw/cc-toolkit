@@ -165,7 +165,9 @@ that have no saved entry.
 
 The top-level `effortLevel` does not apply to Opus 5.5. Opus 5.5 starts at
 `medium` unless its `modelSettings` entry, `/effort`, or `--effort` sets a
-level. To save an effort level for Opus 5.5, write its `modelSettings` entry.
+level. `CLAUDE_CODE_EFFORT_LEVEL` and `ultracode` also apply to Opus 5.5, and
+they override its `modelSettings` entry. To save an effort level for Opus 5.5,
+write its `modelSettings` entry.
 
 ### 1M context window
 
@@ -190,8 +192,9 @@ auto-compact defaults. Use
 ranges, and `https://code.claude.com/docs/en/env-vars` for environment
 variables.
 
-If WebFetch fails, fall back to the tables in the Background section and inform
-the user: "Could not fetch latest model info; using built-in defaults."
+If WebFetch fails, use the tables in the Background section and the built-in
+model list in Step 5a. Inform the user: "Could not fetch latest model info;
+using built-in defaults."
 
 ## Step 2: Read Current Settings
 
@@ -235,8 +238,8 @@ skip the rest.
 
 ### Step 5a: Select Base Model
 
-Use **AskUserQuestion** to present the models from Step 1, or these when the
-fetch failed:
+Use **AskUserQuestion** to present the models from Step 1. When the fetch
+failed, present the built-in model list:
 
 ```
 1. claude-fable-5-1
@@ -288,11 +291,12 @@ Then ask about scope:
 
 - **This model only**: write `modelSettings.<model>.effortLevel`. This matches
   what `/effort` writes.
-- **All models without a saved level**: write the top-level `effortLevel`.
+- **All models without a saved level, except Opus 5.5**: write the top-level
+  `effortLevel`.
 
-If the reference model is Opus 5.5, do not offer the second scope. The
-top-level `effortLevel` does not apply to Opus 5.5, so write
-`modelSettings.<model>.effortLevel` and tell the user why.
+If the reference model is Opus 5.5, skip the scope question and use **This
+model only**. Tell the user that the top-level `effortLevel` does not apply to
+Opus 5.5.
 
 **If the user selects `max`:** explain that `effortLevel` and `modelSettings`
 do not accept `max`, and that `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block

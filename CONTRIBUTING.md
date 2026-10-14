@@ -271,6 +271,14 @@ If `python3` is 3.11 or newer, this command is equivalent:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+When you change `allowed-models.json`, also run the `dev-skills` tests.
+`dev-skills/tests/test_critic_status.py` reads its critic model IDs from that
+file:
+
+```bash
+python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
+```
+
 ### Plugin runtime tests
 
 Run the existing Python suites from the repository root:

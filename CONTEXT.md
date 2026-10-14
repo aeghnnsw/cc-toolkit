@@ -86,14 +86,16 @@ A figure from a paper or another earlier source that a slide shows.
 
 **Allowed model**:
 A model ID that the repository permits a model pin or a critic call to name.
-Each model family has one primary model and one fallback model. A fallback
-model is used only after a flag.
 _Avoid_: Approved model, supported model
 
 **Model pin**:
-A model value that a shipped agent or skill sets for its own work. A model pin
-names the primary model of its family, or `inherit`.
+A model value that a shipped agent or skill sets for its own work.
 _Avoid_: Hard-coded model
+
+**Primary model**:
+The allowed model that a model pin or the first critic call of a pressure test
+names.
+_Avoid_: Default model, main model
 
 ## Pressure-test language
 
@@ -114,8 +116,8 @@ error or a refusal.
 _Avoid_: Safety stop, block
 
 **Fallback model**:
-The single model that a pressure test can use after a flag on its first
-critic model.
+The single model that a pressure test can use after a flag on its primary
+model.
 _Avoid_: Backup model, secondary model
 
 ## Git policy language
