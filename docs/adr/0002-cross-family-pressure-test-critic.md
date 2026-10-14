@@ -38,11 +38,13 @@ Consequences:
 - `codex exec resume` does not keep the sandbox or working directory of the
   first call. Each resume passes `-c sandbox_mode="read-only"` and runs from
   the repository root.
-- A change to the allowed models changes both skills, this record, the test
-  data in `dev-skills/tests/test_critic_status.py`, and the model pins in
-  `dev-skills/agents/eval-critic.md`, `doc-skills/agents/paper-reader.md`,
-  `doc-skills/agents/paper-consolidator.md`, and
-  `task-loop/codex-agents/task-loop-cycle-worker.toml`.
+- `allowed-models.json` at the repository root lists the allowed models. A
+  change to the allowed models starts in that file. The same change updates
+  both skills, this record, the cc-customize `model-config` skill, and the
+  model pins in agent and Codex agent files. The test data in
+  `dev-skills/tests/test_critic_status.py` reads the file.
+  `tests/test_model_pins.py` fails until every model pin, both skills, and
+  the `model-config` skill match the file.
 
 The CLI behavior above was verified on 2026-10-14 with codex-cli 0.162.1 and
 Claude Code 2.1.299. No live call was rerouted. The reroute check matches

@@ -256,9 +256,10 @@ directories. The job uses the runner's Python and runs no plugin runtime
 suites. The speed target is less than 10 seconds of validator execution;
 queue, checkout, and runner startup time are separate.
 
-Run the root tests when you change the validator, a skill, or
-`package-validation.json`. The root tests contain the validator's
-command-interface fixtures and the skill link test:
+Run the root tests when you change the validator, a skill, an agent,
+`allowed-models.json`, or `package-validation.json`. The root tests contain
+the validator's command-interface fixtures, the skill link test, and the
+model-pin test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'

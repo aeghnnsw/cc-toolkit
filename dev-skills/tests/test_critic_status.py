@@ -11,8 +11,9 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "codex-skills" / "pressure-test" / "scripts" / "critic_status.py"
-CRITIC_MODEL = "claude-opus-5-5"
-FALLBACK_MODEL = "claude-sonnet-5-5"
+ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
+CRITIC_MODEL = ALLOWED_MODELS["claude"]["primary"]
+FALLBACK_MODEL = ALLOWED_MODELS["claude"]["fallback"]
 
 
 def assistant(model: str, text: str = "", stop_reason: str | None = None) -> dict:

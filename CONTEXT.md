@@ -82,6 +82,19 @@ addition to checking the number against its source.
 **Reused figure**:
 A figure from a paper or another earlier source that a slide shows.
 
+## Model language
+
+**Allowed model**:
+A model ID that the repository permits a model pin or a critic call to name.
+Each model family has one primary model and one fallback model. A fallback
+model is used only after a flag.
+_Avoid_: Approved model, supported model
+
+**Model pin**:
+A model value that a shipped agent or skill sets for its own work. A model pin
+names the primary model of its family, or `inherit`.
+_Avoid_: Hard-coded model
+
 ## Pressure-test language
 
 **Pressure test**:
