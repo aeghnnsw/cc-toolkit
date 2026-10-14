@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.2.0
+version: 1.3.0
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, code review, a navigation retrospective, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
@@ -17,25 +17,28 @@ The user's request to use this mode explicitly invokes every skill this file
 names. Load and follow each one without a separate user invocation. Do not ask
 the user to invoke them.
 
-Resolve each skill below by plugin and name. Do not hard-code installation
-paths or versions.
-
-- If the skill appears in the available skills list, invoke it with the Skill
+- If a skill appears in the available skills list, invoke it with the Skill
   tool.
-- If it does not appear, confirm the owning plugin is installed and enabled
-  with `claude plugin list`. If it is not, report the blocker and stop.
-- If the plugin is installed, the skill is a user-invoked skill: its
-  frontmatter sets `disable-model-invocation: true`, so the Skill tool cannot
-  load it. Resolve the plugin root from the Claude Code plugin registry. The
-  registry is `plugins/installed_plugins.json` under the Claude configuration
-  directory (`~/.claude` unless `CLAUDE_CONFIG_DIR` is set). Under its
-  `plugins` key, match the entry whose key starts with `<plugin>@`; the suffix
-  is the marketplace name. The entry lists one record per install scope, and
-  each record's `installPath` is the plugin root. Under that root, the
-  `.claude-plugin/plugin.json` `skills` list names the skill directories;
-  when the list is absent, search the root for `<skill>/SKILL.md`. Read the
-  skill's `SKILL.md` and every file it references, then follow it. When it says
-  to call the Skill tool for another skill, do so.
+- Resolve every other skill this file names with one command. These are
+  user-invoked skills: their frontmatter sets
+  `disable-model-invocation: true`, so the Skill tool cannot load them. For
+  example:
+
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" \
+    mattpocock-skills:grill-with-docs mattpocock-skills:to-spec \
+    mattpocock-skills:to-tickets mattpocock-skills:implement \
+    mattpocock-skills:retro
+  ```
+
+  Each output line gives a skill name and the path of its `SKILL.md`. Read
+  each `SKILL.md` and every file it references, then follow it. When it
+  names another user-invoked skill, resolve that skill with the same
+  command. When it says to call the Skill tool for another skill, do so.
+- If the command reports an error for a skill, its message names the
+  cause: the registry is missing, or the plugin is not installed, is
+  disabled, or does not contain the skill. Report the cause as a blocker and
+  stop.
 - If a referenced skill stops because the repository lacks issue tracker or
   triage configuration and tells the user to run `/setup-matt-pocock-skills`,
   treat the missing configuration as a blocker: report it and stop.
