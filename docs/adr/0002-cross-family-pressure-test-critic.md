@@ -37,6 +37,12 @@ Consequences:
   first call. Each resume passes `-c sandbox_mode="read-only"` and runs from
   the repository root.
 - A change to the allowed models changes both skills, this record, and the
-  model pins in plugin agents.
+  model pins in `dev-skills/agents/eval-critic.md`,
+  `doc-skills/agents/paper-reader.md`, `doc-skills/agents/paper-consolidator.md`,
+  and `task-loop/codex-agents/task-loop-cycle-worker.toml`.
+
+The CLI behavior above was verified on 2026-10-14 with codex-cli 0.162.1 and
+Claude Code 2.1.299. Codex lists the model IDs available to the account in
+`$CODEX_HOME/models_cache.json`.
 
 See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284).

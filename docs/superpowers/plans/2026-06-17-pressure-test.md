@@ -1,5 +1,8 @@
 # Pressure Test Implementation Plan
 
+> **Superseded (2026-10-14, issue #284).** The Codex critic is now Claude, called through `claude -p`,
+> not a Codex subagent. Read [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md) and the current [Codex skill](../../../dev-skills/codex-skills/pressure-test/SKILL.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a Codex `pressure-test` skill that runs independent adversarial pressure tests using a skeptical subagent.

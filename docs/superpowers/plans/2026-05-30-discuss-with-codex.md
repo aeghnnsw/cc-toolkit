@@ -1,5 +1,10 @@
 # discuss-with-codex Implementation Plan
 
+> **Superseded (2026-10-14, issue #284).** The skill is now [`pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md). Read
+> [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md) for the current critic models. Live tests with codex-cli 0.162.1 showed that `codex exec resume` keeps neither the sandbox nor
+> the working directory of the first call; the current skill passes `-c sandbox_mode="read-only"`
+> and runs each call from the repository root.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a `dev-skills` skill that runs an autonomous turn-by-turn adversarial discussion between Claude and the Codex CLI, converging on a saved written conclusion.
