@@ -1,6 +1,6 @@
 ---
 name: specify-aims
-description: This skill should be used when the user asks to "specify aims", "initialize the proposal", "set up the task-loop proposal", "define the project aims and stages", "plan the project stages and milestones", or "start a task-loop project" — i.e. to author the living proposal that drives a task-loop autonomous development project. It produces docs/task-loop/proposal.md with three parts — specific aims & goal, an implementation plan (stages + milestones), and a living roadmap (progress) — brainstorming the aims with the user and pressure-testing the goal and stage decomposition with discuss-with-codex.
+description: This skill should be used when the user asks to "specify aims", "initialize the proposal", "set up the task-loop proposal", "define the project aims and stages", "plan the project stages and milestones", or "start a task-loop project" — i.e. to author the living proposal that drives a task-loop autonomous development project. It produces docs/task-loop/proposal.md with three parts — specific aims & goal, an implementation plan (stages + milestones), and a living roadmap (progress) — brainstorming the aims with the user and pressure-testing the goal and stage decomposition with pressure-test.
 version: 0.1.0
 ---
 
@@ -17,7 +17,7 @@ dependency-ordered stages, which the task-loop then refines as work validates or
 
 This is the one task-loop step that is **collaborative with the user** — later steps run
 autonomously. Brainstorm the aims with the user, and pressure-test the goal and the stage
-decomposition with `dev-skills:discuss-with-codex`.
+decomposition with `dev-skills:pressure-test`.
 
 ## When to use / not use
 
@@ -69,7 +69,7 @@ demonstrable checkpoints spanning stages. Declaring hypotheses now is what later
 loop scope an invalidation to an affected subgraph instead of freezing everything.
 
 ### 4. Pressure-test with Codex
-Use `dev-skills:discuss-with-codex` proactively on the aims and the decomposition. Hold a
+Use `dev-skills:pressure-test` proactively on the aims and the decomposition. Hold a
 genuine position and let Codex attack:
 - Is the goal **falsifiable** — is "done" actually checkable?
 - Are stages ordered by **real dependency**, or is the order arbitrary?

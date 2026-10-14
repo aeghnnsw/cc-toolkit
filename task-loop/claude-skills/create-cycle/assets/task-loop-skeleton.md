@@ -33,9 +33,9 @@ If any is missing, ask the orchestrator. You need nothing else.
 - **Evidence before done** — `superpowers:verification-before-completion`: check a rubric item only
   when a command was run and its output confirms it.
 - **Deliberate, don't stall** — at hard decisions (rubric, plan, PR review) use
-  `dev-skills:discuss-with-codex`; record dispositions in the PR.
+  `dev-skills:pressure-test`; record dispositions in the PR.
 - **Don't skip the heavy lifting** — attack the hard part head-on; **exhaust approaches**
-  (`discuss-with-codex`) before declaring `blocked`/`failed`. Those are **last resorts backed by
+  (`pressure-test`) before declaring `blocked`/`failed`. Those are **last resorts backed by
   evidence** (study-log **Findings**), never an escape from difficulty or a swap for an easier deliverable.
 - **One reviewable PR** — if oversized, do the coherent core (**including the hard, central part**) and
   leave genuine extras as study-log **Findings**.
@@ -77,14 +77,14 @@ the orchestrator and stop** — no edits.
 Open your study-log record `docs/task-loop/logs/<NNN>_<task>.md` (`<NNN>` = your `seq`, zero-padded —
 this is your only index). Use `dev-skills:goal-rubric` for a binary pass/fail rubric (each item a test
 name, a numeric tolerance, a gate verdict, or an artifact path); **finalize it with a
-`discuss-with-codex` pass** — don't skip it even when it looks obvious. Write it into the **Rubric**
+`pressure-test` pass** — don't skip it even when it looks obvious. Write it into the **Rubric**
 section of that record and post it to the issue as acceptance criteria.
 
 ### 4. Spec → plan → implement
 - `superpowers:brainstorming` to design — but **decline its user-question and user-approval gates**
-  (this runs autonomously); route open questions to `discuss-with-codex`. Write the spec to
+  (this runs autonomously); route open questions to `pressure-test`. Write the spec to
   `docs/superpowers/specs/YYYY-MM-DD-<slug>-design.md`.
-- `superpowers:writing-plans` → a step-by-step plan; review it with `discuss-with-codex`.
+- `superpowers:writing-plans` → a step-by-step plan; review it with `pressure-test`.
 - Implement with `superpowers:test-driven-development` (tests first). Parallelize independent work per
   the **Compute policy**; long compute → background (see below).
 
@@ -110,7 +110,7 @@ attribution-free (write the message to a file, `git commit -F`; stage by explici
 branch and open the PR with an **explicit head**:
 `gh pr create --head <branch> --base {{DEFAULT_BRANCH}} --body-file <body>`. Keep the PR body short:
 `Refs #<issue>` + the **Outcome** line + a pointer to the record. **Review the PR adversarially with
-`discuss-with-codex`** (feed it the real diff); treat it with `superpowers:receiving-code-review`
+`pressure-test`** (feed it the real diff); treat it with `superpowers:receiving-code-review`
 rigor; fix or rebut each point; re-review until no blocking issues.
 
 ### 9. Report and idle
@@ -143,11 +143,11 @@ bounded completion — never force them into this wrapper.
 ## Edge cases
 
 - *Cannot create/enter a worktree* → report to the orchestrator and stop before any edit.
-- *Rubric can't go green* → **exhaust approaches first** (iterate, `discuss-with-codex`); descope only
+- *Rubric can't go green* → **exhaust approaches first** (iterate, `pressure-test`); descope only
   as a last resort, honestly (descopes → study-log **Findings**, never silent omissions) and set the
   **Outcome** accordingly. A red rubric is a reason to try harder, not to lower the bar.
 - *Something must land first* → set **Outcome: blocked** and name the blocker concretely in
   **Findings**; the orchestrator re-tasks it. Don't route around it.
 - *Genuine human-only blocker* (compute/budget beyond this environment, missing licensed access, an
-  irreversible out-of-band action, or scientific ambiguity the proposal + a `discuss-with-codex` round
+  irreversible out-of-band action, or scientific ambiguity the proposal + a `pressure-test` round
   can't resolve) → escalate to the orchestrator rather than guessing.

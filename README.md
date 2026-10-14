@@ -64,11 +64,10 @@ Development workflows, repository hygiene, documentation, and review.
 **Skills:**
 - **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, reconcile completed issues, and update the Default Branch
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
-- **discuss-with-codex**: Autonomous turn-by-turn adversarial discussion with the Codex CLI that converges on a saved written conclusion
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
 - **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
 - **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; requires the Matt skills plugin
-- **pressure-test** (Codex): Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision
+- **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **project-eval**: Dispatch evaluator agents for multi-angle project review
 - **discord-setup**: Configure Discord plugin prerequisites
@@ -114,6 +113,8 @@ Safety guards and workflow enforcement hooks.
 
 ### Task Loop (`task-loop`)
 Supabase-backed task board plus proposal, cycle scaffolding, and worker support.
+
+**Status:** task-loop needs a major update and is not usable now. See the [task-loop README](task-loop/README.md#status).
 
 **Claude Code support:**
 - **setup**: Configure Supabase credentials, register the repo, and check required tools and skills

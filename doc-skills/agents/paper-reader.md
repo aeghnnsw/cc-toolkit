@@ -2,7 +2,7 @@
 name: paper-reader
 description: "[DEPRECATED] Analyze research papers and answer specific questions about their content. Reads PDF papers, extracts key information, and provides detailed answers and relevant bibliographic references."
 tools: Read, Write, Glob, TodoWrite, Bash
-model: haiku
+model: claude-opus-5-5
 color: yellow
 ---
 

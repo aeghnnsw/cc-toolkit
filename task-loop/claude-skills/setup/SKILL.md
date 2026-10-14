@@ -30,7 +30,7 @@ Setup happens at three granularities, each done once:
 - **Required plugin skills** — the harness invokes 8 skills from two plugins; install both (via `/plugin`):
   - **`superpowers`** — `brainstorming`, `writing-plans`, `test-driven-development`,
     `verification-before-completion`, `receiving-code-review`.
-  - **`dev-skills`** — `discuss-with-codex`, `goal-rubric`, `doc-update`.
+  - **`dev-skills`** — `pressure-test`, `goal-rubric`, `doc-update`.
 
   A skill is loadable iff it appears in the session's available-skills list (match the
   `plugin:skill` name, owner-verified — a same-named personal skill is not the dependency).

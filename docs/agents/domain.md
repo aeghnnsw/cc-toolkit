@@ -13,6 +13,7 @@ Keep implementation details in design documents and ADRs, and definitions
 in the glossary. Add an ADR for a consequential trade-off whose rationale
 future contributors would otherwise have to rediscover.
 
-Current decision:
+Current decisions:
 
 - [Isolate host adapter discovery](../adr/0001-isolate-host-adapter-discovery.md)
+- [Use a cross-family critic for pressure tests](../adr/0002-cross-family-pressure-test-critic.md)

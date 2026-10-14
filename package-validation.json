@@ -44,7 +44,8 @@
         {"path": "skills/project-eval/references/angles.md", "hosts": ["claude"]},
         {"path": "skills/project-eval/references/explore-mode.md", "hosts": ["claude"]},
         {"path": "skills/project-eval/references/finding-format.md", "hosts": ["claude"]},
-        {"path": "skills/project-eval/references/focus-mode.md", "hosts": ["claude"]}
+        {"path": "skills/project-eval/references/focus-mode.md", "hosts": ["claude"]},
+        {"path": "codex-skills/pressure-test/scripts/critic_status.py", "hosts": ["codex"]}
       ]
     },
     "doc-skills": {

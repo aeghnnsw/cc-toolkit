@@ -20,7 +20,7 @@ lease, and **no** local runtime files. Liveness and teammate cleanup can depend 
 handles. **Recovery is just the next tick.**
 
 **Relentless (never gives up).** Short of the time bound the orchestrator never abandons the goal. A
-failed / blocked / stuck attempt is **diagnosed** (`dev-skills:discuss-with-codex`) and **re-attacked**
+failed / blocked / stuck attempt is **diagnosed** (`dev-skills:pressure-test`) and **re-attacked**
 with a materially-different, AIM-aligned strategy — escalating the approach when the same obstacle
 recurs, never idling on difficulty, never drifting to an easier goal. The GitHub **issue is the
 persistent unit-of-work identity**; each task is one **attempt** at it. Terminal states are

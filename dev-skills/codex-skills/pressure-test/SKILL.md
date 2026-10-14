@@ -1,15 +1,15 @@
 ---
 name: pressure-test
-description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion.
+description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion. A read-only Claude critic, run through the Claude Code CLI, supplies the pressure.
 ---
 
 # Pressure Test
 
-Run an independent adversarial review before settling a decision. The main Codex agent owns the position and conclusion; a spawned skeptical subagent supplies pressure.
+Run an independent adversarial review before settling a decision. The main Codex agent owns the position and conclusion. A read-only Claude critic, run through the Claude Code CLI in non-interactive mode (`claude -p`), supplies pressure. A critic from another model family shares fewer blind spots with the main agent.
 
 ## Core Principle
 
-Pressure testing only matters when the critic has enough context and independence to find real weaknesses. Do not replace the critic with inline self-critique.
+Pressure testing only matters when the critic has enough context and independence to find real weaknesses. Do not replace the critic with inline self-critique or with a Codex subagent.
 
 ## When To Use
 
@@ -20,26 +20,105 @@ Do not use for routine edits where the user asked for direct implementation and 
 ## Defaults
 
 - `ROUND_CAP = 6`
+- `CALL_TIMEOUT = 900` seconds per critic call; `SMOKE_TIMEOUT = 120`.
+- Critic model: `claude-opus-5-5`. Use `claude-sonnet-5-5` only after Claude refuses a call (see [Refusals](#refusals)). Use no other model. Pass `--model` on every call.
+- Effort: `xhigh` on critic rounds and `low` on the smoke call.
+- `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own fallback model after a refusal. This skill switches models itself.
+- Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell, edit, or write tool. `--permission-mode dontAsk` denies anything that is not pre-approved. `--strict-mcp-config` loads no MCP servers, and `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the critic read evidence files in the work directory.
+- Critic session: the kickoff starts a session with a new `--session-id`; later rounds pass `--resume` with that ID. Run every call from `$REPO`, because Claude Code stores sessions per project directory.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
 - `CONCLUSION_PATH = docs/pressure-test/YYYY-MM-DD-topic-slug-conclusion.md`
 - Explicit user directions override the corresponding output path.
 - Stop early on convergence.
 - Always save and present a conclusion.
-- The critic is read-only. If the active Codex surface supports per-agent sandbox control, spawn the critic with read-only access. Otherwise, instruct the critic not to write files or run mutating commands, and do not approve critic write actions.
+
+## Shell Access
+
+- The `claude` CLI needs network access and write access to `~/.claude`. If the Codex sandbox blocks either, run each `claude` command with escalated permissions. If escalation is unavailable or denied, stop and report that the critic could not run.
+- Each shell command starts a new shell. Setup writes the shared settings to `env.sh` and prints its directory. Start every later command with `source "<workdir>/env.sh"`, where `<workdir>` is that printed directory.
+- Give each critic command a shell timeout above `CALL_TIMEOUT`, for example 960000 ms, or poll the command until it exits.
+- Write each prompt with the quoted heredoc shown below. The quotes keep backticks, `$`, and quotes in the packet literal.
+
+## Setup
+
+Replace `<skill-dir>` with this skill's directory, the folder that holds this `SKILL.md`.
+
+```bash
+DIR="$(mktemp -d)"
+REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+{
+  printf 'DIR="%s"\nREPO="%s"\nSKILL_DIR="%s"\n' "$DIR" "$REPO" "<skill-dir>"
+  cat <<'ENV'
+PRIMARY_MODEL="claude-opus-5-5"
+FALLBACK_MODEL="claude-sonnet-5-5"      # only after a refusal
+CALL_TIMEOUT=900
+export CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
+
+# Portable per-call timeout. macOS has no `timeout`; perl ships at /usr/bin/perl.
+run_to() {                              # usage: run_to <seconds> <cmd...>
+  local s="$1"; shift
+  if command -v timeout  >/dev/null 2>&1; then timeout  "$s" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$s" "$@"
+  else perl -e 'my $t=shift; my $p=fork; if(!$p){exec @ARGV;exit 127} eval{local $SIG{ALRM}=sub{die};alarm $t;waitpid($p,0);alarm 0}; if($@){kill "TERM",$p;exit 124} exit($?>>8)' "$s" "$@"
+  fi
+}
+
+# One read-only critic call. The prompt comes from stdin. Prints the exit code
+# and one status from critic_status.py, and writes the reply to $DIR/msg.txt.
+critic() {                              # usage: critic <seconds> <effort> [session flags] < prompt
+  local s="$1" effort="$2"; shift 2
+  (cd "$REPO" && run_to "$s" claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
+    --output-format stream-json --verbose --tools "Read,Grep,Glob" \
+    --permission-mode dontAsk --strict-mcp-config --disable-slash-commands \
+    --add-dir "$DIR") > "$DIR/events.jsonl" 2> "$DIR/err.log"
+  echo "exit=$? model=$(cat "$DIR/model")"
+  python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
+    "$PRIMARY_MODEL" "$FALLBACK_MODEL"
+}
+
+new_session() { python3 -c 'import uuid; print(uuid.uuid4())' > "$DIR/session_id"; }
+ENV
+} > "$DIR/env.sh"
+echo "claude-opus-5-5" > "$DIR/model"   # the current critic model
+
+cat > "$DIR/critic.txt" <<'CRITIC'
+
+You are an independent adversarial critic. Do not approve, praise, or soften the review.
+
+Find the single weakest point in the current position. Surface hidden assumptions, edge cases, failure modes, and missing evidence. Ground objections in the provided evidence and inspect the repo read-only when needed. If a better alternative exists, propose it concretely.
+
+Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
+CRITIC
+echo "workdir: $DIR"; echo "repo: $REPO"
+```
+
+## Preflight
+
+A real smoke call catches problems that `command -v` cannot: a missing sign-in, a model that the account cannot use, or a sandbox that blocks the network.
+
+```bash
+source "<workdir>/env.sh"
+command -v claude  >/dev/null || { echo "claude CLI not found"; exit 1; }
+command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
+printf 'Reply with exactly: ok\n' | critic 120 low --no-session-persistence
+grep -qiw "ok" "$DIR/msg.txt" && echo "SMOKE OK" || { echo "SMOKE FAILED"; tail -5 "$DIR/err.log"; }
+```
+
+Continue only when the status is `ok` and the smoke reply is `ok`. Otherwise stop and report a one-line diagnosis from `$DIR/err.log`, for example "Claude Code is not signed in", "`claude-opus-5-5` is not available to this account", or "the sandbox blocked network access".
 
 ## Loop
 
 1. State the current position: claim, reasoning, and decision boundary.
 2. Build a critic context packet.
-3. Spawn a skeptical subagent with the packet and critic instructions.
-4. Read the critic's objections.
+3. Send the packet to the Claude critic (kickoff or resume, below).
+4. Read the critic's objections from `$DIR/msg.txt`.
 5. Handle every substantive objection: concede and revise, or rebut with evidence.
 6. Stop if converged; otherwise repeat until round 6.
 7. Write and present the conclusion.
 
 ## Critic Context Packet
 
-Before every critic round, provide the subagent this packet:
+Before every critic round, provide the critic this packet:
 
 ```text
 GOAL
@@ -64,19 +143,53 @@ CRITIC INSTRUCTIONS
 Attack the weakest point first. Ground objections in evidence. Propose better alternatives when they exist. Say no substantive objection only when warranted.
 ```
 
-If the packet lacks enough evidence for reliable judgment, gather the missing evidence before spawning the critic or report the gap.
+If the packet lacks enough evidence for reliable judgment, gather the missing evidence before calling the critic or report the gap.
 
-## Critic Prompt
+The critic can read files in the repository and in `$DIR`, but it cannot run commands. Put command output, such as a diff or test log, in the packet or in a file under `$DIR`, and name that file in EVIDENCE.
 
-Use this stance for each critic subagent:
+The critic keeps earlier rounds in its session. After the kickoff, a packet can state the changes since the last round: the current position, how each objection was handled, and new evidence.
 
-```text
-You are an independent adversarial critic. Do not approve, praise, or soften the review.
+## Calling The Critic
 
-Find the single weakest point in the current position. Surface hidden assumptions, edge cases, failure modes, and missing evidence. Ground objections in the provided evidence and inspect the repo read-only when needed. If a better alternative exists, propose it concretely.
+Kickoff (round 1):
 
-Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
+```bash
+source "<workdir>/env.sh"
+cat > "$DIR/prompt.md" <<'__PROMPT_END__'
+<critic context packet>
+__PROMPT_END__
+cat "$DIR/critic.txt" >> "$DIR/prompt.md"
+new_session
+critic "$CALL_TIMEOUT" xhigh --session-id "$(cat "$DIR/session_id")" < "$DIR/prompt.md"
+cat "$DIR/msg.txt"
 ```
+
+Later rounds:
+
+```bash
+source "<workdir>/env.sh"
+cat > "$DIR/prompt.md" <<'__PROMPT_END__'
+<critic context packet for this round>
+__PROMPT_END__
+cat "$DIR/critic.txt" >> "$DIR/prompt.md"
+critic "$CALL_TIMEOUT" xhigh --resume "$(cat "$DIR/session_id")" < "$DIR/prompt.md"
+cat "$DIR/msg.txt"
+```
+
+Act on the status line:
+
+- `ok` — read the objections in `$DIR/msg.txt`.
+- `refused` — follow [Refusals](#refusals).
+- `wrong_model:<ids>` — stop. Report that a model outside the allowed list answered, and do not use the reply.
+- `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
+
+## Refusals
+
+Any safety stop flags the call, even when the critic finished its answer. `critic_status.py` reports `refused` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
+
+- **Refused on `claude-opus-5-5`** — run `echo "claude-sonnet-5-5" > "$DIR/model"` and re-run the same block once; `prompt.md` is unchanged. For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the retry resumes the same session on Sonnet. Keep `claude-sonnet-5-5` for the rest of the loop, and record the switch in the session record.
+- **Refused on `claude-sonnet-5-5`** — stop. Do not try another model and do not continue without a critic. Write a partial conclusion; the ending condition is "critic refused".
+- A refusal is not a failed round: it does not use the failure retry.
 
 ## Convergence
 
@@ -92,7 +205,7 @@ Do not stop because the current position feels persuasive. Judge convergence aga
 After each round, update `SESSION_PATH` with the complete session so later turns can resume from it:
 
 ```text
-Round N
+Round N (critic model: <model>)
 Critic: strongest objections, faithfully summarized.
 Disposition: conceded and revised, or rebutted with evidence.
 Current position: updated position.
@@ -108,12 +221,13 @@ Include:
 - key decisions
 - strongest objections and dispositions
 - unresolved tensions, if any
-- ending condition: converged, round cap, critic unavailable, or cut short
+- ending condition: converged, round cap, critic unavailable, critic refused, or cut short
+- the critic model or models that took part
 
 Present the same conclusion in chat.
 
 ## Failure Behavior
 
-If subagent spawning is unavailable, stop and report that an independent critic could not run. Do not silently run inline self-critique.
+If the `claude` CLI is missing, the preflight fails, or the sandbox blocks the critic and escalation is unavailable, stop and report that an independent critic could not run. Do not silently run inline self-critique or a Codex subagent instead.
 
 If a critic round fails mid-loop, retry that round once. If it still fails, write a partial conclusion with the last stable position, unresolved objections, and the failure point.

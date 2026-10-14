@@ -60,7 +60,7 @@ the user to `specify-aims` first.
 
 ### 3. Interview for the project specifics (finalize fuzzy ones with Codex)
 Ask only for what can't be detected, one topic at a time; pressure-test ambiguous answers with
-`dev-skills:discuss-with-codex`:
+`dev-skills:pressure-test`:
 - **Source-of-truth docs** the worker reads every task → `{{SOURCE_DOCS}}`.
 - **Correctness contracts** — invariants that are preconditions, not polish → `{{CONTRACTS}}`.
 - **What "tested" means** here beyond smoke tests (analytic limits, golden values, conservation
@@ -73,7 +73,7 @@ Ask only for what can't be detected, one topic at a time; pressure-test ambiguou
   unless this policy names an allowed account/partition — then submit heavy jobs to compute nodes
   (`sbatch`/`srun`), never the shared login node. Note: several cycle-workers may share this host, so
   this aggressive default can oversubscribe; if you routinely run several at once, set a per-worker cap
-  (e.g. `cores ÷ workers`) here."* Only pressure-test with `discuss-with-codex` for shared-cluster
+  (e.g. `cores ÷ workers`) here."* Only pressure-test with `pressure-test` for shared-cluster
   quota/etiquette constraints.
 - The project **goal** phrasing → `{{GOAL}}` (from the Specific Aims).
 
