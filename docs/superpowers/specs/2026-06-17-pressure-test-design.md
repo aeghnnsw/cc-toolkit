@@ -1,5 +1,8 @@
 # Design - Codex pressure-test skill
 
+> **Superseded (2026-10-14, issue #284).** The Codex critic is now Claude, called through `claude -p`,
+> not a Codex subagent. Read [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md) and the current [Codex skill](../../../dev-skills/codex-skills/pressure-test/SKILL.md).
+
 ## Goal
 
 Add a Codex-native adversarial review primitive for issue #143. The skill should

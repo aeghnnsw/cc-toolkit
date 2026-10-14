@@ -164,7 +164,7 @@ is unmet it is **never** allowed to go empty. From the reconciled `proposal.md` 
   the same issue**. The unit's **attempt history is durably derivable** (not semantic): every PR —
   open *and closed* — that `Refs #<issue>` is one prior attempt (`gh pr list --search "<issue>"
   --state all`), and its study log records what was tried and why it failed. Read that history, then
-  **diagnose with `dev-skills:discuss-with-codex`** — *what failed, what is still untried* — codex
+  **diagnose with `dev-skills:pressure-test`** — *what failed, what is still untried* — codex
   pushing "you have not exhausted this; what else?" Add a task whose strategy is **materially different
   from every prior attempt on that issue**; if the **same obstacle recurs across attempts**, **escalate
   the class of approach** — decompose differently, attack an orthogonal sub-problem, or change technique
@@ -177,7 +177,7 @@ is unmet it is **never** allowed to go empty. From the reconciled `proposal.md` 
 
 **AIM-fidelity (the other half of the constraint).** Every task this step creates must serve the
 proposal's **Success criteria**. Pressure-test non-obvious decomposition *and* every re-attack with
-`discuss-with-codex` on a second axis — *does this still serve the AIM, or is it drift to an easier
+`pressure-test` on a second axis — *does this still serve the AIM, or is it drift to an easier
 adjacent goal?* Keep only AIM-aligned work; the Specific Aims zone is never edited here.
 
 For each: open a new issue or **adopt** an existing one (reuse an issue carrying a task marker — never
@@ -243,7 +243,7 @@ next diagnosed, AIM-aligned work while active and the goal is unmet. **Drain pro
 liveness and PR artifacts: Loop C waits only for work it can observe as live or PR-present, never for
 opaque no-PR rows with no live owner evidence. **Non-spin** is not a hard invariant but an
 **adversarially-enforced bias**: each re-attack reads the unit's full (derivable) attempt history and is
-pushed by `discuss-with-codex` to be materially different and escalate — so the active-run budget is
+pushed by `pressure-test` to be materially different and escalate — so the active-run budget is
 spent exploring, not blindly repeating. The loop therefore **advances the goal, finishes it, or reaches
 `stop_at` having genuinely kept trying, then drains observable in-flight work without starting more.**
 
@@ -318,7 +318,7 @@ bounded waste (the issue is the unit identity; at most one attempt merges).
 
 ## Deliberate with Codex
 
-`dev-skills:discuss-with-codex` is the orchestrator's judgment engine. Its **adversarial stance is the
+`dev-skills:pressure-test` is the orchestrator's judgment engine. Its **adversarial stance is the
 point** — it is what stops the loop giving up early or wandering off-aim. Use it for:
 - **failure diagnosis + re-attack design** (§3/§5) — *what went wrong, what's untried*, codex pushing
   "you have not exhausted this; escalate the approach";

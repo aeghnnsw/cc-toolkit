@@ -2,7 +2,7 @@
 name: paper-consolidator
 description: "[DEPRECATED] Consolidate multiple paper-reader analysis outputs into a unified report. Merges findings from 1-3 paper analysis reports, eliminates duplicate expressions, synthesizes insights, and adds proper attribution."
 tools: Read, Write, Edit, Bash
-model: haiku
+model: claude-opus-5-5
 color: pink
 ---
 

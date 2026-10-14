@@ -1,6 +1,6 @@
 name = "task_loop_cycle_worker"
 description = "Runs one task-loop task after the controller supplies seq, title, issue, and branch. Follows docs/task-loop/task-loop.md once, opens a PR with a study log, reports the outcome, and never merges."
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 model_reasoning_effort = "xhigh"
 nickname_candidates = ["Task Loop Worker", "Cycle Worker", "Task Worker"]
 

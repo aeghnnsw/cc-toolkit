@@ -1,5 +1,10 @@
 # Project Eval — Design Spec
 
+> **Superseded in part (2026-10-14, issue #284).** The `eval-critic` agent
+> now uses `claude-opus-5-5`, not `sonnet`. Read
+> [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md) and the
+> current [agent](../../../dev-skills/agents/eval-critic.md).
+
 A skill for dev-skills that dispatches long-running critic agents to evaluate a project from multiple directions. Inspired by [Anthropic's harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps), specifically the finding that separating creation from evaluation — and tuning evaluators for skepticism — produces far better quality assessment than self-review.
 
 ## Problem

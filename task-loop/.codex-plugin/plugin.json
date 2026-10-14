@@ -1,6 +1,6 @@
 {
   "name": "task-loop",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Task-loop setup, preflight, specify-aims, create-cycle scaffolding, and manual run-cycle support for Codex.",
   "author": {
     "name": "Steven",

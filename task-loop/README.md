@@ -16,6 +16,13 @@ State is re-derived every tick from the **Supabase task DB** (reached only via t
 lease, and no local runtime files** — the loop is idempotent, so it runs from anywhere, anytime, and
 recovery is just the next tick.
 
+## Status
+
+task-loop needs a major update and is not usable now. Do not start a new task-loop project until
+that update ships. [#285](https://github.com/aeghnnsw/cc-toolkit/issues/285) tracks the update.
+Until then, task-loop releases change only model pins and skill names; the workflow below has not
+been revised.
+
 ## Workflow
 
 Claude Code supports the full task-loop workflow today:
@@ -31,7 +38,7 @@ c. run-cycle    → orchestrator: fixed-interval Loop A + Loop B stop transition
 1. **`setup`** — onboard the account/machine/repo: create the Supabase project + apply `db/schema.sql`,
    save creds (`task-loop login`), register the repo (`task-loop init`), enable Agent Teams, install
    the required plugin skills.
-2. **`specify-aims`** — brainstorm the goal *with you* + pressure-test with `discuss-with-codex`, then
+2. **`specify-aims`** — brainstorm the goal *with you* + pressure-test with `pressure-test`, then
    write `proposal.md`: Specific Aims & Goal (human-gated) + Implementation Plan + Living Roadmap.
 3. **`create-cycle`** — render `docs/task-loop/task-loop.md` (the worker's tailored cycle + general
    rules + parameters) and scaffold `directions.md` + `logs/`.
@@ -76,7 +83,7 @@ Run **`setup`**, which covers:
 - **Required plugin skills:** Claude `run-cycle` currently uses
   `superpowers:{brainstorming, writing-plans, test-driven-development,
   verification-before-completion, receiving-code-review}` and
-  `dev-skills:{discuss-with-codex, goal-rubric, doc-update}`. Codex setup checks the Codex-supported
+  `dev-skills:{pressure-test, goal-rubric, doc-update}`. Codex setup checks the Codex-supported
   equivalents and Codex `run-cycle` uses `dev-skills:pressure-test` for adversarial judgment.
 
 ## Files this creates in your project

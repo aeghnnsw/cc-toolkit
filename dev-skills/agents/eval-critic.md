@@ -4,7 +4,7 @@ description: Skeptical project evaluator dispatched by project-eval skill. Long-
 tools: Read, Glob, Grep, Write, Bash, WebFetch, WebSearch
 mcpServers:
   - claude-in-chrome
-model: sonnet
+model: claude-opus-5-5
 color: red
 ---
 

@@ -20,7 +20,7 @@ Conventions:
   reflects only *current* standing direction.
 - A note here overrides the loop's defaults but **not** the Specific Aims or the correctness
   contracts — if a direction conflicts with those, the loop flags it (via
-  `discuss-with-codex`) rather than silently breaking them.
+  `pressure-test`) rather than silently breaking them.
 
 ---
 

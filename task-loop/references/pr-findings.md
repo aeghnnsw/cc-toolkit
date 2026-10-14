@@ -52,7 +52,7 @@ Every outcome funnels the task `working → closed` — nothing is dropped.
 | Outcome | Worker means | Orchestrator bookkeeping |
 |---|---|---|
 | `success` | rubric green; task done | merge PR, `close` task, file **Findings** follow-ups as new tasks, close issue |
-| `failed` | genuinely can't complete as specified **after real effort** (approaches exhausted, `discuss-with-codex` consulted), no dependency to name | `close` the attempt (PR stays as the record); the orchestrator **diagnoses and re-attacks** — a materially-different next attempt on the **same issue** (issue stays open). Never a dead end. |
+| `failed` | genuinely can't complete as specified **after real effort** (approaches exhausted, `pressure-test` consulted), no dependency to name | `close` the attempt (PR stays as the record); the orchestrator **diagnoses and re-attacks** — a materially-different next attempt on the **same issue** (issue stays open). Never a dead end. |
 | `blocked` | something concrete must land first | `close` task, create a new task `--dep <blocker>` carrying the remaining work, **re-link the issue** to it (stays open) |
 
 `failed` / `blocked` are **last resorts**, not escape hatches from difficulty — declare one only with
