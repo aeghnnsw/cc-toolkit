@@ -11,7 +11,9 @@ which listed nested non-interactive Claude sessions as out of scope. The
 Claude Code skill was named `discuss-with-codex` before both hosts used one
 name.
 
-Each critic call names its model. The skills allow only these models:
+Each critic call names its model. The table records the allowed models
+chosen on 2026-10-14. `allowed-models.json` at the repository root holds the
+current list.
 
 | Critic | Model | After a flag |
 | --- | --- | --- |
@@ -38,11 +40,20 @@ Consequences:
 - `codex exec resume` does not keep the sandbox or working directory of the
   first call. Each resume passes `-c sandbox_mode="read-only"` and runs from
   the repository root.
-- A change to the allowed models changes both skills, this record, the test
-  data in `dev-skills/tests/test_critic_status.py`, and the model pins in
-  `dev-skills/agents/eval-critic.md`, `doc-skills/agents/paper-reader.md`,
-  `doc-skills/agents/paper-consolidator.md`, and
-  `task-loop/codex-agents/task-loop-cycle-worker.toml`.
+- Each model family has one primary model and one fallback model in
+  `allowed-models.json`. A model pin names the primary model of its family.
+  A Claude Code agent can set `inherit` instead. A pressure test uses the
+  fallback model only after a flag.
+- A change to the allowed models starts in `allowed-models.json`. The same
+  change updates both skills, the cc-customize `model-config` skill, and the
+  model pins in agent and Codex agent files. The test data in
+  `dev-skills/tests/test_critic_status.py` reads the file.
+- `tests/test_model_pins.py` fails until these conditions are true:
+  - Every model pin names the primary model of its family. A Claude Code
+    agent can set `inherit` instead.
+  - Each skill sets the primary and fallback models of its critic family
+    and names no other model.
+  - The `model-config` skill names the Claude primary and fallback models.
 
 The CLI behavior above was verified on 2026-10-14 with codex-cli 0.162.1 and
 Claude Code 2.1.299. No live call was rerouted. The reroute check matches
@@ -50,4 +61,6 @@ text in the codex-cli 0.162.1 binary: `model rerouted:` and the "as a
 fallback" policy message. Codex lists the model IDs available to the account
 in `$CODEX_HOME/models_cache.json`.
 
-See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
+See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284) for the
+critic decision and [issue #289](https://github.com/aeghnnsw/cc-toolkit/issues/289)
+for the allowed-model list and its test.

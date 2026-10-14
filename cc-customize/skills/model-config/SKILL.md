@@ -1,6 +1,6 @@
 ---
 name: model-config
-version: 2.1.0
+version: 2.2.0
 description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "set auto-compact window", "adjust auto compact", "compact earlier", "change compact threshold", "disable auto compact", "configure autocompact", or wants to modify the model, effort level, or auto-compact settings in Claude Code.
 ---
 
@@ -14,7 +14,7 @@ Claude Code reads these top-level keys from `~/.claude/settings.json`:
 | Key | Type | Purpose |
 |---|---|---|
 | `model` | string | Default model for new sessions |
-| `effortLevel` | string | Default effort for models with no saved level |
+| `effortLevel` | string | Default effort for models with no saved level, except Opus 5.5 |
 | `modelSettings` | object | Effort level saved per model (v2.1.251 and later) |
 | `ultracode` | boolean | Start sessions at `xhigh` effort with dynamic workflows |
 | `autoCompactEnabled` | boolean | Turn automatic compaction off or on |
@@ -75,8 +75,9 @@ documented; verify it against the installed version before you rely on it.
 Without an auto-compact window, Claude Code compacts when the conversation
 reaches the model context limit. These sessions compact earlier:
 
-- Models with a native 1M window, such as Fable 5.1, Fable 5, Sonnet 5, and
-  Opus 4.7 and later on the Anthropic API, compact at about 967K tokens
+- Models with a native 1M window, such as Fable 5.1, Fable 5, Sonnet 5 and
+  later, Haiku 5.5, and Opus 4.7 and later on the Anthropic API, compact at
+  about 967K tokens
 - Sonnet 4.6 and Opus 4.6 without extended context compact at the 200K
   boundary, and so do Opus 4.8 and Opus 5 when they run with a 200K window
 - With `CLAUDE_CODE_DISABLE_1M_CONTEXT=1`, models with a native 1M window
@@ -120,16 +121,22 @@ gives 0.4 x 980,000 = 392,000, so the matching window is `425000`.
 | Model | Effort levels | 1M context |
 |---|---|---|
 | `claude-fable-5-1`, `claude-fable-5` | low, medium, high, xhigh, max | native |
+| `claude-opus-5-5` | low, medium, high, xhigh, max | native |
+| `claude-sonnet-5-5` | low, medium, high, xhigh, max | native |
+| `claude-haiku-5-5` | low, medium, high, xhigh, max | native |
 | `claude-opus-5` | low, medium, high, xhigh, max | native on the Anthropic API |
 | `claude-opus-4-8`, `claude-opus-4-7` | low, medium, high, xhigh, max | native on the Anthropic API |
 | `claude-sonnet-5` | low, medium, high, xhigh, max | native, always on |
 | `claude-opus-4-6`, `claude-sonnet-4-6` | low, medium, high, max | `[1m]` variant only |
 | `claude-sonnet-4-5`, `claude-haiku-4-5` | not supported | no |
 
-The default effort level is `high` on every model that supports effort, except
-Opus 4.7, which defaults to `xhigh`. If the active model does not support the
-level you set, Claude Code falls back to the highest supported level at or
-below it.
+Opus 5.5, Sonnet 5.5, and Haiku 5.5 default to `medium` effort. Opus 4.7
+defaults to `xhigh`. Every other model that supports effort defaults to
+`high`. If the active model does not support the level you set, Claude Code
+falls back to the highest supported level at or below it.
+
+On the Anthropic API, the aliases `opus`, `sonnet`, and `haiku` select Opus
+5.5, Sonnet 5.5, and Haiku 5.5. The alias `fable` selects Fable 5.1.
 
 `max` is not accepted in `effortLevel` or `modelSettings`. Set
 `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block to keep `max` across
@@ -147,7 +154,7 @@ Since v2.1.251, `/effort low|medium|high|xhigh` saves the level under
 ```json
 {
   "modelSettings": {
-    "claude-opus-5": { "effortLevel": "medium" }
+    "claude-opus-5-5": { "effortLevel": "high" }
   }
 }
 ```
@@ -156,13 +163,20 @@ Within one settings file, a model entry in `modelSettings` takes precedence
 over the top-level `effortLevel`. Use `effortLevel` as the default for models
 that have no saved entry.
 
+The top-level `effortLevel` does not apply to Opus 5.5. Opus 5.5 starts at
+`medium` unless its `modelSettings` entry, `/effort`, or `--effort` sets a
+level. `CLAUDE_CODE_EFFORT_LEVEL` and `ultracode` also apply to Opus 5.5, and
+they override its `modelSettings` entry. To save an effort level for Opus 5.5,
+write its `modelSettings` entry.
+
 ### 1M context window
 
-Fable 5.1, Fable 5, Sonnet 5, and Opus 4.7 and later run with the 1M window on
-every plan on the Anthropic API. Do not append `[1m]` to these models.
+Fable 5.1, Fable 5, Sonnet 5 and later, Haiku 5.5, and Opus 4.7 and later run
+with the 1M window on every plan on the Anthropic API. Do not append `[1m]` to
+these models.
 
 Opus 4.6 and Sonnet 4.6 reach 1M only through the `[1m]` suffix, for example
-`claude-opus-4-6[1m]` or the `opus[1m]` alias. Access depends on the plan:
+`claude-opus-4-6[1m]` or `claude-sonnet-4-6[1m]`. Access depends on the plan:
 Opus 4.6 with 1M context is included on Max, Team, and Enterprise; Sonnet 4.6
 with 1M context requires usage credits on every subscription plan.
 
@@ -178,8 +192,9 @@ auto-compact defaults. Use
 ranges, and `https://code.claude.com/docs/en/env-vars` for environment
 variables.
 
-If WebFetch fails, fall back to the tables in the Background section and inform
-the user: "Could not fetch latest model info; using built-in defaults."
+If WebFetch fails, use the tables in the Background section and the built-in
+model list in Step 5a. Inform the user: "Could not fetch latest model info;
+using built-in defaults."
 
 ## Step 2: Read Current Settings
 
@@ -201,7 +216,8 @@ Report each value, or mark it as not set:
 
 - **Model**: the `model` key, or "not set (account default)"
 - **Effort level**: the entry for the active model in `modelSettings`, then the
-  `effortLevel` key, then "not set (model default)". Report
+  `effortLevel` key, then "not set (model default)". For Opus 5.5, skip the
+  `effortLevel` key, because it does not apply to that model. Report
   `env.CLAUDE_CODE_EFFORT_LEVEL` and `ultracode` when either is present,
   because both override the settings.
 - **Auto-compact**: `autoCompactEnabled`, `autoCompactWindow`, the trigger it
@@ -222,14 +238,14 @@ skip the rest.
 
 ### Step 5a: Select Base Model
 
-Use **AskUserQuestion** to present the models from Step 1, or these when the
-fetch failed:
+Use **AskUserQuestion** to present the models from Step 1. When the fetch
+failed, present the built-in model list:
 
 ```
 1. claude-fable-5-1
-2. claude-opus-5
-3. claude-sonnet-5
-4. claude-haiku-4-5
+2. claude-opus-5-5
+3. claude-sonnet-5-5
+4. claude-haiku-5-5
 ```
 
 Include in the question text: "Or type a custom model ID or alias directly."
@@ -271,11 +287,16 @@ Use **AskUserQuestion** to present the valid levels for the reference model
 from the table in Background. Validate the answer against that list and
 normalize it to lowercase.
 
-Then ask about scope:
+If the reference model is Opus 5.5, skip the scope question and use **This
+model only**. Tell the user that the top-level `effortLevel` does not apply to
+Opus 5.5.
+
+For any other reference model, ask about scope:
 
 - **This model only**: write `modelSettings.<model>.effortLevel`. This matches
   what `/effort` writes.
-- **All models without a saved level**: write the top-level `effortLevel`.
+- **All models without a saved level, except Opus 5.5**: write the top-level
+  `effortLevel`.
 
 **If the user selects `max`:** explain that `effortLevel` and `modelSettings`
 do not accept `max`, and that `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block
@@ -371,7 +392,7 @@ Example result:
   "model": "claude-fable-5-1",
   "effortLevel": "high",
   "modelSettings": {
-    "claude-opus-5": { "effortLevel": "medium" }
+    "claude-opus-5-5": { "effortLevel": "high" }
   },
   "autoCompactWindow": 500000,
   "env": {

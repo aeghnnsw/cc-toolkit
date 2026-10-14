@@ -82,6 +82,21 @@ addition to checking the number against its source.
 **Reused figure**:
 A figure from a paper or another earlier source that a slide shows.
 
+## Model language
+
+**Allowed model**:
+A model ID that the repository permits a model pin or a critic call to name.
+_Avoid_: Approved model, supported model
+
+**Model pin**:
+A model value that a shipped agent sets for its own work.
+_Avoid_: Hard-coded model
+
+**Primary model**:
+The allowed model of a model family that a model pin or the first critic call
+of a pressure test names.
+_Avoid_: Default model, main model
+
 ## Pressure-test language
 
 **Pressure test**:
@@ -101,8 +116,8 @@ error or a refusal.
 _Avoid_: Safety stop, block
 
 **Fallback model**:
-The single model that a pressure test can use after a flag on its first
-critic model.
+The single model that a pressure test can use after a flag on its primary
+model.
 _Avoid_: Backup model, secondary model
 
 ## Git policy language

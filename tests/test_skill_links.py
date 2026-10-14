@@ -1,19 +1,15 @@
 """Links and required resources for every skill a registered host discovers."""
 from collections import Counter
-import importlib.util
 import os
 from pathlib import Path
 import re
+import sys
 from typing import NamedTuple
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from package_support import FENCE, ROOT, git_files, validator
 
-ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location('validate_packages', ROOT / 'scripts' / 'validate_packages.py')
-validator = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(validator)
-
-FENCE = re.compile(r'^[ \t]*(```|~~~).*?^[ \t]*\1', re.MULTILINE | re.DOTALL)
 # An inline link or image destination, or a reference definition; footnotes are not links.
 LINK = re.compile(r'\]\(\s*(?:<([^>\n]+)>|([^\s)]+))|^[ \t]*\[(?!\^)[^\]]+\]:[ \t]*(?:<([^>\n]+)>|(\S+))',
                   re.MULTILINE)
@@ -31,8 +27,7 @@ class Reference(NamedTuple):
 
 def discover():
     """Return (package, skill roots, SKILL.md files) for each host registration, as the validator finds them."""
-    files = set(validator.git(ROOT, 'ls-files', '--cached', '--others', '--exclude-standard', '-z')
-                .decode().split('\0'))
+    files = git_files(ROOT)
     registrations = []
     for package in validator.load_packages(ROOT).values():
         roots = [ROOT / package.source / path
