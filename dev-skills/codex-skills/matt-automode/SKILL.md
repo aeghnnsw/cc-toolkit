@@ -63,7 +63,10 @@ Inspect the relevant implementation, public interfaces, tests, canonical docs,
 glossary, and ADRs. Read relevant issues, comments, and merged PRs to recover the
 latest decisions and their rationale. Check for superseding decisions. Resolve
 conflicts between historical documents and current behavior explicitly; neither
-age nor current code alone proves the intended behavior.
+age nor current code alone proves the intended behavior. When the resolution
+replaces a recorded decision, such as an ADR, record the new decision through
+`grill-with-docs`. Mark the old record as superseded and link it to the new
+one; do not delete it.
 
 In the numbered planning files, separate verified facts, design decisions,
 assumptions, and unresolved questions. Cite source paths, symbols, tests, or
@@ -133,8 +136,9 @@ are merged.
    navigation findings, and any unavailable history. If previous sessions are
    unavailable, report that limit and review the current implementation session.
    Apply in-scope navigation and documentation fixes, run affected checks, and
-   commit those edits. Run `code-review` again and verify that its diff includes
-   those edits before the PR phase. Report other candidates as follow-up work.
+   commit those edits. Run `code-review` again against the same comparison
+   commit and verify that its diff includes those edits before the PR phase.
+   Report other candidates as follow-up work.
 7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
    changes. Merge after required checks and review pass. Follow repository rules.
 8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
@@ -157,7 +161,7 @@ current validity have been checked.
 | 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
 | 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |
 | 5. Code review | Gate 4 passed for this ticket. | The review ran against a recorded comparison commit and the ticket spec. Fixes for actionable Standards and Spec findings are committed, and the tests pass after the fixes. |
-| 6. Retro | Gate 5 passed for this ticket. | The sessions read, navigation findings, and history limits are recorded. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` diff includes them, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
+| 6. Retro | Gate 5 passed for this ticket. | The sessions read, navigation findings, and history limits are recorded. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` against the first review's comparison commit includes them in its diff, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
 | 7. PR | Gate 6 passed for this ticket. | The PR is open with its issue references, the required checks and required reviews pass, and the PR is merged. Its link is recorded. |
 | 8. Cleanup | Gate 7 passed for every ticket. | Cleanup reported its results. The tickets and any fully satisfied parent spec are verified closed. |
 
@@ -167,6 +171,16 @@ coding and coding delegation for a ticket blocked until the step 4 start
 condition holds for that ticket. Read-only investigation and planning can run in
 parallel before then.
 
+In step 7, wait for running checks and reviews without ending the turn. Use a
+blocking watch command, such as `gh pr checks <number> --watch` on GitHub, or
+check again at intervals. Fix a failed check on the PR branch and commit the
+fix. When the fix changes code, run `code-review` again against the same
+comparison commit before the merge. A required review that the agent cannot
+give, such as a human approval under branch protection, is an enforced
+restriction. Do not wait for it, approve your own PR, or bypass the protection.
+Continue the tickets that do not depend on that PR, then report the blocker
+with the PR link and keep the work.
+
 If later evidence invalidates a decision, stop dependent work, including active
 coding sub-agents. Dependent work is any ticket, code, or decision that relies
 on the invalid decision. Reopen the planning gate where that decision was made
@@ -174,8 +188,8 @@ and the gates after it. Update decisions, the published spec, and tickets as
 needed. Record new completion checks before resuming dependent work, and run
 each affected ticket through steps 4–7 again. For a ticket that is already
 merged, publish a new ticket for the change. A reopened gate blocks only
-dependent work. Tickets that do not rely on the invalid decision keep their
-passed gates and can continue.
+dependent work. For a ticket that does not rely on the invalid decision, gates
+1–3 still count as passed, whether or not the ticket has started.
 
 ## Report progress accurately
 
@@ -198,6 +212,9 @@ ticket the PR fully resolves. Use `Closes owner/repo#123` for another repository
 Use ordinary references for partial work. Closing keywords take effect when the
 PR targets the default branch; carry them to the final integration PR for stacked
 work. Follow the configured tracker's equivalent closure mechanism elsewhere.
+Do not close a ticket by hand before the PR that resolves it merges. Do not
+close the parent spec before the PR of every ticket merges. After a merge,
+close by hand only a ticket that its closing keyword did not close.
 
 Finish when all tickets have completed implementation, code review, retro, and
 PR merge, all tickets and any fully satisfied parent spec are verified

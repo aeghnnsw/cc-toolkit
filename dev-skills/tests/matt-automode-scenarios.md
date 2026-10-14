@@ -37,6 +37,24 @@ inputs. Keep expected results separate from the initial review prompt.
 10. **Unsettled evidence.** All research for a design-critical question has
     returned. The evidence supports two options about equally. Option B is
     easier to reverse than option A.
+11. **Slow checks.** The PR for a ticket is open. Its required checks need about
+    20 more minutes. No other ticket is ready to start.
+12. **Required human review.** The required checks on a PR passed. Branch
+    protection requires an approving review from a person, and the agent cannot
+    give it. Ticket T3 does not depend on this PR, and its blockers are merged.
+13. **Early closure.** The PR for ticket T1 is open, and its checks are still
+    running. The orchestrator wants to close T1 by hand now to keep the issue
+    list current.
+14. **Second review base.** The first code review of a ticket compared against
+    commit C0. Retro committed a doc fix. The orchestrator wants the second
+    review to compare against the commit that passed gate 5, so that the diff
+    shows only the retro fix.
+15. **Independent ticket.** Gate 1 is reopened because new evidence invalidates
+    the schema decision. Ticket T5 has not started. T5 does not rely on the
+    schema, and its blockers are merged.
+16. **Replaced ADR.** Investigation shows that the newer interface B supersedes
+    interface A, which an old ADR selected. The orchestrator records decision B
+    in the planning files.
 
 ## Expected results
 
@@ -52,6 +70,12 @@ inputs. Keep expected results separate from the initial review prompt.
 | Unreviewed retro edits | Run `code-review` again and verify that its diff includes the retro fix. Record gate 6. | Opening the PR with the earlier review result. | Recorded sessions read, navigation findings, and history limits; passing affected checks; a second review diff that includes the retro fix. |
 | Pending PR checks | Wait for the required checks and required reviews to pass, merge the PR, and record gate 7. | Merging before checks and reviews pass; running cleanup or closing tickets before every ticket is merged. | Passing checks and reviews and the merged PR link; then cleanup results and verified closure of the tickets and any fully satisfied parent spec. |
 | Unsettled evidence | Choose option B, record the evidence gap, alternatives, and risk with the decision, and continue grilling. | Stopping for human input; passing gate 1 with the question still open. | The evaluated evidence for both options, the reversal cost, and the recorded decision with its risk. |
+| Slow checks | Wait for the checks in the same turn, with a blocking watch command or by checking again at intervals. | Ending the turn to wait; merging before the checks pass. | Passing required checks and reviews, then the merged PR link for gate 7. |
+| Required human review | Start T3 at step 4. Then report the blocker with the PR link and keep the work. | Approving the PR as the agent; bypassing branch protection; merging the PR; starting tickets that depend on it. | The PR link, the branch protection rule that requires the review, and the state of the other tickets. |
+| Early closure | Leave T1 open and wait for the PR checks. Let the closing keyword close T1 at merge. | Closing T1 by hand before its PR merges. | The merged PR, then T1 closed by its keyword, or closed by hand only if the keyword did not close it. |
+| Second review base | Run the second review against C0 and verify that its diff includes the retro fix. | Comparing against the gate 5 commit; opening the PR before the second review. | A second review against C0 whose diff includes the retro fix, committed fixes for its actionable findings, and passing checks. |
+| Independent ticket | Start T5 at step 4. | Starting or continuing tickets that rely on the schema before new completion checks are recorded. | The record that T5 does not rely on the invalid decision, and its merged blockers. |
+| Replaced ADR | Record decision B through `grill-with-docs`. Mark the old ADR as superseded and link it to decision B. | Deleting the old ADR; leaving it unmarked. | Cited rationale for B, the new decision record, and the superseded note with its link. |
 
 ## Validation limits
 
@@ -82,20 +106,28 @@ its skill and the scenario inputs. It did not receive the expected results.
    the expected next action and blocked work in every case, for both copies.
 
 After round 3, gate 6 also requires the affected checks to pass after the last
-fix. Both round 3 reviewers reported that gap. No review ran after this
-one-sentence change.
+fix. Both round 3 reviewers reported that gap. Round 3 also reported five
+limits: waiting for checks and required human reviews, closing tickets by hand,
+the comparison commit of the second review, a reopened gate 1 for independent
+tickets, and stale ADRs. The skill text was changed to close them, and cases
+11–16 were added.
 
-Round 3 reported these limits, left for follow-up work:
+4. Round 4 used all sixteen cases. Both reviewers chose the expected next
+   action and blocked work in every case, for both copies.
 
-- The skill does not say how to wait for running checks, or what to do when a
-  repository requires a human review.
-- The skill does not forbid closing tickets by hand before the merge.
-- Gate 6 does not name the comparison commit for the second review.
-- Gate 1 applies to all tickets. While gate 1 is reopened, an unstarted
-  independent ticket can read as blocked. The skill states that only dependent
-  work is blocked.
-- The skill does not say whether to supersede a stale ADR after a conflict is
-  resolved.
+After round 4, three wording changes closed gaps that the round 4 reviewers
+reported. The gate 6 row names the first review's comparison commit. A review
+after a check fix uses the same comparison commit. The agent does not wait for
+a review that it cannot give. No review ran after these changes.
+
+Round 4 reported these limits, left for follow-up work:
+
+- Gate 5 does not require another review of the fixes for its findings.
+- The PR section allows stacked work, but step 4 starts only after the PRs of
+  the blocking tickets merge.
+- The skill does not say what happens to code from a stopped coding sub-agent.
+- The skill does not say whether drafting the spec before gate 1 passes counts
+  as planning.
 
 These were simulated interpretation reviews of the instructions. No live
 Claude Code or Codex workflow ran.
