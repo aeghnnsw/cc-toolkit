@@ -8,7 +8,7 @@ The script writes the critic's final reply to REPLY and prints one status:
 
   ok                 an allowed model answered
   refused            Claude flagged the request; retry on the fallback model
-  wrong_model:IDS    a message came from a model outside ALLOWED_MODEL
+  wrong_model:IDS    a message came from a model not in ALLOWED_MODEL
   error:DETAIL       the call failed or produced no final result
 """
 
@@ -37,7 +37,7 @@ def read_events(path: str) -> list[dict]:
 def is_refused(events: list[dict], result: dict | None) -> bool:
     """Return True when Claude flagged this call and the fallback model must retry it.
 
-    Any safety stop counts, even when the answer completed:
+    Any safeguard action counts, even when the answer completed:
     - an assistant event whose message has stop_reason "refusal"
     - the result event's stop_reason "refusal", or safety_stops above zero
     - a system event with subtype "model_refusal_fallback" or

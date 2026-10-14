@@ -15,13 +15,14 @@
 
 ### Removed
 
+- dev-skills (Claude Code 3.16.0): remove the `discuss-with-codex` skill name. The skill is now `pressure-test`, the same name as in Codex. The request "discuss with codex" still loads it. See [#284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
 - dev-skills (Claude Code 3.11.0, Codex 1.4.0): retire the borrowed `handoff` skill; use Matt’s original skill instead.
 - productivity-skills: remove the redundant Claude `personal-assistant` subagent; use `gtd-next` for task selection and agenda planning.
 - GitHub Actions: remove the automatic Claude review from every pull request; keep on-demand `@claude` triggers.
 
 ### Changed
 
-- dev-skills (Claude Code 3.16.0, Codex 1.7.0): rename the Claude Code `discuss-with-codex` skill to `pressure-test`, so both hosts use one name; `/dev-skills:discuss-with-codex` no longer exists, and "discuss with codex" still loads the skill. Pin the critic models and fix the non-interactive calls. In Claude Code, the critic uses `gpt-6-astra` and switches to `gpt-6.1-sol` only after Codex flags a request. Each `codex exec resume` now passes `-c sandbox_mode="read-only"` and runs from the repository root, because resume keeps neither the first call's sandbox nor its directory. In Codex, the critic is now a read-only Claude critic called through `claude -p` with `claude-opus-5-5`; it switches to `claude-sonnet-5-5` after any safety stop. A flag on the fallback model ends the review. Both skills keep state in a work-directory file between shell calls, write prompts through a quoted heredoc, and save sessions and conclusions under `docs/pressure-test`. The `eval-critic` agent uses `claude-opus-5-5`. See [#284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
+- dev-skills (Claude Code 3.16.0, Codex 1.7.0): pin the pressure-test critic models and fix the non-interactive calls. Both hosts now ship `pressure-test`, and its read-only critic comes from the other host. In Claude Code, the critic is `gpt-6-astra` through `codex exec`. It switches to `gpt-6.1-sol` only after a flag. Each `codex exec resume` now passes `-c sandbox_mode="read-only"` and runs from the repository root. Resume keeps neither the sandbox nor the directory of the first call. In Codex, the critic is now `claude-opus-5-5` through `claude -p`. It switches to `claude-sonnet-5-5` after any safeguard action, and each call accepts a reply only from the current critic model. A flag on the fallback model ends the pressure test. Both skills keep state in a work-directory file between shell calls and write prompts through a quoted heredoc. They save sessions and conclusions under `docs/pressure-test`. The `eval-critic` agent uses `claude-opus-5-5`. See [#284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
 
 - doc-skills (Claude Code 1.0.2): pin the deprecated `paper-reader` and `paper-consolidator` agents to `claude-opus-5-5`. See [#284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
 

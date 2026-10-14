@@ -19,8 +19,9 @@ recovery is just the next tick.
 ## Status
 
 task-loop needs a major update and is not usable now. Do not start a new task-loop project until
-that update ships. [#285](https://github.com/aeghnnsw/cc-toolkit/issues/285) tracks the update. Until then, task-loop releases change only model pins; the workflow below has
-not been revised.
+that update ships. [#285](https://github.com/aeghnnsw/cc-toolkit/issues/285) tracks the update.
+Until then, task-loop releases change only model pins and skill names; the workflow below has not
+been revised.
 
 ## Workflow
 

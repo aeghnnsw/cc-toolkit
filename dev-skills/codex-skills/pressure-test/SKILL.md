@@ -20,10 +20,10 @@ Do not use for routine edits where the user asked for direct implementation and 
 ## Defaults
 
 - `ROUND_CAP = 6`
-- `CALL_TIMEOUT = 900` seconds per critic call; `SMOKE_TIMEOUT = 120`.
-- Critic model: `claude-opus-5-5`. Use `claude-sonnet-5-5` only after Claude refuses a call (see [Refusals](#refusals)). Use no other model. Pass `--model` on every call.
+- `CALL_TIMEOUT = 900` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight.
+- Critic model: `claude-opus-5-5`. The fallback model is `claude-sonnet-5-5`; use it only after a flag (see [Flags](#flags)). Use no other model. Pass `--model` on every call, and accept a reply only from the current critic model.
 - Effort: `xhigh` on critic rounds and `low` on the smoke call.
-- `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own fallback model after a refusal. This skill switches models itself.
+- `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own model after a refusal. This skill switches models itself.
 - Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell, edit, or write tool. `--permission-mode dontAsk` denies anything that is not pre-approved. `--strict-mcp-config` loads no MCP servers, and `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the critic read evidence files in the work directory.
 - Critic session: the kickoff starts a session with a new `--session-id`; later rounds pass `--resume` with that ID. Run every call from `$REPO`, because Claude Code stores sessions per project directory.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
@@ -50,8 +50,9 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   printf 'DIR="%s"\nREPO="%s"\nSKILL_DIR="%s"\n' "$DIR" "$REPO" "<skill-dir>"
   cat <<'ENV'
 PRIMARY_MODEL="claude-opus-5-5"
-FALLBACK_MODEL="claude-sonnet-5-5"      # only after a refusal
+FALLBACK_MODEL="claude-sonnet-5-5"      # only after a flag
 CALL_TIMEOUT=900
+SMOKE_TIMEOUT=120
 export CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
 
 # Portable per-call timeout. macOS has no `timeout`; perl ships at /usr/bin/perl.
@@ -65,6 +66,7 @@ run_to() {                              # usage: run_to <seconds> <cmd...>
 
 # One read-only critic call. The prompt comes from stdin. Prints the exit code
 # and one status from critic_status.py, and writes the reply to $DIR/msg.txt.
+# Only the current critic model may answer; any other model is wrong_model.
 critic() {                              # usage: critic <seconds> <effort> [session flags] < prompt
   local s="$1" effort="$2"; shift 2
   (cd "$REPO" && run_to "$s" claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
@@ -73,13 +75,14 @@ critic() {                              # usage: critic <seconds> <effort> [sess
     --add-dir "$DIR") > "$DIR/events.jsonl" 2> "$DIR/err.log"
   echo "exit=$? model=$(cat "$DIR/model")"
   python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
-    "$PRIMARY_MODEL" "$FALLBACK_MODEL"
+    "$(cat "$DIR/model")"
 }
 
 new_session() { python3 -c 'import uuid; print(uuid.uuid4())' > "$DIR/session_id"; }
 ENV
 } > "$DIR/env.sh"
-echo "claude-opus-5-5" > "$DIR/model"   # the current critic model
+source "$DIR/env.sh"
+echo "$PRIMARY_MODEL" > "$DIR/model"    # the current critic model
 
 cat > "$DIR/critic.txt" <<'CRITIC'
 
@@ -100,11 +103,13 @@ A real smoke call catches problems that `command -v` cannot: a missing sign-in, 
 source "<workdir>/env.sh"
 command -v claude  >/dev/null || { echo "claude CLI not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
-printf 'Reply with exactly: ok\n' | critic 120 low --no-session-persistence
-grep -qiw "ok" "$DIR/msg.txt" && echo "SMOKE OK" || { echo "SMOKE FAILED"; tail -5 "$DIR/err.log"; }
+printf 'Reply with exactly: ok\n' | critic "$SMOKE_TIMEOUT" low --no-session-persistence
+grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail -5 "$DIR/err.log"; }
 ```
 
-Continue only when the status is `ok` and the smoke reply is `ok`. Otherwise stop and report a one-line diagnosis from `$DIR/err.log`, for example "Claude Code is not signed in", "`claude-opus-5-5` is not available to this account", or "the sandbox blocked network access".
+- Status `ok` and `REPLY OK` — continue to the loop.
+- Status `refused` — follow [Flags](#flags), then re-run the preflight.
+- Any other result — stop. Report a one-line diagnosis from `$DIR/err.log`, for example "Claude Code is not signed in", "`claude-opus-5-5` is not available to this account", or "the sandbox blocked network access". The ending condition is "critic unavailable".
 
 ## Loop
 
@@ -138,10 +143,9 @@ Known constraints and assumptions to attack.
 
 PRIOR ROUNDS
 Objections already raised and how they were handled.
-
-CRITIC INSTRUCTIONS
-Attack the weakest point first. Ground objections in evidence. Propose better alternatives when they exist. Say no substantive objection only when warranted.
 ```
+
+The critic prompt in `$DIR/critic.txt` follows the packet in every prompt.
 
 If the packet lacks enough evidence for reliable judgment, gather the missing evidence before calling the critic or report the gap.
 
@@ -179,17 +183,23 @@ cat "$DIR/msg.txt"
 Act on the status line:
 
 - `ok` — read the objections in `$DIR/msg.txt`.
-- `refused` — follow [Refusals](#refusals).
-- `wrong_model:<ids>` — stop. Report that a model outside the allowed list answered, and do not use the reply.
+- `refused` — follow [Flags](#flags).
+- `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
 - `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
 
-## Refusals
+## Flags
 
-Any safety stop flags the call, even when the critic finished its answer. `critic_status.py` reports `refused` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
+Any safeguard action flags the call, even when the critic finished its answer. `critic_status.py` reports `refused` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
 
-- **Refused on `claude-opus-5-5`** — run `echo "claude-sonnet-5-5" > "$DIR/model"` and re-run the same block once; `prompt.md` is unchanged. For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the retry resumes the same session on Sonnet. Keep `claude-sonnet-5-5` for the rest of the loop, and record the switch in the session record.
-- **Refused on `claude-sonnet-5-5`** — stop. Do not try another model and do not continue without a critic. Write a partial conclusion; the ending condition is "critic refused".
-- A refusal is not a failed round: it does not use the failure retry.
+- **Flag on the critic model** — switch to the fallback model and re-run the same block once; `prompt.md` is unchanged:
+
+  ```bash
+  source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
+  ```
+
+  For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the retry resumes the same session on the fallback model. Keep the fallback model for the rest of the pressure test, and record the switch in the session record.
+- **Flag on the fallback model** — stop. Use no other model, and do not continue without a critic. Write a partial conclusion; the ending condition is "critic flagged".
+- A flag is not a failed round: it does not use the failure retry.
 
 ## Convergence
 
@@ -221,7 +231,7 @@ Include:
 - key decisions
 - strongest objections and dispositions
 - unresolved tensions, if any
-- ending condition: converged, round cap, critic unavailable, critic refused, or cut short
+- ending condition: converged, round cap, critic unavailable, critic flagged, or cut short
 - the critic model or models that took part
 
 Present the same conclusion in chat.

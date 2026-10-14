@@ -19,11 +19,13 @@ Each critic call names its model. The skills allow only these models:
 | Claude, through `claude -p` | `claude-opus-5-5` | `claude-sonnet-5-5` |
 
 A Codex flag is a policy error such as `cyber_policy` or `bio_policy`, or a
-model reroute. A Claude flag is a response that ends with `stop_reason:
-"refusal"` or any other safety stop. After a flag, the skill switches to the fallback model for the rest
-of the loop. A flag on the fallback model ends the loop with a partial
-conclusion. The skills turn off Claude Code's automatic refusal fallback,
-because Claude Code chooses that fallback model itself.
+model reroute. A Claude flag is any safeguard action: a response that ends
+with `stop_reason: "refusal"`, a result with `safety_stops` above zero, or
+a refusal event from Claude Code. After a flag, the skill switches to the
+fallback model for the rest of the loop. A flag on the fallback model ends
+the loop with a partial conclusion. The skills turn off Claude Code's
+automatic refusal fallback, because Claude Code chooses that fallback model
+itself. Each call accepts a reply only from the current critic model.
 
 Consequences:
 

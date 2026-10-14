@@ -88,7 +88,7 @@ A figure from a paper or another earlier source that a slide shows.
 An adversarial review in which a critic attacks the main agent's position
 until the position holds or a round cap ends the review. It ends with a saved
 conclusion.
-_Avoid_: Discussion with Codex, critic review, adversarial review
+_Avoid_: Discussion with Codex, critic review
 
 **Critic**:
 The read-only model that attacks the position in a pressure test. It comes
@@ -96,8 +96,8 @@ from the model family of the other host.
 _Avoid_: Reviewer, skeptic
 
 **Flag**:
-A safety block by a model provider on one critic call, such as a policy error
-or a refusal.
+A safeguard action by a model provider on one critic call, such as a policy
+error or a refusal.
 _Avoid_: Safety stop, block
 
 **Fallback model**:

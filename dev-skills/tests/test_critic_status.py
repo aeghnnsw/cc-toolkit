@@ -11,7 +11,8 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "codex-skills" / "pressure-test" / "scripts" / "critic_status.py"
-ALLOWED = ["claude-opus-5-5", "claude-sonnet-5-5"]
+CRITIC_MODEL = "claude-opus-5-5"
+FALLBACK_MODEL = "claude-sonnet-5-5"
 
 
 def assistant(model: str, text: str = "", stop_reason: str | None = None) -> dict:
@@ -35,7 +36,9 @@ def result(text: str = "objection", **fields) -> dict:
     return event
 
 
-def run_status(events: list[dict] | None, *, raw_lines: list[str] = ()) -> tuple[str, str]:
+def run_status(
+    events: list[dict] | None, *, raw_lines: list[str] = (), allowed: tuple[str, ...] = (CRITIC_MODEL,)
+) -> tuple[str, str]:
     """Run the script on a stream; return its status line and the reply file text.
 
     The reply file starts with a stale reply from an earlier round, so every
@@ -49,7 +52,7 @@ def run_status(events: list[dict] | None, *, raw_lines: list[str] = ()) -> tuple
             lines = [json.dumps(event) for event in events] + list(raw_lines)
             events_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         completed = subprocess.run(
-            [sys.executable, str(SCRIPT), str(events_path), str(reply_path), *ALLOWED],
+            [sys.executable, str(SCRIPT), str(events_path), str(reply_path), *allowed],
             capture_output=True,
             text=True,
             check=True,
@@ -99,9 +102,13 @@ class CriticStatusTest(unittest.TestCase):
         events = [assistant("claude-haiku-4-5", "objection"), result()]
         self.assertEqual(run_status(events)[0], "wrong_model:claude-haiku-4-5")
 
-    def test_fallback_model_is_allowed(self):
-        events = [assistant("claude-sonnet-5-5", "objection"), result()]
-        self.assertEqual(run_status(events)[0], "ok")
+    def test_fallback_model_is_ok_after_the_switch(self):
+        events = [assistant(FALLBACK_MODEL, "objection"), result()]
+        self.assertEqual(run_status(events, allowed=(FALLBACK_MODEL,))[0], "ok")
+
+    def test_silent_switch_to_the_fallback_model_is_reported(self):
+        events = [assistant(FALLBACK_MODEL, "objection"), result()]
+        self.assertEqual(run_status(events)[0], f"wrong_model:{FALLBACK_MODEL}")
 
     def test_synthetic_messages_are_not_model_output(self):
         events = [assistant("<synthetic>", "API Error: overloaded"), result("", is_error=True, subtype="error_during_execution")]
