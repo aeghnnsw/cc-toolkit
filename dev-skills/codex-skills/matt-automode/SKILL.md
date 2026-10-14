@@ -16,13 +16,13 @@ The user's request to use this mode explicitly invokes every skill this file
 names. Load and follow each one without a separate user invocation. Do not ask
 the user to invoke them.
 
-- If the skill appears in the available skills list, open its `SKILL.md`.
+- If a skill appears in the available skills list, open its `SKILL.md`.
 - Resolve every other skill this file names with one command. These can be
   user-invoked skills: their `agents/openai.yaml` sets
   `policy.allow_implicit_invocation: false`, so Codex omits them from the
   list. This policy does not restrict an explicit invocation or reading the
   skill file. `<plugin-root>` is the root of this `dev-skills` plugin, two
-  directories above this file. For example:
+  levels above this skill folder. For example:
 
   ```bash
   python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \

@@ -4,8 +4,9 @@
 Usage: resolve_skill.py [--host claude|codex] PLUGIN:SKILL...
 
 For each name that resolves, print "PLUGIN:SKILL /absolute/path/SKILL.md".
-For each name that fails, print one stderr line that names the cause.
-Exit 0 when every name resolves, 1 when any name fails, 2 on a usage error.
+For each name that fails, print one stderr line that names the cause, and
+continue with the next name. Exit 0 when every name resolves, 1 when any
+name fails, and 2 on a usage error.
 
 Claude Code (default): read plugins/installed_plugins.json under
 CLAUDE_CONFIG_DIR (default ~/.claude). An install record for a project that
@@ -13,11 +14,12 @@ contains the current directory comes before the user-scope record. A plugin
 set to false under enabledPlugins in the user settings.json is disabled.
 
 Codex: the [plugins."PLUGIN@MARKETPLACE"] table in config.toml under
-CODEX_HOME (default ~/.codex) must set enabled = true. The highest version
-under plugins/cache/MARKETPLACE/PLUGIN/ is used.
+CODEX_HOME (default ~/.codex) must set enabled = true. The highest numeric
+version under plugins/cache/MARKETPLACE/PLUGIN/ is used.
 
 In the plugin root, the search order is: the host manifest's skills paths,
-the conventional skills/ directory, then the whole root.
+the skills/ directory, then the whole root without the other host's skill
+copies.
 """
 
 from __future__ import annotations
@@ -29,7 +31,6 @@ import sys
 from pathlib import Path
 
 USAGE = "usage: resolve_skill.py [--host claude|codex] PLUGIN:SKILL..."
-MANIFESTS = {"claude": ".claude-plugin/plugin.json", "codex": ".codex-plugin/plugin.json"}
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
 
 
@@ -38,12 +39,21 @@ class ResolveError(Exception):
 
 
 def load_json(path: Path) -> dict:
+    """Return the JSON object in PATH; raise OSError or ValueError."""
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        raise ValueError("not a JSON object")
+    return data
+
+
+def plugin_keys(keys, plugin: str) -> list[str]:
+    """Return the "PLUGIN@MARKETPLACE" keys that belong to PLUGIN."""
+    return [k for k in keys if k.split("@", 1)[0] == plugin]
 
 
 def is_within(child: Path, parent: Path) -> bool:
+    """Return True when CHILD is PARENT or a path below it."""
     try:
         child.relative_to(parent)
     except ValueError:
@@ -52,34 +62,40 @@ def is_within(child: Path, parent: Path) -> bool:
 
 
 def claude_plugin_root(plugin: str) -> Path:
+    """Return the Claude Code install path of PLUGIN for the current directory."""
     home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
     registry = home / "plugins" / "installed_plugins.json"
+    settings = home / "settings.json"
     try:
-        entries = load_json(registry).get("plugins") or {}
+        entries = load_json(registry).get("plugins")
     except (OSError, ValueError) as error:
         raise ResolveError(f"cannot read the plugin registry {registry} ({error})") from error
-    key = next((k for k in entries if k.split("@", 1)[0] == plugin), None)
-    if key is None:
+    if not isinstance(entries, dict) or not all(isinstance(v, list) for v in entries.values()):
+        raise ResolveError(f"the plugin registry {registry} has an unknown format")
+    keys = plugin_keys(entries, plugin)
+    if not keys:
         raise ResolveError(f"plugin {plugin} is not installed (registry {registry})")
     try:
-        enabled = (load_json(home / "settings.json").get("enabledPlugins") or {}).get(key)
-    except (OSError, ValueError):
-        enabled = None
-    if enabled is False:
-        raise ResolveError(f"plugin {key} is disabled in {home / 'settings.json'}")
+        enabled = load_json(settings).get("enabledPlugins", {}) if settings.exists() else {}
+    except (OSError, ValueError) as error:
+        raise ResolveError(f"cannot read the settings {settings} ({error})") from error
+    if not isinstance(enabled, dict):
+        raise ResolveError(f"enabledPlugins in the settings {settings} is not an object")
+    usable = [k for k in keys if enabled.get(k) is not False]
+    if not usable:
+        raise ResolveError(f"plugin {keys[0]} is disabled in {settings}")
 
     cwd = Path.cwd().resolve()
-    records = [r for r in entries[key] if isinstance(r, dict) and r.get("installPath")]
+    records = [r for k in usable for r in entries[k] if isinstance(r, dict) and r.get("installPath")]
     projects = [
         r for r in records
         if r.get("projectPath") and is_within(cwd, Path(r["projectPath"]).resolve())
     ]
     projects.sort(key=lambda r: len(str(Path(r["projectPath"]).resolve())), reverse=True)
     users = [r for r in records if r.get("scope") == "user"]
-    chosen = (projects or users or records or [None])[0]
-    if chosen is None:
-        raise ResolveError(f"plugin {key} has no install path in {registry}")
-    return Path(chosen["installPath"])
+    if not projects and not users:
+        raise ResolveError(f"plugin {plugin} is not installed for this project or the user (registry {registry})")
+    return Path((projects or users)[0]["installPath"])
 
 
 def read_codex_plugins(config: Path) -> dict[str, bool]:
@@ -90,8 +106,8 @@ def read_codex_plugins(config: Path) -> dict[str, bool]:
         for line in handle:
             stripped = line.strip()
             if stripped.startswith("["):
-                match = re.fullmatch(r'\[plugins\."([^"]+)"\]', stripped)
-                current = match.group(1) if match else None
+                match = re.fullmatch(r"""\[\s*plugins\.(["'])([^"']+)\1\s*\]\s*(#.*)?""", stripped)
+                current = match.group(2) if match else None
                 if current:
                     tables.setdefault(current, False)
                 continue
@@ -102,30 +118,46 @@ def read_codex_plugins(config: Path) -> dict[str, bool]:
 
 
 def version_key(name: str) -> tuple:
-    return tuple((0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"[.\-+]", name))
+    """Sort key for a cache folder: numeric versions above other names.
+
+    A release sorts above its pre-release, so 2.0.0 is above 2.0.0-rc1.
+    """
+    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:[-+](.*))?", name)
+    if not match:
+        return (0, (), 0, name)
+    numbers = tuple(int(part) for part in match.group(1).split("."))
+    return (1, numbers, 0 if match.group(2) else 1, name)
 
 
 def codex_plugin_root(plugin: str) -> Path:
+    """Return the cache folder of the highest installed version of PLUGIN."""
     home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     config = home / "config.toml"
     try:
         tables = read_codex_plugins(config)
-    except OSError as error:
-        raise ResolveError(f"cannot read the Codex config {config} ({error.strerror})") from error
-    keys = [k for k, on in tables.items() if on and k.split("@", 1)[0] == plugin]
+    except (OSError, ValueError) as error:
+        raise ResolveError(f"cannot read the Codex config {config} ({error})") from error
+    keys = [k for k in plugin_keys(tables, plugin) if tables[k]]
     if not keys:
         raise ResolveError(f"plugin {plugin} is not enabled in {config}")
     marketplace = keys[0].split("@", 1)[1]
     cache = home / "plugins" / "cache" / marketplace / plugin
-    versions = sorted((p for p in cache.glob("*") if p.is_dir()), key=lambda p: version_key(p.name))
+    versions = [p for p in cache.glob("*") if p.is_dir() and not p.name.startswith(".")]
     if not versions:
         raise ResolveError(f"plugin {keys[0]} is not installed under {cache}")
-    return versions[-1]
+    return max(versions, key=lambda p: version_key(p.name))
 
 
-def manifest_dirs(root: Path, host: str) -> list[Path]:
+HOSTS = {
+    "claude": {"root": claude_plugin_root, "manifest": ".claude-plugin/plugin.json", "other_copies": "codex-skills"},
+    "codex": {"root": codex_plugin_root, "manifest": ".codex-plugin/plugin.json", "other_copies": "claude-skills"},
+}
+
+
+def manifest_dirs(root: Path, manifest: str) -> list[Path]:
+    """Return the skill paths that the host manifest declares."""
     try:
-        paths = load_json(root / MANIFESTS[host]).get("skills")
+        paths = load_json(root / manifest).get("skills")
     except (OSError, ValueError):
         return []
     if isinstance(paths, str):
@@ -133,21 +165,24 @@ def manifest_dirs(root: Path, host: str) -> list[Path]:
     return [root / p for p in paths or [] if isinstance(p, str)]
 
 
-def find_skill(root: Path, skill: str, host: str) -> Path | None:
-    for base in [*manifest_dirs(root, host), root / "skills"]:
+def find_skill(root: Path, skill: str, host: dict) -> Path | None:
+    """Return the SKILL.md of SKILL under ROOT, or None."""
+    for base in [*manifest_dirs(root, host["manifest"]), root / "skills"]:
         for candidate in (base / "SKILL.md", base / skill / "SKILL.md"):
             if candidate.parent.name == skill and candidate.is_file():
                 return candidate
+    skip = SKIP_DIRS | {host["other_copies"]}
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        dirnames[:] = sorted(d for d in dirnames if d not in skip)
         if Path(dirpath).name == skill and "SKILL.md" in filenames:
             return Path(dirpath) / "SKILL.md"
     return None
 
 
-def resolve(name: str, host: str) -> Path:
+def resolve(name: str, host: dict) -> Path:
+    """Return the absolute SKILL.md path for "PLUGIN:SKILL"."""
     plugin, skill = name.split(":", 1)
-    root = claude_plugin_root(plugin) if host == "claude" else codex_plugin_root(plugin)
+    root = host["root"](plugin)
     if not root.is_dir():
         raise ResolveError(f"install path {root} does not exist")
     path = find_skill(root, skill, host)
@@ -160,7 +195,7 @@ def main(argv: list[str]) -> int:
     args = argv[1:]
     host = "claude"
     if args[:1] == ["--host"]:
-        if len(args) < 2 or args[1] not in MANIFESTS:
+        if len(args) < 2 or args[1] not in HOSTS:
             print(USAGE, file=sys.stderr)
             return 2
         host, args = args[1], args[2:]
@@ -170,7 +205,7 @@ def main(argv: list[str]) -> int:
     failed = False
     for name in args:
         try:
-            print(f"{name} {resolve(name, host)}")
+            print(f"{name} {resolve(name, HOSTS[host])}")
         except ResolveError as error:
             print(f"resolve_skill: {name}: {error}", file=sys.stderr)
             failed = True

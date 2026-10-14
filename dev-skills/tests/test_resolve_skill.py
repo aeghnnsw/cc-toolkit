@@ -46,15 +46,17 @@ class ResolverCase(unittest.TestCase):
 
     # Claude Code fixtures
 
-    def claude_plugin(self, name: str, records: list[dict], *, enabled: bool | None = True) -> None:
+    def claude_plugin(
+        self, name: str, records: list[dict], *, enabled: bool | None = True, market: str = "market"
+    ) -> None:
         registry = self.claude_home / "plugins" / "installed_plugins.json"
         data = json.loads(registry.read_text()) if registry.exists() else {"version": 2, "plugins": {}}
-        data["plugins"][f"{name}@market"] = records
+        data["plugins"][f"{name}@{market}"] = records
         write(registry, json.dumps(data))
         settings = self.claude_home / "settings.json"
         current = json.loads(settings.read_text()) if settings.exists() else {"enabledPlugins": {}}
         if enabled is not None:
-            current["enabledPlugins"][f"{name}@market"] = enabled
+            current["enabledPlugins"][f"{name}@{market}"] = enabled
         write(settings, json.dumps(current))
 
     def install_root(self, label: str, manifest: dict | None = None) -> Path:
@@ -191,6 +193,71 @@ class ClaudeResolveTest(ResolverCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("not found", completed.stderr)
 
+    def test_manifest_path_wins_over_the_search(self):
+        root = self.install_root("matt", {"skills": ["./engineering/retro"]})
+        make_skill(root, "aaa/retro")
+        expected = make_skill(root, "engineering/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+
+        self.assertEqual(self.run_resolver("matt:retro").stdout, f"matt:retro {expected}\n")
+
+    def test_search_skips_the_codex_copy(self):
+        root = self.install_root("dev")
+        make_skill(root, "codex-skills/helper")
+        self.claude_plugin("dev", [{"scope": "user", "installPath": str(root)}])
+
+        completed = self.run_resolver("dev:helper")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not found", completed.stderr)
+
+    def test_record_for_another_project_is_not_used(self):
+        root = self.install_root("matt")
+        make_skill(root, "skills/retro")
+        self.claude_plugin(
+            "matt", [{"scope": "project", "projectPath": str(self.tmp / "elsewhere"), "installPath": str(root)}]
+        )
+
+        completed = self.run_resolver("matt:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not installed", completed.stderr)
+
+    def test_enabled_marketplace_wins_over_a_disabled_one(self):
+        old = self.install_root("old")
+        make_skill(old, "skills/retro")
+        new = self.install_root("new")
+        expected = make_skill(new, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(old)}], enabled=False, market="a")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(new)}], market="b")
+
+        self.assertEqual(self.run_resolver("matt:retro").stdout, f"matt:retro {expected}\n")
+
+    def test_unreadable_settings_fail(self):
+        root = self.install_root("matt")
+        make_skill(root, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+        for text in ("{", '{"enabledPlugins": []}'):
+            with self.subTest(text=text):
+                write(self.claude_home / "settings.json", text)
+
+                completed = self.run_resolver("matt:retro")
+
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("settings", completed.stderr)
+                self.assertNotIn("Traceback", completed.stderr)
+
+    def test_registry_with_the_wrong_shape_fails(self):
+        for data in ({"plugins": []}, {"plugins": {"matt@market": {"installPath": "x"}}}):
+            with self.subTest(data=data):
+                write(self.claude_home / "plugins" / "installed_plugins.json", json.dumps(data))
+
+                completed = self.run_resolver("matt:retro")
+
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("registry", completed.stderr)
+                self.assertNotIn("Traceback", completed.stderr)
+
     def test_missing_registry_fails(self):
         completed = self.run_resolver("matt:retro")
 
@@ -208,6 +275,40 @@ class CodexResolveTest(ResolverCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+
+    def test_numeric_versions_win_over_other_folder_names(self):
+        for extra in ("local", "latest", ".staging", "1.10.0-rc1"):
+            with self.subTest(extra=extra):
+                self.codex_install("matt", "1.9.0", "retro")
+                expected = self.codex_install("matt", "1.10.0", "retro")
+                self.codex_install("matt", extra, "retro")
+                self.codex_config('[plugins."matt@market"]\nenabled = true\n')
+
+                self.assertEqual(self.run_resolver("--host", "codex", "matt:retro").stdout, f"matt:retro {expected}\n")
+
+    def test_a_single_named_folder_is_used(self):
+        expected = self.codex_install("matt", "local", "retro")
+        self.codex_config('[plugins."matt@market"]\nenabled = true\n')
+
+        self.assertEqual(self.run_resolver("--host", "codex", "matt:retro").stdout, f"matt:retro {expected}\n")
+
+    def test_table_header_forms_are_read(self):
+        expected = self.codex_install("matt", "1.0.0", "retro")
+        for header in ("[plugins.'matt@market'] # note", '[ plugins."matt@market" ]'):
+            with self.subTest(header=header):
+                self.codex_config(f"{header}\nenabled = true\n")
+
+                self.assertEqual(self.run_resolver("--host", "codex", "matt:retro").stdout, f"matt:retro {expected}\n")
+
+    def test_config_that_is_not_utf8_fails(self):
+        self.codex_install("matt", "1.0.0", "retro")
+        (self.codex_home / "config.toml").write_bytes(b'[plugins."matt@market"]\nenabled = true\n# \xff\xfe\n')
+
+        completed = self.run_resolver("--host", "codex", "matt:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Codex config", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
 
     def test_codex_manifest_path_wins_over_the_claude_copy(self):
         root = self.codex_home / "plugins" / "cache" / "market" / "dev" / "1.0.0"
