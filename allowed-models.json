@@ -1,5 +1,5 @@
 {
-  "description": "Allowed models for each model family. A model pin names the primary model, or inherit. A pressure-test critic uses the fallback model only after a flag. tests/test_model_pins.py checks every pin against this list.",
+  "description": "Allowed models for each model family. A model pin names the primary model of its family. A Claude Code agent can set inherit instead. A pressure-test critic uses the fallback model only after a flag. tests/test_model_pins.py checks every pin against this list.",
   "claude": {"primary": "claude-opus-5-5", "fallback": "claude-sonnet-5-5"},
   "gpt": {"primary": "gpt-6-astra", "fallback": "gpt-6.1-sol"}
 }

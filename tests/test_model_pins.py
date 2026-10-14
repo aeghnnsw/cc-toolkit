@@ -5,11 +5,11 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from package_support import ROOT, git_files, validator
+from package_support import FENCE, ROOT, git_files, validator
+import tomllib  # after package_support, whose validator names the uv command on Python 3.10
 
 ALLOWED_MODELS = 'allowed-models.json'
 # Each pressure-test copy calls a critic from the model family of the other host.
@@ -17,7 +17,6 @@ CRITIC_SKILLS = {'dev-skills/skills/pressure-test/SKILL.md': 'gpt',
                  'dev-skills/codex-skills/pressure-test/SKILL.md': 'claude'}
 MODEL_CONFIG = 'cc-customize/skills/model-config/SKILL.md'
 AGENT_MODEL = re.compile(r'^model:[ \t]*(.*?)[ \t]*$', re.MULTILINE)
-FENCE = re.compile(r'^[ \t]*(```|~~~)[^\n]*\n(.*?)^[ \t]*\1', re.MULTILINE | re.DOTALL)
 MODEL_ID = re.compile(r'\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?')
 
 

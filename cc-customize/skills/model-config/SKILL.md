@@ -287,16 +287,16 @@ Use **AskUserQuestion** to present the valid levels for the reference model
 from the table in Background. Validate the answer against that list and
 normalize it to lowercase.
 
-Then ask about scope:
+If the reference model is Opus 5.5, skip the scope question and use **This
+model only**. Tell the user that the top-level `effortLevel` does not apply to
+Opus 5.5.
+
+For any other reference model, ask about scope:
 
 - **This model only**: write `modelSettings.<model>.effortLevel`. This matches
   what `/effort` writes.
 - **All models without a saved level, except Opus 5.5**: write the top-level
   `effortLevel`.
-
-If the reference model is Opus 5.5, skip the scope question and use **This
-model only**. Tell the user that the top-level `effortLevel` does not apply to
-Opus 5.5.
 
 **If the user selects `max`:** explain that `effortLevel` and `modelSettings`
 do not accept `max`, and that `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block

@@ -41,14 +41,16 @@ Consequences:
   first call. Each resume passes `-c sandbox_mode="read-only"` and runs from
   the repository root.
 - Each model family has one primary model and one fallback model in
-  `allowed-models.json`. A model pin names the primary model of its family,
-  or `inherit`. A pressure test uses the fallback model only after a flag.
+  `allowed-models.json`. A model pin names the primary model of its family.
+  A Claude Code agent can set `inherit` instead. A pressure test uses the
+  fallback model only after a flag.
 - A change to the allowed models starts in `allowed-models.json`. The same
   change updates both skills, the cc-customize `model-config` skill, and the
   model pins in agent and Codex agent files. The test data in
   `dev-skills/tests/test_critic_status.py` reads the file.
 - `tests/test_model_pins.py` fails until these conditions are true:
-  - Every model pin names the primary model of its family, or `inherit`.
+  - Every model pin names the primary model of its family. A Claude Code
+    agent can set `inherit` instead.
   - Each skill sets the primary and fallback models of its critic family
     and names no other model.
   - The `model-config` skill names the Claude primary and fallback models.
@@ -59,4 +61,6 @@ text in the codex-cli 0.162.1 binary: `model rerouted:` and the "as a
 fallback" policy message. Codex lists the model IDs available to the account
 in `$CODEX_HOME/models_cache.json`.
 
-See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
+See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284) for the
+critic decision and [issue #289](https://github.com/aeghnnsw/cc-toolkit/issues/289)
+for the allowed-model list and its test.

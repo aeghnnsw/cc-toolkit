@@ -89,12 +89,12 @@ A model ID that the repository permits a model pin or a critic call to name.
 _Avoid_: Approved model, supported model
 
 **Model pin**:
-A model value that a shipped agent or skill sets for its own work.
+A model value that a shipped agent sets for its own work.
 _Avoid_: Hard-coded model
 
 **Primary model**:
-The allowed model that a model pin or the first critic call of a pressure test
-names.
+The allowed model of a model family that a model pin or the first critic call
+of a pressure test names.
 _Avoid_: Default model, main model
 
 ## Pressure-test language

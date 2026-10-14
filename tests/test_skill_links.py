@@ -8,9 +8,8 @@ from typing import NamedTuple
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from package_support import ROOT, git_files, validator
+from package_support import FENCE, ROOT, git_files, validator
 
-FENCE = re.compile(r'^[ \t]*(```|~~~).*?^[ \t]*\1', re.MULTILINE | re.DOTALL)
 # An inline link or image destination, or a reference definition; footnotes are not links.
 LINK = re.compile(r'\]\(\s*(?:<([^>\n]+)>|([^\s)]+))|^[ \t]*\[(?!\^)[^\]]+\]:[ \t]*(?:<([^>\n]+)>|(\S+))',
                   re.MULTILINE)
