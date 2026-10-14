@@ -19,7 +19,7 @@ the user to invoke them.
 
 - If a skill appears in the available skills list, invoke it with the Skill
   tool.
-- Resolve every other skill this file names with one command. These are
+- Resolve every other skill this file names with one command. These can be
   user-invoked skills: their frontmatter sets
   `disable-model-invocation: true`, so the Skill tool cannot load them. For
   example:
@@ -36,7 +36,7 @@ the user to invoke them.
   names another user-invoked skill, resolve that skill with the same
   command. When it says to call the Skill tool for another skill, do so.
 - If the command reports an error for a skill, its message names the
-  cause: the registry is missing, or the plugin is not installed, is
+  cause: the plugin registry is missing, or the plugin is not installed, is
   disabled, or does not contain the skill. Report the cause as a blocker and
   stop.
 - If a referenced skill stops because the repository lacks issue tracker or

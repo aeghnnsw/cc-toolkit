@@ -17,9 +17,10 @@ Codex: the [plugins."PLUGIN@MARKETPLACE"] table in config.toml under
 CODEX_HOME (default ~/.codex) must set enabled = true. The highest numeric
 version under plugins/cache/MARKETPLACE/PLUGIN/ is used.
 
-In the plugin root, the search order is: the host manifest's skills paths,
-the skills/ directory, then the whole root without the other host's skill
-copies.
+In the plugin root, search the skills paths of the host manifest and the
+skills/ directory. In Codex, manifest skills paths replace skills/. Without
+manifest skills paths, also search the whole root without the other host's
+skill copies.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Callable, Iterable, NamedTuple
 
 USAGE = "usage: resolve_skill.py [--host claude|codex] PLUGIN:SKILL..."
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
@@ -47,9 +49,15 @@ def load_json(path: Path) -> dict:
     return data
 
 
-def plugin_keys(keys, plugin: str) -> list[str]:
+def split_key(key: str) -> tuple[str, str]:
+    """Return (PLUGIN, MARKETPLACE) from a "PLUGIN@MARKETPLACE" key."""
+    plugin, _, marketplace = key.partition("@")
+    return plugin, marketplace
+
+
+def plugin_keys(keys: Iterable[str], plugin: str) -> list[str]:
     """Return the "PLUGIN@MARKETPLACE" keys that belong to PLUGIN."""
-    return [k for k in keys if k.split("@", 1)[0] == plugin]
+    return [k for k in keys if split_key(k)[0] == plugin]
 
 
 def is_within(child: Path, parent: Path) -> bool:
@@ -86,10 +94,14 @@ def claude_plugin_root(plugin: str) -> Path:
         raise ResolveError(f"plugin {keys[0]} is disabled in {settings}")
 
     cwd = Path.cwd().resolve()
-    records = [r for k in usable for r in entries[k] if isinstance(r, dict) and r.get("installPath")]
+    records = [
+        r for k in usable for r in entries[k]
+        if isinstance(r, dict) and isinstance(r.get("installPath"), str) and r["installPath"]
+    ]
     projects = [
         r for r in records
-        if r.get("projectPath") and is_within(cwd, Path(r["projectPath"]).resolve())
+        if isinstance(r.get("projectPath"), str) and r["projectPath"]
+        and is_within(cwd, Path(r["projectPath"]).resolve())
     ]
     projects.sort(key=lambda r: len(str(Path(r["projectPath"]).resolve())), reverse=True)
     users = [r for r in records if r.get("scope") == "user"]
@@ -106,7 +118,7 @@ def read_codex_plugins(config: Path) -> dict[str, bool]:
         for line in handle:
             stripped = line.strip()
             if stripped.startswith("["):
-                match = re.fullmatch(r"""\[\s*plugins\.(["'])([^"']+)\1\s*\]\s*(#.*)?""", stripped)
+                match = re.fullmatch(r"""\[\s*plugins\s*\.\s*(["'])([^"']+)\1\s*\]\s*(#.*)?""", stripped)
                 current = match.group(2) if match else None
                 if current:
                     tables.setdefault(current, False)
@@ -140,7 +152,7 @@ def codex_plugin_root(plugin: str) -> Path:
     keys = [k for k in plugin_keys(tables, plugin) if tables[k]]
     if not keys:
         raise ResolveError(f"plugin {plugin} is not enabled in {config}")
-    marketplace = keys[0].split("@", 1)[1]
+    marketplace = split_key(keys[0])[1]
     cache = home / "plugins" / "cache" / marketplace / plugin
     versions = [p for p in cache.glob("*") if p.is_dir() and not p.name.startswith(".")]
     if not versions:
@@ -148,9 +160,18 @@ def codex_plugin_root(plugin: str) -> Path:
     return max(versions, key=lambda p: version_key(p.name))
 
 
+class Host(NamedTuple):
+    """How to find the plugin root and the skills of one host."""
+
+    plugin_root: Callable[[str], Path]
+    manifest: str
+    other_copies: str  # skill folder of the other host, skipped by the search
+    keeps_skills_dir: bool  # skills/ still loads when the manifest lists skills paths
+
+
 HOSTS = {
-    "claude": {"root": claude_plugin_root, "manifest": ".claude-plugin/plugin.json", "other_copies": "codex-skills"},
-    "codex": {"root": codex_plugin_root, "manifest": ".codex-plugin/plugin.json", "other_copies": "claude-skills"},
+    "claude": Host(claude_plugin_root, ".claude-plugin/plugin.json", "codex-skills", True),
+    "codex": Host(codex_plugin_root, ".codex-plugin/plugin.json", "claude-skills", False),
 }
 
 
@@ -165,24 +186,32 @@ def manifest_dirs(root: Path, manifest: str) -> list[Path]:
     return [root / p for p in paths or [] if isinstance(p, str)]
 
 
-def find_skill(root: Path, skill: str, host: dict) -> Path | None:
+def find_skill(root: Path, skill: str, host: Host) -> Path | None:
     """Return the SKILL.md of SKILL under ROOT, or None."""
-    for base in [*manifest_dirs(root, host["manifest"]), root / "skills"]:
+    declared = manifest_dirs(root, host.manifest)
+    if not declared:
+        bases = [root / "skills", root]
+    elif host.keeps_skills_dir:
+        bases = [*declared, root / "skills"]
+    else:
+        bases = declared
+    for base in bases:
         for candidate in (base / "SKILL.md", base / skill / "SKILL.md"):
             if candidate.parent.name == skill and candidate.is_file():
                 return candidate
-    skip = SKIP_DIRS | {host["other_copies"]}
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in skip)
-        if Path(dirpath).name == skill and "SKILL.md" in filenames:
-            return Path(dirpath) / "SKILL.md"
+    skip = SKIP_DIRS | {host.other_copies}
+    for base in bases:
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = sorted(d for d in dirnames if d not in skip)
+            if Path(dirpath).name == skill and "SKILL.md" in filenames:
+                return Path(dirpath) / "SKILL.md"
     return None
 
 
-def resolve(name: str, host: dict) -> Path:
+def resolve(name: str, host: Host) -> Path:
     """Return the absolute SKILL.md path for "PLUGIN:SKILL"."""
     plugin, skill = name.split(":", 1)
-    root = host["root"](plugin)
+    root = host.plugin_root(plugin)
     if not root.is_dir():
         raise ResolveError(f"install path {root} does not exist")
     path = find_skill(root, skill, host)

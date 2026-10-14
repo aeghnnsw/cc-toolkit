@@ -97,7 +97,7 @@ class ClaudeResolveTest(ResolverCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout, f"matt:retro {retro}\nmatt:to-spec {spec}\n")
 
-    def test_skill_outside_the_manifest_list_is_found_by_search(self):
+    def test_skill_is_found_by_search_without_manifest_paths(self):
         root = self.install_root("tools")
         expected = make_skill(root, "extra/nested/helper")
         self.claude_plugin("tools", [{"scope": "user", "installPath": str(root)}])
@@ -201,6 +201,20 @@ class ClaudeResolveTest(ResolverCase):
 
         self.assertEqual(self.run_resolver("matt:retro").stdout, f"matt:retro {expected}\n")
 
+    def test_manifest_paths_add_to_the_skills_dir(self):
+        root = self.install_root("matt", {"skills": ["./engineering/retro"]})
+        make_skill(root, "engineering/retro")
+        expected = make_skill(root, "skills/to-spec")
+        make_skill(root, "extra/helper")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+
+        completed = self.run_resolver("matt:to-spec", "matt:helper")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, f"matt:to-spec {expected}\n")
+        self.assertIn("matt:helper", completed.stderr)
+        self.assertIn("not found", completed.stderr)
+
     def test_search_skips_the_codex_copy(self):
         root = self.install_root("dev")
         make_skill(root, "codex-skills/helper")
@@ -258,6 +272,21 @@ class ClaudeResolveTest(ResolverCase):
                 self.assertIn("registry", completed.stderr)
                 self.assertNotIn("Traceback", completed.stderr)
 
+    def test_install_record_with_a_wrong_type_fails(self):
+        root = self.install_root("matt")
+        expected = make_skill(root, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+        for record in ({"scope": "user", "installPath": 5}, {"scope": "project", "projectPath": 7, "installPath": "x"}):
+            with self.subTest(record=record):
+                self.claude_plugin("bad", [record])
+
+                completed = self.run_resolver("bad:retro", "matt:retro")
+
+                self.assertEqual(completed.returncode, 1)
+                self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+                self.assertIn("bad:retro", completed.stderr)
+                self.assertNotIn("Traceback", completed.stderr)
+
     def test_missing_registry_fails(self):
         completed = self.run_resolver("matt:retro")
 
@@ -294,7 +323,7 @@ class CodexResolveTest(ResolverCase):
 
     def test_table_header_forms_are_read(self):
         expected = self.codex_install("matt", "1.0.0", "retro")
-        for header in ("[plugins.'matt@market'] # note", '[ plugins."matt@market" ]'):
+        for header in ("[plugins.'matt@market'] # note", '[ plugins."matt@market" ]', '[plugins. "matt@market"]'):
             with self.subTest(header=header):
                 self.codex_config(f"{header}\nenabled = true\n")
 
@@ -320,6 +349,43 @@ class CodexResolveTest(ResolverCase):
         completed = self.run_resolver("--host", "codex", "dev:pressure-test")
 
         self.assertEqual(completed.stdout, f"dev:pressure-test {expected}\n")
+
+    def test_claude_copy_is_not_used_when_the_manifest_names_skill_paths(self):
+        root = self.codex_home / "plugins" / "cache" / "market" / "dev" / "1.0.0"
+        write(root / ".codex-plugin" / "plugin.json", json.dumps({"skills": "./codex-skills/"}))
+        make_skill(root, "codex-skills/pressure-test")
+        make_skill(root, "skills/project-eval")
+        self.codex_config('[plugins."dev@market"]\nenabled = true\n')
+
+        completed = self.run_resolver("--host", "codex", "dev:project-eval")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not found", completed.stderr)
+
+    def test_missing_config_fails(self):
+        self.codex_install("matt", "1.0.0", "retro")
+
+        completed = self.run_resolver("--host", "codex", "matt:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Codex config", completed.stderr)
+
+    def test_enabled_plugin_without_a_cache_fails(self):
+        self.codex_config('[plugins."matt@market"]\nenabled = true\n')
+
+        completed = self.run_resolver("--host", "codex", "matt:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not installed", completed.stderr)
+
+    def test_missing_codex_skill_fails(self):
+        self.codex_install("matt", "1.0.0", "retro")
+        self.codex_config('[plugins."matt@market"]\nenabled = true\n')
+
+        completed = self.run_resolver("--host", "codex", "matt:to-spec")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not found", completed.stderr)
 
     def test_plugin_that_is_not_enabled_fails(self):
         self.codex_install("matt", "1.0.0", "retro")
