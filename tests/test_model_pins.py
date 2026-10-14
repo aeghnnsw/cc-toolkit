@@ -3,10 +3,12 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from package_support import ROOT, git_files, validator
 
 ALLOWED_MODELS = 'allowed-models.json'

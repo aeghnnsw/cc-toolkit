@@ -3,9 +3,11 @@ from collections import Counter
 import os
 from pathlib import Path
 import re
+import sys
 from typing import NamedTuple
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from package_support import ROOT, git_files, validator
 
 FENCE = re.compile(r'^[ \t]*(```|~~~).*?^[ \t]*\1', re.MULTILINE | re.DOTALL)
