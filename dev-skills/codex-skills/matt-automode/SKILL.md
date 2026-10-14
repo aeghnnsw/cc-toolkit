@@ -16,25 +16,28 @@ The user's request to use this mode explicitly invokes every skill this file
 names. Load and follow each one without a separate user invocation. Do not ask
 the user to invoke them.
 
-Resolve each skill by plugin and name. Do not hard-code installation paths or
-versions.
+- If a skill appears in the available skills list, open its `SKILL.md`.
+- Resolve every other skill this file names with one command. These can be
+  user-invoked skills: their `agents/openai.yaml` sets
+  `policy.allow_implicit_invocation: false`, so Codex omits them from the
+  list. This policy does not restrict an explicit invocation or reading the
+  skill file. `<plugin-root>` is the root of this `dev-skills` plugin, two
+  levels above this skill folder. For example:
 
-- If the skill appears in the available skills list, open its `SKILL.md`.
-- If it does not appear, it can be a user-invoked skill: its
-  `agents/openai.yaml` sets `policy.allow_implicit_invocation: false`, so Codex
-  omits it from the list. This policy stops Codex from choosing the skill on its
-  own. It does not restrict an explicit invocation or reading the skill file.
-  To find the plugin root, take the skill roots table entry of another skill
-  from the same plugin. Keep its path up to the version directory
-  (`plugins/cache/<marketplace>/<plugin>/<version>`). If no skill from the
-  plugin is listed, confirm that `config.toml` in the Codex home (`CODEX_HOME`,
-  default `~/.codex`) enables `<plugin>@<marketplace>`, then use its installed
-  version under `plugins/cache/<marketplace>/<plugin>/`. Skills can be nested
-  below the plugin root, so search it recursively for a `<skill>` directory
-  that contains `SKILL.md`.
-- Read each `SKILL.md` and every file it references, then follow it. Resolve
-  each skill that it names in the same way.
-- If no enabled plugin provides the skill, report the blocker and stop.
+  ```bash
+  python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
+    mattpocock-skills:grill-with-docs mattpocock-skills:to-spec \
+    mattpocock-skills:to-tickets mattpocock-skills:implement \
+    mattpocock-skills:retro
+  ```
+
+  Each output line gives a skill name and the path of its `SKILL.md`. Read
+  each `SKILL.md` and every file it references, then follow it. Resolve each
+  skill that it names in the same way.
+- If the command reports an error for a skill, its message names the
+  cause: the Codex config is missing, or the plugin is not enabled, is not
+  installed, or does not contain the skill. Report the cause as a blocker
+  and stop.
 
 ## Workflow
 
