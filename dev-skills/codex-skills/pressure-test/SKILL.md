@@ -108,7 +108,7 @@ grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail
 ```
 
 - Status `ok` and `REPLY OK` — continue to the loop.
-- Status `refused` — follow [Flags](#flags), then re-run the preflight.
+- Status `flagged` — follow [Flags](#flags), then re-run the preflight.
 - Any other result — stop. Report a one-line diagnosis from `$DIR/err.log`, for example "Claude Code is not signed in", "`claude-opus-5-5` is not available to this account", or "the sandbox blocked network access". The ending condition is "critic unavailable".
 
 ## Loop
@@ -118,8 +118,9 @@ grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail
 3. Send the packet to the Claude critic (kickoff or resume, below).
 4. Read the critic's objections from `$DIR/msg.txt`.
 5. Handle every substantive objection: concede and revise, or rebut with evidence.
-6. Stop if converged; otherwise repeat until round 6.
-7. Write and present the conclusion.
+6. Print the round block (see [Progress Format](#progress-format)) and update the [session record](#session-record).
+7. Stop if converged; otherwise repeat until round 6.
+8. Write and present the conclusion.
 
 ## Critic Context Packet
 
@@ -183,13 +184,13 @@ cat "$DIR/msg.txt"
 Act on the status line:
 
 - `ok` — read the objections in `$DIR/msg.txt`.
-- `refused` — follow [Flags](#flags).
+- `flagged` — follow [Flags](#flags).
 - `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
 - `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
 
 ## Flags
 
-Any safeguard action flags the call, even when the critic finished its answer. `critic_status.py` reports `refused` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
+Any safeguard action flags the call, even when the critic finished its answer. `critic_status.py` reports `flagged` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
 
 - **Flag on the critic model** — switch to the fallback model and re-run the same block once; `prompt.md` is unchanged:
 
@@ -209,6 +210,18 @@ Stop before round 6 only when:
 - the original decision is stable and remaining objections are out-of-scope refinements that do not change the decision.
 
 Do not stop because the current position feels persuasive. Judge convergence against the critic's actual objections and the decision boundary.
+
+## Progress Format
+
+Print one block per round, as it happens:
+
+```text
+─── Round N ───
+Critic ▸ <faithful 2-4 bullet objections — no softening>
+Codex ▸ <concede/rebut per objection, condensed>
+```
+
+End with the ending condition, for example `Converged after N rounds.` or `Round cap reached — K tension(s) unresolved.`
 
 ## Session Record
 

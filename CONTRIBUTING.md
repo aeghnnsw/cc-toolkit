@@ -57,12 +57,12 @@ paths.
 
   A valid copy prints `Skill is valid!`. The repository validator checks
   the headers of both copies.
-- **Shell blocks.** A skill's bash blocks run in the user's shell, which can
-  be bash or zsh. Write them to run in both: use a name such as `rc` for an
-  exit code, because `status` is read-only in zsh, and pass a file list
-  through `xargs` or a loop, because zsh does not split an unquoted variable
-  into words. Each tool call can start a new shell, so keep state that later
-  blocks need in a file.
+- **Shell blocks.** A skill's shell blocks run in the user's shell, which
+  can be bash or zsh. Write each block to run in both shells. Store an exit
+  code in a name such as `rc`, because `status` is read-only in zsh. Pass a
+  file list through `xargs` or a loop, because zsh does not split an
+  unquoted variable into words. Each tool call can start a new shell, so
+  keep state that later blocks need in a file.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -120,8 +120,8 @@ A design, plan, or conclusion under `docs/` records decisions as of when it
 was written, and later work can supersede part of it. Before relying on one,
 read any status or superseded note at its top, and confirm current behavior
 in the code it describes.
-When a change supersedes a dated record, add a superseded note at its top
-that names the date and issue and links the replacement.
+When a change supersedes part of such a record, add a superseded note at
+its top. Name the date and the issue, and link the replacement.
 
 Do not blanket-ignore `docs/`, `docs/agents/`, or `docs/adr/`. Git ignores
 control tracking; they do not define which files belong in a plugin package.

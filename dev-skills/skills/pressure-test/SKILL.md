@@ -133,8 +133,8 @@ else echo "SMOKE FAILED"; tail -5 "$DIR/smoke.err"; fi
 
 1. Form your **honest initial position** on the goal (claim + reasoning). Show it
    to the user.
-2. Write the kickoff prompt to `$DIR/prompt.md`: the goal, your position, and the
-   critic prompt. The quoted heredoc keeps your text literal, so backticks, `$`,
+2. Write the kickoff prompt to `$DIR/prompt.md`: the goal, your position, the
+   decision boundary, the evidence, your assumptions, and the critic prompt. The quoted heredoc keeps your text literal, so backticks, `$`,
    and quotes in it are safe. Write every prompt this way: in a double-quoted
    shell variable, a backtick in your text would run as a command.
 3. Send it. **Only this first call carries `-s`/`-C`** — later
@@ -148,6 +148,15 @@ GOAL:
 
 CLAUDE'S CURRENT POSITION:
 <your position + reasoning>
+
+DECISION BOUNDARY:
+<what is in scope, what is out of scope, and what objection would change the decision>
+
+EVIDENCE:
+<relevant files, diffs, and command output; name files the critic can read>
+
+ASSUMPTIONS:
+<known constraints and assumptions to attack>
 __PROMPT_END__
 cat "$DIR/critic.txt" >> "$DIR/prompt.md"
 
@@ -219,7 +228,8 @@ cat "$DIR/msg.txt"
 
 Codex flags a request with a policy error, for example "This request has been
 flagged for possible cybersecurity risk." (`cyber_policy`), a biological-risk
-flag (`bio_policy`), or a misalignment policy block. Codex can also reroute a
+flag (`bio_policy`), or a misalignment policy error (`misalignment_policy`).
+Codex can also reroute a
 flagged account to another model. `codex_flagged` detects these cases.
 
 - **Flag on the critic model** — switch to the fallback model and re-run the

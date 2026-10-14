@@ -22,10 +22,12 @@ A Codex flag is a policy error such as `cyber_policy` or `bio_policy`, or a
 model reroute. A Claude flag is any safeguard action: a response that ends
 with `stop_reason: "refusal"`, a result with `safety_stops` above zero, or
 a refusal event from Claude Code. After a flag, the skill switches to the
-fallback model for the rest of the loop. A flag on the fallback model ends
-the loop with a partial conclusion. The skills turn off Claude Code's
-automatic refusal fallback, because Claude Code chooses that fallback model
-itself. Each call accepts a reply only from the current critic model.
+fallback model for the rest of the pressure test. A flag on the fallback
+model ends the pressure test with a partial conclusion. The skills turn off
+Claude Code's automatic refusal fallback, because Claude Code chooses that
+fallback model itself. In Codex, each call accepts a reply only from the current critic
+model. In Claude Code, the skill finds a model change through the Codex
+reroute notice.
 
 Consequences:
 
@@ -36,13 +38,16 @@ Consequences:
 - `codex exec resume` does not keep the sandbox or working directory of the
   first call. Each resume passes `-c sandbox_mode="read-only"` and runs from
   the repository root.
-- A change to the allowed models changes both skills, this record, and the
-  model pins in `dev-skills/agents/eval-critic.md`,
-  `doc-skills/agents/paper-reader.md`, `doc-skills/agents/paper-consolidator.md`,
-  and `task-loop/codex-agents/task-loop-cycle-worker.toml`.
+- A change to the allowed models changes both skills, this record, the test
+  data in `dev-skills/tests/test_critic_status.py`, and the model pins in
+  `dev-skills/agents/eval-critic.md`, `doc-skills/agents/paper-reader.md`,
+  `doc-skills/agents/paper-consolidator.md`, and
+  `task-loop/codex-agents/task-loop-cycle-worker.toml`.
 
 The CLI behavior above was verified on 2026-10-14 with codex-cli 0.162.1 and
-Claude Code 2.1.299. Codex lists the model IDs available to the account in
-`$CODEX_HOME/models_cache.json`.
+Claude Code 2.1.299. No live call was rerouted. The reroute check matches
+text in the codex-cli 0.162.1 binary: `model rerouted:` and the "as a
+fallback" policy message. Codex lists the model IDs available to the account
+in `$CODEX_HOME/models_cache.json`.
 
 See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284).

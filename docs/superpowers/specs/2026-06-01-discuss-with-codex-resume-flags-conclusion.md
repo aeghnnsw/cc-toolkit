@@ -1,10 +1,11 @@
 # Conclusion: discuss-with-codex resume-flag asymmetry (issue #113)
 
-> **Superseded (2026-10-14, issue #284).** Item 1 below is wrong for
-> codex-cli 0.162.1. Live tests showed that `codex exec resume` keeps neither
-> the sandbox nor the working directory of the first call. The current skill
-> passes `-c sandbox_mode="read-only"` and runs each call from the repository
-> root. See [`pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md)
+> **Superseded (2026-10-14, issue #284).** Items 1 and 4 below are wrong
+> for codex-cli 0.162.1. Live tests showed that `codex exec resume` keeps
+> neither the sandbox nor the working directory of the first call. The current
+> skill passes `-c sandbox_mode="read-only"` and runs each call from the
+> repository root. It keeps the exit code in `rc`, because `status` is
+> read-only in zsh. See [`pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md)
 > and [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md).
 
 Date: 2026-06-01

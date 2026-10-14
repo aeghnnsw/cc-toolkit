@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Classify one non-interactive Claude critic call for the pressure-test skill.
 
-Usage: critic_status.py EVENTS REPLY ALLOWED_MODEL...
+Usage: critic_status.py EVENTS REPLY MODEL
 
 EVENTS is the stdout of `claude -p --output-format stream-json --verbose`.
-The script writes the critic's final reply to REPLY and prints one status:
+MODEL is the current critic model. The script writes the critic's final
+reply to REPLY and prints one status:
 
-  ok                 an allowed model answered
-  refused            Claude flagged the request; retry on the fallback model
-  wrong_model:IDS    a message came from a model not in ALLOWED_MODEL
+  ok                 MODEL answered
+  flagged            Claude flagged the call; retry on the fallback model
+  wrong_model:IDS    a message came from a model other than MODEL
   error:DETAIL       the call failed or produced no final result
 """
 
@@ -34,7 +35,7 @@ def read_events(path: str) -> list[dict]:
     return events
 
 
-def is_refused(events: list[dict], result: dict | None) -> bool:
+def is_flagged(events: list[dict], result: dict | None) -> bool:
     """Return True when Claude flagged this call and the fallback model must retry it.
 
     Any safeguard action counts, even when the answer completed:
@@ -70,13 +71,13 @@ def answer_models(events: list[dict]) -> set[str]:
     return models
 
 
-def classify(events: list[dict], allowed: list[str]) -> tuple[str, str]:
+def classify(events: list[dict], model: str) -> tuple[str, str]:
     """Return the status line and the critic's final reply."""
     result = next((e for e in reversed(events) if e.get("type") == "result"), None)
     reply = (result or {}).get("result") or ""
-    if is_refused(events, result):
-        return "refused", reply
-    unexpected = sorted(answer_models(events) - set(allowed))
+    if is_flagged(events, result):
+        return "flagged", reply
+    unexpected = sorted(answer_models(events) - {model})
     if unexpected:
         return "wrong_model:" + ",".join(unexpected), reply
     if result is None:
@@ -87,16 +88,16 @@ def classify(events: list[dict], allowed: list[str]) -> tuple[str, str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 4:
+    if len(argv) != 4:
         print(__doc__.strip(), file=sys.stderr)
         return 2
-    events_path, reply_path, *allowed = argv[1:]
+    events_path, reply_path, model = argv[1:]
     try:
         events = read_events(events_path)
     except OSError as error:
         status, reply = f"error:cannot read events ({error.strerror})", ""
     else:
-        status, reply = classify(events, allowed)
+        status, reply = classify(events, model)
     with open(reply_path, "w", encoding="utf-8") as handle:
         handle.write(reply)
     print(status)
