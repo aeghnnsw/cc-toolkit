@@ -81,10 +81,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - Read the plugin's host-specific manifest before changing component paths.
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
-  in `.codex-plugin/plugin.json` and declare skill and hook paths; a sync
-  script installs task-loop's Codex agents. The
-  [host ownership](docs/design/package-validation.md#host-ownership) table
-  lists the resources of each host.
+  in `.codex-plugin/plugin.json` and declare their component paths. Some
+  resources outside these paths belong to one host, such as task-loop's Codex
+  agents. See [host ownership](docs/design/package-validation.md#host-ownership).
 - Update the affected host's plugin version when shipping changes to that
   plugin. Root contributor documentation does not require a plugin version
   bump. Hosts can have different release versions.

@@ -80,7 +80,7 @@ paths.
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
 
-## Search the repository
+## Repository search
 
 From the repository root, search with `git grep`. It reads only the tracked
 files of the current worktree, so it skips the other worktrees under
