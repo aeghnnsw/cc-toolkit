@@ -1,5 +1,9 @@
 # task-loop Phase 0 — Agent-Teams primitive spike (checklist + findings)
 
+> **Superseded in part (2026-10-14, issue #284).** The `dev-skills:discuss-with-codex`
+> skill is now [`dev-skills:pressure-test`](../../../dev-skills/skills/pressure-test/SKILL.md).
+> Read [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md).
+
 **Purpose.** Prove the experimental Claude Code primitives that `run-cycle` (the orchestrator)
 will rest on, **before** building it. This is throwaway verification, not TDD. Run each check
 in a **teams-enabled, interactive session** and record the result inline. If a primitive can't

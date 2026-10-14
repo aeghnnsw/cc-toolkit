@@ -14,7 +14,7 @@ Pocock's skills installed.
 
 ### Issue tracker
 
-Before creating or updating issues and pull requests, read
+Before reading, creating, or updating issues and pull requests, read
 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). GitHub Issues
 tracks work; durable design documents can live in the repository.
 
@@ -81,7 +81,10 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - Read the plugin's host-specific manifest before changing component paths.
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
-  in `.codex-plugin/plugin.json` and declare their component paths.
+  in `.codex-plugin/plugin.json` and declare skill and hook paths; a sync
+  script installs task-loop's Codex agents. The
+  [host ownership](docs/design/package-validation.md#host-ownership) table
+  lists the resources of each host.
 - Update the affected host's plugin version when shipping changes to that
   plugin. Root contributor documentation does not require a plugin version
   bump. Hosts can have different release versions.
