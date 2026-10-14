@@ -82,13 +82,14 @@ paths.
 
 ## Search the repository
 
-Search with `git grep`. It reads only the tracked files of the current
-worktree. A recursive `grep` from the main checkout also reads the other
-worktrees under `trees/` and `.claude/worktrees/`, so old copies of a file
-hide the current one.
+From the repository root, search with `git grep`. It reads only the tracked
+files of the current worktree, so it skips the other worktrees under
+`trees/` and `.claude/worktrees/`. A recursive `grep` from the main checkout
+can read those worktrees and match many copies of the same file. To also
+search new files that are not yet added, pass `--untracked`.
 
-Dated records under `docs/superpowers` and earlier `CHANGELOG.md` entries
-can describe replaced behavior. To search current text only, exclude them:
+Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
+describe replaced behavior. To search current text only, exclude them:
 
 ```bash
 git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md'

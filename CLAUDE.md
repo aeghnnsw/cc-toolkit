@@ -2,9 +2,9 @@
 
 This repository develops and publishes Claude Code and Codex plugins. See
 [README.md](README.md) for the plugin catalog and
-[CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, file placement,
-and verification commands. `AGENTS.md` is a symlink to this file; edit this
-file to update instructions for both hosts.
+[CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, search, file
+placement, and verification commands. `AGENTS.md` is a symlink to this file;
+edit this file to update instructions for both hosts.
 
 ## Agent skills
 
