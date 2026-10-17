@@ -66,7 +66,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
 - **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
-- **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; requires the Matt skills plugin
+- **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; pressure-tests each grilling round’s design-critical decisions with an independent critic; requires the Matt skills plugin
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **project-eval**: Dispatch evaluator agents for multi-angle project review
