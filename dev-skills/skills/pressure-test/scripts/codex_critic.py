@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one read-only Codex critic call for the pressure-test skill.
 
-Usage: python3 codex_critic.py <smoke|kickoff|resume> <workdir> [--timeout SECONDS]
+Usage: python3 codex_critic.py <smoke|kickoff|resume> <workdir>
 
 Every call runs `codex exec` from the repository root with the pinned model
 and a read-only sandbox: smoke at effort low with the prompt "Reply with
@@ -16,8 +16,9 @@ Inputs in <workdir>:
   prompt.md   prompt for kickoff and resume
   critic.txt  optional critic instructions, sent after prompt.md
   thread_id   critic thread for resume; kickoff writes it
+  timeout     optional call timeout in seconds, in place of the default
 
-Outputs in <workdir>: msg.txt (the critic's reply; deleted before each call),
+Outputs in <workdir>: msg.txt (the critic's reply; deleted first on every run),
 events.jsonl (codex stdout), err.log (codex stderr), and, after a kickoff,
 thread_id (empty when codex reported no thread).
 
@@ -27,9 +28,11 @@ exits 0 only for ok. The code is the codex exit code, 124 for a timeout,
 order of precedence:
 
   error:codex not found   codex is not on PATH; codex did not run
-  error:missing FILE      a required input is missing or empty, or repo names no
-                          directory; codex did not run
-  flagged                 an error event or stderr reports a flag or a model reroute
+  error:missing FILE      a required input is missing or empty, repo names no
+                          directory, or timeout is not a positive number; codex
+                          did not run
+  flagged                 an error event, an error item, or stderr reports a flag or
+                          a model reroute
   error:timeout           the call ran out of time and was killed
   error:exit N            codex exited with code N
   error:no thread id      a kickoff emitted no thread.started event
@@ -61,7 +64,7 @@ NOT_FOUND_EXIT = 127
 # call timeout and the 600-second Bash tool timeout in SKILL.md.
 CLEANUP_SECONDS = 5
 ERROR_TYPES = {"error", "turn.failed"}
-ERROR_LINE = re.compile(r'"type" *: *"(error|turn\.failed)"')
+ERROR_LINE = re.compile('"type" *: *"(%s)"' % "|".join(re.escape(name) for name in sorted(ERROR_TYPES)))
 FLAG = re.compile(r"flagged for|policy violation|cyber_policy|bio_policy|misalignment_policy|rerouted|as a fallback",
                   re.IGNORECASE)
 
@@ -79,13 +82,26 @@ def read_input(workdir: Path, name: str) -> str:
     return read_text(workdir / name).strip()
 
 
+def call_timeout(mode: str, workdir: Path) -> float | None:
+    """Return the call timeout from the timeout file or the default; None when the file is not a positive number."""
+    text = read_input(workdir, "timeout")
+    try:
+        timeout = float(text) if text else TIMEOUTS[mode]
+    except ValueError:
+        return None
+    return timeout if timeout > 0 else None
+
+
 def missing_input(mode: str, workdir: Path) -> str:
     """Return the first required input file that is missing or empty, or "".
 
-    A repo file that does not name a directory counts as missing.
+    A repo file that does not name a directory, and a timeout file that is not
+    a positive number, count as missing.
     """
     if not Path(read_input(workdir, "repo") or "/nonexistent").is_dir():
         return "repo"
+    if call_timeout(mode, workdir) is None:
+        return "timeout"
     required = ["model"]
     if mode != "smoke":
         required.append("prompt.md")
@@ -113,17 +129,26 @@ def thread_id(workdir: Path) -> str:
     return ""
 
 
-def is_flagged(workdir: Path) -> bool:
-    """Return True when an error event or stderr reports a flag or a model reroute.
+def is_error(line: str, event: object) -> bool:
+    """Return True for an error or turn.failed event, or an event that carries an error item.
 
-    Only error and turn.failed events and stderr are searched, so words in the
-    critic's reply or agent messages never count.
+    Codex sends some warnings as {"type": "item.completed", "item": {"type": "error", ...}}.
+    A line that is not JSON counts when it contains an error type.
+    """
+    if not isinstance(event, dict):
+        return event is None and bool(ERROR_LINE.search(line))
+    item = event.get("item")
+    return event.get("type") in ERROR_TYPES or (isinstance(item, dict) and item.get("type") == "error")
+
+
+def is_flagged(workdir: Path) -> bool:
+    """Return True when an error event, an error item, or stderr reports a flag or a model reroute.
+
+    Only errors and stderr are searched, so words in the critic's reply or
+    agent messages never count.
     """
     texts = [read_text(workdir / "err.log")]
-    for line, event in event_lines(workdir / "events.jsonl"):
-        if (event is None and ERROR_LINE.search(line)) or (
-                isinstance(event, dict) and event.get("type") in ERROR_TYPES):
-            texts.append(line)
+    texts += [line for line, event in event_lines(workdir / "events.jsonl") if is_error(line, event)]
     return bool(FLAG.search("\n".join(texts)))
 
 
@@ -131,12 +156,12 @@ def codex_command(mode: str, workdir: Path, repo: str, model: str) -> list[str]:
     """Return the codex argument list for one call."""
     effort = "low" if mode == "smoke" else "xhigh"
     options = ["--json", "--skip-git-repo-check", "-m", model, "-c", f'model_reasoning_effort="{effort}"']
-    reply = ["-o", str(workdir / "msg.txt"), SMOKE_PROMPT if mode == "smoke" else "-"]
+    output = ["-o", str(workdir / "msg.txt"), SMOKE_PROMPT if mode == "smoke" else "-"]
     if mode == "resume":
         # `codex exec resume` rejects -s and -C and does not keep the kickoff sandbox.
         return ["codex", "exec", "resume", read_input(workdir, "thread_id"), *options,
-                "-c", 'sandbox_mode="read-only"', *reply]
-    return ["codex", "exec", *options, "-s", "read-only", "-C", repo, *reply]
+                "-c", 'sandbox_mode="read-only"', *output]
+    return ["codex", "exec", *options, "-s", "read-only", "-C", repo, *output]
 
 
 def descendants(pid: int, timeout: float) -> list[int]:
@@ -196,7 +221,6 @@ def run_codex(command: list[str], repo: str, workdir: Path, prompt: bytes | None
     codex runs in its own process group. A timeout kills the group and, as far
     as possible, every process below it.
     """
-    (workdir / "msg.txt").unlink(missing_ok=True)  # never show a stale reply
     stdin = subprocess.DEVNULL if prompt is None else subprocess.PIPE
     with open(workdir / "events.jsonl", "wb") as events, open(workdir / "err.log", "wb") as err:
         process = subprocess.Popen(command, cwd=repo, stdin=stdin, stdout=events, stderr=err,
@@ -238,9 +262,9 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mode", choices=("smoke", "kickoff", "resume"))
     parser.add_argument("workdir")
-    parser.add_argument("--timeout", type=float, metavar="SECONDS")
     args = parser.parse_args(argv[1:])
     workdir = Path(args.workdir).absolute()
+    (workdir / "msg.txt").unlink(missing_ok=True)  # never show a stale reply, even when codex does not run
     repo, model = read_input(workdir, "repo"), read_input(workdir, "model")
     if shutil.which("codex") is None:
         return report(NOT_FOUND_EXIT, model, "error:codex not found")
@@ -251,8 +275,8 @@ def main(argv: list[str]) -> int:
     if args.mode != "smoke":
         critic = workdir / "critic.txt"
         prompt = (workdir / "prompt.md").read_bytes() + (critic.read_bytes() if critic.exists() else b"")
-    timeout = TIMEOUTS[args.mode] if args.timeout is None else args.timeout
-    code = run_codex(codex_command(args.mode, workdir, repo, model), repo, workdir, prompt, timeout)
+    code = run_codex(codex_command(args.mode, workdir, repo, model), repo, workdir, prompt,
+                     call_timeout(args.mode, workdir))
     if args.mode == "kickoff":
         (workdir / "thread_id").write_text(thread_id(workdir), encoding="utf-8")
     return report(TIMEOUT_EXIT if code is None else code, model, classify(args.mode, workdir, code))

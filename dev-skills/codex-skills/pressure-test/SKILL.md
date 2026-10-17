@@ -1,6 +1,6 @@
 ---
 name: pressure-test
-description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion. A read-only Claude critic, run through the Claude Code CLI, supplies the pressure.
+description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion, including when another skill needs its decisions reviewed by an independent critic. A read-only Claude critic, run through the Claude Code CLI, supplies the pressure.
 ---
 
 # Pressure Test
@@ -129,7 +129,7 @@ grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail
 
 ## Pressure-Test Packet
 
-Before every critic round, provide the critic this packet:
+The kickoff packet has these fields:
 
 ```text
 GOAL
@@ -154,7 +154,7 @@ PRIOR ROUNDS
 Objections already raised and how they were handled.
 ```
 
-The critic prompt in `$DIR/critic.txt` follows the packet in every prompt.
+The critic instructions in `$DIR/critic.txt` follow the packet in every prompt.
 
 If the packet lacks enough evidence for reliable judgment, gather the missing evidence before calling the critic or report the gap.
 
@@ -162,7 +162,18 @@ The critic can read files in the repository and in `$DIR`, but it cannot run com
 
 Give each question an ID when the packet holds several questions.
 
-The critic keeps earlier rounds in its session. After the kickoff, a packet states the changes since the last round: how each objection was handled, the current position with each changed answer restated in full and the changed IDs listed, and NEW EVIDENCE.
+The critic keeps earlier rounds in its session. After the kickoff, a packet states the changes since the last round:
+
+```text
+HOW I HANDLED YOUR LAST OBJECTIONS
+Per objection: conceded and revised, or rebutted with evidence.
+
+CURRENT POSITION
+The revised position. Restate each changed answer in full and list the IDs that changed.
+
+NEW EVIDENCE
+New files or command output, or "none".
+```
 
 ## Calling The Critic
 
@@ -198,7 +209,7 @@ Act on the status line:
 - `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
 - `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
 
-Record every status line that is not `ok`, and each retry, in the session record.
+Record each failed or retried call in the session record, with its `exit=` line and its status.
 
 ## Flags
 
@@ -221,7 +232,7 @@ Stop before round 6 only when:
 - the critic reports no substantive objection, or
 - the original decision is stable and remaining objections are out-of-scope refinements that do not change the decision.
 
-With question IDs, the packet converges only when the critic's latest reply clears every ID: each ID has no substantive objection, or only out-of-scope refinements. An ID that the latest reply does not assess is not assessed. The main agent's own disposition never makes an ID converged.
+With question IDs, the packet converges only when the critic's latest reply clears every ID: each ID has no substantive objection, or only out-of-scope refinements. An ID that the latest reply does not assess is not assessed. The main agent's own disposition never makes the packet or an ID converged: a critic that repeats a rebutted objection still objects.
 
 Do not stop because the current position feels persuasive. Judge convergence against the critic's actual objections and the decision boundary.
 
@@ -243,7 +254,7 @@ After each round, update `SESSION_PATH` with the complete session so later turns
 
 ```text
 Round N (critic model: <model>)
-Calls: <each status line that is not ok, and each retry; or "ok">
+Calls: <each failed or retried call, with its exit= line and status; or "ok">
 Critic: strongest objections, faithfully summarized.
 Disposition: conceded and revised, or rebutted with evidence.
 Current position: updated position.
@@ -255,7 +266,7 @@ With question IDs, keep a coverage table:
 | ID | Latest critic assessment | Round | Revised after last assessment |
 ```
 
-An ID is reviewed when the critic has assessed some version of its answer. It is converged when the critic's latest assessment covers its current answer and raises no substantive objection. Mark "revised after last assessment" when the main agent changes an answer after the critic's latest reply.
+An ID is reviewed when the critic has assessed some version of its answer. It is converged when the critic's latest assessment covers its current answer and raises no substantive objection, or only out-of-scope refinements. Mark "revised after last assessment" when the main agent changes an answer after the critic's latest reply.
 
 ## Conclusion
 
@@ -263,12 +274,12 @@ Write the conclusion to `CONCLUSION_PATH`.
 
 Include:
 
-- settled position
+- final position
 - key decisions
 - strongest objections and dispositions
 - the coverage table, when the packet had question IDs
 - unresolved tensions, if any
-- failed and retried critic calls, with their status lines
+- failed and retried critic calls, with their `exit=` lines and statuses
 - ending condition: converged, round cap, critic unavailable, critic flagged, or cut short
 - the critic model or models that took part
 

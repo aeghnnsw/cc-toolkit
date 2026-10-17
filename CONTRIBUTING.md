@@ -272,7 +272,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 When you change `allowed-models.json`, also run the `dev-skills` tests.
-`dev-skills/tests/test_critic_status.py` reads its critic model IDs from that
+`dev-skills/tests/test_critic_status.py` and
+`dev-skills/tests/test_codex_critic.py` read their critic model IDs from that
 file:
 
 ```bash

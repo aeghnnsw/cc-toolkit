@@ -102,10 +102,14 @@ class CodexCriticTest(unittest.TestCase):
         for path in (self.repo, self.workdir, self.bin):
             path.mkdir()
         self.scenario, self.record = root / "scenario.json", root / "record.json"
-        fake = self.bin / "codex"
-        fake.write_text(f"#!{sys.executable}\n{FAKE_CODEX}", encoding="utf-8")
-        fake.chmod(0o755)
+        self.install_fake("codex", FAKE_CODEX)
         self.write_inputs()
+
+    def install_fake(self, name: str, source: str) -> None:
+        """Put an executable Python script named name first on the runner's PATH."""
+        fake = self.bin / name
+        fake.write_text(f"#!{sys.executable}\n{source}", encoding="utf-8")
+        fake.chmod(0o755)
 
     def write_inputs(self) -> None:
         """Write the repo, model, prompt.md, and critic.txt inputs."""
@@ -126,9 +130,9 @@ class CodexCriticTest(unittest.TestCase):
         self.scenario.write_text(json.dumps(settings), encoding="utf-8")
         env = dict(os.environ, FAKE_CODEX_SCENARIO=str(self.scenario))
         env["PATH"] = path if path is not None else f"{self.bin}{os.pathsep}{os.environ.get('PATH', '')}"
-        command = [sys.executable, str(SCRIPT), mode, str(self.workdir)]
         if timeout is not None:
-            command += ["--timeout", str(timeout)]
+            self.write("timeout", f"{timeout}\n")
+        command = [sys.executable, str(SCRIPT), mode, str(self.workdir)]
         completed = subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
         return completed.returncode, completed.stdout.strip()
 
@@ -192,6 +196,8 @@ class CodexCriticTest(unittest.TestCase):
             "error event": {"type": "error", "message": message},
             "turn.failed event": {"type": "turn.failed", "error": {"message": "cyber_policy"}},
             "non-JSON error line": '{"type": "error", "message": "' + message,
+            "error item": {"type": "item.completed",
+                           "item": {"type": "error", "message": "Your request was rerouted as a fallback."}},
         }
         for name, event in events.items():
             with self.subTest(name):
@@ -249,9 +255,7 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual([pid for pid in grandchildren if not gone(pid, wait=1)], [])
 
     def test_timeout_cleanup_ends_within_its_deadline_when_scans_are_slow(self):
-        fake = self.bin / "ps"
-        fake.write_text(f"#!{sys.executable}\n{SLOW_PS}", encoding="utf-8")
-        fake.chmod(0o755)
+        self.install_fake("ps", SLOW_PS)
         os.environ.update(SLOW_PS_COUNT=str(self.workdir.parent / "ps_calls"), SLOW_PS_RECORD=str(self.record))
         self.addCleanup(os.environ.pop, "SLOW_PS_COUNT")
         self.addCleanup(os.environ.pop, "SLOW_PS_RECORD")
@@ -285,9 +289,11 @@ class CodexCriticTest(unittest.TestCase):
                                  (1, f"exit=0 model={CRITIC_MODEL} status=error:no reply"))
 
     def test_resume_without_a_thread_id_does_not_call_codex(self):
+        self.write("msg.txt", "stale reply from an earlier round")
         self.assertEqual(self.run_critic("resume", reply="objection"),
                          (1, f"exit=2 model={CRITIC_MODEL} status=error:missing thread_id"))
         self.assertFalse(self.record.exists())
+        self.assertFalse((self.workdir / "msg.txt").exists())
 
     def test_missing_or_empty_input_does_not_call_codex(self):
         self.write("thread_id", f"{THREAD_ID}\n")
@@ -311,12 +317,22 @@ class CodexCriticTest(unittest.TestCase):
                          (1, f"exit=2 model={CRITIC_MODEL} status=error:missing repo"))
         self.assertFalse(self.record.exists())
 
+    def test_timeout_that_is_not_a_positive_number_does_not_call_codex(self):
+        for text in ("soon\n", "0\n", "-5\n"):
+            with self.subTest(text=text):
+                self.write("timeout", text)
+                self.assertEqual(self.run_critic("smoke", reply="ok"),
+                                 (1, f"exit=2 model={CRITIC_MODEL} status=error:missing timeout"))
+                self.assertFalse(self.record.exists())
+
     def test_codex_missing_from_path_is_an_error(self):
         empty_bin = self.bin.parent / "empty-bin"
         empty_bin.mkdir()
+        self.write("msg.txt", "stale reply from an earlier round")
         self.assertEqual(self.run_critic("smoke", reply="ok", path=str(empty_bin)),
                          (1, f"exit=127 model={CRITIC_MODEL} status=error:codex not found"))
         self.assertFalse(self.record.exists())
+        self.assertFalse((self.workdir / "msg.txt").exists())
 
 
 class SkillTextTest(unittest.TestCase):

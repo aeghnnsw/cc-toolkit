@@ -257,21 +257,21 @@ cannot match, and reports `status=flagged`.
 ## Stop conditions
 
 - **Converged** — any of:
-  - The critic replies `NO SUBSTANTIVE OBJECTION`, or only restates points you
-    have already addressed (no new substantive objection); or
+  - The critic replies `NO SUBSTANTIVE OBJECTION`; or
   - **Goal convergence** — the original goal question now has a stable answer and
     the critic's new objections have drifted to out-of-scope refinements (deeper
     implementation details, adjacent APIs, edge cases that don't change the
     answer to the goal). An always-adversarial critic keeps finding *some*
     new edge case, so do not wait for it to run dry on a tangent.
   Judge against the critic's actual words, not your preference — only call goal
-  convergence when the goal is genuinely settled (often the critic itself
+  convergence when the goal is genuinely answered (often the critic itself
   signals it, e.g. "the core question is solid"), not merely because you want to
   stop. Record the accepted out-of-scope refinements in the conclusion.
   With question IDs, the packet converges only when the critic's latest reply
   clears every ID: each ID has no substantive objection, or only out-of-scope
-  refinements. An ID that the latest reply does not assess is not assessed. Your
-  own disposition never makes an ID converged.
+  refinements. An ID that the latest reply does not assess is not assessed.
+  Your own disposition never makes the packet or an ID converged: a critic
+  that repeats a rebutted objection still objects.
 - **Round cap** — 6 rounds reached. Carry any live disagreements into the
   conclusion as explicitly unresolved.
 - **Error** — a runner call reports an `error:` status without a flag → retry
@@ -312,7 +312,7 @@ With question IDs, keep a coverage table:
 
 An ID is **reviewed** when the critic has assessed some version of its answer.
 It is **converged** when the critic's latest assessment covers its current
-answer and raises no substantive objection. Mark "revised after last
+answer and raises no substantive objection, or only out-of-scope refinements. Mark "revised after last
 assessment" when you change an answer after the critic's latest reply.
 
 ## Step 3 — Conclusion (always)
@@ -321,7 +321,7 @@ Write the conclusion to `CONCLUSION_PATH` and present it in chat.
 
 Include:
 
-- settled position
+- final position
 - key decisions
 - strongest objections and dispositions
 - the coverage table, when the packet had question IDs

@@ -123,8 +123,11 @@ _Avoid_: Backup model, secondary model
 **Pressure-test packet**:
 The context that the main agent gives the critic in each round of a pressure
 test: the goal, the current position, the decision boundary, evidence,
-assumptions, and, for a choice, the options considered.
-_Avoid_: Critic context packet, prompt
+assumptions, earlier objections and their handling, and, for a choice, the
+options considered. In a packet with several questions, each question has an
+ID. After the first round, a packet states only the changes since the last
+round. The critic receives the packet followed by the critic instructions.
+_Avoid_: Critic context packet
 
 **Converged**:
 The state of a pressure test, or of one question in it, when the critic's
