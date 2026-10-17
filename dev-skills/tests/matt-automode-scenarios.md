@@ -63,7 +63,7 @@ inputs. Keep expected results separate from the initial review prompt.
     objection and objected to Q2. Conceding the Q2 objection also changes the
     answer to Q1. The next critic call fails, and its retry fails.
 19. **Failed preflight.** At the start of step 1, the pressure-test preflight
-    fails because Codex is not signed in. The investigation and the first
+    fails because the critic's CLI is not signed in. The investigation and the first
     grilling round are ahead.
 20. **Failed kickoff.** The preflight of a round's pressure test passes. The
     kickoff fails, and its retry fails.

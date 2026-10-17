@@ -118,13 +118,17 @@ gate.
 
 ### Pressure-test each grilling round
 
-Classify each question of a grilling round before you settle it. A question
-is **design-critical** when it has two or more viable answers, and the choice
-is hard to reverse or changes behavior, a public interface, a consumer, or a
-recorded decision. An answer is viable when the evidence does not rule it
-out. Record each question's classification and its reason in the planning
-files. A question that the facts settle with one viable answer needs no
-pressure test.
+Classify each question of a grilling round before you resolve it. A question
+is **design-critical** when both conditions hold:
+
+- It has two or more viable answers. An answer is viable when the evidence
+  does not rule it out.
+- The choice is hard to reverse, or it changes behavior, a public interface,
+  a consumer, or a recorded decision.
+
+Record each question's classification and its reason in the planning files.
+A question that the facts settle with one viable answer needs no pressure
+test.
 
 When a grilling round has design-critical questions, run one new pressure
 test over them before you record their decisions. Load
@@ -142,17 +146,18 @@ Resolve each design-critical question from the coverage table of the
 conclusion. Apply the first rule that matches:
 
 1. If the critic did not assess the current answer, the question carries
-   into the pressure test of the next grilling round. This includes an
-   answer revised after its last assessment. Its dependent questions wait.
-   When only carried questions remain, they form the next grilling round.
-2. If the ID is converged under the pressure-test coverage definition, the
-   question resolves with its current answer.
+   into the pressure test of the next grilling round, and its dependent
+   questions wait. An answer revised after its last assessment counts as
+   not assessed. When only carried questions remain, they form the next
+   grilling round.
+2. If the ID is converged, as the pressure-test session record defines the
+   term, the question resolves with its current answer.
 3. Otherwise, the critic still objects to the assessed answer. Choose the
    answer that the evidence and the objections support best, and break a
-   near tie as the evidence-gap rule above does. If you keep the assessed
-   answer, the question resolves with it; record the unresolved objections
-   with the decision. If you choose another answer, it is revised and
-   carries as in rule 1.
+   near tie as the evidence-gap rule in "Grill in rounds" does. If you keep
+   the assessed answer, the question resolves with it; record the
+   unresolved objections with the decision. If you choose another answer,
+   the question carries under rule 1 with the new answer.
 
 When later evidence changes the basis of a design-critical decision, reopen
 the decision. A reopened decision carries as a revised answer, even when its
@@ -161,16 +166,16 @@ answer stays the same. After gate 1, a reopened decision is invalid under
 resumes the grilling rounds.
 
 Two results are blockers. One is a pressure test with no usable assessment:
-the critic assessed no version of any answer in it. An assessment that a
-later revision made stale still counts as usable here. The other is a
-question whose current answer is unassessed at the end of two pressure tests
-in a row that include it. A revision does not reset this count; a reopened
-decision starts a new one. A blocker overrides rule 1: run no further
-pressure test for the affected questions in this run, and stop the work that
-depends on them. Finish the independent work and keep all work. Then report
-the blocker and end the run as "Finish" describes. Gate 1 cannot pass while
-a blocker stands. A later run clears the blocker when its pressure test
-assesses the affected answers.
+none of its IDs is reviewed, as the pressure-test session record defines the
+term. A reviewed ID counts even when a later revision made its assessment
+stale. The other is a question whose current answer is unassessed at the end
+of two pressure tests in a row that include it. A revision does not reset
+this count; a reopened decision starts a new one. A blocker overrides the
+carry in rule 1: run no further pressure test for the affected questions in
+this run, and stop the work that depends on them. Finish the independent
+work and keep all work. Then report the blocker and end the run as "Finish"
+describes. Gate 1 cannot pass while a blocker stands. A later run clears the
+blocker when its pressure test assesses the affected answers.
 
 At the start of step 1, run only the Setup and Preflight steps of
 pressure-test as an early check. This check is not a pressure test: it
@@ -180,9 +185,10 @@ files. Each later pressure test runs its own preflight. A successful
 preflight is not a review: only the critic's assessment of a question's
 current answer counts.
 
-A spec, ticket, or ADR that records a pressure-tested decision states its
-evidence, objection dispositions, unresolved risks, and ending condition. It
-carries this record itself and cites no planning file.
+The spec states each pressure-tested decision with its evidence, objection
+dispositions, unresolved risks, and ending condition. A ticket or ADR that
+records such a decision states the same record. Each record stands alone
+and cites no planning file.
 
 Other decisions that this mode makes in place of a human keep the challenge
 in "Grill in rounds" without a pressure test: the testing seams, the ticket
@@ -237,7 +243,7 @@ current validity have been checked.
 
 | Step | Start only when | Complete when |
 | --- | --- | --- |
-| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, with each question's classification. The critic has assessed the current answer of each design-critical question: the answer converged, or the decision records its unresolved objections. `grill-with-docs` has recorded the domain terms and decisions. |
+| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, with each question's classification and its reason. The critic has assessed the current answer of each design-critical question: the answer converged, or the decision records its unresolved objections. `grill-with-docs` has recorded the domain terms and decisions. |
 | 2. Spec | Gate 1 passed. | The spec is published with scope and testing seams derived from the resolved decisions. Its reference is recorded and its content verified. |
 | 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
 | 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |
