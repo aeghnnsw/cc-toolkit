@@ -15,7 +15,9 @@ Pressure testing only matters when the critic has enough context and independenc
 
 Use for design decisions, architecture choices, task-loop aims, rubrics, plans, PRs, failure diagnoses, re-attack plans, and aim-fidelity checks.
 
-Do not use for routine edits where the user asked for direct implementation and no judgment call needs adversarial review.
+Another skill can use it at a decision point and then continue its own work with the conclusion.
+
+Do not use for routine edits where the user asked for direct implementation and no judgment call needs adversarial review. This skill changes no project files except its session record and conclusion.
 
 ## Defaults
 
@@ -28,7 +30,8 @@ Do not use for routine edits where the user asked for direct implementation and 
 - Critic session: the kickoff starts a session with a new `--session-id`; later rounds pass `--resume` with that ID. Run every call from `$REPO`, because Claude Code stores sessions per project directory.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
 - `CONCLUSION_PATH = docs/pressure-test/YYYY-MM-DD-topic-slug-conclusion.md`
-- Explicit user directions override the corresponding output path.
+- An explicit direction from the user or from a calling skill overrides the corresponding output path.
+- One goal per critic session. A new goal starts a new pressure test with its own setup. Send no critic call after convergence or the round cap.
 - Stop early on convergence.
 - Always save and present a conclusion.
 
@@ -88,7 +91,9 @@ cat > "$DIR/critic.txt" <<'CRITIC'
 
 You are an independent adversarial critic. Do not approve, praise, or soften the review.
 
-Find the single weakest point in the current position. Surface hidden assumptions, edge cases, failure modes, and missing evidence. Ground objections in the provided evidence and inspect the repo read-only when needed. If a better alternative exists, propose it concretely.
+When the packet lists question IDs, first give a one-line assessment of the current answer for every ID: objection, no substantive objection, or not assessed with the reason. Then develop the strongest objection.
+
+Find the single weakest point in the current position. Surface hidden assumptions, edge cases, failure modes, and missing evidence. Ground objections in the provided evidence and inspect the repo read-only when needed. If a better alternative exists, propose it concretely. If the options omit a better option or frame the choice falsely, say so and propose the missing option.
 
 Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
 CRITIC
@@ -114,15 +119,15 @@ grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail
 ## Loop
 
 1. State the current position: claim, reasoning, and decision boundary.
-2. Build a critic context packet.
+2. Build a [pressure-test packet](#pressure-test-packet).
 3. Send the packet to the Claude critic (kickoff or resume, below).
 4. Read the critic's objections from `$DIR/msg.txt`.
-5. Handle every substantive objection: concede and revise, or rebut with evidence.
-6. Print the round block (see [Progress Format](#progress-format)) and update the [session record](#session-record).
+5. Handle every substantive objection: concede and revise when it holds against the evidence, or rebut with evidence. Do not concede only to end a round.
+6. Print the round block (see [Progress Format](#progress-format)) and update the [session record](#session-record), including the coverage table when the packet has question IDs.
 7. Stop if converged; otherwise repeat until round 6.
 8. Write and present the conclusion.
 
-## Critic Context Packet
+## Pressure-Test Packet
 
 Before every critic round, provide the critic this packet:
 
@@ -131,7 +136,10 @@ GOAL
 The question, design, plan, rubric, PR, or failure diagnosis under review.
 
 CURRENT POSITION
-The current answer and reasoning.
+The current answer and reasoning. For several questions, one entry per ID (Q1, Q2, ...) with its current answer.
+
+OPTIONS
+For a choice: each option with its evidence, and the option the position recommends. Per ID for several questions. Omit when the goal is not a choice.
 
 DECISION BOUNDARY
 What is in scope, what is out of scope, and what kind of objection would change the decision.
@@ -152,7 +160,9 @@ If the packet lacks enough evidence for reliable judgment, gather the missing ev
 
 The critic can read files in the repository and in `$DIR`, but it cannot run commands. Put command output, such as a diff or test log, in the packet or in a file under `$DIR`, and name that file in EVIDENCE.
 
-The critic keeps earlier rounds in its session. After the kickoff, a packet can state the changes since the last round: the current position, how each objection was handled, and new evidence.
+Give each question an ID when the packet holds several questions.
+
+The critic keeps earlier rounds in its session. After the kickoff, a packet states the changes since the last round: how each objection was handled, the current position with each changed answer restated in full and the changed IDs listed, and NEW EVIDENCE.
 
 ## Calling The Critic
 
@@ -161,7 +171,7 @@ Kickoff (round 1):
 ```bash
 source "<workdir>/env.sh"
 cat > "$DIR/prompt.md" <<'__PROMPT_END__'
-<critic context packet>
+<pressure-test packet>
 __PROMPT_END__
 cat "$DIR/critic.txt" >> "$DIR/prompt.md"
 new_session
@@ -174,7 +184,7 @@ Later rounds:
 ```bash
 source "<workdir>/env.sh"
 cat > "$DIR/prompt.md" <<'__PROMPT_END__'
-<critic context packet for this round>
+<pressure-test packet for this round>
 __PROMPT_END__
 cat "$DIR/critic.txt" >> "$DIR/prompt.md"
 critic "$CALL_TIMEOUT" xhigh --resume "$(cat "$DIR/session_id")" < "$DIR/prompt.md"
@@ -187,6 +197,8 @@ Act on the status line:
 - `flagged` — follow [Flags](#flags).
 - `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
 - `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
+
+Record every status line that is not `ok`, and each retry, in the session record.
 
 ## Flags
 
@@ -209,6 +221,8 @@ Stop before round 6 only when:
 - the critic reports no substantive objection, or
 - the original decision is stable and remaining objections are out-of-scope refinements that do not change the decision.
 
+With question IDs, the packet converges only when the critic's latest reply clears every ID: each ID has no substantive objection, or only out-of-scope refinements. An ID that the latest reply does not assess is not assessed. The main agent's own disposition never makes an ID converged.
+
 Do not stop because the current position feels persuasive. Judge convergence against the critic's actual objections and the decision boundary.
 
 ## Progress Format
@@ -229,10 +243,19 @@ After each round, update `SESSION_PATH` with the complete session so later turns
 
 ```text
 Round N (critic model: <model>)
+Calls: <each status line that is not ok, and each retry; or "ok">
 Critic: strongest objections, faithfully summarized.
 Disposition: conceded and revised, or rebutted with evidence.
 Current position: updated position.
 ```
+
+With question IDs, keep a coverage table:
+
+```text
+| ID | Latest critic assessment | Round | Revised after last assessment |
+```
+
+An ID is reviewed when the critic has assessed some version of its answer. It is converged when the critic's latest assessment covers its current answer and raises no substantive objection. Mark "revised after last assessment" when the main agent changes an answer after the critic's latest reply.
 
 ## Conclusion
 
@@ -243,14 +266,16 @@ Include:
 - settled position
 - key decisions
 - strongest objections and dispositions
+- the coverage table, when the packet had question IDs
 - unresolved tensions, if any
+- failed and retried critic calls, with their status lines
 - ending condition: converged, round cap, critic unavailable, critic flagged, or cut short
 - the critic model or models that took part
 
-Present the same conclusion in chat.
+Present the same conclusion in chat. A calling skill reads the conclusion and continues its own work; do not wait for the user.
 
 ## Failure Behavior
 
-If the `claude` CLI is missing, the preflight fails, or the sandbox blocks the critic and escalation is unavailable, stop and report that an independent critic could not run. Do not silently run inline self-critique or a Codex subagent instead.
+If the `claude` CLI is missing, the preflight fails, or the sandbox blocks the critic and escalation is unavailable, stop and report that an independent critic could not run. Write a short conclusion with the diagnosis; the ending condition is "critic unavailable". Do not silently run inline self-critique or a Codex subagent instead.
 
-If a critic round fails mid-loop, retry that round once. If it still fails, write a partial conclusion with the last stable position, unresolved objections, and the failure point.
+If a critic round fails mid-loop, retry that round once. If it still fails, write a partial conclusion with the last stable position, unresolved objections, and the failure point; the ending condition is "cut short".
