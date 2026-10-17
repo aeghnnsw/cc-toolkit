@@ -7,9 +7,11 @@ and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
 For each case, identify the next permitted action, blocked work, and evidence
 needed to pass the gate. Use a fresh review context with the skill and scenario
-inputs. Keep expected results separate from the initial review prompt. To give
-a reviewer the inputs alone, extract them from the repository root, and tell
-the reviewer not to open this file:
+inputs. Keep expected results separate from the initial review prompt.
+
+To give a reviewer the inputs alone, run this command from the repository
+root. The output leaves out the task above, so state the task in the review
+prompt. Tell the reviewer not to open this file.
 
 ```bash
 sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-scenarios.md | sed '$d'
@@ -99,7 +101,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Second review base | Run the second review against C0 and verify that its diff includes the retro fix. | Comparing against the gate 5 commit; opening the PR before the second review. | A second review against C0 whose diff includes the retro fix, committed fixes for its actionable findings, and passing checks. |
 | Independent ticket | Start T5 at step 4. | Starting or continuing tickets that rely on the schema before new completion checks are recorded. | The record that T5 does not rely on the invalid decision, and its merged blockers. |
 | Replaced ADR | Record decision B through `grill-with-docs`. Mark the old ADR as superseded and link it to decision B. | Deleting the old ADR; leaving it unmarked. | Cited rationale for B, the new decision record, and the superseded note with its link. |
-| Partial coverage | Resolve Q1 from its assessment: converged, or the evidence-gap rule with its unresolved objections recorded. Carry Q2–Q6 into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q2–Q6 or their dependents from Q1's review; passing gate 1. | The coverage table with Q1's assessment and Q2–Q6 not assessed, the failed calls with their exit codes, and the next pressure test's assessments of Q2–Q6. No assessment there is a blocker. |
+| Partial coverage | Resolve Q1 from its assessment: rule 2 if it converged, or rule 3 with its unresolved objections recorded. Carry Q2–Q6 into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q2–Q6 or their dependents from Q1's review; passing gate 1. | The coverage table with Q1's assessment and Q2–Q6 not assessed, the failed calls with their exit codes, and the next pressure test's assessments of Q2–Q6. No assessment there is a blocker. |
 | Stale assessment | Mark Q1 and Q2 as revised after their last assessment. Carry both into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q1 on its earlier "no substantive objection". | The coverage table with both marks, the failed calls with their exit codes, and the next pressure test's assessments of the current answers. |
 | Failed preflight | Record the failed preflight and its diagnosis, and continue the investigation and grilling. | Replacing the critic with self-critique; counting the preflight as a review. | The recorded diagnosis. In the first round with a design-critical question, its pressure test result; no usable assessment there is a blocker. |
 | Failed kickoff | Treat the result as a blocker. Finish the independent work and keep all work, then report the blocker and end the run. | Resolving the round's design-critical questions; running another pressure test for them in this run; counting the passed preflight as a review; passing gate 1. | The pressure-test conclusion with its ending condition, the failed calls with their exit codes, and the blocker report. |
@@ -188,7 +190,8 @@ scenario inputs.
    its condition; and "converged" could be read two ways. The text was
    changed to close these gaps, and the expected result of case 20 now ends
    the run after the independent work. A pressure test of the changes
-   converged in one critic round. No scenario review ran after these changes.
+   converged in one critic round. No scenario review ran after these changes,
+   or after the code-review fixes that followed them.
 
 Round 6 reported these limits, left for follow-up work:
 

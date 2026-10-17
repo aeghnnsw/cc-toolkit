@@ -97,10 +97,10 @@ Treat a recommended answer as a candidate, not a decision. This includes the
 grilling skill's recommendation and any answer in an existing file that this
 run has not tested. Test the candidate against source evidence, constraints,
 alternatives, failure cases, compatibility, and affected consumers. Change it
-when that test changes its basis. Then record the tested answer as the
-decision, recompute the frontier, and continue the next round. A
-design-critical question first goes through the pressure test below. When
-evidence changes an earlier answer, reopen its dependent questions.
+when that test changes its basis. For a design-critical question, first run
+the pressure test below. Then record the tested answer as the decision,
+recompute the frontier, and continue the next round. When evidence changes an
+earlier answer, reopen its dependent questions.
 
 If the available evidence cannot settle a design-critical question, choose the
 answer that the evidence supports best. When two or more answers have about
@@ -162,20 +162,22 @@ conclusion. Apply the first rule that matches:
 When later evidence changes the basis of a design-critical decision, reopen
 the decision. A reopened decision carries as a revised answer, even when its
 answer stays the same. After gate 1, a reopened decision is invalid under
-"Phase gates" until a new pressure test resolves it, and the reopened gate 1
+"Phase gates" until a new pressure test resolves it. The reopened gate 1
 resumes the grilling rounds.
 
 Two results are blockers. One is a pressure test with no usable assessment:
 none of its IDs is reviewed, as the pressure-test session record defines the
 term. A reviewed ID counts even when a later revision made its assessment
-stale. The other is a question whose current answer is unassessed at the end
-of two pressure tests in a row that include it. A revision does not reset
-this count; a reopened decision starts a new one. A blocker overrides the
-carry in rule 1: run no further pressure test for the affected questions in
-this run, and stop the work that depends on them. Finish the independent
-work and keep all work. Then report the blocker and end the run as "Finish"
-describes. Gate 1 cannot pass while a blocker stands. A later run clears the
-blocker when its pressure test assesses the affected answers.
+stale. The other is a question whose current answer is not assessed at the
+end of two pressure tests in a row that include it. A revision does not
+reset this count; a reopened decision starts a new one.
+
+A blocker overrides the carry in rule 1. Run no further pressure test for
+the affected questions in this run, and stop the work that depends on them.
+Finish the independent work and keep all work. Then report the blocker and
+end the run as "Finish" describes. Gate 1 cannot pass while a blocker
+stands. A later run clears the blocker when its pressure test assesses the
+affected answers.
 
 At the start of step 1, run only the Setup and Preflight steps of
 pressure-test as an early check. This check is not a pressure test: it
@@ -199,8 +201,8 @@ breakdown, the code-review fixed point, and the retro fix selection.
 Run steps 4–7 for each ticket in dependency order. Run cleanup after all tickets
 are merged.
 
-1. `mattpocock-skills:grill-with-docs`: resolve the design questions,
-   pressure-test the design-critical ones, and record the domain terms and
+1. `mattpocock-skills:grill-with-docs`: pressure-test the design-critical
+   questions, resolve the design questions, and record the domain terms and
    decisions.
 2. `mattpocock-skills:to-spec`: choose the testing seams and publish the spec.
 3. `mattpocock-skills:to-tickets`: choose the ticket breakdown and publish it
