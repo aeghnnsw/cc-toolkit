@@ -29,7 +29,7 @@ and Codex registry and manifest adapters in one repository-owned module.
 The local interface is one command from the repository root:
 
 ```bash
-python3 scripts/validate_packages.py --base origin/master
+uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
 ```
 
 `--base` names the target ref or SHA. The module resolves its merge base

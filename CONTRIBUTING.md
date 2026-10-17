@@ -62,7 +62,10 @@ paths.
   code in a name such as `rc`, because `status` is read-only in zsh. Pass a
   file list through `xargs` or a loop, because zsh does not split an
   unquoted variable into words. Each tool call can start a new shell, so
-  keep state that later blocks need in a file.
+  keep state that later blocks need in a file. In a Claude copy, put code
+  that needs positional parameters in a script under the skill directory.
+  The Skill tool replaces `$` followed by a digit, and `$ARGUMENTS`, with the
+  caller's arguments everywhere in `SKILL.md`, including fenced blocks.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -265,14 +268,9 @@ model-pin test:
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-If `python3` is 3.11 or newer, this command is equivalent:
-
-```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
-```
-
 When you change `allowed-models.json`, also run the `dev-skills` tests.
-`dev-skills/tests/test_critic_status.py` reads its critic model IDs from that
+`dev-skills/tests/test_critic_status.py` and
+`dev-skills/tests/test_codex_critic.py` read their critic model IDs from that
 file:
 
 ```bash
