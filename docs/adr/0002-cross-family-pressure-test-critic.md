@@ -47,7 +47,8 @@ Consequences:
 - A change to the allowed models starts in `allowed-models.json`. The same
   change updates both skills, the cc-customize `model-config` skill, and the
   model pins in agent and Codex agent files. The test data in
-  `dev-skills/tests/test_critic_status.py` reads the file.
+  `dev-skills/tests/test_critic_status.py` and
+  `dev-skills/tests/test_codex_critic.py` reads the file.
 - `tests/test_model_pins.py` fails until these conditions are true:
   - Every model pin names the primary model of its family. A Claude Code
     agent can set `inherit` instead.
