@@ -13,7 +13,7 @@ Inputs in <workdir>:
 
   repo        absolute repository root
   model       current critic model ID
-  prompt.md   prompt for kickoff and resume
+  prompt.md   pressure-test packet for kickoff and resume
   critic.txt  optional critic instructions, sent after prompt.md
   thread_id   critic thread for resume; kickoff writes it
   timeout     optional call timeout in seconds, in place of the default
@@ -24,13 +24,14 @@ thread_id (empty when codex reported no thread).
 
 The script prints one line, `exit=<code> model=<model> status=<status>`, and
 exits 0 only for ok. The code is the codex exit code, 124 for a timeout,
-127 when codex is not on PATH, and 2 for a missing input. Statuses, in
+127 when codex is not on PATH, and 2 for a missing or bad input. Statuses, in
 order of precedence:
 
   error:codex not found   codex is not on PATH; codex did not run
-  error:missing FILE      a required input is missing or empty, repo names no
-                          directory, or timeout is not a positive number; codex
-                          did not run
+  error:missing FILE      a required input is missing or empty, or repo names no
+                          directory; codex did not run
+  error:bad timeout       the timeout file is not a positive number; codex did
+                          not run
   flagged                 an error event, an error item, or stderr reports a flag or
                           a model reroute
   error:timeout           the call ran out of time and was killed
@@ -95,13 +96,10 @@ def call_timeout(mode: str, workdir: Path) -> float | None:
 def missing_input(mode: str, workdir: Path) -> str:
     """Return the first required input file that is missing or empty, or "".
 
-    A repo file that does not name a directory, and a timeout file that is not
-    a positive number, count as missing.
+    A repo file that does not name a directory counts as missing.
     """
     if not Path(read_input(workdir, "repo") or "/nonexistent").is_dir():
         return "repo"
-    if call_timeout(mode, workdir) is None:
-        return "timeout"
     required = ["model"]
     if mode != "smoke":
         required.append("prompt.md")
@@ -271,12 +269,14 @@ def main(argv: list[str]) -> int:
     missing = missing_input(args.mode, workdir)
     if missing:
         return report(MISSING_INPUT_EXIT, model, f"error:missing {missing}")
+    timeout = call_timeout(args.mode, workdir)
+    if timeout is None:
+        return report(MISSING_INPUT_EXIT, model, "error:bad timeout")
     prompt = None
     if args.mode != "smoke":
         critic = workdir / "critic.txt"
         prompt = (workdir / "prompt.md").read_bytes() + (critic.read_bytes() if critic.exists() else b"")
-    code = run_codex(codex_command(args.mode, workdir, repo, model), repo, workdir, prompt,
-                     call_timeout(args.mode, workdir))
+    code = run_codex(codex_command(args.mode, workdir, repo, model), repo, workdir, prompt, timeout)
     if args.mode == "kickoff":
         (workdir / "thread_id").write_text(thread_id(workdir), encoding="utf-8")
     return report(TIMEOUT_EXIT if code is None else code, model, classify(args.mode, workdir, code))

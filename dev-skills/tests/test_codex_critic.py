@@ -27,6 +27,7 @@ CRITIC_MODEL = ALLOWED_MODELS["gpt"]["primary"]
 PROMPT = "GOAL:\nShip the runner.\n"
 CRITIC = "\nYou are an independent adversarial critic.\n"
 THREAD_ID = "0199a7b2-thread"
+STALE_REPLY = "stale reply from an earlier round"
 SLEEPER = "import time; time.sleep(30)"
 # A detached child that keeps starting grandchildren and lists their IDs in a file.
 FORKER = """\
@@ -122,13 +123,13 @@ class CodexCriticTest(unittest.TestCase):
         (self.workdir / name).write_text(text, encoding="utf-8")
 
     def run_critic(self, mode: str, *, timeout: float | None = None, path: str | None = None,
-                   **scenario) -> tuple[int, str]:
+                   env: dict[str, str] | None = None, **scenario) -> tuple[int, str]:
         """Run the runner against the fake codex; return its exit code and its stdout line."""
         settings = {"events": [], "stderr": "", "reply": None, "exit": 0, "sleep": 0, "child": None}
         settings.update(scenario, record=str(self.record))
         self.record.unlink(missing_ok=True)
         self.scenario.write_text(json.dumps(settings), encoding="utf-8")
-        env = dict(os.environ, FAKE_CODEX_SCENARIO=str(self.scenario))
+        env = dict(os.environ, **(env or {}), FAKE_CODEX_SCENARIO=str(self.scenario))
         env["PATH"] = path if path is not None else f"{self.bin}{os.pathsep}{os.environ.get('PATH', '')}"
         if timeout is not None:
             self.write("timeout", f"{timeout}\n")
@@ -137,7 +138,7 @@ class CodexCriticTest(unittest.TestCase):
         return completed.returncode, completed.stdout.strip()
 
     def call(self) -> dict:
-        """Return the argv, cwd, stdin, and pid that the fake codex recorded."""
+        """Return the argv, cwd, stdin, pid, and child pid that the fake codex recorded."""
         return json.loads(self.record.read_text(encoding="utf-8"))
 
     def test_kickoff_sends_the_prompt_read_only_from_the_repo_and_saves_the_thread_id(self):
@@ -190,7 +191,7 @@ class CodexCriticTest(unittest.TestCase):
                 self.assertEqual(call["cwd"], str(self.repo))
                 self.assertEqual(call["stdin"], "")
 
-    def test_policy_error_event_is_flagged_even_when_codex_fails(self):
+    def test_flag_in_an_error_event_or_error_item_is_flagged_even_when_codex_fails(self):
         message = "This request has been flagged for possible cybersecurity risk."
         events = {
             "error event": {"type": "error", "message": message},
@@ -256,11 +257,9 @@ class CodexCriticTest(unittest.TestCase):
 
     def test_timeout_cleanup_ends_within_its_deadline_when_scans_are_slow(self):
         self.install_fake("ps", SLOW_PS)
-        os.environ.update(SLOW_PS_COUNT=str(self.workdir.parent / "ps_calls"), SLOW_PS_RECORD=str(self.record))
-        self.addCleanup(os.environ.pop, "SLOW_PS_COUNT")
-        self.addCleanup(os.environ.pop, "SLOW_PS_RECORD")
+        env = {"SLOW_PS_COUNT": str(self.workdir.parent / "ps_calls"), "SLOW_PS_RECORD": str(self.record)}
         started = time.monotonic()
-        result = self.run_critic("kickoff", timeout=1, sleep=30)
+        result = self.run_critic("kickoff", timeout=1, sleep=30, env=env)
         elapsed = time.monotonic() - started
         self.assertEqual(result, (1, f"exit=124 model={CRITIC_MODEL} status=error:timeout"))
         self.assertLess(elapsed, 1 + 5 + 2.5, "cleanup ran past its 5-second deadline")
@@ -275,7 +274,7 @@ class CodexCriticTest(unittest.TestCase):
 
     def test_stale_reply_is_deleted_before_a_failing_call(self):
         self.write("thread_id", f"{THREAD_ID}\n")
-        self.write("msg.txt", "stale reply from an earlier round")
+        self.write("msg.txt", STALE_REPLY)
         self.assertEqual(self.run_critic("resume", exit=1),
                          (1, f"exit=1 model={CRITIC_MODEL} status=error:exit 1"))
         self.assertFalse((self.workdir / "msg.txt").exists())
@@ -284,12 +283,12 @@ class CodexCriticTest(unittest.TestCase):
         self.write("thread_id", f"{THREAD_ID}\n")
         for reply in (None, "  \n"):
             with self.subTest(reply=reply):
-                self.write("msg.txt", "stale reply from an earlier round")
+                self.write("msg.txt", STALE_REPLY)
                 self.assertEqual(self.run_critic("resume", reply=reply),
                                  (1, f"exit=0 model={CRITIC_MODEL} status=error:no reply"))
 
     def test_resume_without_a_thread_id_does_not_call_codex(self):
-        self.write("msg.txt", "stale reply from an earlier round")
+        self.write("msg.txt", STALE_REPLY)
         self.assertEqual(self.run_critic("resume", reply="objection"),
                          (1, f"exit=2 model={CRITIC_MODEL} status=error:missing thread_id"))
         self.assertFalse(self.record.exists())
@@ -311,7 +310,6 @@ class CodexCriticTest(unittest.TestCase):
                     self.assertFalse(self.record.exists())
 
     def test_repo_that_is_not_a_directory_does_not_call_codex(self):
-        self.write_inputs()
         self.write("repo", f"{self.workdir / 'no-such-repo'}\n")
         self.assertEqual(self.run_critic("smoke", reply="ok"),
                          (1, f"exit=2 model={CRITIC_MODEL} status=error:missing repo"))
@@ -322,13 +320,13 @@ class CodexCriticTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.write("timeout", text)
                 self.assertEqual(self.run_critic("smoke", reply="ok"),
-                                 (1, f"exit=2 model={CRITIC_MODEL} status=error:missing timeout"))
+                                 (1, f"exit=2 model={CRITIC_MODEL} status=error:bad timeout"))
                 self.assertFalse(self.record.exists())
 
     def test_codex_missing_from_path_is_an_error(self):
         empty_bin = self.bin.parent / "empty-bin"
         empty_bin.mkdir()
-        self.write("msg.txt", "stale reply from an earlier round")
+        self.write("msg.txt", STALE_REPLY)
         self.assertEqual(self.run_critic("smoke", reply="ok", path=str(empty_bin)),
                          (1, f"exit=127 model={CRITIC_MODEL} status=error:codex not found"))
         self.assertFalse(self.record.exists())

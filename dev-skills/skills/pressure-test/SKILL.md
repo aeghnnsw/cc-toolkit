@@ -267,11 +267,12 @@ cannot match, and reports `status=flagged`.
   convergence when the goal is genuinely answered (often the critic itself
   signals it, e.g. "the core question is solid"), not merely because you want to
   stop. Record the accepted out-of-scope refinements in the conclusion.
+  Your own disposition never makes the packet converged: a critic that
+  repeats a rebutted objection still objects.
   With question IDs, the packet converges only when the critic's latest reply
   clears every ID: each ID has no substantive objection, or only out-of-scope
-  refinements. An ID that the latest reply does not assess is not assessed.
-  Your own disposition never makes the packet or an ID converged: a critic
-  that repeats a rebutted objection still objects.
+  refinements. An ID that the latest reply does not assess counts as not
+  assessed and does not converge.
 - **Round cap** — 6 rounds reached. Carry any live disagreements into the
   conclusion as explicitly unresolved.
 - **Error** — a runner call reports an `error:` status without a flag → retry
@@ -312,8 +313,9 @@ With question IDs, keep a coverage table:
 
 An ID is **reviewed** when the critic has assessed some version of its answer.
 It is **converged** when the critic's latest assessment covers its current
-answer and raises no substantive objection, or only out-of-scope refinements. Mark "revised after last
-assessment" when you change an answer after the critic's latest reply.
+answer and raises no substantive objection, or only out-of-scope
+refinements. Mark "revised after last assessment" when you change an answer
+after the critic's latest reply.
 
 ## Step 3 — Conclusion (always)
 
@@ -331,5 +333,6 @@ Include:
   or cut short
 - the critic model or models that took part
 
-Then tell the user the path and show the conclusion. A calling skill reads the
-conclusion and continues its own work; do not wait for the user.
+Then tell the user the path and show the conclusion. When another skill called
+this skill, that skill reads the conclusion and continues its own work; do not
+wait for the user.

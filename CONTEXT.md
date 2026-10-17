@@ -125,15 +125,15 @@ The context that the main agent gives the critic in each round of a pressure
 test: the goal, the current position, the decision boundary, evidence,
 assumptions, earlier objections and their handling, and, for a choice, the
 options considered. In a packet with several questions, each question has an
-ID. After the first round, a packet states only the changes since the last
-round. The critic receives the packet followed by the critic instructions.
+ID. A later packet holds only the changes since the last round.
 _Avoid_: Critic context packet
 
 **Converged**:
 The state of a pressure test, or of one question in it, when the critic's
 latest assessment of the current answer raises no substantive objection, or
-raises only refinements outside the decision boundary. The main agent's own
-disposition does not make a question converged.
+raises only refinements outside the decision boundary. A packet with several
+questions converges only when the critic's latest reply clears every question.
+The main agent's own disposition does not make a question converged.
 _Avoid_: Settled, approved
 
 ## Git policy language

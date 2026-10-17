@@ -5,7 +5,7 @@ description: Use when a design, plan, rubric, PR, failure diagnosis, or task orc
 
 # Pressure Test
 
-Run an independent adversarial review before settling a decision. The main Codex agent owns the position and conclusion. A read-only Claude critic, run through the Claude Code CLI in non-interactive mode (`claude -p`), supplies pressure. A critic from another model family shares fewer blind spots with the main agent.
+Run an independent adversarial review before making a decision. The main Codex agent owns the position and conclusion. A read-only Claude critic, run through the Claude Code CLI in non-interactive mode (`claude -p`), supplies pressure. A critic from another model family shares fewer blind spots with the main agent.
 
 ## Core Principle
 
@@ -17,7 +17,7 @@ Use for design decisions, architecture choices, task-loop aims, rubrics, plans, 
 
 Another skill can use it at a decision point and then continue its own work with the conclusion.
 
-Do not use for routine edits where the user asked for direct implementation and no judgment call needs adversarial review. This skill changes no project files except its session record and conclusion.
+Do not use for a routine edit that has no judgment call. This skill changes no project files except its session record and conclusion.
 
 ## Defaults
 
@@ -156,7 +156,7 @@ Objections already raised and how they were handled.
 
 The critic instructions in `$DIR/critic.txt` follow the packet in every prompt.
 
-If the packet lacks enough evidence for reliable judgment, gather the missing evidence before calling the critic or report the gap.
+If the packet lacks enough evidence for reliable judgment, gather the missing evidence before calling the critic, or state the gap in ASSUMPTIONS.
 
 The critic can read files in the repository and in `$DIR`, but it cannot run commands. Put command output, such as a diff or test log, in the packet or in a file under `$DIR`, and name that file in EVIDENCE.
 
@@ -232,7 +232,9 @@ Stop before round 6 only when:
 - the critic reports no substantive objection, or
 - the original decision is stable and remaining objections are out-of-scope refinements that do not change the decision.
 
-With question IDs, the packet converges only when the critic's latest reply clears every ID: each ID has no substantive objection, or only out-of-scope refinements. An ID that the latest reply does not assess is not assessed. The main agent's own disposition never makes the packet or an ID converged: a critic that repeats a rebutted objection still objects.
+The main agent's own disposition never makes the packet converged: a critic that repeats a rebutted objection still objects.
+
+With question IDs, the packet converges only when the critic's latest reply clears every ID: each ID has no substantive objection, or only out-of-scope refinements. An ID that the latest reply does not assess counts as not assessed and does not converge.
 
 Do not stop because the current position feels persuasive. Judge convergence against the critic's actual objections and the decision boundary.
 
@@ -283,7 +285,7 @@ Include:
 - ending condition: converged, round cap, critic unavailable, critic flagged, or cut short
 - the critic model or models that took part
 
-Present the same conclusion in chat. A calling skill reads the conclusion and continues its own work; do not wait for the user.
+Present the same conclusion in chat. When another skill called this skill, that skill reads the conclusion and continues its own work; do not wait for the user.
 
 ## Failure Behavior
 

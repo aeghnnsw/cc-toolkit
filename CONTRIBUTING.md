@@ -63,8 +63,8 @@ paths.
   file list through `xargs` or a loop, because zsh does not split an
   unquoted variable into words. Each tool call can start a new shell, so
   keep state that later blocks need in a file. In a Claude copy, put code
-  that needs positional parameters in a script under the skill directory:
-  the Skill tool replaces `$` followed by a digit, and `$ARGUMENTS`, with the
+  that needs positional parameters in a script under the skill directory.
+  The Skill tool replaces `$` followed by a digit, and `$ARGUMENTS`, with the
   caller's arguments everywhere in `SKILL.md`, including fenced blocks.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
