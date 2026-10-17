@@ -70,7 +70,9 @@ paths.
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
   inside the skill directory can write `<skill-dir>/...`, which reads the
-  same in both copies.
+  same in both copies. `${CLAUDE_PLUGIN_ROOT}` names the installed plugin,
+  not your worktree. For a live check of a changed skill, replace it with
+  the worktree's plugin directory, for example `$PWD/dev-skills`.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
   ships it. A link to a `SKILL.md` that the same host discovers needs no

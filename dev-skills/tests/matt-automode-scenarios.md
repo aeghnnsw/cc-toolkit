@@ -7,7 +7,13 @@ and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
 For each case, identify the next permitted action, blocked work, and evidence
 needed to pass the gate. Use a fresh review context with the skill and scenario
-inputs. Keep expected results separate from the initial review prompt.
+inputs. Keep expected results separate from the initial review prompt. To give
+a reviewer the inputs alone, extract them from the repository root, and tell
+the reviewer not to open this file:
+
+```bash
+sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-scenarios.md | sed '$d'
+```
 
 ## Scenarios
 
