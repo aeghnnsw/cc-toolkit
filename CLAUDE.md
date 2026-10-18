@@ -85,8 +85,11 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   resources outside these paths belong to one host, such as task-loop's Codex
   agents. See [host ownership](docs/design/package-validation.md#host-ownership).
 - Update the affected host's plugin version when shipping changes to that
-  plugin. Root contributor documentation does not require a plugin version
-  bump. Hosts can have different release versions.
+  plugin: the `version` field in `<plugin>/.claude-plugin/plugin.json` or
+  `<plugin>/.codex-plugin/plugin.json`. The `metadata.version` field in the
+  Claude Code marketplace registry is not a plugin version. Root contributor
+  documentation does not require a plugin version bump. Hosts can have
+  different release versions.
 - When editing a skill, verify its frontmatter and invocation guidance. Run
   the [root tests](CONTRIBUTING.md#package-and-release-validation) to check
   its links and referenced resources. For a skill with Claude and Codex

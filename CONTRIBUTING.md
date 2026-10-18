@@ -64,8 +64,7 @@ paths.
   unquoted variable into words. Each tool call can start a new shell, so
   keep state that later blocks need in a file. In a Claude copy, put code
   that needs positional parameters in a script under the skill directory.
-  The Skill tool replaces `$` followed by a digit, and `$ARGUMENTS`, with the
-  caller's arguments everywhere in `SKILL.md`, including fenced blocks.
+  See [Argument placeholders](#argument-placeholders).
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -85,6 +84,49 @@ paths.
   through the Markdown files that the skill reaches. Each target must be a
   file inside the plugin. A link anchor must match a heading. The target
   must be listed for the host.
+
+### Argument placeholders
+
+When Claude Code loads a skill or command, it replaces argument placeholders
+in the body with the invocation arguments. It replaces them everywhere,
+including code spans and fenced blocks:
+
+- `$N`, where `N` is a number such as `0` or `10`: one argument, counted
+  from 0. `$ARGUMENTS[N]` is the long form.
+- `$ARGUMENTS`: the full argument string. With no arguments, it becomes
+  empty.
+- `$name`: a name that the `arguments` frontmatter declares. With no
+  matching argument, it becomes empty.
+
+When no placeholder takes the arguments, Claude Code appends
+`ARGUMENTS: <value>` to the skill text. Codex does not replace
+placeholders. Claude Code does not replace them in the supporting files
+that a skill reads. In a test, Claude Code did not replace them in an
+agent file; its documentation does not cover agent files.
+
+Write a `$` before a number, `ARGUMENTS`, or a declared name in a Claude
+Code skill or command as follows:
+
+- In prose or an example, write one backslash before the `$`. For example,
+  `\$0.67` loads as `$0.67`. Two or three backslashes do not escape a
+  placeholder.
+- Put shell code that needs positional parameters in a script in the
+  plugin, for example under the skill directory. Do not escape the shell
+  code: an agent can read the file directly instead of through the Skill
+  tool, and then the shell gets the backslash.
+- Do not use `${N}`, a braced positional parameter such as `${1}`. Claude
+  Code does not document this form, and a backslash before it stays in the
+  loaded text. Put the code in a script.
+- For an intended placeholder, add the exact line to `ALLOWED` in
+  [tests/test_skill_placeholders.py](tests/test_skill_placeholders.py),
+  with its line count and a reason.
+
+The argument-placeholder test, `tests/test_skill_placeholders.py`, is one of
+the [root tests](#package-and-release-validation). It checks every Claude
+Code skill and command file. It fails on an unescaped placeholder and on
+`${N}`, unless an `ALLOWED` entry covers the line. It also fails on a
+declared name that it cannot check, such as `my-arg`; use letters, digits,
+and underscores.
 
 ## Repository search
 
@@ -264,8 +306,8 @@ queue, checkout, and runner startup time are separate.
 
 Run the root tests when you change the validator, a skill, an agent,
 `allowed-models.json`, or `package-validation.json`. The root tests contain
-the validator's command-interface fixtures, the skill link test, and the
-model-pin test:
+the validator's command-interface fixtures, the skill link test, the
+model-pin test, and the argument-placeholder test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'

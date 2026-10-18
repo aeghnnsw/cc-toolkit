@@ -32,7 +32,7 @@ cc-toolkit/
 ├── CHANGELOG.md                      # Plugin and repository changes
 ├── package-validation.json           # Package and release validation rules
 ├── scripts/validate_packages.py      # Package and release validator
-├── tests/                            # Validator and skill link tests
+├── tests/                            # Root tests: validator, skill links, model pins, placeholders
 ├── docs/
 │   ├── adr/                          # Accepted architecture decisions
 │   ├── agents/                       # Issue tracker, triage, and domain conventions
