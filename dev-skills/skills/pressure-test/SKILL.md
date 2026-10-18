@@ -24,7 +24,7 @@ objection that stays unresolved, with your chosen resolution and reasoning.
 Drive the loop one round at a time with the bash blocks below. Read the critic's
 reply, then write the next packet with your own reasoning. Every critic call
 runs through the runner script `codex_critic.py`. It sets the read-only flags,
-pins the model, enforces the timeout, and prints one status line.
+pins the model, enforces the time limits, and prints one status line.
 
 ## When to use / not use
 
@@ -38,10 +38,17 @@ pins the model, enforces the timeout, and prints one status line.
 ## Defaults
 
 - `ROUND_CAP=6` (one round = one position and one critic reply)
-- Timeouts: the runner stops a critic call after 570 seconds and the preflight
-  smoke call after 60 seconds, and reports exit code 124. Run each runner call
-  with the Bash tool `timeout` set to `600000`; the default of 120000 ms stops
-  a long call early.
+- Time limits: the runner stops a critic call when Codex writes no output for
+  600 seconds (`error:idle`) or when the call has run for 1,800 seconds
+  (`error:timeout`). Both report exit code 124. The preflight smoke call has
+  60 seconds for both limits.
+- Waiting: each call runs in a detached process, so the Bash tool limit does
+  not stop it. A runner command waits for the result for at most 570 seconds
+  (less when the Bash tool limit is below 600 seconds), then prints
+  `status=running`; then run `wait` (see [Status line](#status-line)). Run
+  every runner command with the Bash tool `timeout` set to `600000`. With the
+  default of 120000 ms, the Bash tool moves a long command to the background
+  after 2 minutes.
 - Critic model: `gpt-6-astra`. The fallback model is `gpt-6.1-sol`; use it only
   after a flag (see [Flags](#flags)). Use no other model. The runner pins the
   model on every call, so the skill does not depend on the ambient
@@ -94,12 +101,18 @@ Find the single weakest point in the current position. Surface hidden assumption
 
 Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
 CRITIC
+
+cat > "$DIR/narrow.txt" <<'NARROW'
+
+Your previous turn on this packet ran out of time and was stopped before you replied. If the packet lists question IDs, first give the one-line assessment for every ID. Then give only your single strongest objection. Reuse what you already read; make at most five more targeted reads. Put the whole reply in your final message.
+NARROW
 test -f "$RUNNER" || echo "runner not found: $RUNNER"
 echo "workdir: $DIR"; echo "repo: $REPO"
 ```
 
 The runner sends `prompt.md` followed by `critic.txt` to the critic, so every
-prompt ends with the critic instructions.
+prompt ends with the critic instructions. A [narrow retry](#narrow-retry) also
+sends `narrow.txt` last.
 
 ## Step 0 — Preflight (mandatory)
 
@@ -113,6 +126,8 @@ python3 "$RUNNER" smoke "$DIR"
 
 - **`status=ok`** — continue to Step 1.
 - **`status=flagged`** — follow [Flags](#flags), then re-run the preflight.
+- **`status=running`** or **`status=error:busy`** — run `wait` as described in
+  [Status line](#status-line), then act on its final status here.
 - **Any other status** — stop. Report a one-line diagnosis from the status line
   and `$DIR/err.log`, for example "Codex is not signed in", "Codex hooks are
   failing — check the `~/.codex` plugin cache", or "`gpt-6-astra` is not
@@ -136,8 +151,7 @@ source "<workdir>/env.sh"
 cat > "$DIR/prompt.md" <<'__PROMPT_END__'
 <pressure-test packet>
 __PROMPT_END__
-python3 "$RUNNER" kickoff "$DIR"
-cat "$DIR/msg.txt"
+python3 "$RUNNER" kickoff "$DIR" && cat "$DIR/msg.txt"
 ```
 
 ## Pressure-test packet
@@ -205,28 +219,65 @@ source "<workdir>/env.sh"
 cat > "$DIR/prompt.md" <<'__PROMPT_END__'
 <pressure-test packet for this round>
 __PROMPT_END__
-python3 "$RUNNER" resume "$DIR"
-cat "$DIR/msg.txt"
+python3 "$RUNNER" resume "$DIR" && cat "$DIR/msg.txt"
 ```
 
 ## Status line
 
-The runner prints `exit=<code> model=<model> status=<status>` and writes the
-reply to `$DIR/msg.txt`, the Codex events to `$DIR/events.jsonl`, and stderr
-to `$DIR/err.log`. On the kickoff, it saves the thread ID to
-`$DIR/thread_id`; each resume uses that ID. Act on the status:
+The runner prints `exit=<code> model=<model> seconds=<n> status=<status>`,
+where `seconds` is the time of the call so far. It writes the reply to
+`$DIR/msg.txt`, the Codex events to `$DIR/events.jsonl`, and stderr to
+`$DIR/err.log`. On the kickoff, it saves the thread ID to `$DIR/thread_id`;
+each resume uses that ID. Act on the status:
 
+- **`running`** (exit `-`) — the call continues in its detached process. Wait
+  for it with the Bash tool `timeout` set to `600000`, and repeat until a
+  final status:
+
+  ```bash
+  source "<workdir>/env.sh"
+  python3 "$RUNNER" wait "$DIR" && cat "$DIR/msg.txt"
+  ```
+
+  Run `wait` also when the Bash tool stops a runner command or moves it to the
+  background. The call continues, and `wait` prints its status. Do not start
+  the call again.
 - **`ok`** — read the reply in `$DIR/msg.txt`.
 - **`flagged`** — follow [Flags](#flags).
-- **`error:no thread id`** (kickoff only) — the call succeeded but did not emit
-  a `thread.started` event, which means the event shape changed. **STOP** and
-  report the last lines of `$DIR/err.log` and `$DIR/events.jsonl`. The runner
-  never falls back to the `--last` form.
-- **Any other `error:` status**, for example `error:timeout` (exit code 124) or
-  `error:exit 1` — the call failed. Follow the **Error** stop condition.
+- **`error:busy`** — a call in this work directory still runs, and the runner
+  started no new call. Run `wait` until a final status, then act on that
+  status.
+- **`error:no thread id`** (a kickoff, or a retry that starts a new thread) —
+  the call succeeded but did not emit a `thread.started` event, which means
+  the event shape changed. **STOP** and report the last lines of
+  `$DIR/err.log` and `$DIR/events.jsonl`. The runner never falls back to the
+  `--last` form.
+- **`error:timeout`** or **`error:idle`** (exit code 124) — the call reached a
+  time limit. Make one [narrow retry](#narrow-retry).
+- **Any other `error:` status**, for example `error:exit 1` or
+  `error:runner stopped` — the call failed. Follow the **Error** stop
+  condition.
 
-Record every status line that is not `ok`, and each retry, in the session
-record.
+Record every call's final status line in the session record.
+
+## Narrow retry
+
+A narrow retry asks the critic for less after a call reached a time limit.
+The runner reports the time limit only after it has stopped the call, so the
+retry cannot overlap it. Run the retry once; `prompt.md` is unchanged:
+
+```bash
+source "<workdir>/env.sh"
+python3 "$RUNNER" retry "$DIR" && cat "$DIR/msg.txt"
+```
+
+The runner sends `prompt.md`, `critic.txt`, and then `narrow.txt`, with the
+same limits and effort. When the timed-out call saved a thread ID, the retry
+resumes that thread, so the critic keeps what it already read. Otherwise, for
+example when a kickoff stopped before Codex started its thread, the retry
+starts a new thread. Each form follows the status rules of the call it makes.
+A flag during the retry follows [Flags](#flags). A retry that fails ends the
+pressure test (see **Error** in [Stop conditions](#stop-conditions)).
 
 ## Flags
 
@@ -244,7 +295,7 @@ cannot match, and reports `status=flagged`.
   source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
   ```
 
-  For the kickoff, the retry starts a new thread. For a resume, it continues
+  For the kickoff, the re-run starts a new thread. For a resume, it continues
   the same thread on the fallback model. Codex then warns that the session "was
   recorded with model `gpt-6-astra`"; ignore that warning. Keep the fallback
   model for the rest of the pressure test, and name the switch in the round
@@ -275,9 +326,10 @@ cannot match, and reports `status=flagged`.
   assessed and does not converge.
 - **Round cap** — 6 rounds reached. Carry any live disagreements into the
   conclusion as explicitly unresolved.
-- **Error** — a runner call reports an `error:` status without a flag → retry
-  the same block once → if it still fails, write the conclusion with what
-  exists and end with "cut short".
+- **Error** — a runner call reports an `error:` status without a flag. After
+  `error:timeout` or `error:idle`, make one [narrow retry](#narrow-retry);
+  after any other error, retry the same block once. If the retry also fails,
+  write the conclusion with what exists and end with "cut short".
 - **Critic flagged** — the fallback model was also flagged (see [Flags](#flags)).
 - **Critic unavailable** — the preflight failed.
 
@@ -299,7 +351,7 @@ turn can resume from it after the work directory is gone:
 
 ```text
 Round N (critic model: <model>)
-Calls: <each status line that is not ok, and each retry; or "ok">
+Calls: <every call's final status line, in order, including ok calls and retries>
 Critic: strongest objections, faithfully summarized.
 Disposition: conceded and revised, or rebutted with evidence.
 Current position: updated position.

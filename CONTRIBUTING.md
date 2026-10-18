@@ -234,13 +234,8 @@ uses only the standard library and installs no dependencies:
 uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
 ```
 
-If `python3` is 3.11 or newer, this command is equivalent:
-
-```bash
-python3 scripts/validate_packages.py --base origin/master
-```
-
-With `python3` older than 3.11, the validator stops with exit status 1 and
+Use this `uv` form: the `python3` of a contributor machine can be older
+than 3.11. With such a `python3`, the validator stops with exit status 1 and
 prints the `uv` command that repeats the same arguments.
 
 `--base` accepts the target branch ref or a commit SHA. The validator finds
@@ -313,6 +308,8 @@ model-pin test, and the argument-placeholder test:
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
 ```
 
+With a `python3` older than 3.11, many root tests fail and some do not load.
+
 When you change `allowed-models.json`, also run the `dev-skills` tests.
 `dev-skills/tests/test_critic_status.py` and
 `dev-skills/tests/test_codex_critic.py` read their critic model IDs from that
@@ -332,6 +329,15 @@ python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
 python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
 python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
 uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'
+```
+
+The `dev-skills` suite takes about 2 minutes, most of it in
+`dev-skills/tests/test_codex_critic.py`. Give its command a timeout of at
+least 300 seconds (in Claude Code, a Bash tool `timeout` of 300000), or run
+one file:
+
+```bash
+python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
 ```
 
 When you raise the core-hooks Codex version, also change the version that
