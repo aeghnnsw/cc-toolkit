@@ -91,8 +91,8 @@ When Claude Code loads a skill or command, it replaces argument placeholders
 in the body with the invocation arguments. It replaces them everywhere,
 including code spans and fenced blocks:
 
-- `$0`, `$1`, and so on: one argument, counted from 0. `$ARGUMENTS[N]` is
-  the long form.
+- `$N`, where `N` is a number such as `0` or `10`: one argument, counted
+  from 0. `$ARGUMENTS[N]` is the long form.
 - `$ARGUMENTS`: the full argument string. With no arguments, it becomes
   empty.
 - `$name`: a name that the `arguments` frontmatter declares. With no
@@ -103,20 +103,26 @@ When no placeholder takes the arguments, Claude Code appends
 placeholders. Claude Code does not replace them in agent files or in the
 supporting files that a skill reads.
 
-To keep such text unchanged in a Claude Code skill or command:
+To show a `$` before a number, `ARGUMENTS`, or a declared name in a Claude
+Code skill or command:
 
 - In prose or an example, write one backslash before the `$`. For example,
   `\$0.67` loads as `$0.67`. Two or three backslashes do not escape a
   placeholder.
 - Put shell code that needs positional parameters in a script under the
-  skill directory. An agent that reads `SKILL.md` as a file keeps a
-  backslash escape. Claude Code does not document `${1}`.
+  skill directory. Do not escape the shell code: an agent can read
+  `SKILL.md` as a file instead of through the Skill tool, and then the
+  shell gets the backslash.
+- Do not use `${N}`, a braced positional parameter such as `${1}`. Claude
+  Code does not document this form, and a backslash before it stays in the
+  loaded text. Put the code in a script.
 - For an intended placeholder, add the exact line to `ALLOWED` in
   [tests/test_skill_placeholders.py](tests/test_skill_placeholders.py),
   with its line count and a reason.
 
 The [root tests](#package-and-release-validation) check every Claude Code
-skill and command file for these rules.
+skill and command file for these rules. The test fails on an unescaped
+placeholder and on `${N}`, unless an `ALLOWED` entry covers the line.
 
 ## Repository search
 

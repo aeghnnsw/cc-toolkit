@@ -10,8 +10,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from package_support import ROOT, git_files, validator
 
-# Claude Code replaces $N, $ARGUMENTS, and $ARGUMENTS[N]. ${N} is undocumented; code that needs it belongs in a script.
-INDEXED = r'\d+|ARGUMENTS(?:\[\d+\])?|\{\d+\}'
+# Forms checked in every file: $N, $ARGUMENTS, and $ARGUMENTS[N], which Claude Code replaces, and ${N}, which it does
+# not document. Each file also checks the names that its `arguments` frontmatter declares.
+ALWAYS_CHECKED = r'\d+|ARGUMENTS(?:\[\d+\])?|\{\d+\}'
 ADD_TO_ALLOWED = 'add the line to ALLOWED in tests/test_skill_placeholders.py'
 # Intended placeholders: (repository-relative path, line text without surrounding whitespace) -> (line count, reason).
 # The count is the number of lines in that file with this text and an unescaped placeholder.
@@ -22,7 +23,7 @@ def relative(root, path):
     return path.relative_to(root).as_posix()
 
 
-def claude_text_files(root):
+def claude_skill_and_command_files(root):
     """Return the Git-included skill and command files that Claude Code loads for each Claude Code registration.
 
     A declared skill path adds to the default skills/ directory; a declared command path replaces commands/.
@@ -72,23 +73,30 @@ def split_frontmatter(lines):
 
 
 def declared_names(header):
-    """Return the names in an `arguments` field: a space-separated string, a flow list, or a block list."""
-    for index, line in enumerate(header):
-        match = re.match(r'arguments:[ \t]*(.*?)[ \t]*$', line)
-        if match:
-            value = match.group(1)
-            if value.startswith('['):
-                items = value.strip('[]').replace(',', ' ').split()
-            elif value:
-                items = value.strip('\'"').split()
-            else:
-                items = []
-                for item in header[index + 1:]:
-                    entry = re.match(r'[ \t]*-[ \t]*(.+?)[ \t]*$', item)
-                    if not entry:
-                        break
-                    items.append(entry.group(1))
-            return [item.strip('\'"') for item in items if re.fullmatch(r'\w+', item.strip('\'"'))]
+    """Return the names in an `arguments` field: a space-separated string, a flow list, or a block list.
+
+    A flow list can continue on later lines. A block list can have comment lines and blank lines between items.
+    """
+    lines = [re.sub(r'(?:^|[ \t])#.*', '', line).rstrip() for line in header]
+    for index, line in enumerate(lines):
+        match = re.match(r'arguments:[ \t]*(.*)$', line)
+        if not match:
+            continue
+        value, rest = match.group(1), lines[index + 1:]
+        if value.startswith('['):
+            while ']' not in value and rest:
+                value, rest = f'{value} {rest[0]}', rest[1:]
+            items = value.strip('[]').replace(',', ' ').split()
+        elif value:
+            items = value.strip('\'"').split()
+        else:
+            items = []
+            for item in filter(str.strip, rest):
+                entry = re.match(r'[ \t]*-[ \t]*(.+)$', item)
+                if not entry:
+                    break
+                items.append(entry.group(1))
+        return [item.strip('\'"') for item in items if re.fullmatch(r'\w+', item.strip('\'"'))]
     return []
 
 
@@ -96,12 +104,12 @@ def check_placeholders(root, allowed=None):
     """Return a problem for each line with an unescaped placeholder and for each allowlist count that differs."""
     allowed = ALLOWED if allowed is None else allowed
     problems, counts = [], dict.fromkeys(allowed, 0)
-    for path in claude_text_files(root):
+    for path in claude_skill_and_command_files(root):
         name = relative(root, path)
         lines = path.read_text(encoding='utf-8').splitlines()
         header, start = split_frontmatter(lines)
-        named = [rf'{re.escape(argument)}(?!\w)' for argument in declared_names(header)]
-        placeholder = re.compile(r'\$(?:' + '|'.join([INDEXED, *named]) + ')')
+        name_patterns = [rf'{re.escape(argument)}(?!\w)' for argument in declared_names(header)]
+        placeholder = re.compile(r'\$(?:' + '|'.join([ALWAYS_CHECKED, *name_patterns]) + ')')
         for number, line in enumerate(lines[start:], start + 1):
             tokens = [match.group() for match in placeholder.finditer(line)
                       if match.group().startswith('${') or not escaped(line, match.start())]
@@ -181,7 +189,9 @@ class SkillPlaceholderTests(unittest.TestCase):
         self.assertEqual(check_placeholders(self.fixture({SKILL: text})), [])
 
     def test_declared_named_arguments_fail_unless_escaped(self):
-        headers = ('arguments: target mode', 'arguments: [target, "mode"]', "arguments:\n  - 'target'\n  - mode")
+        headers = ('arguments: target mode', 'arguments: [target, "mode"]', "arguments:\n  - 'target'\n  - mode",
+                   'arguments: [target,\n  mode]', 'arguments:\n  # Names\n  - target\n\n  - mode  # Second',
+                   'arguments: target mode  # Two names')
         body = '\nprintf "$target" "$mode"\nKeep \\$target, $targets, ${target}, and $other.\n'
         for header in headers:
             with self.subTest(header=header):
@@ -238,7 +248,7 @@ class SkillPlaceholderTests(unittest.TestCase):
         self.assertIn('found 2', problems[0])
 
     def test_repository_has_no_unreviewed_placeholders(self):
-        self.assertTrue(claude_text_files(ROOT), 'no Claude Code skill files found')
+        self.assertTrue(claude_skill_and_command_files(ROOT), 'no Claude Code skill files found')
         self.assertEqual(check_placeholders(ROOT), [])
 
 

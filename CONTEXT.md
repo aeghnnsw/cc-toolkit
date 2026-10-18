@@ -40,8 +40,9 @@ cannot load it through the host's skill tool.
 
 **Argument placeholder**:
 Text in the body of a Claude Code skill or command that Claude Code replaces
-with the invocation arguments when it loads the skill: `$N`, `$ARGUMENTS`,
-`$ARGUMENTS[N]`, or a `$name` that the `arguments` frontmatter declares.
+with the invocation arguments when it loads the skill or command: `$N`,
+`$ARGUMENTS`, `$ARGUMENTS[N]`, or a `$name` that the `arguments` frontmatter
+declares.
 
 ## GTD language
 
