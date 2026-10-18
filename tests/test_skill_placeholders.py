@@ -28,6 +28,7 @@ def claude_skill_and_command_files(root):
 
     A declared skill path adds to the default skills/ directory; a declared command path replaces commands/.
     A plugin with neither skills/ nor a declared skill path loads a SKILL.md at its root as one skill.
+    The validator's host_paths keeps skills/ only when no skill path is declared; this function follows Claude Code.
     """
     files = git_files(root)
     found = {}
@@ -57,10 +58,10 @@ def escaped(line, start):
 
 def remedy(token):
     if token.startswith('${'):  # Claude Code does not document it, and a backslash stays in the loaded text.
-        return (f'{token} is a positional parameter. Move the code into a script under the skill directory, '
+        return (f'{token} is a positional parameter. Move the code into a script in the plugin, '
                 f'or {ADD_TO_ALLOWED}.')
     return (f'{token} is an argument placeholder. In prose or an example, write one backslash before the $ '
-            f'(\\{token}). Move shell code into a script under the skill directory; an agent that reads the file '
+            f'(\\{token}). Move shell code into a script in the plugin; an agent that reads the file '
             f'keeps the backslash. For an intended placeholder, {ADD_TO_ALLOWED}.')
 
 
@@ -72,12 +73,12 @@ def split_frontmatter(lines):
     return (lines[1:end], end + 1) if end else ([], 0)
 
 
-def declared_names(header):
-    """Return the names in an `arguments` field: a space-separated string, a flow list, or a block list.
+def declared_names(frontmatter):
+    """Return the items of an `arguments` field: a space-separated string, a flow list, or a block list.
 
     A flow list can continue on later lines. A block list can have comment lines and blank lines between items.
     """
-    lines = [re.sub(r'(?:^|[ \t])#.*', '', line).rstrip() for line in header]
+    lines = [re.sub(r'(?:^|[ \t])#.*', '', line).rstrip() for line in frontmatter]
     for index, line in enumerate(lines):
         match = re.match(r'arguments:[ \t]*(.*)$', line)
         if not match:
@@ -96,7 +97,7 @@ def declared_names(header):
                 if not entry:
                     break
                 items.append(entry.group(1))
-        return [item.strip('\'"') for item in items if re.fullmatch(r'\w+', item.strip('\'"'))]
+        return [item.strip('\'"') for item in items]
     return []
 
 
@@ -105,22 +106,27 @@ def check_placeholders(root, allowed=None):
     allowed = ALLOWED if allowed is None else allowed
     problems, counts = [], dict.fromkeys(allowed, 0)
     for path in claude_skill_and_command_files(root):
-        name = relative(root, path)
+        relative_path = relative(root, path)
         lines = path.read_text(encoding='utf-8').splitlines()
-        header, start = split_frontmatter(lines)
-        name_patterns = [rf'{re.escape(argument)}(?!\w)' for argument in declared_names(header)]
+        frontmatter, start = split_frontmatter(lines)
+        names = declared_names(frontmatter)
+        problems += [f'{relative_path}: the `arguments` frontmatter declares {item!r}. The test can check only '
+                     f'names of letters, digits, and underscores. Rename the argument.'
+                     for item in names if not re.fullmatch(r'\w+', item)]
+        name_patterns = [rf'{re.escape(name)}(?!\w)' for name in names if re.fullmatch(r'\w+', name)]
         placeholder = re.compile(r'\$(?:' + '|'.join([ALWAYS_CHECKED, *name_patterns]) + ')')
         for number, line in enumerate(lines[start:], start + 1):
             tokens = [match.group() for match in placeholder.finditer(line)
                       if match.group().startswith('${') or not escaped(line, match.start())]
-            if (name, line.strip()) in counts and tokens:
-                counts[name, line.strip()] += 1
+            if (relative_path, line.strip()) in counts and tokens:
+                counts[relative_path, line.strip()] += 1
             else:
-                problems += [f'{name}:{number}: {remedy(token)}' for token in tokens]
-    for (name, text), (count, _reason) in allowed.items():
-        if counts[name, text] != count:
-            problems.append(f'{name}: ALLOWED expects {count} line(s) {text!r} with a placeholder, found '
-                            f'{counts[name, text]}. Review each use, then update the count or remove the entry.')
+                problems += [f'{relative_path}:{number}: {remedy(token)}' for token in tokens]
+    for (relative_path, text), (count, _reason) in allowed.items():
+        if counts[relative_path, text] != count:
+            problems.append(f'{relative_path}: ALLOWED expects {count} line(s) {text!r} with a placeholder, found '
+                            f'{counts[relative_path, text]}. Review each use, then update the count or remove the '
+                            f'entry.')
     return problems
 
 
@@ -164,7 +170,8 @@ class SkillPlaceholderTests(unittest.TestCase):
     def test_indexed_and_full_argument_placeholders_fail(self):
         cases = [('Project: $0\n', '$0'), ('cost $0.67\n', '$0'), ('$10 items\n', '$10'), ('$1abc\n', '$1'),
                  ('Use `$1` here.\n', '$1'), ('```bash\nlocal s="$1"\n```\n', '$1'),
-                 ('Args: $ARGUMENTS\n', '$ARGUMENTS'), ('First: $ARGUMENTS[0]\n', '$ARGUMENTS[0]')]
+                 ('Args: $ARGUMENTS\n', '$ARGUMENTS'), ('First: $ARGUMENTS[0]\n', '$ARGUMENTS[0]'),
+                 ('Second: $ARGUMENTS[1]\n', '$ARGUMENTS[1]')]
         for body, token in cases:
             with self.subTest(body=body):
                 self.assert_flags(body, token, line=8 if body.startswith('```') else 7)
@@ -180,7 +187,7 @@ class SkillPlaceholderTests(unittest.TestCase):
 
     def test_messages_name_each_remedy(self):
         [problem] = check_placeholders(self.fixture({SKILL: FIXTURE[SKILL] + 'cost $0.67\n'}))
-        for text in ('one backslash before the $ (\\$0)', 'script under the skill directory', 'ALLOWED'):
+        for text in ('one backslash before the $ (\\$0)', 'script in the plugin', 'ALLOWED'):
             self.assertIn(text, problem)
 
     def test_frontmatter_and_shell_variables_pass(self):
@@ -200,6 +207,15 @@ class SkillPlaceholderTests(unittest.TestCase):
                 problems = check_placeholders(self.fixture({SKILL: text}))
                 self.assertEqual([problem.split(' is ')[0] for problem in problems],
                                  [f'{SKILL}:{line}: $target', f'{SKILL}:{line}: $mode'])
+
+    def test_declared_names_that_the_test_cannot_check_fail(self):
+        for header, item in (('arguments: my-arg other', 'my-arg'), ('arguments: >\n  other', '>')):
+            with self.subTest(header=header):
+                text = f'---\nname: clean\ndescription: Named.\n{header}\n---\n\nUse $other.\n'
+                problems = check_placeholders(self.fixture({SKILL: text}))
+                self.assertTrue(any(problem.startswith(f'{SKILL}: the `arguments` frontmatter declares {item!r}')
+                                    for problem in problems), problems)
+                self.assertEqual(any(': $other is ' in problem for problem in problems), item == 'my-arg', problems)
 
     def test_text_that_claude_code_does_not_replace_passes(self):
         changes = {'demo/codex-skills/clean/SKILL.md': '---\nname: clean\ndescription: Codex.\n---\n\nlocal s="$1"\n',

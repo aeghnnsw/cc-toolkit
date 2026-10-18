@@ -100,19 +100,20 @@ including code spans and fenced blocks:
 
 When no placeholder takes the arguments, Claude Code appends
 `ARGUMENTS: <value>` to the skill text. Codex does not replace
-placeholders. Claude Code does not replace them in agent files or in the
-supporting files that a skill reads.
+placeholders. Claude Code does not replace them in the supporting files
+that a skill reads. In a test, Claude Code did not replace them in an
+agent file; its documentation does not cover agent files.
 
-To show a `$` before a number, `ARGUMENTS`, or a declared name in a Claude
-Code skill or command:
+Write a `$` before a number, `ARGUMENTS`, or a declared name in a Claude
+Code skill or command as follows:
 
 - In prose or an example, write one backslash before the `$`. For example,
   `\$0.67` loads as `$0.67`. Two or three backslashes do not escape a
   placeholder.
-- Put shell code that needs positional parameters in a script under the
-  skill directory. Do not escape the shell code: an agent can read
-  `SKILL.md` as a file instead of through the Skill tool, and then the
-  shell gets the backslash.
+- Put shell code that needs positional parameters in a script in the
+  plugin, for example under the skill directory. Do not escape the shell
+  code: an agent can read the file directly instead of through the Skill
+  tool, and then the shell gets the backslash.
 - Do not use `${N}`, a braced positional parameter such as `${1}`. Claude
   Code does not document this form, and a backslash before it stays in the
   loaded text. Put the code in a script.
@@ -120,9 +121,12 @@ Code skill or command:
   [tests/test_skill_placeholders.py](tests/test_skill_placeholders.py),
   with its line count and a reason.
 
-The [root tests](#package-and-release-validation) check every Claude Code
-skill and command file for these rules. The test fails on an unescaped
-placeholder and on `${N}`, unless an `ALLOWED` entry covers the line.
+The argument-placeholder test, `tests/test_skill_placeholders.py`, is one of
+the [root tests](#package-and-release-validation). It checks every Claude
+Code skill and command file. It fails on an unescaped placeholder and on
+`${N}`, unless an `ALLOWED` entry covers the line. It also fails on a
+declared name that it cannot check, such as `my-arg`; use letters, digits,
+and underscores.
 
 ## Repository search
 
