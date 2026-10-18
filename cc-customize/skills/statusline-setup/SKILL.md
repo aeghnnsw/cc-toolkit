@@ -1,6 +1,6 @@
 ---
 name: statusline-setup
-version: 2.0.0
+version: 2.0.1
 description: This skill should be used when the user asks to "set up statusline", "configure statusline", "install statusline", "set up status bar", or wants to configure the Claude Code statusline with model info, git status, context/rate-limit bars, prompt-cache state, and session token and cost totals.
 ---
 
@@ -19,7 +19,7 @@ The statusline displays 3 lines. Each item shows only when Claude Code sends its
    - The script does not read project settings files or the `--autocompact` launch flag. When the window is set there, the bar uses the wrong limit.
    - 5-hour and 7-day rate limits with reset countdowns, and the spend limit.
    - Bars are green below 50%, yellow from 50%, and red from 90%.
-3. **Session totals** — `tasks 3/5 │ cache 1h: warm 59m hit 91% │ tokens 648.0K │ cost $0.67`
+3. **Session totals** — `tasks 3/5 │ cache 1h: warm 59m hit 91% │ tokens 648.0K │ cost \$0.67`
    - Completed and total tasks in the session task list.
    - Prompt-cache state (warm with time to expiry, or cold), hit ratio, and misses.
    - Total tokens (input, cache write, cache read, and output) of the session and its subagents. `…` shows until the first count is ready.
