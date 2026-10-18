@@ -142,6 +142,12 @@ questions converges only when the critic's latest reply clears every question.
 The main agent's own disposition does not make a question converged.
 _Avoid_: Settled, approved
 
+**Narrow retry**:
+The single retry of a critic call that ran out of time. It asks the critic for
+less than the call that it repeats: a one-line assessment of each question,
+then only the strongest objection.
+_Avoid_: Timeout retry
+
 ## Git policy language
 
 **Branch creation**:

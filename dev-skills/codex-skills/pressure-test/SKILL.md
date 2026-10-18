@@ -22,7 +22,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 ## Defaults
 
 - `ROUND_CAP = 6`
-- `CALL_TIMEOUT = 900` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight.
+- `CALL_TIMEOUT = 1800` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight. At the limit, `limit_call.py` ends the CLI and its process group before it exits 124, so a retry never overlaps the call.
 - Critic model: `claude-opus-5-5`. The fallback model is `claude-sonnet-5-5`; use it only after a flag (see [Flags](#flags)). Use no other model. Pass `--model` on every call, and accept a reply only from the current critic model.
 - Effort: `xhigh` on critic rounds and `low` on the smoke call.
 - `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own model after a refusal. This skill switches models itself.
@@ -39,7 +39,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 
 - The `claude` CLI needs network access and write access to `~/.claude`. If the Codex sandbox blocks either, run each `claude` command with escalated permissions. If escalation is unavailable or denied, stop and report that the critic could not run.
 - Each shell command starts a new shell. Setup writes the shared settings to `env.sh` and prints its directory. Start every later command with `source "<workdir>/env.sh"`, where `<workdir>` is that printed directory.
-- Give each critic command a shell timeout above `CALL_TIMEOUT`, for example 960000 ms, or poll the command until it exits.
+- Give each critic command a shell timeout above `CALL_TIMEOUT`, for example 1860000 ms, or poll the command until it exits.
 - Write each prompt with the quoted heredoc shown below. The quotes keep backticks, `$`, and quotes in the packet literal.
 
 ## Setup
@@ -54,29 +54,24 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   cat <<'ENV'
 PRIMARY_MODEL="claude-opus-5-5"
 FALLBACK_MODEL="claude-sonnet-5-5"      # only after a flag
-CALL_TIMEOUT=900
+CALL_TIMEOUT=1800
 SMOKE_TIMEOUT=120
 export CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
 
-# Portable per-call timeout. macOS has no `timeout`; perl ships at /usr/bin/perl.
-run_to() {                              # usage: run_to <seconds> <cmd...>
-  local s="$1"; shift
-  if command -v timeout  >/dev/null 2>&1; then timeout  "$s" "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$s" "$@"
-  else perl -e 'my $t=shift; my $p=fork; if(!$p){exec @ARGV;exit 127} eval{local $SIG{ALRM}=sub{die};alarm $t;waitpid($p,0);alarm 0}; if($@){kill "TERM",$p;exit 124} exit($?>>8)' "$s" "$@"
-  fi
-}
-
-# One read-only critic call. The prompt comes from stdin. Prints the exit code
-# and one status from critic_status.py, and writes the reply to $DIR/msg.txt.
-# Only the current critic model may answer; any other model is wrong_model.
+# One read-only critic call. The prompt comes from stdin. limit_call.py stops
+# the call at the time limit and exits 124 only after the CLI has ended. Prints
+# the exit code, the model, and the call time in seconds, then one status from
+# critic_status.py, and writes the reply to $DIR/msg.txt. Only the current
+# critic model may answer; any other model is wrong_model.
 critic() {                              # usage: critic <seconds> <effort> [session flags] < prompt
-  local s="$1" effort="$2"; shift 2
-  (cd "$REPO" && run_to "$s" claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
+  local s="$1" effort="$2" start="$SECONDS" rc; shift 2
+  (cd "$REPO" && python3 "$SKILL_DIR/scripts/limit_call.py" "$s" \
+    claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
     --output-format stream-json --verbose --tools "Read,Grep,Glob" \
     --permission-mode dontAsk --strict-mcp-config --disable-slash-commands \
     --add-dir "$DIR") > "$DIR/events.jsonl" 2> "$DIR/err.log"
-  echo "exit=$? model=$(cat "$DIR/model")"
+  rc=$?
+  echo "exit=$rc model=$(cat "$DIR/model") seconds=$((SECONDS - start))"
   python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
     "$(cat "$DIR/model")"
 }
@@ -97,6 +92,11 @@ Find the single weakest point in the current position. Surface hidden assumption
 
 Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
 CRITIC
+
+cat > "$DIR/narrow.txt" <<'NARROW'
+
+Your previous turn on this packet ran out of time and was stopped before you replied. If the packet lists question IDs, first give the one-line assessment for every ID. Then give only your single strongest objection. Reuse what you already read; make at most five more targeted reads. Put the whole reply in your final message.
+NARROW
 echo "workdir: $DIR"; echo "repo: $REPO"
 ```
 
@@ -207,9 +207,35 @@ Act on the status line:
 - `ok` — read the objections in `$DIR/msg.txt`.
 - `flagged` — follow [Flags](#flags).
 - `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
-- `error:<detail>`, or a non-zero exit code (124 means timed out) — follow [Failure Behavior](#failure-behavior).
+- Exit code 124 — the call reached `CALL_TIMEOUT`. Make one [narrow retry](#narrow-retry).
+- `error:<detail>`, or another non-zero exit code — follow [Failure Behavior](#failure-behavior).
 
-Record each failed or retried call in the session record, with its `exit=` line and its status.
+Record every call's `exit=` line and status in the session record.
+
+## Narrow Retry
+
+A narrow retry asks the critic for less after a call reached `CALL_TIMEOUT`. `limit_call.py` exits only after the timed-out CLI has ended, so the retry cannot overlap it. Run the retry once. Append `$DIR/narrow.txt` to `$DIR/prompt.md`, so the prompt ends with the packet, the critic instructions, and the narrow request.
+
+A timed-out kickoff retries in a new session, because the timed-out call may not have created a session that Claude Code can resume:
+
+```bash
+source "<workdir>/env.sh"
+cat "$DIR/narrow.txt" >> "$DIR/prompt.md"
+new_session
+critic "$CALL_TIMEOUT" xhigh --session-id "$(cat "$DIR/session_id")" < "$DIR/prompt.md"
+cat "$DIR/msg.txt"
+```
+
+A timed-out later round retries in the same session, which keeps the earlier rounds:
+
+```bash
+source "<workdir>/env.sh"
+cat "$DIR/narrow.txt" >> "$DIR/prompt.md"
+critic "$CALL_TIMEOUT" xhigh --resume "$(cat "$DIR/session_id")" < "$DIR/prompt.md"
+cat "$DIR/msg.txt"
+```
+
+Act on the retry's status line as above. A flag during the retry follows [Flags](#flags); in that re-run, skip the `cat "$DIR/narrow.txt"` line, because `prompt.md` already ends with the narrow request. A retry that fails, including another timeout, ends the pressure test as described in [Failure Behavior](#failure-behavior).
 
 ## Flags
 
@@ -256,7 +282,7 @@ After each round, update `SESSION_PATH` with the complete session so later turns
 
 ```text
 Round N (critic model: <model>)
-Calls: <each failed or retried call, with its exit= line and status; or "ok">
+Calls: <every call's exit= line and status, in order, including ok calls and retries>
 Critic: strongest objections, faithfully summarized.
 Disposition: conceded and revised, or rebutted with evidence.
 Current position: updated position.
@@ -291,4 +317,4 @@ Present the same conclusion in chat. When another skill called this skill, that 
 
 If the `claude` CLI is missing, the preflight fails, or the sandbox blocks the critic and escalation is unavailable, stop and report that an independent critic could not run. Write a short conclusion with the diagnosis; the ending condition is "critic unavailable". Do not silently run inline self-critique or a Codex subagent instead.
 
-If a critic round fails mid-loop, retry that round once. If it still fails, write a partial conclusion with the last stable position, unresolved objections, and the failure point; the ending condition is "cut short".
+If a critic round fails mid-loop, retry that round once: a [narrow retry](#narrow-retry) after exit code 124, otherwise the same block. If the retry also fails, write a partial conclusion with the last stable position, unresolved objections, and the failure point; the ending condition is "cut short".
