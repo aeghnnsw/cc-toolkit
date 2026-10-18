@@ -295,7 +295,7 @@ cannot match, and reports `status=flagged`.
   source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
   ```
 
-  For the kickoff, the retry starts a new thread. For a resume, it continues
+  For the kickoff, the re-run starts a new thread. For a resume, it continues
   the same thread on the fallback model. Codex then warns that the session "was
   recorded with model `gpt-6-astra`"; ignore that warning. Keep the fallback
   model for the rest of the pressure test, and name the switch in the round

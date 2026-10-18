@@ -25,7 +25,9 @@ open(sys.argv[1] + ".tmp", "w").write(str(os.getpid()))
 os.replace(sys.argv[1] + ".tmp", sys.argv[1])
 time.sleep(60)
 """
-# A command that starts a child in its own process group; the child ignores
+# A command that writes its process ID and sleeps; it ends on SIGTERM.
+WRITES_PID = IGNORES_TERM.replace("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n", "")
+# A command that starts a child in the command's process group; the child ignores
 # SIGTERM and writes its process ID. The command itself ends on SIGTERM.
 STARTS_CHILD = """\
 import subprocess, sys, time
@@ -122,6 +124,24 @@ class LimitCallTest(unittest.TestCase):
                 return code, elapsed - seconds, pid
         self.fail("the command did not start within an 8-second limit")
 
+    def signal_helper(self, signum: int, source: str) -> tuple[int, int]:
+        """Run the helper with a 60-second limit on a command that writes its process ID.
+
+        When the command has written its ID, send signum to the helper. Return
+        the helper's exit code and the command's process ID.
+        """
+        self.pid_file.unlink(missing_ok=True)
+        helper = subprocess.Popen([sys.executable, str(SCRIPT), "60", sys.executable, "-c", source,
+                                   str(self.pid_file)])
+        self.addCleanup(kill_quietly, helper.pid)
+        deadline = time.monotonic() + 10
+        while not self.pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        pid = int(self.pid_file.read_text())
+        self.addCleanup(kill_quietly, pid)
+        helper.send_signal(signum)
+        return helper.wait(timeout=20), pid
+
     def test_exit_code_stdin_stdout_and_stderr_pass_through(self):
         echo = "import sys; print(sys.stdin.read().upper()); sys.stderr.write('note'); sys.exit(3)"
         code, stdout, stderr, _ = self.run_helper("30", sys.executable, "-c", echo, stdin="packet")
@@ -149,17 +169,16 @@ class LimitCallTest(unittest.TestCase):
         self.assertTrue(gone(pid), "a child in the command's process group survived")
 
     def test_term_to_the_helper_ends_the_command_before_the_helper_exits(self):
-        helper = subprocess.Popen([sys.executable, str(SCRIPT), "60", sys.executable, "-c", IGNORES_TERM,
-                                   str(self.pid_file)])
-        self.addCleanup(kill_quietly, helper.pid)
-        deadline = time.monotonic() + 10
-        while not self.pid_file.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        pid = int(self.pid_file.read_text())
-        self.addCleanup(kill_quietly, pid)
-        helper.send_signal(signal.SIGTERM)
-        self.assertEqual(helper.wait(timeout=20), 128 + signal.SIGTERM)
+        code, pid = self.signal_helper(signal.SIGTERM, IGNORES_TERM)
+        self.assertEqual(code, 128 + signal.SIGTERM)
         self.assertTrue(reaped(pid), "the command outlived the helper")
+
+    def test_int_or_hup_to_the_helper_also_ends_the_command_before_the_helper_exits(self):
+        for signum in (signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signal=signum.name):
+                code, pid = self.signal_helper(signum, WRITES_PID)
+                self.assertEqual(code, 128 + signum)
+                self.assertTrue(reaped(pid), "the command outlived the helper")
 
     def test_term_while_the_command_starts_ends_the_command_before_the_helper_exits(self):
         with open(self.root / "stderr", "w+", encoding="utf-8") as stderr:  # a file: a live command holds no pipe
@@ -186,6 +205,13 @@ class LimitCallTest(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertIn("usage", stderr.lower())
                 self.assertFalse(marker.exists())
+
+    def test_command_that_cannot_run_exits_126(self):
+        command = self.root / "not-executable"
+        command.write_text("#!/bin/sh\n", encoding="utf-8")
+        code, _, stderr, _ = self.run_helper("5", str(command))
+        self.assertEqual(code, 126)
+        self.assertIn("cannot run", stderr)
 
     def test_missing_command_exits_127(self):
         code, _, stderr, _ = self.run_helper("5", str(self.root / "no-such-command"))

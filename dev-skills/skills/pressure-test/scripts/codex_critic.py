@@ -608,7 +608,7 @@ def end_call(workdir: Path, call: dict) -> bool:
     return True
 
 
-def stopped(workdir: Path, call: dict) -> bool:
+def runner_stopped(workdir: Path, call: dict) -> bool:
     """Return True when the supervisor of a call ended, or the call is too far past its total limit."""
     return supervisor_ended(workdir) or time.time() - call["started"] > call["total"] + STOPPED_MARGIN
 
@@ -616,7 +616,7 @@ def stopped(workdir: Path, call: dict) -> bool:
 def running(workdir: Path) -> bool:
     """Return True when a call in the work directory still runs."""
     call = current_call(workdir)
-    return call is not None and not (workdir / "status.json").exists() and not stopped(workdir, call)
+    return call is not None and not (workdir / "status.json").exists() and not runner_stopped(workdir, call)
 
 
 def report_final(final: dict) -> int:
@@ -636,7 +636,7 @@ def wait(workdir: Path, step: float) -> int:
         if call is None:
             return report(INPUT_EXIT, read_input(workdir, "model"), 0, "error:no call")
         seconds = round(time.time() - call["started"])
-        if stopped(workdir, call):
+        if runner_stopped(workdir, call):
             end_call(workdir, call)
             final = read_json(workdir / "status.json")  # the supervisor can write it just before it ends
             if final:

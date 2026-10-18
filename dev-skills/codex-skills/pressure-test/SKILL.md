@@ -247,7 +247,7 @@ Any safeguard action flags the call, even when the critic finished its answer. `
   source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
   ```
 
-  For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the retry resumes the same session on the fallback model. Keep the fallback model for the rest of the pressure test, and record the switch in the session record.
+  For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the re-run resumes the same session on the fallback model. Keep the fallback model for the rest of the pressure test, and record the switch in the session record.
 - **Flag on the fallback model** — stop. Use no other model, and do not continue without a critic. Write a partial conclusion; the ending condition is "critic flagged".
 - A flag is not a failed round: it does not use the failure retry.
 

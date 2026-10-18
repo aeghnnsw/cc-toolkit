@@ -39,10 +39,10 @@ NOT_FOUND_EXIT = 127
 GRACE_SECONDS = 5
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 POLL_SECONDS = 0.1
-received: list[int] = []  # the stop signals that the helper got, in order
+received: list[int] = []  # the stop signals that the helper got; the first sets the exit code
 
 
-def stop(signum: int, _frame: object) -> None:
+def record_stop(signum: int, _frame: object) -> None:
     """Record a stop signal for the main loop.
 
     The handler raises no exception, so a signal cannot interrupt the start of
@@ -81,7 +81,7 @@ def main(argv: list[str]) -> int:
     if not seconds > 0:
         return usage(f"seconds must be a positive number: {argv[1]}")
     for signum in STOP_SIGNALS:  # set before the start, so no signal can leave the command running
-        signal.signal(signum, stop)
+        signal.signal(signum, record_stop)
     try:
         process = subprocess.Popen(argv[2:], start_new_session=True)
     except FileNotFoundError:
@@ -99,7 +99,7 @@ def main(argv: list[str]) -> int:
         code = TIMEOUT_EXIT
     else:
         code = 128 - process.returncode if process.returncode < 0 else process.returncode
-    if process.returncode is None:  # a reaped command is not signaled: its ID can be reused
+    if process.returncode is None:  # the command still runs
         end(process)
     return code
 

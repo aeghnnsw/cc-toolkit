@@ -332,8 +332,9 @@ uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest di
 ```
 
 The `dev-skills` suite takes about 2 minutes, most of it in
-`dev-skills/tests/test_codex_critic.py`. Give its command a Bash tool timeout
-of at least 300000 ms, or run one file:
+`dev-skills/tests/test_codex_critic.py`. Give its command a timeout of at
+least 300 seconds (in Claude Code, a Bash tool `timeout` of 300000), or run
+one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
