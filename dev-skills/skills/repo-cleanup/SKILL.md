@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.2.0
+version: 1.3.0
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, and updates the Default Branch.
 ---
 
@@ -46,6 +46,9 @@ complete while a required closure is unverified.
 
 ## Clean Git state
 
+- Cover every worktree and branch in the repository, including those that the
+  calling workflow or user did not name. Keep the worktree that the current
+  session runs in.
 - Remove clean merged worktrees and local branches, delete every verified-merged
   branch from the upstream remote, and prune stale remote-tracking references.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data

@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.4.0
+version: 1.5.0
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, code review, a navigation retrospective, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
@@ -162,33 +162,36 @@ conclusion. Apply the first rule that matches:
 When later evidence changes the basis of a design-critical decision, reopen
 the decision. A reopened decision carries as a revised answer, even when its
 answer stays the same. After gate 1, a reopened decision is invalid under
-"Phase gates" until a new pressure test resolves it. The reopened gate 1
+"Phase gates" until it resolves again under these rules. The reopened gate 1
 resumes the grilling rounds.
 
-Two results are blockers. One is a pressure test with no usable assessment:
-none of its IDs is reviewed, as the pressure-test session record defines the
-term. A reviewed ID counts even when a later revision made its assessment
-stale. The other is a question whose current answer is not assessed at the
-end of two pressure tests in a row that include it. A revision does not
-reset this count; a reopened decision starts a new one.
+A critic failure does not stop the run. Two results are critic failures. One
+is a pressure test with no usable assessment: none of its IDs is reviewed,
+as the pressure-test session record defines the term. A reviewed ID counts
+even when a later revision made its assessment stale. The other is a
+question whose current answer is not assessed at the end of two pressure
+tests in a row that include it. A revision does not reset this count; a
+reopened decision starts a new one.
 
-A blocker overrides the carry in rule 1. Run no further pressure test for
-the affected questions in this run, and stop the work that depends on them.
-Finish the independent work and keep all work. Then report the blocker and
-end the run as "Finish" describes. Gate 1 cannot pass while a blocker
-stands. A later run clears the blocker when its pressure test assesses the
-affected answers.
+A critic failure overrides the carry in rule 1. Resolve each affected
+question without the critic: decide it with the challenge in "Grill in
+rounds", and break a near tie as the evidence-gap rule does. Record with the
+decision that the critic did not assess it, and the ending condition of the
+pressure test. Then continue: its dependent questions proceed, and each
+later grilling round runs its own pressure test. List these decisions in the
+final report.
 
 At the start of step 1, run only the Setup and Preflight steps of
 pressure-test as an early check. This check is not a pressure test: it
-writes no conclusion, and a failed preflight is not a blocker by itself and
-does not stop step 1. Record the result and any diagnosis in the planning
+writes no conclusion, and a failed preflight does not stop step 1. Record
+the result and any diagnosis in the planning
 files. Each later pressure test runs its own preflight. A successful
 preflight is not a review: only the critic's assessment of a question's
 current answer counts.
 
 The spec states each pressure-tested decision with its evidence, objection
-dispositions, unresolved risks, and ending condition. A ticket or ADR that
+dispositions, unresolved risks, and ending condition. The record of a
+decision that the critic did not assess says so. A ticket or ADR that
 records such a decision states the same record. Each record stands alone
 and cites no planning file.
 
@@ -245,7 +248,7 @@ current validity have been checked.
 
 | Step | Start only when | Complete when |
 | --- | --- | --- |
-| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, with each question's classification and its reason. The critic has assessed the current answer of each design-critical question: the answer converged, or the decision records its unresolved objections. `grill-with-docs` has recorded the domain terms and decisions. |
+| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, with each question's classification and its reason. Each design-critical question resolved under "Pressure-test each grilling round": its current answer converged, the decision records the critic's unresolved objections, or the decision records that the critic did not assess it. `grill-with-docs` has recorded the domain terms and decisions. |
 | 2. Spec | Gate 1 passed. | The spec is published with scope and testing seams derived from the resolved decisions. Its reference is recorded and its content verified. |
 | 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
 | 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |

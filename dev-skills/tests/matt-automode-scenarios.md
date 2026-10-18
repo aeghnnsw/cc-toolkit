@@ -2,6 +2,8 @@
 
 These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241)
 and, from case 17, [issue #302](https://github.com/aeghnnsw/cc-toolkit/issues/302).
+[Issue #305](https://github.com/aeghnnsw/cc-toolkit/issues/305) changed the
+results of a critic failure and added case 23.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -80,6 +82,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 22. **Reopened decision.** Q1 converged in an earlier pressure test. New
     evidence reopens Q1, but its answer stays the same. The next pressure test
     includes Q1 and Q3. Its critic assesses Q3 but not Q1.
+23. **Second miss.** Q2 carried from the previous pressure test because the
+    critic did not assess it. The next pressure test includes Q2, and its
+    critic again does not assess the current answer of Q2. Q4 depends on Q2.
 
 ## Expected results
 
@@ -101,12 +106,13 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Second review base | Run the second review against C0 and verify that its diff includes the retro fix. | Comparing against the gate 5 commit; opening the PR before the second review. | A second review against C0 whose diff includes the retro fix, committed fixes for its actionable findings, and passing checks. |
 | Independent ticket | Start T5 at step 4. | Starting or continuing tickets that rely on the schema before new completion checks are recorded. | The record that T5 does not rely on the invalid decision, and its merged blockers. |
 | Replaced ADR | Record decision B through `grill-with-docs`. Mark the old ADR as superseded and link it to decision B. | Deleting the old ADR; leaving it unmarked. | Cited rationale for B, the new decision record, and the superseded note with its link. |
-| Partial coverage | Resolve Q1 from its assessment: rule 2 if it converged, or rule 3 with its unresolved objections recorded. Carry Q2–Q6 into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q2–Q6 or their dependents from Q1's review; passing gate 1. | The coverage table with Q1's assessment and Q2–Q6 not assessed, the failed calls with their exit codes, and the next pressure test's assessments of Q2–Q6. No assessment there is a blocker. |
+| Partial coverage | Resolve Q1 from its assessment: rule 2 if it converged, or rule 3 with its unresolved objections recorded. Carry Q2–Q6 into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q2–Q6 or their dependents from Q1's review; passing gate 1. | The coverage table with Q1's assessment and Q2–Q6 not assessed, the failed calls with their exit codes, and the next pressure test's assessments of Q2–Q6. A question that this test also does not assess resolves without the critic. |
 | Stale assessment | Mark Q1 and Q2 as revised after their last assessment. Carry both into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q1 on its earlier "no substantive objection". | The coverage table with both marks, the failed calls with their exit codes, and the next pressure test's assessments of the current answers. |
-| Failed preflight | Record the failed preflight and its diagnosis, and continue the investigation and grilling. | Replacing the critic with self-critique; counting the preflight as a review. | The recorded diagnosis. In the first round with a design-critical question, its pressure test result; no usable assessment there is a blocker. |
-| Failed kickoff | Treat the result as a blocker. Finish the independent work and keep all work, then report the blocker and end the run. | Resolving the round's design-critical questions; running another pressure test for them in this run; counting the passed preflight as a review; passing gate 1. | The pressure-test conclusion with its ending condition, the failed calls with their exit codes, and the blocker report. |
+| Failed preflight | Record the failed preflight and its diagnosis, and continue the investigation and grilling. | Skipping the pressure test of a later grilling round because the early check failed; counting the preflight as a review. | The recorded diagnosis. In the first round with a design-critical question, its pressure test result; with no usable assessment there, the round's design-critical questions resolve without the critic. |
+| Failed kickoff | Resolve the round's design-critical questions without the critic: decide each with the challenge in "Grill in rounds", and record that the critic did not assess it, with the ending condition. Continue the grilling: the dependent questions proceed, and the next grilling round with design-critical questions runs its own pressure test. | Ending the run or stopping the dependent work; carrying the questions; recording the challenge as a critic assessment; counting the passed preflight as a review. | The pressure-test conclusion with its ending condition, the failed calls with their exit codes, each decision's record that the critic did not assess it, and the list of these decisions in the final report. |
 | No design-critical question | Record each question's classification, reason, and evidence. Resolve the questions without a pressure test and continue with the next grilling round. | Running a pressure test for the round; leaving a classification unrecorded. | The classification record and the evidence for each answer. |
-| Reopened decision | Carry Q1 as a revised answer into the pressure test of the next grilling round; its dependent questions wait. This is Q1's first miss since it was reopened, so it is not a blocker. Resolve Q3 from its assessment. | Resolving Q1 on its earlier convergence; reporting a blocker for Q1 now. | The coverage table with Q1 not assessed, and the next pressure test's assessment of Q1. A second miss in a row is a blocker. |
+| Reopened decision | Carry Q1 as a revised answer into the pressure test of the next grilling round; its dependent questions wait. This is Q1's first miss since it was reopened, so Q1 carries. Resolve Q3 from its assessment. | Resolving Q1 on its earlier convergence; resolving Q1 without the critic now. | The coverage table with Q1 not assessed, and the next pressure test's assessment of Q1. After a second miss in a row, Q1 resolves without the critic. |
+| Second miss | Resolve Q2 without the critic: decide it with the challenge in "Grill in rounds", and record that the critic did not assess it, with the ending condition. Continue: Q4 proceeds. | Carrying Q2 again; ending the run; keeping Q4 waiting. | The coverage tables of both pressure tests, the record of Q2 that the critic did not assess it, and its entry in the final report. |
 
 ## Validation limits
 
