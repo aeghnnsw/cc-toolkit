@@ -32,6 +32,36 @@ import subprocess, sys, time
 subprocess.Popen([sys.executable, "-c", sys.argv[2], sys.argv[1]])
 time.sleep(60)
 """
+# Load the helper from sys.argv[1] as a module.
+LOAD_HELPER = """\
+import importlib.util, os, signal, subprocess, sys, time
+spec = importlib.util.spec_from_file_location("limit_call", sys.argv[1])
+helper = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helper)
+"""
+# Run the helper with a 60-second limit on the command in sys.argv[3:]. The
+# helper gets SIGTERM after its command started but before Popen returned;
+# the command's process ID goes to sys.argv[2].
+TERM_DURING_START = LOAD_HELPER + """\
+class SignaledPopen(subprocess.Popen):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        open(sys.argv[2], "w").write(str(self.pid))
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(1)
+helper.subprocess.Popen = SignaledPopen
+sys.exit(helper.main(["limit_call.py", "60", *sys.argv[3:]]))
+"""
+# End a command that exited but is not reaped yet, as when it exits just
+# after the limit; print its exit code.
+END_AFTER_EXIT = LOAD_HELPER + """\
+process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+while subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(process.pid)], capture_output=True,
+                     text=True).stdout.strip()[:1] not in ("", "Z"):
+    time.sleep(0.05)
+helper.end(process)
+print(process.returncode)
+"""
 
 
 def reaped(pid: int) -> bool:
@@ -130,6 +160,22 @@ class LimitCallTest(unittest.TestCase):
         helper.send_signal(signal.SIGTERM)
         self.assertEqual(helper.wait(timeout=20), 128 + signal.SIGTERM)
         self.assertTrue(reaped(pid), "the command outlived the helper")
+
+    def test_term_while_the_command_starts_ends_the_command_before_the_helper_exits(self):
+        with open(self.root / "stderr", "w+", encoding="utf-8") as stderr:  # a file: a live command holds no pipe
+            completed = subprocess.run([sys.executable, "-c", TERM_DURING_START, str(SCRIPT), str(self.pid_file),
+                                        sys.executable, "-c", "import time; time.sleep(60)"],
+                                       stdout=subprocess.DEVNULL, stderr=stderr, timeout=30)
+            stderr.seek(0)
+            pid = int(self.pid_file.read_text())
+            self.addCleanup(kill_quietly, pid)
+            self.assertEqual(completed.returncode, 128 + signal.SIGTERM, stderr.read())
+        self.assertTrue(reaped(pid), "the command outlived the helper")
+
+    def test_end_of_a_command_that_already_exited_reaps_it_without_an_error(self):
+        completed = subprocess.run([sys.executable, "-c", END_AFTER_EXIT, str(SCRIPT)], capture_output=True,
+                                   text=True, timeout=30)
+        self.assertEqual((completed.returncode, completed.stdout, completed.stderr), (0, "0\n", ""))
 
     def test_bad_arguments_exit_2_without_running_a_command(self):
         marker = self.root / "ran"

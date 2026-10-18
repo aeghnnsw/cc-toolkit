@@ -46,7 +46,7 @@ starts), events.jsonl (codex stdout), err.log (codex stderr), request.txt (the
 stdin of codex), runner.log (supervisor errors), call.json and status.json (the
 current call and its final status), start.lock (held while a call starts),
 call.lock (held by the supervisor while it runs), and, after a kickoff,
-thread_id (empty when codex reported no thread).
+thread_id (empty when codex reported no thread or the call was flagged).
 
 The script prints one line, `exit=<code> model=<model> seconds=<n> status=<status>`,
 and exits 0 only for ok. seconds is the time of the call so far. The code is the
@@ -530,8 +530,11 @@ def supervise(workdir: Path, job: dict, ready: int, lock: int) -> NoReturn:
         if (read_json(workdir / "call.json") or {}).get("pid") == os.getpid():
             if job["form"] == "kickoff":
                 write_atomic(workdir / "thread_id", thread_id(workdir))
+            status = classify(job["form"], workdir, exit_code, reason)
+            if job["form"] == "kickoff" and status == "flagged":  # the re-run on the fallback model starts a new thread
+                write_atomic(workdir / "thread_id", "")
             final = {"exit": TIMEOUT_EXIT if exit_code is None else exit_code, "model": job["model"],
-                     "seconds": seconds, "status": classify(job["form"], workdir, exit_code, reason)}
+                     "seconds": seconds, "status": status}
             write_atomic(workdir / "status.json", json.dumps(final))
         code = 0
     except BaseException:
@@ -617,6 +620,7 @@ def running(workdir: Path) -> bool:
 
 
 def report_final(final: dict) -> int:
+    """Print the status line of a status.json record; a record without a status counts as runner stopped."""
     return report(final.get("exit", NO_CODE), final.get("model", ""), final.get("seconds", 0),
                   final.get("status", "error:runner stopped"))
 
@@ -653,7 +657,7 @@ def start(mode: str, workdir: Path) -> int:
     model = read_input(workdir, "model")
     try:
         lock = open(workdir / "start.lock", "a")
-    except OSError:
+    except OSError:  # the work directory, and so its repo input, is missing
         return report(INPUT_EXIT, model, 0, "error:missing repo")
     with lock:
         try:

@@ -22,7 +22,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 ## Defaults
 
 - `ROUND_CAP = 6`
-- `CALL_TIMEOUT = 1800` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight. At the limit, `limit_call.py` ends the CLI and its process group before it exits 124, so a retry never overlaps the call.
+- `CALL_TIMEOUT = 1800` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight. At the limit, `limit_call.py` sends SIGTERM to the CLI's process group, waits up to 5 seconds, sends SIGKILL to the group, and reaps the CLI. Only then does it exit 124, so a retry never overlaps the call.
 - Critic model: `claude-opus-5-5`. The fallback model is `claude-sonnet-5-5`; use it only after a flag (see [Flags](#flags)). Use no other model. Pass `--model` on every call, and accept a reply only from the current critic model.
 - Effort: `xhigh` on critic rounds and `low` on the smoke call.
 - `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own model after a refusal. This skill switches models itself.

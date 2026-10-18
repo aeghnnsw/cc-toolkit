@@ -435,6 +435,15 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual(self.run_critic("retry", events=[{"type": "turn.completed"}], reply="objection"),
                          (1, f"exit=0 model={CRITIC_MODEL} status=error:no thread id"))
 
+    def test_a_flagged_retry_as_a_kickoff_saves_no_thread_so_its_rerun_starts_a_new_thread(self):
+        flag = {"type": "error", "message": "This request has been flagged for possible cybersecurity risk."}
+        self.assertEqual(self.run_critic("retry", events=[THREAD_STARTED, flag], exit=1),
+                         (1, f"exit=1 model={CRITIC_MODEL} status=flagged"))
+        self.assertEqual((self.workdir / "thread_id").read_text(encoding="utf-8"), "")
+        self.assertEqual(self.run_critic("retry", events=[THREAD_STARTED], reply="Q1: objection."),
+                         (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
+        self.assertEqual(self.call()["argv"][:2], ["exec", "--json"])
+
     def test_flag_in_an_error_event_or_error_item_is_flagged_even_when_codex_fails(self):
         message = "This request has been flagged for possible cybersecurity risk."
         events = {

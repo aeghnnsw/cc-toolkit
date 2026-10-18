@@ -44,10 +44,11 @@ pins the model, enforces the time limits, and prints one status line.
   60 seconds for both limits.
 - Waiting: each call runs in a detached process, so the Bash tool limit does
   not stop it. A runner command waits for the result for at most 570 seconds
-  (less when the Bash tool limit is lower), then prints `status=running`; then
-  run `wait` (see [Status line](#status-line)). Run every runner command with
-  the Bash tool `timeout` set to `600000`. With the default of 120000 ms, the
-  Bash tool moves a long command to the background after 2 minutes.
+  (less when the Bash tool limit is below 600 seconds), then prints
+  `status=running`; then run `wait` (see [Status line](#status-line)). Run
+  every runner command with the Bash tool `timeout` set to `600000`. With the
+  default of 120000 ms, the Bash tool moves a long command to the background
+  after 2 minutes.
 - Critic model: `gpt-6-astra`. The fallback model is `gpt-6.1-sol`; use it only
   after a flag (see [Flags](#flags)). Use no other model. The runner pins the
   model on every call, so the skill does not depend on the ambient

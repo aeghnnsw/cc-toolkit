@@ -10,11 +10,17 @@ with the command's exit code, or 128 + N when signal N ended it.
 At the limit, the helper sends SIGTERM to the command's process group, waits
 up to 5 seconds for the command to end, sends SIGKILL to the group, reaps the
 command, and exits 124. When the helper gets SIGTERM, SIGINT, or SIGHUP, it
-ends the command the same way and exits 128 + the signal number. So the
-helper does not exit while the command runs, and a retry cannot overlap it.
+ends the command the same way and exits 128 + the signal number, also when
+the signal comes while the command starts. So the helper does not exit while
+the command runs, and a retry cannot overlap it. SIGKILL cannot be caught: it
+ends only the helper, because the command runs in its own session.
 
 The helper exits 2 for bad arguments, 126 when the command cannot run, and
 127 when the command is not found.
+
+The helper has no idle limit, unlike the runner of the Claude Code copy: the
+Claude CLI's stream-json output gives a line about every 1.25 seconds while
+the model works, and no stalled call was seen (see #310).
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 TIMEOUT_EXIT = 124
 USAGE_EXIT = 2
@@ -31,29 +38,30 @@ CANNOT_RUN_EXIT = 126
 NOT_FOUND_EXIT = 127
 GRACE_SECONDS = 5
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
-
-
-class Stopped(Exception):
-    """The helper got a stop signal."""
-
-    def __init__(self, signum: int):
-        super().__init__(signum)
-        self.signum = signum
+POLL_SECONDS = 0.1
+received: list[int] = []  # the stop signals that the helper got, in order
 
 
 def stop(signum: int, _frame: object) -> None:
-    raise Stopped(signum)
+    """Record a stop signal for the main loop.
+
+    The handler raises no exception, so a signal cannot interrupt the start of
+    the command or its cleanup.
+    """
+    received.append(signum)
 
 
 def end(process: subprocess.Popen) -> None:
-    """Send SIGTERM to the command's group, wait for the grace period, send SIGKILL to the group, and reap."""
-    for signum in STOP_SIGNALS:  # a second signal must not cut the cleanup short
-        signal.signal(signum, signal.SIG_IGN)
-    with contextlib.suppress(ProcessLookupError):
+    """Send SIGTERM to the command's group, wait for the grace period, send SIGKILL to the group, and reap.
+
+    A signal to a group that has ended, or that the system refuses, as macOS
+    does for a group of zombies, is skipped.
+    """
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGTERM)
     with contextlib.suppress(subprocess.TimeoutExpired):
         process.wait(GRACE_SECONDS)
-    with contextlib.suppress(ProcessLookupError):
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGKILL)
     process.wait()
 
@@ -82,17 +90,18 @@ def main(argv: list[str]) -> int:
     except OSError as error:
         print(f"limit_call.py: cannot run {argv[2]}: {error}", file=sys.stderr)
         return CANNOT_RUN_EXIT
-    except Stopped as stopped:
-        return 128 + stopped.signum
-    try:
-        code = process.wait(seconds)
-    except subprocess.TimeoutExpired:
+    deadline = time.monotonic() + seconds
+    while process.poll() is None and not received and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+    if received:
+        code = 128 + received[0]
+    elif process.returncode is None:
+        code = TIMEOUT_EXIT
+    else:
+        code = 128 - process.returncode if process.returncode < 0 else process.returncode
+    if process.returncode is None:  # a reaped command is not signaled: its ID can be reused
         end(process)
-        return TIMEOUT_EXIT
-    except Stopped as stopped:
-        end(process)
-        return 128 + stopped.signum
-    return 128 - code if code < 0 else code
+    return code
 
 
 if __name__ == "__main__":
