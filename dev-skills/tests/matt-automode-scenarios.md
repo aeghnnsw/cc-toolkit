@@ -3,7 +3,7 @@
 These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241)
 and, from case 17, [issue #302](https://github.com/aeghnnsw/cc-toolkit/issues/302).
 [Issue #305](https://github.com/aeghnnsw/cc-toolkit/issues/305) changed the
-results of a critic failure and added case 23.
+results when the critic cannot assess an answer and added cases 23–25.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -85,6 +85,13 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 23. **Second miss.** Q2 carried from the previous pressure test because the
     critic did not assess it. The next pressure test includes Q2, and its
     critic again does not assess the current answer of Q2. Q4 depends on Q2.
+24. **Revised twice.** The critic assessed Q5 and still objects. Under rule 3,
+    the agent chooses another answer, so Q5 carries. In the next pressure
+    test, the critic assesses the new answer and still objects, and the agent
+    again chooses another answer.
+25. **Kept after a miss.** The previous pressure test did not assess Q6, so
+    Q6 carried. The next pressure test assesses the current answer of Q6, and
+    the critic still objects. The agent keeps that answer under rule 3.
 
 ## Expected results
 
@@ -109,10 +116,12 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Partial coverage | Resolve Q1 from its assessment: rule 2 if it converged, or rule 3 with its unresolved objections recorded. Carry Q2–Q6 into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q2–Q6 or their dependents from Q1's review; passing gate 1. | The coverage table with Q1's assessment and Q2–Q6 not assessed, the failed calls with their exit codes, and the next pressure test's assessments of Q2–Q6. A question that this test also does not assess resolves without the critic. |
 | Stale assessment | Mark Q1 and Q2 as revised after their last assessment. Carry both into the pressure test of the next grilling round; their dependent questions wait. | Resolving Q1 on its earlier "no substantive objection". | The coverage table with both marks, the failed calls with their exit codes, and the next pressure test's assessments of the current answers. |
 | Failed preflight | Record the failed preflight and its diagnosis, and continue the investigation and grilling. | Skipping the pressure test of a later grilling round because the early check failed; counting the preflight as a review. | The recorded diagnosis. In the first round with a design-critical question, its pressure test result; with no usable assessment there, the round's design-critical questions resolve without the critic. |
-| Failed kickoff | Resolve the round's design-critical questions without the critic: decide each with the challenge in "Grill in rounds", and record that the critic did not assess it, with the ending condition. Continue the grilling: the dependent questions proceed, and the next grilling round with design-critical questions runs its own pressure test. | Ending the run or stopping the dependent work; carrying the questions; recording the challenge as a critic assessment; counting the passed preflight as a review. | The pressure-test conclusion with its ending condition, the failed calls with their exit codes, each decision's record that the critic did not assess it, and the list of these decisions in the final report. |
+| Failed kickoff | Resolve the round's design-critical questions without the critic: decide each with the challenge in "Grill in rounds", and record that the critic did not assess it and why: the ending condition, and that no reply came. Continue the grilling: the dependent questions proceed, and the next grilling round with design-critical questions runs its own pressure test. | Ending the run or stopping the dependent work; carrying the questions; recording the challenge as a critic assessment; counting the passed preflight as a review. | The pressure-test conclusion with its ending condition, the failed calls with their exit codes, each decision's record that the critic did not assess it, and the list of these decisions in the final report. |
 | No design-critical question | Record each question's classification, reason, and evidence. Resolve the questions without a pressure test and continue with the next grilling round. | Running a pressure test for the round; leaving a classification unrecorded. | The classification record and the evidence for each answer. |
 | Reopened decision | Carry Q1 as a revised answer into the pressure test of the next grilling round; its dependent questions wait. This is Q1's first miss since it was reopened, so Q1 carries. Resolve Q3 from its assessment. | Resolving Q1 on its earlier convergence; resolving Q1 without the critic now. | The coverage table with Q1 not assessed, and the next pressure test's assessment of Q1. After a second miss in a row, Q1 resolves without the critic. |
-| Second miss | Resolve Q2 without the critic: decide it with the challenge in "Grill in rounds", and record that the critic did not assess it, with the ending condition. Continue: Q4 proceeds. | Carrying Q2 again; ending the run; keeping Q4 waiting. | The coverage tables of both pressure tests, the record of Q2 that the critic did not assess it, and its entry in the final report. |
+| Second miss | Resolve Q2 without the critic: decide it with the challenge in "Grill in rounds", and record that the critic did not assess it and why: the ending conditions of both pressure tests, and that the critic skipped its ID. Continue: Q4 proceeds. | Carrying Q2 again; ending the run; keeping Q4 waiting. | The coverage tables of both pressure tests, the record of Q2, and its entry in the final report. |
+| Revised twice | Resolve Q5 without the critic: the end of two pressure tests in a row leaves its current answer not assessed. Decide it with the challenge in "Grill in rounds", and record that the critic did not assess the last answer and why: the answer changed after the last assessment. The dependent questions of Q5 proceed. | Carrying Q5 a third time; recording the last answer as assessed or converged. | Both coverage tables with the critic's objections, the two rule 3 choices, the record of Q5, and its entry in the final report. |
+| Kept after a miss | Resolve Q6 under rule 3 with its current answer, and record the critic's unresolved objections with the decision. | Resolving Q6 without the critic; counting a second miss; recording that the critic did not assess Q6. | The coverage table with the critic's objection to Q6, and the decision record with its unresolved objections. |
 
 ## Validation limits
 
@@ -212,3 +221,33 @@ Round 6 reported these limits, left for follow-up work:
 
 These were simulated interpretation reviews of the instructions. The pressure
 tests of the fixes were live, but no full matt-automode run used the new text.
+
+### 2026-10-18
+
+Rounds 7 and 8 reviewed the text for issue #305. Each round used two fresh
+agents, one for each host copy. Each agent read only its skill, the
+pressure-test skill, and the scenario inputs.
+
+7. Round 7 used cases 17–23. Both reviewers chose the expected next action in
+   every case, and no case stopped the run. They reported these gaps: the term
+   "critic failure" also named a miss that the agent's own revision caused;
+   the record gave one ending condition, but a second miss spans two pressure
+   tests; "Finish" did not list the decisions that the critic did not assess;
+   and "Grill in rounds" recorded a decision before the pressure-test rules
+   resolved it. The text was changed to close these gaps. A pressure test of
+   the changes converged after 3 critic rounds. Its two objections changed how
+   a rule 3 answer counts, and cases 24 and 25 were added.
+8. Round 8 used cases 17–25. Both reviewers chose the expected next action in
+   every case, for both copies. They reported these gaps: "Finish" could still
+   read as a stop rule for a critic that fails in every round; the reasons in
+   the record left out a failed call with no reply; and a decision on an
+   answer that the critic assessed would carry a false record. The text was
+   changed to close these gaps. No scenario review or pressure test ran after
+   these changes.
+
+Round 8 reported these limits, left for follow-up work:
+
+- In pressure-test, the status `error:no thread id` has no ending condition,
+  and the retry rule for a failed kickoff is unclear.
+- The early check writes no conclusion, although pressure-test says to always
+  save one.
