@@ -11,7 +11,7 @@ same as at the start, or the difference is reported as files the tests
 wrote.
 
 First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
-`<work-dir>`, and `<skill-dir>`.
+`<source>`, `<work-dir>`, and `<skill-dir>`.
 
 ## 1. Record the starting state
 
@@ -28,15 +28,10 @@ When the project is not a Git work tree, these commands fail. Then report
 that check cannot prove that it changed no file, skip diff coverage, and
 continue.
 
-Choose two values for later steps:
-
-- `<base>`: the base ref for diff coverage. Use the ref that the user names.
-  Otherwise use the remote default branch, which
-  `git -C <project> rev-parse --abbrev-ref origin/HEAD` prints. When neither
-  exists, skip diff coverage and report why.
-- `<source>`: the import name of each package of the project's own code,
-  for example `mypkg` for `src/mypkg/`. Read it from the package layout and
-  `pyproject.toml`.
+Choose `<base>`, the base ref for diff coverage. Use the ref that the user
+names. Otherwise use the remote default branch, which
+`git -C <project> rev-parse --abbrev-ref origin/HEAD` prints. When neither
+exists, skip diff coverage and report why.
 
 ## 2. Run 1: file order
 
@@ -79,7 +74,7 @@ time is the import cost. The `sort` lines are the imports with the largest
 cumulative time; skip interpreter start-up modules such as `site` and
 `encodings` among them. When the import fails, the file ends with the
 error: report the import cost as not measured, with that error. A test
-module that imports `<source>` pays this cost during collection.
+module that imports `<source>` adds this cost to collection.
 
 When `pytest_exit_code` is 2 or more, read `<work-dir>/run1/pytest.log`
 and report the cause. Exit code 5 means that pytest collected no test.
@@ -98,7 +93,9 @@ check budget", and recommend the speed mode.
 
 Repeat `--coverage-source` for each package. Run 2 records which lines
 each test runs (pytest-cov `--cov-context=test`). It sets
-`COVERAGE_CORE=ctrace`, because `sys.monitoring` loses per-test contexts.
+`COVERAGE_CORE=ctrace`, the C tracer of coverage.py. Under
+`sys.monitoring`, the default of coverage.py 7.9.1 and newer on Python 3.14
+or newer, coverage.py records a line only for the first test that runs it.
 It removes the project's pytest-cov options, except `--cov-config`, from
 `addopts` and `PYTEST_ADDOPTS` for this run, so that no coverage report
 goes into the project. Coverage contexts slow a run, so the timeout is
@@ -260,9 +257,10 @@ applies:
 4. **check** again after the next change, when no other rule applies. Say
    that the suite needs no lean-tests work now.
 
-This version of lean-tests has only the check mode. When the next mode is
-speed, review, or prune, say that the mode is not available in this
-version, and give its steps as work for the user.
+When the next mode is speed, say that the user can ask for it, for example
+with "make the tests faster": speed changes files only on request. When the
+next mode is not in the [modes list](../SKILL.md#modes), say that it is not
+available in this version, and give its steps as work for the user.
 
 When the scorecard is complete, remove the work directory:
 

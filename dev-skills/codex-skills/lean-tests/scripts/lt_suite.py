@@ -222,7 +222,7 @@ def pytest_command(args, python: list[str], versions: dict, project: Path, env: 
         cmd += ["-o", "addopts=" + shlex.join(without_cov(addopts))]
         if "PYTEST_ADDOPTS" in env:
             env["PYTEST_ADDOPTS"] = shlex.join(without_cov(shlex.split(env["PYTEST_ADDOPTS"])))
-        # sys.monitoring drops per-test contexts; the C tracer keeps them.
+        # Under sys.monitoring (the default on Python 3.14+), a line records only the first test's context.
         env["COVERAGE_CORE"] = "ctrace"
         cmd += [f"--cov={source}" for source in args.coverage_source]
         cmd += ["--cov-branch", "--cov-context=test", "--cov-report="]
@@ -405,10 +405,16 @@ def compare(first_path: str, second_path: str) -> dict:
         summary = data["summary"]
         return {key: summary.get(key) for key in ("label", "wall_seconds", "timed_out", "counts")}
 
+    def finished(data: dict) -> bool:
+        summary = data["summary"]
+        return not summary.get("timed_out") and summary.get("pytest_exit_code") in (0, 1)
+
     return {
         "summary": {
             "first": brief(first),
             "second": brief(second),
+            "no_loss": finished(first) and finished(second)
+            and not (changed or missing or not_run["first"] or not_run["second"]),
             "changed": len(changed),
             "missing": len(missing),
             "added": len(added),

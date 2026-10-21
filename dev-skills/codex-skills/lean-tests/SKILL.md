@@ -1,6 +1,6 @@
 ---
 name: lean-tests
-description: This skill should be used when the user asks to "check the test suite", "audit the tests", or "find out why the tests are slow", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
+description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", or "speed up CI", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
 # Lean Tests
@@ -12,13 +12,20 @@ adds protection when it detects a fault that no other test detects.
 
 ## Modes
 
-This version has one mode. With no mode, run check.
+This version has two modes. With no mode, run check.
 
 - **check**: measure the suite and print a scorecard. It changes no file and
   installs nothing. Follow [references/check.md](references/check.md).
+- **speed**: make the suite faster without deleting a test. It measures
+  first, applies fixes one at a time in a fixed order, defines test tiers
+  with time budgets, and writes the tier commands into the agent instruction
+  files that exist (`CLAUDE.md`, `AGENTS.md`). Run it only when the user's
+  request asks for speed changes, such as "make the tests faster" or "speed
+  up CI". A question about speed, such as why the tests are slow, runs
+  check. Follow [references/speed.md](references/speed.md).
 
-When the user asks to speed up, prune, or fix tests, run check, and say that
-this version has no mode that changes tests.
+When the user asks to prune or review tests, run check, and say that this
+version has no prune or review mode.
 
 ## Safety rules
 
@@ -64,11 +71,14 @@ These rules apply to all work on a test suite.
      `.venv/bin/python`, or the interpreter that the user names.
    - When the project has no environment, stop and ask the user. lean-tests
      creates no environment.
-3. Get analysis tools without an install. When the project runs under uv,
+3. Find `<source>`: the import name of each package of the project's own
+   code, for example `mypkg` for `src/mypkg/`. Read it from the package
+   layout and `pyproject.toml`.
+4. Get analysis tools without an install. When the project runs under uv,
    add `--with <package>` for each missing tool, for example
    `uv run --no-sync --with pytest-cov python`. Otherwise use only the
    packages that the environment has.
-4. Make one work directory outside the project, and write its printed path
+5. Make one work directory outside the project, and write its printed path
    as `<work-dir>` in later commands:
 
    ```bash
@@ -77,7 +87,7 @@ These rules apply to all work on a test suite.
 
    Records, logs, coverage data, and reports go there. When the work is
    done, remove it by its path: `rm -r <work-dir>`.
-5. Run the bundled command-line entry with `<python>`, so that it parses
+6. Run the bundled command-line entry with `<python>`, so that it parses
    the project's files with the project's Python version. The entry needs
    Python 3.9 or newer and only the standard library:
 

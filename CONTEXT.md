@@ -201,8 +201,8 @@ The term comes from Matt Pocock's tdd skill.
 _Avoid_: Test boundary
 
 **Test tier**:
-A named set of tests with a trigger and a time budget: inner loop, hand-off,
-pull request, main, or nightly.
+A named set of tests with a trigger, a command, and a time budget: inner
+loop, hand-off, pull request, main, or nightly.
 _Avoid_: Test level, stage
 
 **Kill set**:

@@ -47,7 +47,9 @@ For an example pair, see `creator-skills/skills/sci-slides/` and
 skill also needs an entry in both [README.md](README.md) lists of its
 plugin: **Skills:** with a one-line description, and **Codex skills:** with
 its name. When the Codex manifest's `interface.longDescription` describes
-the purposes of the plugin's skills, add the purpose of the new skill.
+the purposes of the plugin's skills, add the purpose of the new skill. When
+a change alters the purpose of a skill, update that purpose in
+`longDescription` and in the README **Skills:** line.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
@@ -178,9 +180,11 @@ it. Use this form:
 When both hosts ship the same version, write
 `Claude Code and Codex <version>`. When the versions differ, write
 `Claude Code <version>, Codex <version>`. Start a change outside the
-plugin directories with `Repository:` and give no version. When a pull
-request changes a plugin and files outside it, write one plugin entry and
-one `Repository:` entry. A change only to contributor-only files of a
+plugin directories with `Repository:` and give no version. The plugin entry
+also covers the README catalog entry and the `package-validation.json`
+lines that ship with the plugin change. When a pull request changes a
+plugin and other files outside it, write one plugin entry and one
+`Repository:` entry. A change only to contributor-only files of a
 plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket.
@@ -376,7 +380,10 @@ The `dev-skills` suite takes about 2 minutes, most of it in
 above the CPU count, the waits in that file grow with the load, and the
 suite takes longer. Give its command a timeout of at least 300 seconds (in
 Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
-seconds or run it as a background command. You can also run one file:
+seconds or run it as a background command. Test runs on one host slow each
+other. When you run agents in parallel, let one agent at a time run a full
+suite; the other agents run single test files until that suite ends. This
+command runs one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
