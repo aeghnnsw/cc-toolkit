@@ -30,9 +30,9 @@ Before changing terminology or architecture, read
 [docs/agents/domain.md](docs/agents/domain.md), then the relevant decision
 records. The repository uses a single-context layout.
 
-### Navigation retros
+### Navigation retrospectives
 
-Before a retro of earlier agent sessions, read
+Before a navigation retrospective of earlier agent sessions, read
 [docs/agents/retro.md](docs/agents/retro.md).
 
 ## Development workflow
@@ -49,7 +49,11 @@ Before a retro of earlier agent sessions, read
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration
-   for documentation and metadata changes.
+   for documentation and metadata changes. When a check needs temporary
+   files or a temporary Git repository, put them in one `mktemp -d`
+   directory, stage files there by name, and remove the directory by its
+   path. The core-hooks policy scripts block bulk staging and an `rm` with
+   a wildcard target.
 4. Stage changed files by name. Keep commits, issues, PR descriptions, and
    PR comments concise and accurate. Explain the problem and resulting
    behavior, and link the issue. Do not add AI authorship or generation
@@ -57,10 +61,7 @@ Before a retro of earlier agent sessions, read
    suggest. Do not include a test-plan section in PR descriptions. Write
    each commit message to a file and run `git commit -F <file>`. The
    installed core-hooks policy scripts check the text of each shell command
-   and can block a command that quotes message text. They also block bulk
-   staging and an `rm` with a wildcard target, in temporary repositories
-   too. Put temporary files in one `mktemp -d` directory, and remove that
-   directory by its path.
+   and can block a command that quotes message text.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
    per change on the default branch. Before merging a plugin release, compare
    the plugin version with `origin/master` as described in

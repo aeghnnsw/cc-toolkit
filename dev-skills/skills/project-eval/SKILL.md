@@ -32,9 +32,8 @@ the target is unclear.
   `goal-rubric`), or design document to check against.
 - **App URL** (optional): the URL of a running app. Without one, use a local
   dev server only if it already runs. Do not start or stop a server.
-- **Report path** (optional): by default
-  `docs/eval/YYYY-MM-DD-HHMM-<slug>.md`. The slug is a few lowercase words
-  that name the target, such as `auth-module`.
+- **Report path** (optional): by default a new file in `docs/eval/`, named
+  by the rules in [references/report-format.md](references/report-format.md).
 
 ## Workflow
 
@@ -42,10 +41,12 @@ the target is unclear.
 
 1. Find the files in scope, or survey the whole project: README,
    CLAUDE.md or AGENTS.md, the top-level layout, and `git log --oneline -20`.
-2. If the target is a web app and you have no app URL, look for a local dev
+2. If the target has a web UI and you have no app URL, look for a local dev
    server that already runs, for example with
-   `lsof -nP -iTCP -sTCP:LISTEN`. Use its URL as the app URL.
-3. Read [references/dimensions.md](references/dimensions.md). Choose
+   `lsof -nP -iTCP -sTCP:LISTEN`.
+3. Use the URL of a server only when it runs from this project, for
+   example when `lsof -a -p <PID> -d cwd` shows the project directory.
+4. Read [references/dimensions.md](references/dimensions.md). Choose
    dimensions that fit the target:
    - Code feature or module: Code, Security, Architecture, and Data & API
      for endpoints.
@@ -54,7 +55,7 @@ the target is unclear.
    - Running web app: User Experience, Frontend & Design, and Product.
    - Whole project: spread the evaluators across all eight dimensions.
      Give each evaluator a different starting area.
-4. Assign dimensions so that evaluators do not overlap.
+5. Assign dimensions so that evaluators do not overlap.
 
 ### 2. Set Up the Run
 
@@ -104,16 +105,17 @@ Do not stop an evaluator unless the user asks.
 
 When an evaluator finishes:
 
-1. If its result has no findings list, or the result is partial (turn
-   limit), resume the evaluator once with SendMessage and ask for its
-   findings so far in its final-message format.
-2. Save its full result, verbatim, as `<RUN>/E<N>.md`. Do not shorten it:
+1. Save its full result, verbatim, as `<RUN>/E<N>.md`. Do not shorten it:
    the saved files are the record of the run if your context is compacted.
-3. Check that each finding has a unique ID that starts with `E<N>-`. If a
-   finding has no ID or a duplicate ID, give it a new ID, and append the
-   change to `<RUN>/E<N>.md`.
-4. Split its findings into batches of at most 10.
-5. Send one verifier for each batch:
+2. If the result has no findings list, or the result is partial (turn
+   limit), resume the evaluator once with SendMessage. Ask for its findings
+   so far in its final-message format.
+3. Append the answer of a resumed evaluator to `<RUN>/E<N>.md`.
+4. Check that each finding has a unique ID that starts with `E<N>-`.
+5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
+   duplicate ID.
+6. Split its findings into batches of at most 10.
+7. Send one verifier for each batch:
 
    ```text
    Agent(
@@ -133,9 +135,11 @@ When a verifier finishes:
 
 1. Save its full result, verbatim, as `<RUN>/V-E<N>-<b>.md`.
 2. Compare the IDs in its verdicts with the IDs of its batch.
-3. For missing IDs, resume the verifier once with SendMessage. If it cannot
-   resume, send one new verifier for the missing IDs only.
-4. A finding that still has no verdict is **Not verified**.
+3. For missing IDs, resume the verifier once with SendMessage.
+4. If the verifier cannot resume, send one new verifier for the missing IDs
+   only.
+5. Append each later answer to `<RUN>/V-E<N>-<b>.md`.
+6. A finding that still has no verdict is **Not verified**.
 
 ### 5. Write the Report
 

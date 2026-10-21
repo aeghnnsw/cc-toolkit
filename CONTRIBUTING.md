@@ -137,23 +137,25 @@ can read those worktrees and match many copies of the same file. To also
 search new files that are not yet added, pass `--untracked`.
 
 Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
-describe replaced behavior. To search current text only, exclude them:
+describe replaced behavior. The task-loop plugin is
+[not usable now](task-loop/README.md#status), but its copies of shared
+skills match many terms. To search current text only, exclude all three:
 
 ```bash
-git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md'
+git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'
 ```
 
-task-loop is not usable now, but its copies of shared skills match many
-terms, such as `pressure-test`. Also exclude `':!task-loop'` unless the
-change renames a skill or changes a model pin.
+Keep task-loop in the search when the change renames a skill or changes a
+model pin.
 
 ## Changelog entries
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
 Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
-or `### Changed`. Put the newest entry first. Each entry is one long line,
-so find the insertion point with `grep -n '^##' CHANGELOG.md` and read only
-the lines after that heading. Use this form:
+or `### Changed`. Put the newest entry first. Each entry is one long line.
+To find the insertion point, get the line number of the target `###`
+heading with `grep -n '^##' CHANGELOG.md`, and read only a few lines below
+it. Use this form:
 
 ```text
 - <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
@@ -176,7 +178,7 @@ a person or an agent wrote it.
 | Accepted architecture decisions | Commit concise records under `docs/adr/`. |
 | Agreed domain terminology | Commit a root `CONTEXT.md` when a glossary is needed. |
 | Durable designs and review conclusions | Commit under a relevant `docs/` directory and link them from the issue or relevant documentation. |
-| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Keep a planning folder in the main checkout as `.scratch/<issue>-<slug>/`, because worktree cleanup removes the ignored files of a worktree. Promote useful conclusions into shared documentation. |
+| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning directory `.scratch/<issue>-<description>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning directory to the main checkout before the worktree is removed. Promote useful conclusions into shared documentation. |
 | Logs, caches, local worktrees, and generated binaries | Keep out of Git using the shared `.gitignore`. |
 | Personal tool settings and local-only notes | Keep outside the repository or exclude specific paths locally. |
 
