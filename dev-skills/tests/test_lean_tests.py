@@ -1468,6 +1468,11 @@ import pytest
 
 from calc.core import classify, discount, total
 
+try:
+    from math import isqrt
+except ImportError:  # before Python 3.8
+    isqrt = None
+
 
 def test_classify_negative():
     assert classify(-1) == "negative"
@@ -1497,6 +1502,15 @@ def test_total_bound():
 
 def test_discount_plain():
     assert discount(10, "none") == 10
+
+
+class TestShared:
+    def test_shared(self):
+        assert classify(3) == "non-negative"
+
+
+class TestChild(TestShared):
+    "Runs the shared tests again."
 """
 
 GATE_FILES = {
@@ -1516,9 +1530,9 @@ def edited(text: str, *pairs: str) -> str:
     return text
 
 
-# A product change that keeps every base test passing, so the unit is mixed.
+# A product change that keeps every base test passing, so the gate unit is a mixed change.
 PRODUCT_EDIT = {"src/calc/core.py": GATE_CORE + "\n\ndef double(n):\n    return 2 * n\n"}
-# Each case is one branch from the base commit: its test-side files, and whether it also changes product code.
+# Each case is one branch from the base commit with PRODUCT_EDIT and this version of tests/test_core.py.
 GATE_CASES = {
     "self-comparison": edited(GATE_TESTS, "    assert total(3, 4) == 12", "    actual = total(3, 4)\n    assert actual == actual"),
     "autouse": GATE_TESTS + "\n\n@pytest.fixture(autouse=True)\ndef reset_state():\n    yield\n",
@@ -1531,7 +1545,15 @@ GATE_CASES = {
     "bound": edited(GATE_TESTS, "total(2, 2) <= 4", "total(2, 2) <= 5"),
     "appended": edited(GATE_TESTS, '(5, "non-negative")])', '(5, "non-negative"), (7, "non-negative")])'),
     "new-tests": GATE_TESTS + "\n\ndef test_total_zero():\n    assert total(0, 4) == 0\n",
+    "guarded": GATE_TESTS + "\n\ndef isqrt(n):\n    return int(n ** 0.5)\n",
+    "override": GATE_TESTS + "    def test_shared(self):\n        assert True\n",
 }
+
+
+# The product code of g1: a guard in total, and parse_qty.
+G1_CORE = edited(
+    GATE_CORE, "def total(qty, unit):\n", 'def total(qty, unit):\n    if qty < 0:\n        raise ValueError("qty must not be negative")\n',
+) + "\n\ndef parse_qty(text):\n    return int(text)\n"
 
 
 class GateRepo:
@@ -1569,6 +1591,10 @@ class GateRepo:
         for name, tests in GATE_CASES.items():
             self.branch(name, {**PRODUCT_EDIT, "tests/test_core.py": tests})
         self.branch("test-only", {"tests/test_core.py": GATE_CASES["expected-literal"]})
+        self.branch("test-only-new", {"tests/test_core.py": GATE_CASES["new-tests"]})
+        self.branch("package-doc", {
+            "tests/test_core.py": GATE_CASES["removed"], "README.md": "# calc\n", "src/calc/template.md": "Total: {}\n",
+        })
         self.branch("per-commit", {"tests/test_core.py": GATE_CASES["expected-literal"]}, stay=True)
         self.commit("product", PRODUCT_EDIT)
         git(self.root, self.env, "checkout", "-q", "base")
@@ -1582,9 +1608,7 @@ class GateRepo:
             "tests/test_core.py": edited(GATE_TESTS, 'classify(0) == "non-negative"', 'classify(0) == "zero"', "[1, 2])", "[1, 2, 2])"),
         })
         self.branch("g1", {
-            "src/calc/core.py": edited(
-                GATE_CORE, "def total(qty, unit):\n", 'def total(qty, unit):\n    if qty < 0:\n        raise ValueError("qty must not be negative")\n',
-            ) + "\n\ndef parse_qty(text):\n    return int(text)\n",
+            "src/calc/core.py": G1_CORE,
             "tests/test_core.py": GATE_CASES["appended"] + (
                 "\n\ndef test_total_rejects_negative():\n    with pytest.raises(ValueError):\n        total(-1, 2)\n"
                 "\n\ndef test_total_large():\n    assert total(1000, 3) == 3000\n"
@@ -1675,6 +1699,18 @@ class GateStaticTest(unittest.TestCase):
     def test_appended_cases_without_collection_evidence_are_unclassified(self) -> None:
         self.assert_fails_with("appended", "UNCLASSIFIED", "no-collection-evidence", "test_classify_cases")
 
+    def test_binding_inside_a_try_block_counts_for_the_binding_rule(self) -> None:
+        self.assert_fails_with("guarded", "UNCLASSIFIED", "rebinding", "isqrt")
+
+    def test_new_test_in_a_subclass_needs_collection_evidence(self) -> None:
+        self.assert_fails_with("override", "UNCLASSIFIED", "no-collection-evidence", "TestChild::test_shared")
+
+    def test_documentation_inside_a_product_package_is_product_code(self) -> None:
+        code, data = self.static("package-doc")
+        self.assertEqual(code, 1)
+        self.assertEqual(data["units"][0]["product_files"], ["src/calc/template.md"])
+        self.assertEqual(gate_items(data), [("WEAKENING", "removed-test", GATE + "test_classify_negative")])
+
     def test_conftest_and_configuration_edits(self) -> None:
         self.assertEqual(gate_items(self.static("conftest")[1]), [("UNCLASSIFIED", "conftest", None)])
         code, data = self.static("config")
@@ -1687,6 +1723,12 @@ class GateStaticTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(data["summary"]["passed"])
         self.assertEqual(data["units"][0]["status"], "pass")
+        self.assertEqual(gate_items(data), [("SAFE", "new-test", GATE + "test_total_zero")])
+
+    def test_test_only_change_with_only_new_tests_needs_evidence(self) -> None:
+        code, data = self.static("test-only-new")
+        self.assertEqual(code, 0)
+        self.assertEqual(data["units"][0]["status"], "needs evidence")
         self.assertEqual(gate_items(data), [("SAFE", "new-test", GATE + "test_total_zero")])
 
     def test_test_only_change_needs_evidence(self) -> None:
@@ -1732,6 +1774,7 @@ class GateRunTest(unittest.TestCase):
         cls.before = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
         cls.passing = cls.repo.run_gate("g1")
         cls.failing = cls.repo.run_gate("g2")
+        cls.override = cls.repo.run_gate("override")
         cls.after = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
 
     def test_mixed_change_with_new_tests_and_appended_cases_that_keep_ids_passes(self) -> None:
@@ -1773,6 +1816,16 @@ class GateRunTest(unittest.TestCase):
         self.assertEqual(items["missing-node-id"]["missing"], [GATE + "test_double[2]"])
         self.assertEqual(items["expected-literal"]["class"], "WEAKENING")
         self.assertEqual(sorted(i["class"] for i in items.values()), ["BEHAVIOR CHANGE", "WEAKENING", "WEAKENING"])
+
+    def test_renamed_cases_are_no_new_tests(self) -> None:
+        self.assertEqual(self.failing[1]["new_tests"], [])
+        self.assertEqual(Path(self.failing[1]["files"]["new_tests"]).read_text(encoding="utf-8"), "")
+
+    def test_new_test_with_a_node_id_that_the_base_collected_is_not_safe(self) -> None:
+        code, data, stderr = self.override
+        self.assertEqual(code, 1, stderr)
+        self.assertEqual(gate_items(data), [("UNCLASSIFIED", "existing-node-id", GATE + "TestChild::test_shared")])
+        self.assertEqual(data["new_tests"], [])
 
     def test_gate_leaves_the_project_unchanged_and_removes_its_worktree(self) -> None:
         self.assertEqual(self.after, self.before)
@@ -1816,9 +1869,7 @@ class MutateReviewTest(unittest.TestCase):
 
     def test_mutants_stay_on_changed_lines_and_lines_only_new_tests_cover(self) -> None:
         self.assertEqual(self.code, 0, self.stderr)
-        head = GATE_CORE.replace("def total(qty, unit):\n", 'def total(qty, unit):\n    if qty < 0:\n        raise ValueError("qty must not be negative")\n')
-        head += "\n\ndef parse_qty(text):\n    return int(text)\n"
-        lines = {line_of(head, s) for s in ("if qty < 0", "raise ValueError", "return price - 3", "return int(text)")}
+        lines = {line_of(G1_CORE, s) for s in ("if qty < 0", "raise ValueError", "return price - 3", "return int(text)")}
         self.assertTrue({m["line"] for m in self.data["mutants"]} <= set(self.data["review_lines"]["src/calc/core.py"]))
         self.assertEqual({m["line"] for m in self.data["mutants"]}, lines)
 
@@ -1957,6 +2008,8 @@ class HostParityTest(unittest.TestCase):
         self.assertIn("references/check.md", sorted(claude))
         self.assertIn("references/speed.md", sorted(claude))
         self.assertIn("references/review.md", sorted(claude))
+        self.assertIn("scripts/lt_gate.py", sorted(claude))
+        self.assertIn("scripts/lt_pin.py", sorted(claude))
         self.assertIn("scripts/lean_tests.py", sorted(claude))
         self.assertEqual(sorted(claude), sorted(codex))
         for name in claude:

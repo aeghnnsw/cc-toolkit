@@ -29,7 +29,7 @@ This version has four modes. With no mode, run check.
   [references/prune.md](references/prune.md).
 - **review**: check the new and changed tests of a change. It runs the
   weakening gate, which fails a mixed change with a test weakening, labels
-  each new test, decides whether each new test adds detection, and reports
+  each new test, decides whether each new test adds protection, and reports
   the changed product lines that no test executes. It changes no file in
   the project. Run it only when the user's request asks to review the
   tests of a change, or when an agent workflow calls it. Follow
@@ -41,10 +41,12 @@ These rules apply to all work on a test suite.
 
 1. Change a file only when the user's request asks for a change.
 2. Keep each test's protection. Put no test weakening in a mixed change. A
-   mixed change is a commit, or the whole pull request when merges squash,
-   that changes product code. A test weakening is a test-side change that
-   can lower what existing tests detect, such as removing, skipping,
-   loosening, or rewriting an existing test.
+   gate unit is the change that the weakening gate checks as one whole: by
+   default all commits from the merge base with the base branch to HEAD,
+   or each commit alone when merges keep each commit. A mixed change is a
+   gate unit that changes product code. A test weakening is a test-side
+   change that can lower what existing tests detect, such as removing,
+   skipping, loosening, or rewriting an existing test.
 3. Delete or merge a test only with killed-mutant evidence: a mutant is a
    copy of the product code with one small fault, and a test kills it when
    the test fails on that copy. Delete in batches of at most 20 tests. Each

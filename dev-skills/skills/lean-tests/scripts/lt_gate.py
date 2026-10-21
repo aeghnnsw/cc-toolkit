@@ -1,38 +1,39 @@
-"""gate and pin: the weakening gate of review, and pinned requirement sources.
+"""gate: the weakening gate of review.
 
-Imported by lean_tests.py; never run directly. The gate splits the commits
-from the merge base of a base ref and a head ref into units: the whole
-range by default, or one unit per commit. A unit is mixed when it changes a
-file outside the test side, documentation aside. Layer 2 classifies each
-test-side change of a unit from the syntax trees of its two versions.
-Layer 1 runs the changed base test modules against the head product code in
-a temporary detached worktree. The same worktree collects the head tests,
-which gives the collection evidence, and runs each new test against the base
-product code, which gives its label. A BEHAVIOR CHANGE, WEAKENING, or
-UNCLASSIFIED item fails a mixed unit. pin records requirement sources with
-SHA-256 hashes before implementation starts.
+Imported by lean_tests.py; never run directly. The gate checks gate units:
+by default one unit, the whole range from the merge base of a base ref and
+a head ref to the head ref; with --per-commit, one unit per commit. A gate
+unit that changes product code is a mixed change; documentation outside the
+product packages is no product code. Layer 1 runs the changed base test
+modules against the head product code in a temporary detached worktree.
+Layer 2 classifies each test-side change of a unit from the syntax trees of
+its two versions. The same worktree collects the head tests, which gives
+the collection evidence, and runs each new test against the base product
+code, which gives its label. A BEHAVIOR CHANGE, WEAKENING, or UNCLASSIFIED
+item fails a mixed change. A test-only unit needs evidence.
 """
 
 from __future__ import annotations
 
 import ast
 import copy
-import datetime
 import difflib
-import hashlib
-import json
 import re
 import shutil
 import subprocess
 from collections import Counter
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
-from lt_common import EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, rel, tail
+from lt_common import (
+    EXAMPLES, PARSE_ERRORS, UsageError, git, import_root, is_string_statement, node_file, parse_failure, rel, sha256,
+    tail,
+)
 from lt_coverage import is_test_path
-from lt_mutate import copy_env, import_root, is_string_statement, kill_type, scope_command
 from lt_scan import Module, TestFunction, dotted, function_id, is_literal
-from lt_suite import failure, interpreter, probe, read_records, run_pytest, test_entries
+from lt_suite import (
+    copy_env, failure, interpreter, kill_type, probe, pytest_command, read_records, run_pytest, test_entries,
+)
 
 DEFAULT_TIMEOUT = 1800.0
 FAILING = ("BEHAVIOR CHANGE", "WEAKENING", "UNCLASSIFIED")
@@ -50,6 +51,17 @@ SKIP_NAMES = frozenset({
     "skip", "skipif", "xfail", "importorskip", "skipTest", "SkipTest", "skipIf", "skipUnless", "expectedFailure",
 })
 FIXTURE_DECORATORS = frozenset({"pytest.fixture", "fixture", "pytest_asyncio.fixture"})
+# Base classes that define no test, so a test method of a subclass with only these bases overrides nothing.
+PLAIN_BASES = frozenset({
+    "object", "TestCase", "unittest.TestCase", "IsolatedAsyncioTestCase", "unittest.IsolatedAsyncioTestCase",
+})
+# Statements whose blocks bind names in the enclosing scope.
+BLOCKS = (ast.If, ast.Try, ast.With, ast.AsyncWith, ast.For, ast.AsyncFor, ast.While)
+# Nodes that open a scope of their own.
+SCOPES = (
+    ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp,
+    ast.GeneratorExp,
+)
 BUILTIN_FIXTURES = frozenset({
     "cache", "capfd", "capfdbinary", "caplog", "capsys", "capsysbinary", "doctest_namespace", "monkeypatch",
     "pytestconfig", "pytester", "record_property", "record_testsuite_property", "record_xml_attribute", "recwarn",
@@ -60,7 +72,7 @@ EXPECTED = "\0lean-tests expected value\0"
 
 
 class Unit(NamedTuple):
-    """One unit of the gate: the change from `base` to `head`. `subject` is the commit subject of a per-commit unit."""
+    """One gate unit: the change from `base` to `head`. `subject` is the commit subject of a per-commit unit."""
 
     id: str
     base: str
@@ -89,12 +101,24 @@ class Version(NamedTuple):
 
 
 class Static(NamedTuple):
-    """The layer 2 result of a unit: its items, and the function keys of its new, appended, and changed tests."""
+    """The layer 2 result of a unit: its items, and the function keys of its new and changed tests.
+
+    `subclass_tests` are the new tests in an existing test class with a base
+    class: such a test can replace an inherited test with the same node ID.
+    """
 
     items: list
     new_tests: list
-    appended: list
     changed_tests: list
+    subclass_tests: list
+
+
+class Overlay(NamedTuple):
+    """The test-side files of another commit `rev`: the paths that it has, and the paths that it lacks."""
+
+    rev: str
+    present: list
+    absent: list
 
 
 class Run(NamedTuple):
@@ -107,6 +131,10 @@ class Run(NamedTuple):
 
     def complete(self) -> bool:
         return not self.timed_out and self.found["collected"] is not None
+
+    def broken(self) -> bool:
+        """True when pytest stopped before it collected the tests, but not on the time limit."""
+        return not self.timed_out and (self.found["collected"] is None or self.exit_code in (3, 4))
 
     def collected(self) -> list:
         return self.found["collected"] or []
@@ -125,13 +153,16 @@ class Run(NamedTuple):
         }
 
 
-def item(cls: str, subtype: str | None, path: str | None, detail: str, nodeid: str | None = None, line: int | None = None,
-         **extra) -> dict:
+def item(
+    cls: str, subtype: str | None, path: str | None, detail: str, nodeid: str | None = None, line: int | None = None,
+    **extra,
+) -> dict:
     return {"class": cls, "subtype": subtype, "path": path, "nodeid": nodeid, "line": line, "detail": detail, **extra}
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def new_test(nodeid: str, outcome: str, label: str | None = None, exception: str | None = None) -> dict:
+    """One entry of the new tests of a unit."""
+    return {"nodeid": nodeid, "label": label, "outcome": outcome, "exception": exception}
 
 
 def unified(path: str, before: str, after: str) -> str:
@@ -159,7 +190,8 @@ class Project:
             raise UsageError("the gate needs a Git work tree", log_tail=tail(top.stderr, 5))
         self.root = Path(top.stdout.strip()).resolve()
         self.prefix = rel(self.dir, self.root)
-        self.fixtures: dict[str, frozenset] = {}
+        self.fixture_names: dict[str, frozenset] = {}
+        self.packages: dict[str, frozenset] = {}
 
     def git(self, *args: str) -> str:
         result = git(self.root, *args)
@@ -222,7 +254,7 @@ class Project:
 
     def base_fixtures(self, rev: str) -> frozenset:
         """The fixture names that the test side defines at `rev`, and the built-in fixture names of pytest."""
-        if rev not in self.fixtures:
+        if rev not in self.fixture_names:
             names = set(BUILTIN_FIXTURES)
             paths = [path for path in self.files(rev) if path.endswith(".py") and self.is_test_side(path)]
             for data in self.blobs(rev, paths).values():
@@ -235,8 +267,24 @@ class Project:
                         name = fixture_name(node)
                         if name:
                             names.add(name)
-            self.fixtures[rev] = frozenset(names)
-        return self.fixtures[rev]
+            self.fixture_names[rev] = frozenset(names)
+        return self.fixture_names[rev]
+
+    def package_dirs(self, rev: str) -> frozenset:
+        """The repository paths of the directories with an `__init__.py` at `rev`."""
+        if rev not in self.packages:
+            listing = self.git("ls-tree", "-r", "-z", "--name-only", rev)
+            names = (PurePosixPath(name) for name in listing.split("\0") if name)
+            self.packages[rev] = frozenset(str(name.parent) for name in names if name.name == "__init__.py")
+        return self.packages[rev]
+
+    def documentation(self, unit: Unit, name: str) -> bool:
+        """True for a documentation file outside the product packages at both ends of the unit."""
+        path = PurePosixPath(name)
+        if path.suffix not in DOCUMENTATION:
+            return False
+        packages = self.package_dirs(unit.base) | self.package_dirs(unit.head)
+        return not any(str(parent) in packages for parent in path.parents)
 
     def units(self, merge_base: str, head: str, per_commit: bool) -> list[Unit]:
         if not per_commit:
@@ -259,7 +307,7 @@ class Project:
             status = status[:1] if status[:1] in ("A", "D") else "M"
             path = self.inner(name)
             if path is None:
-                if PurePosixPath(name).suffix not in DOCUMENTATION:
+                if not self.documentation(unit, name):
                     product.append(rel(self.root / name, self.dir))
             elif path in CONFIG_SECTIONS:
                 header = CONFIG_SECTIONS[path]
@@ -271,7 +319,7 @@ class Project:
                     product.append(path)
             elif self.is_test_side(path):
                 changes.append(Change(path, status, test_kind(path)))
-            elif PurePosixPath(path).suffix not in DOCUMENTATION:
+            elif not self.documentation(unit, name):
                 product.append(path)
         return changes, product
 
@@ -356,6 +404,50 @@ def bound_names(stmt: ast.stmt) -> list[str] | None:
                 names.append(node.id)
         return names
     return None
+
+
+def scope_bindings(stmt: ast.stmt) -> list[str]:
+    """Every name that a statement binds in its scope, also inside its if, try, with, for, and while blocks."""
+    names = bound_names(stmt)
+    if names is not None:
+        return names
+    found = []
+    pending = [stmt]
+    while pending:
+        node = pending.pop()
+        if node is not stmt and isinstance(node, SCOPES):
+            if not isinstance(node, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                found.append(node.name)
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            found += bound_names(node) or []
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            found.append(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.append(node.name)
+        pending += ast.iter_child_nodes(node)
+    return found
+
+
+def level(chain: list) -> str:
+    return "class-level" if chain else "module-level"
+
+
+def without(node: ast.AST, field: str) -> ast.AST:
+    """A shallow copy of a definition with an empty `field`, for example its body."""
+    bare = copy.copy(node)
+    setattr(bare, field, [])
+    return bare
+
+
+def same_except(before: ast.AST, after: ast.AST, field: str) -> bool:
+    """True when two definitions are equal apart from `field`."""
+    return ast.dump(without(before, field)) == ast.dump(without(after, field))
+
+
+def inherits(cls: ast.ClassDef | None) -> bool:
+    """True when a class has a base class that can define tests."""
+    return cls is not None and any((dotted(base) or "") not in PLAIN_BASES for base in cls.bases)
 
 
 def unresolvable(tree: ast.Module) -> list[str]:
@@ -455,11 +547,7 @@ def parametrize_values(call: ast.Call) -> tuple:
 
 def appended_cases(before: ast.AST, after: ast.AST) -> bool:
     """True when `after` equals `before` except for literal cases appended to the argvalues of one parametrize."""
-    if len(before.decorator_list) != len(after.decorator_list):
-        return False
-    bare_before, bare_after = copy.copy(before), copy.copy(after)
-    bare_before.decorator_list = bare_after.decorator_list = []
-    if ast.dump(bare_before) != ast.dump(bare_after):
+    if len(before.decorator_list) != len(after.decorator_list) or not same_except(before, after, "decorator_list"):
         return False
     pairs = [(b, a) for b, a in zip(before.decorator_list, after.decorator_list) if ast.dump(b) != ast.dump(a)]
     if len(pairs) != 1 or not all(isinstance(node, ast.Call) for node in pairs[0]):
@@ -468,7 +556,9 @@ def appended_cases(before: ast.AST, after: ast.AST) -> bool:
     if not (dotted(old.func) or "").endswith("parametrize") or ast.dump(old.func) != ast.dump(new.func):
         return False
     (old_values, old_rest), (new_values, new_rest) = parametrize_values(old), parametrize_values(new)
-    if old_rest != new_rest or not isinstance(old_values, (ast.List, ast.Tuple)) or type(new_values) is not type(old_values):
+    if old_rest != new_rest or not isinstance(old_values, (ast.List, ast.Tuple)):
+        return False
+    if type(new_values) is not type(old_values):
         return False
     count = len(old_values.elts)
     return (
@@ -484,15 +574,17 @@ class FileDiff:
     A chain is the list of (base class, head class) pairs that enclose a scope.
     """
 
-    def __init__(self, path: str, base: Version | None, head: Version | None, fixtures) -> None:
+    def __init__(
+        self, path: str, base: Version | None, head: Version | None, base_fixtures: Callable[[], frozenset]
+    ) -> None:
         self.path = path
         self.base = base
         self.head = head
-        self.fixtures = fixtures
+        self.base_fixtures = base_fixtures
         self.items: list[dict] = []
         self.new_tests: list[str] = []
-        self.appended: list[str] = []
         self.changed_tests: list[str] = []
+        self.subclass_tests: list[str] = []
 
     def classify(self) -> None:
         self.diff_scope(
@@ -551,8 +643,8 @@ class FileDiff:
 
     def diff_scope(self, before: list, after: list, chain: list) -> None:
         """Classify the changes between the statements of one scope at base and at head."""
-        base_count = Counter(name for stmt in before for name in bound_names(stmt) or [])
-        head_count = Counter(name for stmt in after for name in bound_names(stmt) or [])
+        base_count = Counter(name for stmt in before for name in scope_bindings(stmt))
+        head_count = Counter(name for stmt in after for name in scope_bindings(stmt))
         unmatched = Counter(ast.dump(stmt) for stmt in before)
         added = []
         for stmt in after:
@@ -604,21 +696,19 @@ class FileDiff:
                 self.removed(stmt, chain)
 
     def scope_statement(self, before: ast.AST | None, after: ast.AST | None, chain: list) -> None:
-        where = "class-level" if chain else "module-level"
         if after is not None and self.base is not None and skip_markers(after):
-            self.add("WEAKENING", "skip", chain, before, after, f"adds a {where} skip or xfail")
+            self.add("WEAKENING", "skip", chain, before, after, f"adds a {level(chain)} skip or xfail")
         else:
             verb = "adds" if before is None else "removes"
-            self.add("UNCLASSIFIED", "scope-statement", chain, before, after, f"{verb} a {where} statement")
+            self.add("UNCLASSIFIED", "scope-statement", chain, before, after, f"{verb} a {level(chain)} statement")
 
     def new_binding(self, stmt: ast.AST, chain: list) -> None:
         names = bound_names(stmt)
         if isinstance(stmt, (ast.Import, ast.ImportFrom)):
             self.add("SAFE", "new-import", chain, None, stmt, f"imports {', '.join(names)}")
         elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            where = "class-level" if chain else "module-level"
             if self.base is not None and skip_markers(stmt):
-                self.add("WEAKENING", "skip", chain, None, stmt, f"adds a {where} skip or xfail marker")
+                self.add("WEAKENING", "skip", chain, None, stmt, f"adds a {level(chain)} skip or xfail marker")
             elif "pytest_plugins" in names:
                 self.add("UNCLASSIFIED", "signal", chain, None, stmt, "binds pytest_plugins")
             elif not isinstance(stmt, ast.AugAssign) and stmt.value is not None and is_literal(stmt.value):
@@ -626,12 +716,14 @@ class FileDiff:
             else:
                 self.add(
                     "UNCLASSIFIED", "signal", chain, None, stmt,
-                    f"a {where} statement other than an import, a constant, a def, or a class",
+                    f"a {level(chain)} statement other than an import, a constant, a def, or a class",
                 )
         else:
             found = self.signals(stmt)
             tests = self.test_keys(stmt, chain)
             self.new_tests += tests
+            if chain and inherits(chain[-1][1]):
+                self.subclass_tests += tests
             if found:
                 self.add("UNCLASSIFIED", "signal", chain, None, stmt, "; ".join(found))
             elif tests:
@@ -654,7 +746,8 @@ class FileDiff:
                 local.update((alias.asname or alias.name).split(".")[0] for alias in sub.names)
             elif isinstance(sub, ast.ExceptHandler) and sub.name:
                 local.add(sub.name)
-            if isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Call) and "patch" in (dotted(sub.value.func) or ""):
+            patcher = isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Call)
+            if patcher and "patch" in (dotted(sub.value.func) or ""):
                 patchers.update(t.id for t in targets_of(sub) if isinstance(t, ast.Name))
         found = []
         for sub in ast.walk(stmt):
@@ -662,7 +755,7 @@ class FileDiff:
                 if autouse(sub):
                     found.append(f"autouse fixture {sub.name}")
                 name = fixture_name(sub)
-                if name and name in self.fixtures():
+                if name and name in self.base_fixtures():
                     found.append(f"fixture {name} has the name of an existing fixture")
                 if sub.name.startswith("pytest_"):
                     found.append(f"pytest hook {sub.name}")
@@ -699,10 +792,8 @@ class FileDiff:
 
     def modified(self, before: ast.AST, after: ast.AST, chain: list) -> None:
         if isinstance(after, ast.ClassDef):
-            bare_before, bare_after = copy.copy(before), copy.copy(after)
-            bare_before.body = bare_after.body = []
-            if ast.dump(bare_before) != ast.dump(bare_after):
-                if skip_added(bare_before, bare_after):
+            if not same_except(before, after, "body"):
+                if skip_added(without(before, "body"), without(after, "body")):
                     self.add("WEAKENING", "skip", chain, before, after, "adds or changes a skip or xfail marker")
                 else:
                     self.add("UNCLASSIFIED", "changed-definition", chain, before, after, "changes the class header")
@@ -712,12 +803,12 @@ class FileDiff:
         elif skip_added(before, after):
             self.add("WEAKENING", "skip", chain, before, after, "adds or changes a skip or xfail marker")
         else:
-            self.add("UNCLASSIFIED", "changed-definition", chain, before, after, f"changes {', '.join(bound_names(after))}")
+            detail = f"changes {', '.join(bound_names(after))}"
+            self.add("UNCLASSIFIED", "changed-definition", chain, before, after, detail)
 
     def modified_function(self, before: ast.AST, after: ast.AST, chain: list) -> None:
         test = self.is_test(after, chain)
         if test and appended_cases(before, after):
-            self.appended.append(self.key(chain, after))
             self.add("SAFE", "appended-cases", chain, before, after, "appends literal parametrize cases")
             return
         if test:
@@ -732,7 +823,8 @@ class FileDiff:
                 return
         what = "test" if test else "fixture" if fixture_name(after) else "function"
         if skip_added(before, after):
-            self.add("WEAKENING", "skip", chain, before, after, f"adds or changes a skip or xfail in an existing {what}")
+            detail = f"adds or changes a skip or xfail in an existing {what}"
+            self.add("WEAKENING", "skip", chain, before, after, detail)
             return
         subtype = self.weakening(before, after, chain)
         if subtype:
@@ -771,7 +863,8 @@ class FileDiff:
                 if verdict:
                     return verdict[0]
         gone = [node for _, node in old if missing[ast.dump(node)]]
-        names = {(dotted(sub.func) or "").rsplit(".", 1)[-1] for node in gone for sub in ast.walk(node) if isinstance(sub, ast.Call)}
+        calls = [sub for node in gone for sub in ast.walk(node) if isinstance(sub, ast.Call)]
+        names = {(dotted(sub.func) or "").rsplit(".", 1)[-1] for sub in calls}
         if "approx" in names:
             return "approx"
         if names & {"raises", "assertRaises", "assertRaisesRegex"}:
@@ -796,39 +889,43 @@ def static_layer(project: Project, unit: Unit, changes: list[Change]) -> Static:
     python = [c.path for c in changes if c.kind in ("test-module", "helper")]
     base_blobs = project.blobs(unit.base, python)
     head_blobs = project.blobs(unit.head, python)
-    items, new_tests, appended, changed_tests = [], [], [], []
+    items, new_tests, changed_tests, subclass_tests = [], [], [], []
     for change in changes:
         path = change.path
         verb = {"A": "adds", "D": "removes", "M": "changes"}[change.status]
         if change.kind == "conftest":
-            items.append(item("UNCLASSIFIED", "conftest", path, f"{verb} a conftest.py", diff=project.file_diff(unit, path)))
+            diff = project.file_diff(unit, path)
+            items.append(item("UNCLASSIFIED", "conftest", path, f"{verb} a conftest.py", diff=diff))
         elif change.kind == "data":
-            items.append(item("UNCLASSIFIED", "test-data", path, f"{verb} a test-side file", diff=project.file_diff(unit, path)))
+            diff = project.file_diff(unit, path)
+            items.append(item("UNCLASSIFIED", "test-data", path, f"{verb} a test-side file", diff=diff))
         elif change.kind == "config":
             header = CONFIG_SECTIONS[path]
             before = split_config(header, project.text(unit.base, path) or "")[0]
             after = split_config(header, project.text(unit.head, path) or "")[0]
-            added = [line[1:] for line in difflib.ndiff(before.splitlines(), after.splitlines()) if line.startswith("+ ")]
+            ndiff = difflib.ndiff(before.splitlines(), after.splitlines())
+            added = [line[2:] for line in ndiff if line.startswith("+ ")]
             diff = unified(path, before, after)
             if any(DESELECTION.search(line) for line in added):
-                items.append(item("WEAKENING", "config-deselect", path, "adds a deselect, ignore, -k, or -m option", diff=diff))
+                detail = "adds a deselect, ignore, -k, or -m option"
+                items.append(item("WEAKENING", "config-deselect", path, detail, diff=diff))
             else:
-                items.append(item("UNCLASSIFIED", "configuration", path, f"{verb} the pytest configuration", diff=diff))
+                detail = f"{verb} the pytest configuration"
+                items.append(item("UNCLASSIFIED", "configuration", path, detail, diff=diff))
         else:
             base, head = parse_version(base_blobs.get(path)), parse_version(head_blobs.get(path))
             broken = [found for found in (base, head) if isinstance(found, str)]
             if broken:
-                items.append(item(
-                    "UNCLASSIFIED", "parse-error", path, "; ".join(broken), diff=project.file_diff(unit, path)
-                ))
+                diff = project.file_diff(unit, path)
+                items.append(item("UNCLASSIFIED", "parse-error", path, "; ".join(broken), diff=diff))
                 continue
-            diff = FileDiff(path, base, head, lambda: project.base_fixtures(unit.base))
-            diff.classify()
-            items += diff.items
-            new_tests += diff.new_tests
-            appended += diff.appended
-            changed_tests += diff.changed_tests
-    return Static(items, new_tests, appended, changed_tests)
+            found = FileDiff(path, base, head, lambda: project.base_fixtures(unit.base))
+            found.classify()
+            items += found.items
+            new_tests += found.new_tests
+            changed_tests += found.changed_tests
+            subclass_tests += found.subclass_tests
+    return Static(items, new_tests, changed_tests, subclass_tests)
 
 
 class Session:
@@ -873,35 +970,37 @@ class Session:
         if self.added:
             self.remove()
 
-    def checkout(self, rev: str, overlay: tuple | None) -> None:
-        """Check out `rev`; an overlay (other rev, paths there, paths absent there) puts other test-side files in place."""
+    def checkout(self, rev: str, overlay: Overlay | None) -> None:
+        """Check out `rev`; an overlay puts the test-side files of another commit in place."""
         self.git_tree("checkout", "--force", "--detach", "--quiet", rev)
         self.git_tree("clean", "-f", "-d", "-x", "-q")
         if overlay:
-            other, present, absent = overlay
-            if present:
-                self.git_tree("checkout", other, "--", *(self.project.outer(p) for p in present))
-            for path in absent:
+            if overlay.present:
+                self.git_tree("checkout", overlay.rev, "--", *(self.project.outer(p) for p in overlay.present))
+            for path in overlay.absent:
                 (self.dir / path).unlink(missing_ok=True)
 
     def roots(self, rev: str) -> tuple[str, ...]:
         """The import roots of the product packages at `rev`, in the worktree."""
         found = []
         for path in self.project.files(rev):
-            if path.endswith(".py") and not self.project.is_test_side(path) and (self.dir / path).parent.joinpath(
-                "__init__.py"
-            ).is_file():
+            if not path.endswith(".py") or self.project.is_test_side(path):
+                continue
+            if (self.dir / path).parent.joinpath("__init__.py").is_file():
                 found.append(str((self.dir / import_root(self.dir, path)).resolve()))
         return tuple(dict.fromkeys(found))
 
-    def run(self, name: str, rev: str, overlay: tuple | None, selection: list | None, collect_only: bool = False) -> Run:
+    def run(
+        self, name: str, rev: str, overlay: Overlay | None, selection: list | None, collect_only: bool = False
+    ) -> Run:
         self.checkout(rev, overlay)
         records = self.work / f"{name}.jsonl"
         records.write_text("", encoding="utf-8")
         log = self.work / f"{name}.log"
         env = copy_env(self.project.dir, records, self.work / f"{name}.data", self.roots(rev))
         targets = (["--collect-only"] if collect_only else []) + (selection or [])
-        cmd = scope_command(self.python, self.versions, targets, self.work / f"{name}-args.txt", self.extra)
+        argfile = self.work / f"{name}-args.txt"
+        cmd = pytest_command(self.python, self.versions, targets, argfile, every_test=True) + self.extra
         exit_code, timed_out = run_pytest(cmd, self.dir, env, log, self.timeout)
         found = read_records(records)
         if found["rootdir"] and Path(found["rootdir"]).resolve() != self.dir.resolve():
@@ -915,8 +1014,8 @@ def label_entry(nodeid: str, run: Run, tests: dict) -> dict:
     test = tests.get(nodeid)
     if test is None:
         if run.timed_out:
-            return {"nodeid": nodeid, "label": None, "outcome": "not run", "exception": None}
-        return {"nodeid": nodeid, "label": "new-API", "outcome": "not collected", "exception": None}
+            return new_test(nodeid, "not run")
+        return new_test(nodeid, "not collected", label="new-API")
     setup = test["phases"].get("setup") or {}
     outcome = test["outcome"]
     if setup.get("outcome") == "failed":
@@ -927,7 +1026,7 @@ def label_entry(nodeid: str, run: Run, tests: dict) -> dict:
         label = "hardening"  # an error here is a teardown failure after a passing call
     else:
         label = None
-    return {"nodeid": nodeid, "label": label, "outcome": outcome, "exception": failure(test)}
+    return new_test(nodeid, outcome, label=label, exception=failure(test))
 
 
 def behavior_changes(base: Run, replay: Run) -> list[dict]:
@@ -951,6 +1050,12 @@ def behavior_changes(base: Run, replay: Run) -> list[dict]:
     return found
 
 
+def item_keys(entry: dict, keys: list[str]) -> list[str]:
+    """The function keys among `keys` of the tests that a new-test item adds."""
+    node = entry["nodeid"]
+    return [key for key in keys if key == node or key.startswith(node + "::")]
+
+
 def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool, static: Static) -> tuple:
     """Layer 1, the collection evidence, and the new-test labels of a unit; returns (items, new tests, run reports)."""
     items: list[dict] = []
@@ -959,10 +1064,12 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
     whole = any(c.kind != "test-module" for c in changes)
     base_files = None if whole else [c.path for c in modules if c.status != "A"]
     head_files = None if whole else [c.path for c in modules if c.status != "D"]
-    base_side = (unit.base, [c.path for c in changes if c.status != "A"], [c.path for c in changes if c.status == "A"])
-    head_side = (unit.head, [c.path for c in changes if c.status != "D"], [c.path for c in changes if c.status == "D"])
+    added = [c.path for c in changes if c.status == "A"]
+    deleted = [c.path for c in changes if c.status == "D"]
+    base_side = Overlay(unit.base, [c.path for c in changes if c.status != "A"], added)
+    head_side = Overlay(unit.head, [c.path for c in changes if c.status != "D"], deleted)
 
-    def run(label: str, rev: str, overlay: tuple | None, selection: list | None, collect_only: bool = False) -> Run:
+    def run(label: str, rev: str, overlay: Overlay | None, selection: list | None, collect_only: bool = False) -> Run:
         found = session.run(f"{unit.id}-{label}", rev, overlay, selection, collect_only)
         reports[label] = found.report(selection)
         if found.timed_out:
@@ -972,7 +1079,7 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
         return found
 
     head = run("head", unit.head, None, head_files, collect_only=True) if whole or head_files else None
-    if head is not None and not head.timed_out and (head.found["collected"] is None or head.exit_code in (3, 4)):
+    if head is not None and head.broken():
         items.append(item(
             "UNCLASSIFIED", "collection-error", None,
             f"pytest exited with {head.exit_code} before it collected the head tests; see {head.log}",
@@ -982,14 +1089,15 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
         if mixed:
             replay = run("replay", unit.head, base_side, base_files)
         base = run("base", unit.base, None, base_files)
-        if not base.timed_out and (base.found["collected"] is None or base.exit_code in (3, 4)):
+        if base.broken():
             raise UsageError(
                 f"pytest exited with {base.exit_code} on the base tests at {unit.base}; see log_tail",
                 log_tail=tail(base.log.read_text(encoding="utf-8", errors="replace"), LOG_TAIL),
             )
     for found, side in ((base, "base"), (head, "head")):
         for nodeid in found.found["collect_errors"] if found else []:
-            items.append(item("UNCLASSIFIED", "collection-error", node_file(nodeid), f"collection fails at {side}", nodeid=nodeid))
+            detail = f"collection fails at {side}"
+            items.append(item("UNCLASSIFIED", "collection-error", node_file(nodeid), detail, nodeid=nodeid))
     if replay is not None:
         items += behavior_changes(base, replay)
 
@@ -998,6 +1106,7 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
     head_ids = set(head.collected()) if head is not None else set()
     appended = {i["nodeid"]: i for i in static.items if i["subtype"] == "appended-cases"}
     removed = [i["nodeid"] for i in static.items if i["subtype"] == "removed-test"]
+    existing: set = set()
     if evidence:
         for nodeid in base.collected():
             if nodeid in head_ids:
@@ -1015,36 +1124,57 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
                     "WEAKENING", "missing-node-id", node_file(nodeid), "a base node ID is not collected at head",
                     nodeid=nodeid,
                 ))
+        base_keys = {function_key(nodeid) for nodeid in base_ids}
+        for entry in static.items:
+            if entry["subtype"] != "new-test":
+                continue
+            taken = [key for key in item_keys(entry, static.new_tests) if key in base_keys]
+            if taken:
+                existing.update(taken)
+                entry.update({
+                    "class": "UNCLASSIFIED", "subtype": "existing-node-id",
+                    "detail": "adds a test with a node ID that the base collected, so it replaces an inherited "
+                    "test: " + ", ".join(taken),
+                })
     else:
-        unconfirmed(appended.values())
+        unconfirmed(static, appended.values())
 
     new_ids = []
     if head is not None and head.complete():
-        keys = set(static.new_tests)
+        keys = set(static.new_tests) - existing
+        kept = {key for key, entry in appended.items() if entry["class"] == "SAFE"}
         for nodeid in head.collected():
             key = function_key(nodeid)
-            if key in keys or (evidence and key in appended and nodeid not in base_ids):
+            if key in keys or (key in kept and nodeid not in base_ids):
                 new_ids.append(nodeid)
     entries = []
     if new_ids:
         label = run("label", unit.base, head_side, sorted({node_file(n) for n in new_ids}))
         tests = label.tests()
         entries = [label_entry(nodeid, label, tests) for nodeid in new_ids]
-    seen = {function_key(n) for n in new_ids}
-    entries += [
-        {"nodeid": key, "label": None, "outcome": "not collected at head", "exception": None}
-        for key in static.new_tests if key not in seen
-    ]
+    seen = {function_key(n) for n in new_ids} | existing
+    entries += [new_test(key, "not collected at head") for key in static.new_tests if key not in seen]
     return items, entries, reports
 
 
-def unconfirmed(appended) -> None:
-    """Mark appended parametrize cases without collection evidence as UNCLASSIFIED."""
+def unconfirmed(static: Static, appended) -> None:
+    """Mark the items that need collection evidence as UNCLASSIFIED, when the gate has none.
+
+    Without it, appended parametrize cases can rename base node IDs, and a new
+    test in a subclass can replace an inherited test.
+    """
     for entry in appended:
         entry.update({
             "class": "UNCLASSIFIED", "subtype": "no-collection-evidence",
             "detail": "appends literal parametrize cases, but no collection shows that each base node ID stays",
         })
+    for entry in static.items:
+        if entry["subtype"] == "new-test" and item_keys(entry, static.subclass_tests):
+            entry.update({
+                "class": "UNCLASSIFIED", "subtype": "no-collection-evidence",
+                "detail": "adds a test to a subclass, but no collection shows that the base had no test with its "
+                "node ID",
+            })
 
 
 def check_unit(project: Project, session: Session | None, unit: Unit) -> dict:
@@ -1057,19 +1187,16 @@ def check_unit(project: Project, session: Session | None, unit: Unit) -> dict:
         found, new_tests, reports = run_layers(session, unit, changes, mixed, static)
         items += found
     else:
-        unconfirmed(i for i in items if i["subtype"] == "appended-cases")
-        new_tests = [
-            {"nodeid": key, "label": None, "outcome": "not run", "exception": None} for key in static.new_tests
-        ]
+        unconfirmed(static, [i for i in items if i["subtype"] == "appended-cases"])
+        new_tests = [new_test(key, "not run") for key in static.new_tests]
     items = [{"id": f"{unit.id}-i{n}", **entry} for n, entry in enumerate(items, start=1)]
-    failing = [i for i in items if i["class"] in FAILING]
-    if mixed and failing:
-        status = "fail"
-    elif not mixed and changes and failing:
-        status = "needs evidence"
+    if mixed:
+        status = "fail" if any(i["class"] in FAILING for i in items) else "pass"
     else:
-        status = "pass"
-    diff = project.git("diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index", "--binary", unit.base, unit.head)
+        status = "needs evidence" if changes else "pass"
+    diff = project.git(
+        "diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index", "--binary", unit.base, unit.head
+    )
     return {
         "id": unit.id,
         "base": unit.base,
@@ -1151,88 +1278,4 @@ def gate_command(args, extra: list[str]) -> dict:
         "units": results,
         "new_tests": new_tests,
         "files": files,
-    }
-
-
-def pin_command(args) -> dict:
-    if args.record:
-        if args.quote is not None:
-            raise UsageError("--quote goes with --check")
-        return pin_sources(Path(args.record).resolve(), args.source)
-    if args.source:
-        raise UsageError("--source goes with --record")
-    return check_pins(Path(args.check).resolve(), args.quote)
-
-
-def pin_sources(record: Path, specs: list[str]) -> dict:
-    """Write each source's text and SHA-256 hash to a new pin record."""
-    if not specs:
-        raise UsageError("pin --record needs at least one --source NAME=PATH")
-    sources = []
-    for spec in specs:
-        name, sep, path = spec.partition("=")
-        if not (sep and name and path):
-            raise UsageError(f"--source {spec!r} is not NAME=PATH")
-        if any(source["name"] == name for source in sources):
-            raise UsageError(f"the source name {name} appears twice")
-        try:
-            data = Path(path).read_bytes()
-        except OSError as error:
-            raise UsageError(f"cannot read the source {path}: {error.strerror}") from error
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError as error:
-            raise UsageError(f"the source {path} is not UTF-8 text") from error
-        sources.append({
-            "name": name, "path": str(Path(path).resolve()), "sha256": sha256(data), "bytes": len(data), "text": text,
-        })
-    pinned_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        with open(record, "x", encoding="utf-8") as handle:
-            json.dump({"pinned_at": pinned_at, "sources": sources}, handle, indent=1)
-    except FileExistsError as error:
-        raise UsageError(f"the pin record {record} exists; pin writes a new record and never changes one") from error
-    except OSError as error:
-        raise UsageError(f"cannot write the pin record {record}: {error.strerror}") from error
-    return {
-        "summary": {
-            "record": str(record),
-            "pinned_at": pinned_at,
-            "sources": len(sources),
-            "sha256": {source["name"]: source["sha256"] for source in sources},
-        },
-        "sources": [{k: v for k, v in source.items() if k != "text"} for source in sources],
-    }
-
-
-def check_pins(record: Path, quote: str | None) -> dict:
-    """Recompute the hash of each pinned text, and find the pinned sources that contain a quote."""
-    data = load_json(str(record), "pin record")
-    sources = data.get("sources")
-    if not isinstance(sources, list) or not all(
-        isinstance(s, dict) and isinstance(s.get("text"), str) and "name" in s and "sha256" in s for s in sources
-    ):
-        raise UsageError(f"{record} is not a pin record")
-    entries = [
-        {"name": s["name"], "sha256": s["sha256"], "intact": sha256(s["text"].encode("utf-8")) == s["sha256"]}
-        for s in sources
-    ]
-    changed = [entry["name"] for entry in entries if not entry["intact"]]
-    found = None
-    if quote is not None:
-        needle = " ".join(quote.split())
-        if not needle:
-            raise UsageError("--quote is empty")
-        found = [{"name": s["name"], "sha256": s["sha256"]} for s in sources if needle in " ".join(s["text"].split())]
-    return {
-        "summary": {
-            "passed": not changed and (found is None or bool(found)),
-            "record": str(record),
-            "pinned_at": data.get("pinned_at"),
-            "sources": len(entries),
-            "changed": changed,
-            "quote_found_in": None if found is None else [entry["name"] for entry in found],
-        },
-        "sources": entries,
-        "quote": None if quote is None else {"text": quote, "found_in": found},
     }

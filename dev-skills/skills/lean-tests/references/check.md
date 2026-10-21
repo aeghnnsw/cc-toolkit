@@ -257,11 +257,10 @@ applies:
 4. **check** again after the next change, when no other rule applies. Say
    that the suite needs no lean-tests work now.
 
-When the next mode is speed or prune, say that the user can ask for it, for
-example with "make the tests faster" or "prune the tests in <path>": these
-modes change files only on request. When the next mode is review, say
-that the user can ask for it, for example with "review the tests in this
-change". [review.md](review.md) gives its steps.
+When the next mode is speed, prune, or review, say that the user can ask
+for it, for example with "make the tests faster", "prune the tests in
+<path>", or "review the tests in this change": these modes run only on
+request.
 
 When the scorecard is complete, remove the work directory:
 

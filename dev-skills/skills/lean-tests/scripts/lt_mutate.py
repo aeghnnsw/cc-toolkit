@@ -30,13 +30,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lt_common import (
-    EXAMPLES, PARSE_ERRORS, UsageError, load_json, node_file, parse_failure, ran_tests, read_node_ids, rel,
-    suite_node_ids, tail,
+    EXAMPLES, PARSE_ERRORS, UsageError, import_root, is_string_statement, load_json, node_file, parse_failure,
+    ran_tests, read_node_ids, rel, suite_node_ids, tail,
 )
-from lt_coverage import changed_lines as changed_since
-from lt_coverage import lines_by_test, product_files, unmeasured_tests
+from lt_coverage import changed_lines, lines_by_test, product_files, unmeasured_tests
 from lt_suite import (
-    failure, interpreter, load_suite, probe, pytest_env, read_records, run_pytest, test_entries, version_tuple,
+    copy_env, interpreter, kill_type, load_suite, probe, pytest_command, read_records, run_pytest, test_entries,
 )
 
 DEFAULT_BUDGET = 1800.0
@@ -51,8 +50,6 @@ SKIP_NAMES = frozenset({
     ".git", ".hg", ".svn", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox",
     "node_modules",
 })
-# Failures of a check: assert, unittest and mock assert methods, pytest.fail, and pytest.raises without a raise.
-CHECK_FAILURES = frozenset({"AssertionError", "Failed"})
 CLASSES = ("unique", "subsumed", "union-only", "empty", "unmeasured", "incomplete")
 # A test of these classes can be deleted, so a demotion does not count on it.
 DELETION_CLASSES = frozenset({"empty", "subsumed"})
@@ -108,7 +105,7 @@ class Baseline(NamedTuple):
 
 
 class Scope(NamedTuple):
-    """The product modules of a prune scope, with their executed lines, and the lines of each test.
+    """The product modules that the tests of a mutate scope cover, their executed lines, and the lines of each test.
 
     `lines` holds the lines of each test in any phase, and `run_lines` in its
     run phase, by node ID and then by module. `skipped` lists the covered
@@ -197,10 +194,6 @@ class Source:
 
     def line_of(self, offset: int) -> int:
         return bisect.bisect_right(self.starts, offset)
-
-
-def is_string_statement(node: ast.AST) -> bool:
-    return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
 
 
 def is_logging_call(node: ast.AST) -> bool:
@@ -429,14 +422,6 @@ def module_mutants(path: str, text: str, executed: set) -> list[dict]:
     return mutants
 
 
-def import_root(project: Path, path: str) -> str:
-    """The directory above the outermost package of a module, relative to the project."""
-    folder = (project / path).parent
-    while folder != project and (folder / "__init__.py").is_file():
-        folder = folder.parent
-    return rel(folder, project)
-
-
 def scope(project: Path, coverage: dict, nodeids: list[str]) -> Scope:
     """The product modules that an in-scope test covers, and the lines of each test."""
     files = product_files(coverage, project, {(project / node_file(n)).resolve() for n in nodeids})
@@ -466,13 +451,6 @@ def skip_copy(directory: str, names: list) -> set:
         elif not os.path.islink(path) and os.path.isfile(os.path.join(path, "pyvenv.cfg")):
             skipped.add(name)
     return skipped
-
-
-def copy_env(project: Path, records: Path, data_file: Path, roots: tuple[str, ...] = ()) -> dict:
-    """The pytest environment of a run in a copy; `uv run` in a copy uses the project's environment."""
-    env = pytest_env(records, data_file, roots)
-    env.setdefault("UV_PROJECT", str(project))
-    return env
 
 
 class ProjectCopy:
@@ -512,13 +490,6 @@ class ProjectCopy:
         shutil.rmtree(self.root, ignore_errors=True)
 
 
-def kill_type(test: dict) -> str | None:
-    """`assertion` when a check failed, `exception` for any other failure, None when the test did not fail."""
-    if test["outcome"] not in ("failed", "error"):
-        return None
-    return "assertion" if failure(test) in CHECK_FAILURES else "exception"
-
-
 def verdict(run: dict, nodeids: list[str]) -> Verdict:
     """The verdict of one mutant run.
 
@@ -550,23 +521,6 @@ def verdict(run: dict, nodeids: list[str]) -> Verdict:
         else:
             not_reached.append(nodeid)
     return Verdict(killed_by, not_reached, "timeout" if run["timed_out"] and stop_kill is not None else None)
-
-
-def scope_command(python: list[str], versions: dict, targets: list[str], argfile: Path, extra: list[str]) -> list[str]:
-    """The pytest command that runs `targets` with outcome records; `argfile` holds them on pytest 8.2 or newer."""
-    cmd = [
-        *python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:randomly", "-p", "lean_tests_report",
-        # Every test runs: a failing module or test does not stop the run.
-        "--continue-on-collection-errors", "--maxfail=0",
-    ]
-    if versions.get("pytest_cov"):
-        cmd.append("--no-cov")
-    if version_tuple(versions["pytest"]) >= (8, 2):
-        argfile.write_text("".join(f"{t}\n" for t in targets), encoding="utf-8")
-        cmd.append(f"@{argfile}")
-    else:
-        cmd += targets
-    return cmd + extra
 
 
 class Runner:
@@ -605,7 +559,8 @@ class Runner:
 
     def command(self, name: str, files: list[str], deselect: list[str]) -> list[str]:
         targets = [*files, *(f"--deselect={n}" for n in deselect)]
-        return scope_command(self.python, self.versions, targets, self.work / f"{name}-args.txt", self.extra)
+        argfile = self.work / f"{name}-args.txt"
+        return pytest_command(self.python, self.versions, targets, argfile, every_test=True) + self.extra
 
     def baseline(self, cmd: list[str]) -> dict | None:
         """Run the scope once on the unchanged copy; None when the budget runs out."""
@@ -836,7 +791,7 @@ def matrix(args, extra: list[str]) -> dict:
         {"id": f"m{number}", **mutant, **status_before_run()} for number, mutant in enumerate(mutants, start=1)
     ]
     # A test whose run phase ran no line that a mutant changes is unmeasured.
-    changed = changed_lines(mutants, texts)
+    changed = mutant_lines(mutants, texts)
     measured_in = {
         nodeid: {path: lines & changed.get(path, set()) for path, lines in by_module.items()}
         for nodeid, by_module in covered.run_lines.items()
@@ -908,7 +863,7 @@ def matrix(args, extra: list[str]) -> dict:
 def review_scope(project: Path, args, covered: Scope, nodeids: list[str]) -> ReviewScope:
     """The changed product lines since the merge base of --base and HEAD, and the lines that only new tests cover."""
     new_tests = read_node_ids(args.new_tests)
-    merge_base, changed = changed_since(project, args.base)
+    merge_base, changed = changed_lines(project, args.base)
     existing = [n for n in nodeids if n not in set(new_tests)]
 
     def union(tests: list[str], path: str) -> set:
@@ -926,7 +881,8 @@ def without_mutants(suite: dict, nodeids: list[str], budget: float, started: flo
     """Complete evidence for a review scope with no mutant: no test kills a mutant."""
     outcomes = {test["nodeid"]: test["outcome"] for test in suite["tests"]}
     excluded = [
-        {"nodeid": n, "run": "suite", "outcome": outcomes.get(n, "not run")} for n in nodeids if outcomes.get(n) != "passed"
+        {"nodeid": n, "run": "suite", "outcome": outcomes.get(n, "not run")}
+        for n in nodeids if outcomes.get(n) != "passed"
     ]
     timing = {
         "workers": 0, "budget_seconds": budget, "mutant_timeout_seconds": None,
@@ -948,7 +904,7 @@ def admit(new_tests: list[str], in_scope: list[str], mutants: list[dict], comple
     for nodeid in new_tests:
         if nodeid not in in_scope:
             entries.append({
-                "nodeid": nodeid, "verdict": "unverified", "new_kills": [], "weak_oracle": False,
+                "nodeid": nodeid, "verdict": "unverified", "new_kills": [], "exception_kills_only": False,
                 "reason": "not an in-scope test: it did not pass in the suite run or in the unchanged copy",
             })
             continue
@@ -961,16 +917,19 @@ def admit(new_tests: list[str], in_scope: list[str], mutants: list[dict], comple
             kills[mutant["id"]] = kind
             if not existing & (set(mutant["killed_by"]) | set(mutant["not_reached"])):
                 new_kills.append(mutant["id"])
-        verdict = "unverified" if not complete else "accept" if new_kills else "no unique kill"
+        if not complete:
+            decision = "unverified"
+        else:
+            decision = "accept" if new_kills else "no unique kill"
         entries.append({
-            "nodeid": nodeid, "verdict": verdict, "new_kills": new_kills,
-            # A test that kills mutants only through other exceptions checks no value.
-            "weak_oracle": bool(kills) and "assertion" not in kills.values(),
+            "nodeid": nodeid, "verdict": decision, "new_kills": new_kills,
+            # A test that kills mutants only through exceptions other than assertions checks no value.
+            "exception_kills_only": bool(kills) and "assertion" not in kills.values(),
         })
     return entries
 
 
-def changed_lines(mutants: list[dict], texts: dict) -> dict[str, set]:
+def mutant_lines(mutants: list[dict], texts: dict) -> dict[str, set]:
     """The lines that the mutants change, by module."""
     lines: dict[str, set] = {}
     for mutant in mutants:

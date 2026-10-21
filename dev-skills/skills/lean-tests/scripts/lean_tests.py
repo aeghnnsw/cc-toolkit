@@ -37,6 +37,7 @@ from typing import Optional  # noqa: E402
 import lt_coverage  # noqa: E402
 import lt_gate  # noqa: E402
 import lt_mutate  # noqa: E402
+import lt_pin  # noqa: E402
 import lt_scan  # noqa: E402
 import lt_suite  # noqa: E402
 from lt_common import UsageError  # noqa: E402
@@ -131,7 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="review scope: mutate only the product lines changed since the merge base of BASE and HEAD, "
         "and the lines that only the --new-tests tests cover",
     )
-    mutate.add_argument("--new-tests", metavar="FILE", help="file with the node IDs of the new tests; goes with --base")
+    mutate.add_argument(
+        "--new-tests", metavar="FILE", help="file with the node IDs of the new tests; goes with --base"
+    )
     mutate.add_argument(
         "--budget", type=float,
         help=f"seconds for the whole run (default: {lt_mutate.DEFAULT_BUDGET:g}, "
@@ -148,16 +151,18 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Classify each test-side change from BASE to HEAD, replay the changed base tests against the "
             "head product code, and run each new test against the base product code, in a temporary "
-            "detached worktree. Exit status 1 means that a mixed unit has a BEHAVIOR CHANGE, WEAKENING, "
+            "detached worktree. Exit status 1 means that a mixed change has a BEHAVIOR CHANGE, WEAKENING, "
             "or UNCLASSIFIED item. Arguments after `--` go to pytest."
         ),
     )
     gate.add_argument("--project", default=".", help="project directory in a Git work tree (default: .)")
-    gate.add_argument("--base", required=True, help="base Git ref; the change starts at the merge base of BASE and HEAD")
+    gate.add_argument(
+        "--base", required=True, help="base Git ref; the change starts at the merge base of BASE and HEAD"
+    )
     gate.add_argument("--head", default="HEAD", help="head Git ref (default: HEAD)")
     gate.add_argument(
         "--per-commit", action="store_true",
-        help="one unit per commit, for a merge method that keeps commits (default: the whole range is one unit)",
+        help="one gate unit per commit, for a merge method that keeps commits (default: the whole range is one unit)",
     )
     gate.add_argument("--python", help="target interpreter, or a command that runs it (as for suite)")
     gate.add_argument("--work-dir", help="directory outside the repository for the worktree, records, and logs")
@@ -176,8 +181,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="pin requirement sources with SHA-256 hashes, or check a pin record",
         description=(
             "With --record, write each --source file's text and SHA-256 hash to a new pin record. With "
-            "--check, recompute the hash of each pinned text, and with --quote, find the pinned sources "
-            "that contain the quote. Exit status 1 means that the check failed."
+            "--check, recompute the hash of each pinned text, and with --quote, find the pinned requirement "
+            "sources that contain the quote. Exit status 1 means that the check failed."
         ),
     )
     action = pin.add_mutually_exclusive_group(required=True)
@@ -188,7 +193,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="a requirement source to pin (repeatable; goes with --record)",
     )
     pin.add_argument(
-        "--quote", help="text that a pinned source must contain (goes with --check); white space matches any white space"
+        "--quote",
+        help="text that a pinned requirement source must contain (goes with --check); "
+        "white space matches any white space",
     )
     return parser
 
@@ -215,7 +222,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif args.command == "gate":
             result = lt_gate.gate_command(args, extra)
         elif args.command == "pin":
-            result = lt_gate.pin_command(args)
+            result = lt_pin.pin_command(args)
         else:
             result = lt_coverage.coverage_command(args)
     except UsageError as error:
