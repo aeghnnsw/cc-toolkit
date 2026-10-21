@@ -291,7 +291,8 @@ new files that Git does not ignore. Ignored local files cannot satisfy the
 package contract. Optional discovery roots remain
 optional. Discovered skills need `---` header delimiters and one nonempty,
 single-line `name` and `description`. Names use lowercase letters, digits,
-and single separating hyphens. This is a narrow skill header contract, not
+and single separating hyphens. An optional `version` uses numeric
+`major.minor.patch` components. This is a narrow skill header contract, not
 full YAML validation. Agent headers do not use this contract. Declared JSON
 hook and MCP files and listed TOML and JSON resources are parsed.
 The validator does not check external links,
@@ -310,18 +311,23 @@ the whole pull request. New registrations need a valid initial version.
 Removed registrations need no increase for the removed host. A source move
 preserves release history by plugin identity and host.
 
+Release validation also checks skill versions. When changed shipped content
+is in a skill directory, and the skill's `SKILL.md` frontmatter has a
+`version`, that version must be greater than the one at the merge base.
+The ownership rules and exemptions apply as for plugin versions. A new
+skill, or a skill with no `version` at the merge base, needs no skill
+version increase.
+
 Release validation compares only with the merge base, so it does not see
 a version that another pull request released after the merge base. Before
-merging, run `git fetch origin master` and compare each version you raised
-with the one on `origin/master`. If `origin/master` has that version or a
-greater one, raise yours above it. Choose a version when the pull request
-is ready, and write no target version in an issue or a ticket. After a
-rebase, run the validator again: when both sides made the same version
-change, the rebase removes that change from the branch. The validator
-checks only plugin manifest versions. After a rebase, also compare each
-skill frontmatter `version` that you raised with the one on
-`origin/master`. When `origin/master` has that version or a greater one,
-raise yours above it. Update each test that pins the version, such as
+merging, run `git fetch origin master` and compare each plugin and skill
+version you raised with the one on `origin/master`. If `origin/master` has
+that version or a greater one, raise yours above it. Choose a version when
+the pull request is ready, and write no target version in an issue or a
+ticket. After a rebase, run the validator again: when both sides made the
+same plugin or skill version change, the rebase removes that change from
+the branch, and the validator reports the version that must increase. When
+you raise a skill version, update each test that pins it, such as
 `HostParityTest` in `dev-skills/tests/test_lean_tests.py`.
 
 [package-validation.json](package-validation.json) holds the ownership

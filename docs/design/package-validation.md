@@ -9,7 +9,8 @@ Terms are defined in [CONTEXT.md](../../CONTEXT.md).
 ## Purpose and constraints
 
 Package validation checks the declared local contract of every registered
-plugin. Release validation checks version increases for affected hosts.
+plugin. Release validation checks plugin version increases for affected
+hosts and skill version increases for changed skills.
 Both checks run read-only, locally and on pull requests. Contributors choose
 versions and make corrections. Deterministic errors fail the command.
 
@@ -42,7 +43,8 @@ validator does not fetch history or skip release validation. Contributors
 fetch enough target history before retrying. The command reports the first
 failure and returns a nonzero status. Package errors identify the relevant
 path or registration. Release errors identify the plugin, host, changed
-path, ownership reason, and base version that must be exceeded. Successful
+path, ownership reason, and base version that must be exceeded. A skill
+version error also identifies the skill and its `SKILL.md` path. Successful
 and failed runs report elapsed execution time.
 
 ## Host ownership
@@ -107,11 +109,12 @@ package contract. Optional roots remain optional;
 a hooks-only plugin does not need skills.
 
 Discovered skills require header delimiters and one nonempty, single-line
-`name` and `description`. Duplicate required fields and invalid names fail.
-Names contain lowercase letters and digits, with single hyphens between
-segments. A skill-level version is not required. These checks define a
-narrow repository contract. They do not provide full YAML validation or
-apply to agent headers with lists and multiline examples.
+`name` and `description`. Duplicate `name`, `description`, and `version`
+fields and invalid names fail. Names contain lowercase letters and digits,
+with single hyphens between segments. A skill-level `version` is optional;
+when present, it uses numeric `major.minor.patch` components. These checks
+define a narrow repository contract. They do not provide full YAML
+validation or apply to agent headers with lists and multiline examples.
 
 Explicitly listed agent resources must exist. Listed TOML resources are
 parsed with the standard library. Declared JSON hook and MCP files and
@@ -130,6 +133,18 @@ Each affected existing registration needs a manifest version greater than
 its base version. Versions use numeric `major.minor.patch` components.
 An unchanged or lower version fails. A valid version-only increase is
 allowed. One increase covers all changed content across the pull request.
+
+A skill can also carry a `version` in its `SKILL.md` frontmatter. Claude
+Code copies usually do; Codex copies do not. A skill changes when an
+affected path of its existing registration is in the skill directory, so
+the same ownership rules and exemptions apply. Each changed skill needs a
+frontmatter version greater than its base version. A new skill, a skill
+with no base version, and a skill with no current version need no
+increase. Skills match by plugin identity, host, and skill directory name
+across the base and proposed layouts. A source move changes every path in
+the skill, so a versioned skill needs an increase. This check finds a skill
+version that a rebase removed: when both branches made the same version
+change, the rebase drops it from the branch without a conflict.
 
 A new plugin or host registration needs valid current packaging and a valid
 initial version. It has no previous registered version to exceed. A removed
@@ -165,8 +180,9 @@ temporary Git repositories. They check observable exit status, diagnostics,
 and unchanged repository content. Coverage includes single-host, dual-host,
 and hooks-only packages; invalid metadata; missing and escaped resources;
 skill headers; shared and host-specific changes; exemptions; unknown files;
-version rules; resource changes and source moves; registration lifecycle;
-missing history; and staged, unstaged, and new files.
+plugin and skill version rules; resource changes and source moves;
+registration lifecycle; missing history; and staged, unstaged, and new
+files.
 
 The [skill link test](../../tests/test_skill_links.py) imports the
 validator module. It reuses registry loading, skill discovery, rule

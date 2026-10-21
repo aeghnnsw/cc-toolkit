@@ -32,7 +32,8 @@ required for installed use.
 
 **Release validation**:
 Checks that shipped content changes include a plugin version increase for
-each affected host.
+each affected host, and a skill version increase for each changed skill
+that has a frontmatter `version`.
 
 **User-invoked skill**:
 A skill that a host loads only when the user invokes it by name. The agent

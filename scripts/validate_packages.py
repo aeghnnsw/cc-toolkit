@@ -79,9 +79,9 @@ def read_json(root, path, revision=None):
         raise InvalidPackage(f'{path}: {error}') from error
 
 
-def version(value):
+def version(value, owner='plugin'):
     if not isinstance(value, str) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', value):
-        raise InvalidPackage(f'invalid plugin version {value!r}; expected major.minor.patch')
+        raise InvalidPackage(f'invalid {owner} version {value!r}; expected major.minor.patch')
     return tuple(map(int, value.split('.')))
 
 
@@ -162,26 +162,33 @@ def discovery_paths(root, package):
             if required or (root / package.source / path).exists()]
 
 
-def validate_skill(path):
-    try:
-        lines = path.read_text(encoding='utf-8').splitlines()
-    except UnicodeError as error:
-        raise InvalidPackage(f'{path}: invalid UTF-8 text') from error
+def skill_header(path, text):
+    lines = text.splitlines()
     if not lines or lines[0] != '---' or '---' not in lines[1:]:
         raise InvalidPackage(f'{path}: SKILL.md requires header delimiters')
     fields = {}
     for line in lines[1:lines.index('---', 1)]:
-        match = re.match(r'^(name|description):\s*(.*)$', line)
+        match = re.match(r'^(name|description|version):\s*(.*)$', line)
         if match:
             key, value = match.groups()
             if key in fields:
                 raise InvalidPackage(f'{path}: duplicate header field {key}')
             fields[key] = value.strip().strip('"\'')
+    return fields
+
+
+def validate_skill(path):
+    try:
+        fields = skill_header(path, path.read_text(encoding='utf-8'))
+    except UnicodeError as error:
+        raise InvalidPackage(f'{path}: invalid UTF-8 text') from error
     for key in ('name', 'description'):
         if not fields.get(key) or fields[key] in ('null', '~', '|', '>'):
             raise InvalidPackage(f'{path}: requires nonempty single-line {key}')
     if not NAME.fullmatch(fields['name']):
         raise InvalidPackage(f'{path}: invalid skill name {fields["name"]!r}')
+    if 'version' in fields:
+        version(fields['version'], path)
 
 
 def included_location(root, target, files):
@@ -335,7 +342,20 @@ def affected_paths(package, changed, registrations, rules):
     return result
 
 
-def validate_releases(root, packages, rules, base_ref):
+def skill_files(package, files):
+    """Map each skill directory name below the package's skill roots to its SKILL.md path in files."""
+    roots = '|'.join(re.escape(f'{package.source}/{path}/') for field, path, _ in host_paths(package) if field == 'skills')
+    found = (re.fullmatch(f'(?:{roots})([^/]+)/SKILL\\.md', path) for path in files)
+    return {match[1]: match[0] for match in found if match}
+
+
+def skill_version(root, path, revision=None):
+    text = (git(root, 'show', f'{revision}:{path}').decode(errors='replace') if revision
+            else (root / path).read_text(encoding='utf-8'))
+    return skill_header(path, text).get('version')
+
+
+def validate_releases(root, packages, rules, files, base_ref):
     try:
         base = git(root, 'merge-base', 'HEAD', base_ref).decode().strip()
     except InvalidPackage as error:
@@ -355,6 +375,18 @@ def validate_releases(root, packages, rules, base_ref):
         affected = affected_paths(package, current_changed, current_hosts, rules) + affected_paths(old, changed & base_files, old_hosts, old_rules)
         if affected and version(package.manifest['version']) <= version(old.manifest['version']):
             raise InvalidPackage(f'{package.name} [{package.host}]: version must increase above {old.manifest["version"]}; changed {affected[0][0]} ({affected[0][1]})')
+        # Skills match by directory name, so a source move keeps their history; a new skill has none.
+        former = skill_files(old, base_files)
+        for name, path in sorted(skill_files(package, files).items()):
+            if name not in former or not (root / path).is_file():
+                continue
+            folders = (path.removesuffix('SKILL.md'), former[name].removesuffix('SKILL.md'))
+            changes = [change for change in affected if change[0].startswith(folders)]
+            if not changes:
+                continue
+            new_value, old_value = skill_version(root, path), skill_version(root, former[name], base)
+            if new_value and old_value and version(new_value, path) <= version(old_value, former[name]):
+                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} version must increase above {old_value} in {path}; changed {changes[0][0]} ({changes[0][1]})')
 
 
 def main():
@@ -369,7 +401,7 @@ def main():
         validate_packages(root, packages, files)
         rules = validate_rules(read_json(root, RULES_PATH))
         validate_resources(root, packages, rules, files)
-        validate_releases(root, packages, rules, args.base)
+        validate_releases(root, packages, rules, files, args.base)
         print(f'PASS: {len(packages)} host registration(s) checked in {time.monotonic() - start:.3f}s')
         return 0
     except (InvalidPackage, OSError) as error:
