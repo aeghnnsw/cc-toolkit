@@ -1,5 +1,12 @@
 # Project Eval Implementation Plan
 
+> **Superseded (2026-10-20, issue #313).** project-eval now has one
+> workflow instead of Focus and Explore modes. Evaluators return findings as
+> text, a verifier checks every finding, and the `eval-critic` agent is now
+> `project-evaluator`. Read the current
+> [skill](../../../dev-skills/skills/project-eval/SKILL.md) and
+> [#313](https://github.com/aeghnnsw/cc-toolkit/issues/313).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Create a dev-skills skill that dispatches long-running skeptical critic agents to evaluate projects from multiple directions, with Focus (converge) and Explore (time-limited diverge) modes.

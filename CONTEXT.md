@@ -148,6 +148,28 @@ critic for less than the call that it repeats: a one-line assessment of each
 question ID that the packet lists, then only the strongest objection.
 _Avoid_: Timeout retry
 
+## Project-evaluation language
+
+**Project evaluation**:
+A run of the project-eval skill. Evaluators search a target or a whole
+project, a verifier checks each finding, and one report results.
+_Avoid_: Deep eval, audit
+
+**Evaluator**:
+An agent in a project evaluation that searches one or more dimensions of a
+target for findings.
+_Avoid_: Critic, eval critic
+
+**Verifier**:
+An agent in a project evaluation that checks findings against the current
+project and gives each one a verdict before the report includes it.
+_Avoid_: Reviewer, judge
+
+**Dimension**:
+One of the eight areas that an evaluator covers, such as Security or User
+Experience. An angle is a topic inside one dimension.
+_Avoid_: Cluster, direction
+
 ## Git policy language
 
 **Branch creation**:

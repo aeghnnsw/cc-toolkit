@@ -1,6 +1,10 @@
-# Evaluation Angle Pool
+# Dimensions and Angles
 
-This is a starting menu, not a constraint. Use these directions and calibration examples as inspiration. You may explore freely within your assigned direction and discover issues outside the predefined list.
+A **dimension** is one of the eight areas below. An **angle** is a topic inside one dimension. The angle lists are a start, not a limit: explore freely inside your dimensions, and note issues outside them.
+
+Each dimension has calibration examples. A real issue shows the evidence and impact that a finding needs. A false positive shows a concern that is not a finding. Verifiers use the false positives to reject findings.
+
+The examples quote code, but the same rules apply to documents and running apps. For a design document or plan, test its claims: look for contradictions between sections, unstated assumptions, steps that no reader can follow, and claims that the repository or a quick experiment contradicts. Documentation & Convention has a design-document example.
 
 ## Code
 
@@ -89,7 +93,7 @@ Visual coherence, responsiveness, accessibility, component design consistency.
 
 ### Calibration: Frontend & Design
 
-**Tool tip:** Use Chrome browser tools to inspect the running UI. Navigate to pages, read page content, check console for errors, and inspect network requests. This catches visual and interaction issues that code-only analysis misses.
+**Tool tip:** When you have an app URL, use the browser tools to inspect the running UI. Navigate to pages, read page content, check the console for errors, and inspect network requests. This catches visual and interaction issues that code-only analysis misses.
 
 **REAL ISSUE:**
 File: `components/Modal.tsx:45`
@@ -98,9 +102,9 @@ Why real: Screen reader users cannot identify this as a modal, and keyboard user
 Severity: Major
 
 **REAL ISSUE (browser-detected):**
-Page: `/dashboard` (inspected via Chrome tools)
+Page: `/dashboard` (inspected with browser tools)
 Observation: Navigation menu overflows on viewport width below 768px, overlapping main content. Console shows repeated `ResizeObserver loop limit exceeded` warnings.
-Why real: Responsive breakpoint is broken — mobile users see overlapping, unusable layout. Confirmed by reading the page in Chrome, not visible from code alone.
+Why real: Responsive breakpoint is broken — mobile users see overlapping, unusable layout. Confirmed by reading the page in the browser, not visible from code alone.
 Severity: Major
 
 **FALSE POSITIVE:**
@@ -119,7 +123,7 @@ Navigation flow, feedback mechanisms, discoverability, edge state handling.
 
 ### Calibration: User Experience
 
-**Tool tip:** Use Chrome browser tools to walk through user flows — navigate between pages, check loading states, verify error messages render correctly, and test edge states like empty lists. Console messages and network requests reveal silent failures invisible in code.
+**Tool tip:** When you have an app URL, use the browser tools to walk through user flows — navigate between pages, check loading states, verify error messages render correctly, and test edge states like empty lists. Console messages and network requests reveal silent failures invisible in code.
 
 **REAL ISSUE:**
 File: `pages/Dashboard.tsx:120`
@@ -128,9 +132,9 @@ Why real: Users with no data see a blank screen with no guidance on what to do n
 Severity: Major
 
 **REAL ISSUE (browser-detected):**
-Page: `/checkout` (inspected via Chrome tools)
+Page: `/checkout` (inspected with browser tools)
 Observation: Clicking "Place Order" with an invalid card shows no error message. The button briefly disables then re-enables. Network tab reveals a 422 response with validation errors, but the UI silently swallows them.
-Why real: Users have no feedback on what went wrong. Confirmed by navigating the flow in Chrome — the error handling gap is invisible from code review alone since the API response is correct but the UI discards it.
+Why real: Users have no feedback on what went wrong. Confirmed by navigating the flow in the browser — the error handling gap is invisible from code review alone since the API response is correct but the UI discards it.
 Severity: Major
 
 **FALSE POSITIVE:**
@@ -173,8 +177,8 @@ API contract correctness, schema integrity, input validation, query performance.
 
 **REAL ISSUE:**
 File: `api/routes/frames.ts:25`
-Code: `PUT /frames/reorder` route defined after `GET /frames/:frame_id`. Express matches "reorder" as a frame_id parameter.
-Why real: Route ordering bug. The reorder endpoint is unreachable because the parametric route catches it first. Returns 400 or unexpected results.
+Code: `router.get('/frames/:frame_id', getFrame)` is registered before `router.get('/frames/reorder', getReorderPreview)`.
+Why real: Route ordering bug. Express tries routes in order, and both match `GET /frames/reorder`, so the parametric route takes the request with `frame_id = "reorder"`. The reorder preview is unreachable and the request returns 404 or 400.
 Severity: Critical
 
 **FALSE POSITIVE:**
@@ -202,3 +206,15 @@ Severity: Minor
 File: `src/utils/parser.ts`
 Code: No JSDoc comments on internal helper functions
 Why false positive: Internal helpers with clear names and small scope don't need documentation. Comments on self-evident code add noise.
+
+**REAL ISSUE (design document):**
+File: `docs/design/result-cache.md:42-45`
+Quote: "Each worker appends its results to the shared cache file. Readers never see a partial write."
+Check: The design names no lock and no atomic rename. In a temporary directory, two processes that append 64 KB records to one file produced interleaved records.
+Why real: The guarantee does not hold for the mechanism that the document describes, and implementers will rely on it.
+Severity: Major
+
+**FALSE POSITIVE (design document):**
+File: `docs/design/result-cache.md`
+Observation: The document does not say which hash function names the cache files.
+Why false positive: This is an implementation detail outside the decision that the document records. Report a missing detail only when a reader cannot implement or check the design without it.

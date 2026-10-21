@@ -257,7 +257,10 @@ package contract. Optional discovery roots remain
 optional. Discovered skills need `---` header delimiters and one nonempty,
 single-line `name` and `description`. Names use lowercase letters, digits,
 and single separating hyphens. This is a narrow skill header contract, not
-full YAML validation. Agent headers do not use this contract. Declared JSON
+full YAML validation. Agent headers do not use this contract. The root
+agent-field test fails when a plugin agent sets `hooks`, `mcpServers`,
+`permissionMode`, or `initialPrompt`, which Claude Code ignores for plugin
+agents. Declared JSON
 hook and MCP files and listed TOML and JSON resources are parsed.
 The validator does not check external links,
 interpret paths in prose or shell examples, infer code dependencies, or
@@ -302,7 +305,7 @@ queue, checkout, and runner startup time are separate.
 Run the root tests when you change the validator, a skill, an agent,
 `allowed-models.json`, or `package-validation.json`. The root tests contain
 the validator's command-interface fixtures, the skill link test, the
-model-pin test, and the argument-placeholder test:
+model-pin test, the argument-placeholder test, and the agent-field test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'

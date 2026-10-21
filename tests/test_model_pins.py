@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from package_support import FENCE, ROOT, git_files, validator
+from package_support import FENCE, ROOT, agent_files, frontmatter, git_files, validator
 import tomllib  # after package_support, whose validator names the uv command on Python 3.10
 
 ALLOWED_MODELS = 'allowed-models.json'
@@ -28,34 +28,12 @@ def relative(root, path):
     return path.relative_to(root).as_posix()
 
 
-def agent_files(root):
-    """Return the Markdown agents that Git includes, from the agents paths the validator finds for each plugin."""
-    files = git_files(root)
-    found = {}
-    for package in validator.load_packages(root).values():
-        for field, path in validator.discovery_paths(root, package):
-            if field == 'agents':
-                target = root / package.source / path
-                candidates = [target] if target.is_file() else sorted(target.rglob('*.md'))
-                found.update(dict.fromkeys(agent for agent in candidates
-                                           if validator.included_location(root, agent, files)))
-    return list(found)
-
-
 def codex_agent_files(root):
     """Return the Codex agent TOML files that Git includes in the codex-agents directory of each plugin."""
     files = git_files(root)
     sources = dict.fromkeys(package.source for package in validator.load_packages(root).values())
     return [path for source in sources for path in sorted((root / source / 'codex-agents').glob('*.toml'))
             if validator.included_location(root, path, files)]
-
-
-def frontmatter(text):
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != '---':
-        return ''
-    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == '---'), 0)
-    return '\n'.join(lines[1:end])
 
 
 def section(text, heading):
