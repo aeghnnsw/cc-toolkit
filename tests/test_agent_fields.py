@@ -37,7 +37,7 @@ FIXTURE = {
 }
 
 
-class AgentFrontmatterTests(unittest.TestCase):
+class AgentFieldTests(unittest.TestCase):
     def fixture(self, changes=None):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

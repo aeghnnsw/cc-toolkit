@@ -32,14 +32,8 @@ the dimensions of the findings.
 2. Check the claim. Decide whether the evidence shows the problem. Look for
    code, configuration, or text elsewhere that already handles it, such as a
    guard, a middleware, or a later section of a document.
-3. Give one verdict:
-   - **Confirmed**: the evidence matches, and you checked that the problem
-     holds.
-   - **Plausible**: the evidence matches, but you could not check the
-     impact. For example, the finding is about runtime behavior and you have
-     no app or no browser.
-   - **Rejected**: the evidence does not match the current project, the
-     claim is wrong, the project already handles it, or it is not an issue.
+3. Give one verdict, as `report-format.md` defines it: Confirmed,
+   Plausible, or Rejected.
 4. Give a one-line reason. If the severity is wrong, give the correct
    severity and say why.
 

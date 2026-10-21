@@ -257,14 +257,16 @@ package contract. Optional discovery roots remain
 optional. Discovered skills need `---` header delimiters and one nonempty,
 single-line `name` and `description`. Names use lowercase letters, digits,
 and single separating hyphens. This is a narrow skill header contract, not
-full YAML validation. Agent headers do not use this contract. The root
-agent-field test fails when a plugin agent sets `hooks`, `mcpServers`,
-`permissionMode`, or `initialPrompt`, which Claude Code ignores for plugin
-agents. Declared JSON
+full YAML validation. Agent headers do not use this contract. Declared JSON
 hook and MCP files and listed TOML and JSON resources are parsed.
 The validator does not check external links,
 interpret paths in prose or shell examples, infer code dependencies, or
 run plugins and host loaders.
+
+The root agent-field test, `tests/test_agent_fields.py`, checks agent
+headers. It fails when a plugin agent sets `hooks`, `mcpServers`,
+`permissionMode`, or `initialPrompt`, which Claude Code ignores for plugin
+agents.
 
 Release validation compares both package layouts across the merge base.
 Changed shipped content requires a greater numeric `major.minor.patch`

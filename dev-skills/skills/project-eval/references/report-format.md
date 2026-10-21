@@ -48,7 +48,7 @@ When the verifier changes the severity, the severity field says so, for
 example `Major (was Critical: only admins can reach it)`.
 
 A finding with no verdict after the retry is **Not verified**. Not verified
-is a status, not a verdict.
+is not a verdict: no verifier judged the finding.
 
 ## Report
 
@@ -99,7 +99,7 @@ Rejected: <n>. Not verified: <n>.
 | ID | Title | Reason |
 |----|-------|--------|
 
-## Verification Coverage
+## Not Verified Findings
 
 | ID | Title | Why not verified |
 |----|-------|------------------|
@@ -120,4 +120,4 @@ Rules:
 - Use the severity from the verdict.
 - Merge findings about the same problem at the same place. Keep the clearest
   one, and list every ID.
-- Omit the Verification Coverage section when every finding has a verdict.
+- Omit the Not Verified Findings section when every finding has a verdict.

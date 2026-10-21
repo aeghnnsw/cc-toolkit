@@ -33,6 +33,7 @@ def agent_files(root):
 
 
 def frontmatter(text):
+    """Return the text between the opening and closing `---` lines, or '' when the file has no header."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != '---':
         return ''
