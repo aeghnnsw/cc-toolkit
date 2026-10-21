@@ -49,10 +49,12 @@ pins the model, enforces the time limits, and prints one status line.
   every runner command with the Bash tool `timeout` set to `600000`. With the
   default of 120000 ms, the Bash tool moves a long command to the background
   after 2 minutes.
-- Critic model: `gpt-6-astra`. The fallback model is `gpt-6.1-sol`; use it only
-  after a flag (see [Flags](#flags)). Use no other model. The runner pins the
-  model on every call, so the skill does not depend on the ambient
-  `~/.codex/config.toml`.
+- Critic model: `gpt-6-astra`, the primary model. The user or a calling skill
+  can choose the fallback model, `gpt-6.1-sol`, instead (see
+  [Critic model](#critic-model)). After a flag, the pressure test switches to
+  the other allowed model once (see [Flags](#flags)). Use no other model. The
+  runner pins the model on every call, so the skill does not depend on the
+  ambient `~/.codex/config.toml`.
 - Reasoning effort: `xhigh` on critic rounds and `low` on the preflight smoke
   call.
 - Codex sandbox: `read-only` on every call. The kickoff passes `-s read-only`.
@@ -84,7 +86,7 @@ RUNNER="${CLAUDE_PLUGIN_ROOT}/skills/pressure-test/scripts/codex_critic.py"
   printf 'DIR="%s"\nREPO="%s"\nRUNNER="%s"\n' "$DIR" "$REPO" "$RUNNER"
   cat <<'ENV'
 PRIMARY_MODEL="gpt-6-astra"
-FALLBACK_MODEL="gpt-6.1-sol"            # only after a flag
+FALLBACK_MODEL="gpt-6.1-sol"            # when chosen, or after a flag
 ENV
 } > "$DIR/env.sh"
 source "$DIR/env.sh"
@@ -114,6 +116,29 @@ The runner sends `prompt.md` followed by `critic.txt` to the critic, so every
 prompt ends with the critic instructions. A [narrow retry](#narrow-retry) also
 sends `narrow.txt` last.
 
+## Critic model
+
+The critic starts on the primary model, `gpt-6-astra`. The user or a calling
+skill can choose the fallback model, `gpt-6.1-sol`, by its ID or a short name,
+for example "pressure-test this with sol". Then run this block once, after
+setup and before the preflight:
+
+```bash
+source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
+```
+
+The model of the first critic call is the starting model.
+
+- A request that names the primary model, for example "astra", needs no
+  block.
+- A request for any other model starts no critic call. Tell the user that the
+  critic can use only `gpt-6-astra` or `gpt-6.1-sol`, and ask which one to use.
+  When the calling skill forbids questions, as `matt-automode` does, choose one
+  of the two models yourself and record the choice in the session record.
+- The choice applies only at setup. To change the model later, start a new
+  pressure test. Inside one pressure test, only a [flag](#flags) changes the
+  model.
+
 ## Step 0 — Preflight (mandatory)
 
 A real smoke call catches broken Codex environments that `command -v` cannot
@@ -130,7 +155,7 @@ python3 "$RUNNER" smoke "$DIR"
   [Status line](#status-line), then act on its final status here.
 - **Any other status** — stop. Report a one-line diagnosis from the status line
   and `$DIR/err.log`, for example "Codex is not signed in", "Codex hooks are
-  failing — check the `~/.codex` plugin cache", or "`gpt-6-astra` is not
+  failing — check the `~/.codex` plugin cache", or "the critic model is not
   available to this account". Write a short conclusion with the diagnosis; the
   ending condition is "critic unavailable". Every pressure test needs an
   independent critic, so do not continue with self-critique only.
@@ -288,20 +313,22 @@ Codex can also reroute a flagged account to another model. The runner searches
 only error events and stderr for these notices, so the critic's own words
 cannot match, and reports `status=flagged`.
 
-- **Flag on the critic model** — switch to the fallback model and re-run the
-  same block once; `prompt.md` is unchanged:
+- **Flag on the starting model** — switch to the other allowed model and re-run
+  the same block once; `prompt.md` is unchanged. The other allowed model of
+  `gpt-6-astra` is `gpt-6.1-sol`, and the reverse:
 
   ```bash
-  source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
+  source "<workdir>/env.sh"; CURRENT="$(cat "$DIR/model")"
+  if [ "$CURRENT" = "$PRIMARY_MODEL" ]; then echo "$FALLBACK_MODEL"; else echo "$PRIMARY_MODEL"; fi > "$DIR/model"
   ```
 
   For the kickoff, the re-run starts a new thread. For a resume, it continues
-  the same thread on the fallback model. Codex then warns that the session "was
-  recorded with model `gpt-6-astra`"; ignore that warning. Keep the fallback
-  model for the rest of the pressure test, and name the switch in the round
-  block and the session record.
-- **Flag on the fallback model** — stop. Use no other model, and do not
-  continue without a critic. Write the conclusion with what exists; the ending
+  the same thread on the other allowed model. Codex then warns that the
+  session was recorded with the starting model; ignore that warning. Keep the
+  other allowed model for the rest of the pressure test, and name the switch in
+  the round block and the session record.
+- **Flag after the switch** — stop. Use no other model, and do not continue
+  without a critic. Write the conclusion with what exists; the ending
   condition is "critic flagged".
 - A flag is not an **Error**: it does not use the Error retry.
 
@@ -330,7 +357,8 @@ cannot match, and reports `status=flagged`.
   `error:timeout` or `error:idle`, make one [narrow retry](#narrow-retry);
   after any other error, retry the same block once. If the retry also fails,
   write the conclusion with what exists and end with "cut short".
-- **Critic flagged** — the fallback model was also flagged (see [Flags](#flags)).
+- **Critic flagged** — the other allowed model was also flagged (see
+  [Flags](#flags)).
 - **Critic unavailable** — the preflight failed.
 
 ## Progress format (print one block per round, as it happens)
