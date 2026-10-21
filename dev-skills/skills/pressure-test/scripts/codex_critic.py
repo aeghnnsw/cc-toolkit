@@ -531,7 +531,7 @@ def supervise(workdir: Path, job: dict, ready: int, lock: int) -> NoReturn:
             if job["form"] == "kickoff":
                 write_atomic(workdir / "thread_id", thread_id(workdir))
             status = classify(job["form"], workdir, exit_code, reason)
-            if job["form"] == "kickoff" and status == "flagged":  # the re-run on the fallback model starts a new thread
+            if job["form"] == "kickoff" and status == "flagged":  # the re-run on the other model starts a new thread
                 write_atomic(workdir / "thread_id", "")
             final = {"exit": TIMEOUT_EXIT if exit_code is None else exit_code, "model": job["model"],
                      "seconds": seconds, "status": status}

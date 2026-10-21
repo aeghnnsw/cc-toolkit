@@ -8,7 +8,7 @@ MODEL is the current critic model. The script writes the critic's final
 reply to REPLY and prints one status:
 
   ok                 MODEL answered
-  flagged            Claude flagged the call; retry on the fallback model
+  flagged            Claude flagged the call; retry on the other allowed model
   wrong_model:IDS    a message came from a model other than MODEL
   error:DETAIL       the call failed or produced no final result
 """
@@ -36,7 +36,7 @@ def read_events(path: str) -> list[dict]:
 
 
 def is_flagged(events: list[dict], result: dict | None) -> bool:
-    """Return True when Claude flagged this call and the fallback model must retry it.
+    """Return True when Claude flagged this call and the other allowed model must retry it.
 
     Any safeguard action counts, even when the answer completed:
     - an assistant event whose message has stop_reason "refusal"

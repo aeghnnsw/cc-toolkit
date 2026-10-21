@@ -1,5 +1,10 @@
 # Use a cross-family critic for pressure tests
 
+> **Superseded in part (2026-10-21, issue #327).** A pressure test no longer
+> uses the fallback model only after a flag, and a flag on the fallback model
+> no longer always ends it. The user or a calling skill can choose the
+> critic model. Read [Critic model choice](#critic-model-choice).
+
 Each host ships a `pressure-test` skill whose critic comes from the other
 host's model family, called through that host's CLI in non-interactive mode.
 In Claude Code, the skill calls `codex exec`. In Codex, it calls `claude -p`.
@@ -25,7 +30,8 @@ model reroute. A Claude flag is any safeguard action: a response that ends
 with `stop_reason: "refusal"`, a result with `safety_stops` above zero, or
 a refusal event from Claude Code. After a flag, the skill switches to the
 fallback model for the rest of the pressure test. A flag on the fallback
-model ends the pressure test with a partial conclusion. The skills turn off
+model ends the pressure test with a partial conclusion. (These two rules
+are superseded; read [Critic model choice](#critic-model-choice).) The skills turn off
 Claude Code's automatic refusal fallback, because Claude Code chooses that
 fallback model itself. In Codex, each call accepts a reply only from the current critic
 model. In Claude Code, the skill finds a model change through the Codex
@@ -43,7 +49,8 @@ Consequences:
 - Each model family has one primary model and one fallback model in
   `allowed-models.json`. A model pin names the primary model of its family.
   A Claude Code agent can set `inherit` instead. A pressure test uses the
-  fallback model only after a flag.
+  fallback model only after a flag. (Superseded; read
+  [Critic model choice](#critic-model-choice).)
 - A change to the allowed models starts in `allowed-models.json`. The same
   change updates both skills, the cc-customize `model-config` skill, and the
   model pins in agent and Codex agent files.
@@ -62,6 +69,24 @@ text in the codex-cli 0.162.1 binary: `model rerouted:` and the "as a
 fallback" policy message. Codex lists the model IDs available to the account
 in `$CODEX_HOME/models_cache.json`.
 
+## Critic model choice
+
+Since 2026-10-21, the user or a calling skill can choose the critic model when
+a pressure test starts. The choice is one of the two allowed models of the
+critic family: `gpt-6-astra` or `gpt-6.1-sol` in Claude Code, and
+`claude-opus-5-5` or `claude-sonnet-5-5` in Codex. With no choice, the
+pressure test starts on the primary model. A request for any other model
+starts no critic call. A later change of model starts a new pressure test.
+
+A flag on the starting model switches the pressure test to the other allowed
+model of the family, once. A flag after that switch ends the pressure test
+with a partial conclusion. So no unlisted model can answer, which was the
+goal of the old rule: each skill writes only the primary or the fallback
+model of its family as the critic model, and `tests/test_model_pins.py`
+checks the skill text.
+
 See [issue #284](https://github.com/aeghnnsw/cc-toolkit/issues/284) for the
-critic decision and [issue #289](https://github.com/aeghnnsw/cc-toolkit/issues/289)
-for the allowed-model list and its test.
+critic decision, [issue #289](https://github.com/aeghnnsw/cc-toolkit/issues/289)
+for the allowed-model list and its test, and
+[issue #327](https://github.com/aeghnnsw/cc-toolkit/issues/327) for the
+critic model choice.
