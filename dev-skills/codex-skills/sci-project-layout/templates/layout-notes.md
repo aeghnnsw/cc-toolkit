@@ -189,9 +189,11 @@ The layout page gives the locations. These details add to it:
 - To change a parameter, commit a new `config.yaml` before the run, or
   pass the value on the command line. `new_run()` copies `config.yaml`
   into the run folder and records the command line in `run.json`.
-- `"dirty"` is true when `git status --porcelain` prints anything,
-  untracked files included. Ignored files do not count. `git diff --quiet
-  HEAD` misses untracked files, so do not use it.
+- `"dirty"` is true when `git status --porcelain --untracked-files=normal`
+  prints anything, so untracked files count even when
+  `status.showUntrackedFiles` is `no`. Ignored files do not count. It is
+  `null` when `git status` fails. `git diff --quiet HEAD` misses untracked
+  files, so do not use it.
 - A run whose status is `running` but whose process or job no longer
   exists counts as failed.
 - When two runs start in the same second with the same label, `new_run()`
@@ -257,7 +259,7 @@ No command cites a run. Do these steps on the run's branch, before its PR
 merges:
 
 1. Read the run's `run.json`. Stop if `status` is not `succeeded`, if
-   `git.sha` is empty, or if `git.dirty` is `true`.
+   `git.sha` is empty, or if `git.dirty` is not `false`.
 2. Do step 1 for each run in `inputs` (the entries under `results/`), and
    for the runs in their `inputs`.
 3. Make each of these run folders read-only:

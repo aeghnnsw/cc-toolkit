@@ -26,13 +26,13 @@ class StoreError(RuntimeError):
     """The store cannot be found. The message says how to set it."""
 
 
-def _git(*args: str) -> str:
-    """Return git's output in this checkout, or "" when git fails or is not installed."""
+def _git(*args: str) -> str | None:
+    """Return git's output in this checkout, or None when git fails or is not installed."""
     try:
         out = subprocess.run(["git", "-C", str(_HERE), *args], capture_output=True, text=True)
     except FileNotFoundError:
-        return ""
-    return out.stdout.strip() if out.returncode == 0 else ""
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
 
 
 def _absolute(value: str, source: str) -> Path:
@@ -52,7 +52,7 @@ def _store_root() -> Path:
         )
     if cfg := _git("config", "--local", "--get", "layout.store"):
         return _absolute(cfg, "git config layout.store")
-    common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir"))
+    common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir") or "")
     if not common.is_absolute() or common.name != ".git":
         raise StoreError("Cannot find the main checkout. Run: git config layout.store <path>")
     return common.parent
@@ -95,7 +95,8 @@ def _git_state() -> dict:
     if not sha:
         return {"sha": None, "branch": None, "dirty": None}
     branch = _git("branch", "--show-current") or None
-    return {"sha": sha, "branch": branch, "dirty": bool(_git("status", "--porcelain"))}
+    status = _git("status", "--porcelain", "--untracked-files=normal")
+    return {"sha": sha, "branch": branch, "dirty": None if status is None else bool(status)}
 
 
 def _now() -> str:

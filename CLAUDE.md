@@ -46,9 +46,10 @@ Before a navigation retrospective of earlier agent sessions, read
    `bugfix-<issue>-<description>`, `doc-<issue>-<description>`,
    `refactor-<issue>-<description>`, `chore-<issue>-<description>`, or
    `test-<issue>-<description>`. Run shell commands from the worktree
-   root, and pass paths or `git -C` instead of `cd` into a subfolder. The
-   core-hooks hooks write a `logs/` folder into the shell's working
-   directory, and that folder breaks tests that list a skill's files.
+   root, and pass paths or `git -C` instead of `cd` into a subdirectory.
+   The core-hooks scripts write a `logs/` directory into the shell's
+   working directory, and that directory breaks tests that list a skill's
+   files.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration
@@ -110,8 +111,8 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
 - Record substantive behavior or policy changes in the root
   [CHANGELOG.md](CHANGELOG.md). Before you open the file, read the
-  [entry format](CONTRIBUTING.md#changelog-entries): each entry is one long
-  line, and the format shows how to find the insertion point.
+  [entry format](CONTRIBUTING.md#changelog-entries), which shows how to
+  find the insertion point.
 - Before adding agent-generated files, apply the storage policy in
   [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git). Keep durable project
   decisions and shared configuration discoverable from these instructions.

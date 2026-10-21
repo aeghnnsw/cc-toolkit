@@ -202,6 +202,21 @@ class PathsTemplateTest(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertTrue(run_record(Path(out.stdout.strip()))["git"]["dirty"])
 
+    def test_untracked_file_is_dirty_when_git_status_hides_it(self) -> None:
+        self.project.git("config", "status.showUntrackedFiles", "no")
+        (self.project.root / "notes.txt").write_text("draft\n")
+        out = self.project.dock()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertTrue(run_record(Path(out.stdout.strip()))["git"]["dirty"])
+
+    def test_failed_git_status_leaves_dirty_unknown(self) -> None:
+        (self.project.root / ".git" / "index").write_bytes(b"not an index")
+        out = self.project.dock()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        git = run_record(Path(out.stdout.strip()))["git"]
+        self.assertEqual(git["sha"], self.project.git("rev-parse", "HEAD"))
+        self.assertIsNone(git["dirty"])
+
     def test_failed_step_marks_the_run_failed(self) -> None:
         out = self.project.dock("--fail")
         self.assertNotEqual(out.returncode, 0)

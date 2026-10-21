@@ -42,12 +42,12 @@ differences host-specific, such as tool names, invocation, and plugin-root
 paths.
 
 For an example pair, see `creator-skills/skills/sci-slides/` and
-`creator-skills/codex-skills/sci-slides/`;
+`creator-skills/codex-skills/sci-slides/`. The test
 `creator-skills/tests/test_sci_slides.py` compares the two copies. A new
 skill also needs an entry in both [README.md](README.md) lists of its
 plugin: **Skills:** with a one-line description, and **Codex skills:** with
-its name. When the Codex manifest's `interface.longDescription` names the
-plugin's skills, add the new skill there.
+its name. When the Codex manifest's `interface.longDescription` describes
+the purposes of the plugin's skills, add the purpose of the new skill.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
