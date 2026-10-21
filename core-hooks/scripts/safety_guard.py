@@ -17,6 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from hook_logs import log_dir
 from hook_payload import get_shell_command
 
 
@@ -1085,10 +1086,7 @@ def main():
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
             sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
 
-        # Ensure log directory exists
-        log_dir = Path.cwd() / 'logs'
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / 'pre_tool_use.json'
+        log_path = log_dir() / 'pre_tool_use.json'
 
         # Read existing log data or initialize empty list
         if log_path.exists():
@@ -1111,15 +1109,13 @@ def main():
 
     except json.JSONDecodeError as e:
         # Log error and allow command (fail-open for JSON errors)
-        debug_log = Path.cwd() / 'logs' / 'hook_errors.log'
-        debug_log.parent.mkdir(parents=True, exist_ok=True)
+        debug_log = log_dir() / 'hook_errors.log'
         with open(debug_log, 'a') as f:
             f.write(f"JSONDecodeError: {e}\n")
         sys.exit(0)
     except Exception as e:
         # Log error and allow command (fail-open for safety)
-        debug_log = Path.cwd() / 'logs' / 'hook_errors.log'
-        debug_log.parent.mkdir(parents=True, exist_ok=True)
+        debug_log = log_dir() / 'hook_errors.log'
         with open(debug_log, 'a') as f:
             import traceback
             f.write(f"Exception: {e}\n{traceback.format_exc()}\n")

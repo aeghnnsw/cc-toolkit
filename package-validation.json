@@ -19,6 +19,7 @@
       ],
       "resources": [
         {"path": "hooks/hooks.json", "hosts": ["claude"]},
+        {"path": "scripts/hook_logs.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/hook_payload.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/post_tool_use.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/pre_git_hook.py", "hosts": ["claude", "codex"]},
