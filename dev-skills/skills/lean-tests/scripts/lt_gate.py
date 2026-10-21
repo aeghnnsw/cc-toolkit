@@ -10,12 +10,15 @@ Layer 2 classifies each test-side change of a unit from the syntax trees of
 its two versions. The same worktree collects the head tests, which gives
 the collection evidence, and runs each new test against the base product
 code, which gives its label. A BEHAVIOR CHANGE, WEAKENING, or UNCLASSIFIED
-item fails a mixed change. A test-only unit needs evidence.
+item fails a mixed change; when each of its failing items lacks collection
+evidence, the mixed change needs evidence, which also fails the gate. A
+test-only gate unit needs evidence and does not fail the gate.
 """
 
 from __future__ import annotations
 
 import ast
+import builtins
 import copy
 import difflib
 import re
@@ -55,6 +58,17 @@ FIXTURE_DECORATORS = frozenset({"pytest.fixture", "fixture", "pytest_asyncio.fix
 PLAIN_BASES = frozenset({
     "object", "TestCase", "unittest.TestCase", "IsolatedAsyncioTestCase", "unittest.IsolatedAsyncioTestCase",
 })
+# xunit setup and teardown functions and methods: a new one runs around existing tests.
+XUNIT = frozenset({
+    "setup_module", "teardown_module", "setup_function", "teardown_function", "setup_class", "teardown_class",
+    "setup_method", "teardown_method", "setup", "teardown", "setUp", "tearDown", "setUpClass", "tearDownClass",
+    "setUpModule", "tearDownModule",
+})
+# Calls that change a module, an object, or a class of the tests or the product.
+CALL_SIGNALS = frozenset({"setattr", "delattr", "reload", "importlib.reload", "builtins.setattr", "builtins.delattr"})
+BUILTIN_NAMES = frozenset(dir(builtins))
+# fixture_name returns it for a fixture whose name argument is not a literal.
+COMPUTED = "\0computed fixture name\0"
 # Statements whose blocks bind names in the enclosing scope.
 BLOCKS = (ast.If, ast.Try, ast.With, ast.AsyncWith, ast.For, ast.AsyncFor, ast.While)
 # Nodes that open a scope of their own.
@@ -93,24 +107,34 @@ class Change(NamedTuple):
 
 
 class Version(NamedTuple):
-    """One side of a changed test-side Python file: its text, syntax tree, and scan module."""
+    """One side of a changed test-side Python file: its text, syntax tree, scan module, and import aliases."""
 
     text: str
     tree: ast.Module
     module: Module
+    aliases: dict
 
 
 class Static(NamedTuple):
-    """The layer 2 result of a unit: its items, and the function keys of its new and changed tests.
+    """The layer 2 result of a unit or a file: its items, and the function keys of its new and changed tests.
 
     `subclass_tests` are the new tests in an existing test class with a base
-    class: such a test can replace an inherited test with the same node ID.
+    class outside the module: such a test can replace an inherited test with
+    the same node ID.
     """
 
     items: list
     new_tests: list
     changed_tests: list
     subclass_tests: list
+
+    @classmethod
+    def empty(cls) -> Static:
+        return cls([], [], [], [])
+
+    def extend(self, other: Static) -> None:
+        for mine, theirs in zip(self, other):
+            mine.extend(theirs)
 
 
 class Overlay(NamedTuple):
@@ -262,11 +286,7 @@ class Project:
                     tree = ast.parse(data.decode("utf-8"))
                 except PARSE_ERRORS:
                     continue
-                for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        name = fixture_name(node)
-                        if name:
-                            names.add(name)
+                names.update(defined_fixtures(tree, import_aliases(tree)))
             self.fixture_names[rev] = frozenset(names)
         return self.fixture_names[rev]
 
@@ -349,26 +369,67 @@ def split_config(header: str | None, text: str) -> tuple[str, str]:
     return "\n".join(inside), "\n".join(outside)
 
 
-def fixture_name(func: ast.AST) -> str | None:
-    """The name of the fixture that a function defines, or None when it is no fixture."""
+def import_aliases(tree: ast.AST) -> dict:
+    """The full dotted name of each name that an import binds with another name, for example fx for pytest.fixture."""
+    found = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update((alias.asname, alias.name) for alias in node.names if alias.asname)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            found.update(
+                (alias.asname or alias.name, f"{node.module}.{alias.name}") for alias in node.names if alias.name != "*"
+            )
+    return found
+
+
+def resolved(node: ast.AST, aliases: dict) -> str | None:
+    """The dotted name of an expression, with its first part resolved through the import aliases."""
+    name = dotted(node)
+    if not name:
+        return name
+    first, dot, rest = name.partition(".")
+    return aliases.get(first, first) + dot + rest
+
+
+def fixture_decorator(decorator: ast.AST, aliases: dict) -> ast.Call | bool:
+    """The call of a fixture decorator, True for a fixture decorator without a call, else False."""
+    call = decorator if isinstance(decorator, ast.Call) else None
+    if resolved(call.func if call else decorator, aliases) not in FIXTURE_DECORATORS:
+        return False
+    return call or True
+
+
+def fixture_name(func: ast.AST, aliases: dict) -> str | None:
+    """The name of the fixture that a function defines, COMPUTED for a name that is no literal, or None."""
     for decorator in func.decorator_list:
-        call = decorator if isinstance(decorator, ast.Call) else None
-        if dotted(call.func if call else decorator) not in FIXTURE_DECORATORS:
+        call = fixture_decorator(decorator, aliases)
+        if not call:
             continue
-        for keyword in call.keywords if call else []:
-            if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
-                return str(keyword.value.value)
+        for keyword in call.keywords if isinstance(call, ast.Call) else []:
+            if keyword.arg == "name":
+                return str(keyword.value.value) if isinstance(keyword.value, ast.Constant) else COMPUTED
         return func.name
     return None
 
 
-def autouse(func: ast.AST) -> bool:
+def autouse(func: ast.AST, aliases: dict) -> bool:
     for decorator in func.decorator_list:
-        if isinstance(decorator, ast.Call) and dotted(decorator.func) in FIXTURE_DECORATORS:
-            for keyword in decorator.keywords:
-                if keyword.arg == "autouse":
-                    return not (isinstance(keyword.value, ast.Constant) and keyword.value.value is False)
+        call = fixture_decorator(decorator, aliases)
+        for keyword in call.keywords if isinstance(call, ast.Call) else []:
+            if keyword.arg == "autouse":
+                return not (isinstance(keyword.value, ast.Constant) and keyword.value.value is False)
     return False
+
+
+def defined_fixtures(stmt: ast.AST, aliases: dict) -> list[str]:
+    """The literal names of the fixtures that a statement defines."""
+    names = []
+    for sub in ast.walk(stmt):
+        if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            name = fixture_name(sub, aliases)
+            if name and name != COMPUTED:
+                names.append(name)
+    return names
 
 
 def expand_imports(body: list) -> list:
@@ -445,11 +506,6 @@ def same_except(before: ast.AST, after: ast.AST, field: str) -> bool:
     return ast.dump(without(before, field)) == ast.dump(without(after, field))
 
 
-def inherits(cls: ast.ClassDef | None) -> bool:
-    """True when a class has a base class that can define tests."""
-    return cls is not None and any((dotted(base) or "") not in PLAIN_BASES for base in cls.bases)
-
-
 def unresolvable(tree: ast.Module) -> list[str]:
     """The constructs of a module that bind names the binding rule cannot see."""
     found = []
@@ -465,7 +521,7 @@ def unresolvable(tree: ast.Module) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def skip_markers(node: ast.AST) -> Counter:
+def skip_markers(node: ast.AST, aliases: dict) -> Counter:
     """The skip and xfail markers and calls in `node`, as syntax-tree dumps."""
     called = {id(sub.func) for sub in ast.walk(node) if isinstance(sub, ast.Call)}
     found: Counter = Counter()
@@ -476,16 +532,12 @@ def skip_markers(node: ast.AST) -> Counter:
         if isinstance(target, ast.Attribute):
             name = target.attr
         elif isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load):
-            name = target.id
+            name = aliases.get(target.id, target.id).rsplit(".", 1)[-1]
         else:
             continue
         if name in SKIP_NAMES:
             found[ast.dump(sub)] += 1
     return found
-
-
-def skip_added(before: ast.AST, after: ast.AST) -> bool:
-    return bool(skip_markers(after) - skip_markers(before))
 
 
 def is_test_class(cls: ast.ClassDef | None) -> bool:
@@ -581,33 +633,32 @@ class FileDiff:
         self.base = base
         self.head = head
         self.base_fixtures = base_fixtures
-        self.items: list[dict] = []
-        self.new_tests: list[str] = []
-        self.changed_tests: list[str] = []
-        self.subclass_tests: list[str] = []
+        self.found = Static.empty()
 
-    def classify(self) -> None:
+    def classify(self) -> Static:
         self.diff_scope(
             expand_imports(self.base.tree.body if self.base else []),
             expand_imports(self.head.tree.body if self.head else []),
             [],
+            BUILTIN_NAMES if self.base is not None else frozenset(),
         )
         reasons = sorted({r for v in (self.base, self.head) if v is not None for r in unresolvable(v.tree)})
         if reasons:
-            self.items = [i for i in self.items if i["class"] != "SAFE"]
-            self.items.insert(0, item(
+            self.found.items[:] = [i for i in self.found.items if i["class"] != "SAFE"]
+            self.found.items.insert(0, item(
                 "UNCLASSIFIED", "unresolvable-binding", self.path,
                 "the module binds names that the binding rule cannot see: " + ", ".join(reasons),
             ))
+        return self.found
 
     def key(self, chain: list, stmt: ast.AST) -> str:
         names = [(head or base).name for base, head in chain]
         return "::".join([self.path, *names, stmt.name]) if hasattr(stmt, "name") else self.path
 
     def add(self, cls: str, subtype: str, chain: list, before: ast.AST | None, after: ast.AST | None, detail: str,
-            **extra) -> dict:
+            **extra) -> None:
         stmt = after or before
-        found = item(
+        self.found.items.append(item(
             cls, subtype, self.path, detail,
             nodeid=self.key(chain, stmt) if hasattr(stmt, "name") else None,
             line=stmt.lineno,
@@ -617,9 +668,7 @@ class FileDiff:
                 self.segment(self.base, before) if before is not None else "",
                 self.segment(self.head, after) if after is not None else "",
             ),
-        )
-        self.items.append(found)
-        return found
+        ))
 
     @staticmethod
     def segment(version: Version, stmt: ast.AST) -> str:
@@ -641,8 +690,33 @@ class FileDiff:
         inner = [*chain, (None, stmt)]
         return [key for child in stmt.body for key in self.test_keys(child, inner)]
 
-    def diff_scope(self, before: list, after: list, chain: list) -> None:
-        """Classify the changes between the statements of one scope at base and at head."""
+    def skip_added(self, before: ast.AST, after: ast.AST) -> bool:
+        """True when `after` has a skip or xfail marker or call that `before` does not have."""
+        return bool(skip_markers(after, self.head.aliases) - skip_markers(before, self.base.aliases))
+
+    def inherited(self, cls: ast.ClassDef, seen: frozenset) -> frozenset | None:
+        """The names that a class inherits from its base classes at base; None for a base class outside the module."""
+        classes = {node.name: node for node in self.base.tree.body if isinstance(node, ast.ClassDef)}
+        names: set = set()
+        for base in cls.bases:
+            name = dotted(base) or ""
+            if name in PLAIN_BASES:
+                continue
+            parent = classes.get(name)
+            further = None if parent is None or name in seen else self.inherited(parent, seen | {name})
+            if further is None:
+                return None
+            names |= further
+            names.update(n for stmt in parent.body for n in scope_bindings(stmt))
+        return frozenset(names)
+
+    def diff_scope(self, before: list, after: list, chain: list, outer: frozenset | None) -> None:
+        """Classify the changes between the statements of one scope at base and at head.
+
+        `outer` holds the names that the scope gets from outside its own
+        statements at base: the builtin names of an existing module, or the
+        names that a class inherits. None means a base class outside the module.
+        """
         base_count = Counter(name for stmt in before for name in scope_bindings(stmt))
         head_count = Counter(name for stmt in after for name in scope_bindings(stmt))
         unmatched = Counter(ast.dump(stmt) for stmt in before)
@@ -666,11 +740,10 @@ class FileDiff:
         consumed: set = set()
         for stmt in added:
             names = bound_names(stmt)
+            shadowed = sorted(set(names or []) & (outer or frozenset()))
             if names is None:
                 self.scope_statement(None, stmt, chain)
-            elif all(base_count[n] == 0 and head_count[n] == 1 for n in names):
-                self.new_binding(stmt, chain)
-            else:
+            elif not all(base_count[n] == 0 and head_count[n] == 1 for n in names):
                 old = by_name.get(names[0], [])
                 if (
                     len(names) == 1 and base_count[names[0]] == 1 and head_count[names[0]] == 1
@@ -684,6 +757,22 @@ class FileDiff:
                         "UNCLASSIFIED", "rebinding", chain, None, stmt,
                         f"binds {', '.join(names)} again; a rebinding of an existing name modifies its definition",
                     )
+            elif shadowed:
+                source = "a base class" if chain else "the builtins"
+                self.add(
+                    "UNCLASSIFIED", "rebinding", chain, None, stmt,
+                    f"binds {', '.join(shadowed)}, which replaces a name from {source}",
+                )
+            elif outer is None and not self.test_keys(stmt, chain):
+                self.add(
+                    "UNCLASSIFIED", "rebinding", chain, None, stmt,
+                    f"binds {', '.join(names)} in a class with a base class outside the module, so it can replace "
+                    "an inherited name",
+                )
+            else:
+                if outer is None:
+                    self.found.subclass_tests.extend(self.test_keys(stmt, chain))
+                self.new_binding(stmt, chain)
         for stmt in removed:
             if id(stmt) in consumed:
                 continue
@@ -696,7 +785,7 @@ class FileDiff:
                 self.removed(stmt, chain)
 
     def scope_statement(self, before: ast.AST | None, after: ast.AST | None, chain: list) -> None:
-        if after is not None and self.base is not None and skip_markers(after):
+        if after is not None and self.base is not None and skip_markers(after, self.head.aliases):
             self.add("WEAKENING", "skip", chain, before, after, f"adds a {level(chain)} skip or xfail")
         else:
             verb = "adds" if before is None else "removes"
@@ -704,10 +793,19 @@ class FileDiff:
 
     def new_binding(self, stmt: ast.AST, chain: list) -> None:
         names = bound_names(stmt)
+        existing = self.base is not None
         if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            self.add("SAFE", "new-import", chain, None, stmt, f"imports {', '.join(names)}")
+            hooks = [n for n in names if n in XUNIT or n in self.base_fixtures()]
+            if hooks:
+                detail = f"imports {', '.join(hooks)}, the name of an xunit function or an existing fixture"
+                self.add("UNCLASSIFIED", "signal", chain, None, stmt, detail)
+            else:
+                self.add("SAFE", "new-import", chain, None, stmt, f"imports {', '.join(names)}")
         elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            if self.base is not None and skip_markers(stmt):
+            if existing and "__test__" in names:
+                detail = f"binds a {level(chain)} __test__, which can turn off the collection of existing tests"
+                self.add("WEAKENING", "skip", chain, None, stmt, detail)
+            elif existing and skip_markers(stmt, self.head.aliases):
                 self.add("WEAKENING", "skip", chain, None, stmt, f"adds a {level(chain)} skip or xfail marker")
             elif "pytest_plugins" in names:
                 self.add("UNCLASSIFIED", "signal", chain, None, stmt, "binds pytest_plugins")
@@ -721,18 +819,25 @@ class FileDiff:
         else:
             found = self.signals(stmt)
             tests = self.test_keys(stmt, chain)
-            self.new_tests += tests
-            if chain and inherits(chain[-1][1]):
-                self.subclass_tests += tests
+            self.found.new_tests.extend(tests)
+            fixtures = defined_fixtures(stmt, self.head.aliases)
+            extra = {"fixtures": fixtures} if fixtures else {}
             if found:
                 self.add("UNCLASSIFIED", "signal", chain, None, stmt, "; ".join(found))
+            elif existing and not tests and skip_markers(stmt, self.head.aliases):
+                detail = f"adds a skip or xfail in the new definition {stmt.name}"
+                self.add("WEAKENING", "skip", chain, None, stmt, detail)
             elif tests:
-                self.add("SAFE", "new-test", chain, None, stmt, f"adds {len(tests)} test function(s)")
+                self.add("SAFE", "new-test", chain, None, stmt, f"adds {len(tests)} test function(s)", **extra)
             else:
-                self.add("SAFE", "new-definition", chain, None, stmt, f"defines {stmt.name}")
+                self.add("SAFE", "new-definition", chain, None, stmt, f"defines {stmt.name}", **extra)
 
     def signals(self, stmt: ast.AST) -> list[str]:
-        """The infrastructure signals of a new definition: changes it can make to the tests around it."""
+        """The infrastructure signals of a new definition: changes it can make to the tests around it.
+
+        A name that an import binds counts as non-local: it can name a module of the product or of the tests.
+        """
+        aliases = self.head.aliases
         local = set()
         patchers = set()
         for sub in ast.walk(stmt):
@@ -742,20 +847,22 @@ class FileDiff:
                 local.add(sub.id)
             elif isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 local.add(sub.name)
-            elif isinstance(sub, (ast.Import, ast.ImportFrom)):
-                local.update((alias.asname or alias.name).split(".")[0] for alias in sub.names)
             elif isinstance(sub, ast.ExceptHandler) and sub.name:
                 local.add(sub.name)
             patcher = isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Call)
-            if patcher and "patch" in (dotted(sub.value.func) or ""):
+            if patcher and "patch" in (resolved(sub.value.func, aliases) or ""):
                 patchers.update(t.id for t in targets_of(sub) if isinstance(t, ast.Name))
         found = []
+        if self.base is not None and isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and stmt.name in XUNIT:
+            found.append(f"xunit setup or teardown function {stmt.name}")
         for sub in ast.walk(stmt):
             if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if autouse(sub):
+                if autouse(sub, aliases):
                     found.append(f"autouse fixture {sub.name}")
-                name = fixture_name(sub)
-                if name and name in self.base_fixtures():
+                name = fixture_name(sub, aliases)
+                if name == COMPUTED:
+                    found.append(f"fixture {sub.name} takes its name from an expression")
+                elif name and name in self.base_fixtures():
                     found.append(f"fixture {name} has the name of an existing fixture")
                 if sub.name.startswith("pytest_"):
                     found.append(f"pytest hook {sub.name}")
@@ -767,19 +874,21 @@ class FileDiff:
                     if isinstance(target, (ast.Attribute, ast.Subscript)) and root not in local:
                         found.append(f"changes an attribute or item of the non-local name {root or 'expression'}")
             elif isinstance(sub, ast.Call):
-                name = dotted(sub.func) or ""
+                name = resolved(sub.func, aliases) or ""
                 receiver = sub.func.value if isinstance(sub.func, ast.Attribute) else None
-                if name in ("setattr", "delattr", "importlib.reload", "reload"):
+                if name in CALL_SIGNALS:
                     found.append(f"{name}()")
                 elif receiver is not None and sub.func.attr == "start" and (
-                    (isinstance(receiver, ast.Call) and "patch" in (dotted(receiver.func) or ""))
+                    (isinstance(receiver, ast.Call) and "patch" in (resolved(receiver.func, aliases) or ""))
                     or (isinstance(receiver, ast.Name) and receiver.id in patchers)
                 ):
                     found.append("patcher .start()")
-            elif isinstance(sub, ast.Attribute) and dotted(sub) == "sys.modules":
-                found.append("sys.modules")
-            elif isinstance(sub, ast.Name) and sub.id in ("builtins", "__builtins__"):
-                found.append("builtins")
+            elif isinstance(sub, (ast.Attribute, ast.Name)):
+                name = resolved(sub, aliases) or ""
+                if name == "sys.modules":
+                    found.append("sys.modules")
+                elif isinstance(sub, ast.Name) and name.split(".")[0] in ("builtins", "__builtins__"):
+                    found.append("builtins")
         return list(dict.fromkeys(found))
 
     def removed(self, stmt: ast.AST, chain: list) -> None:
@@ -793,14 +902,17 @@ class FileDiff:
     def modified(self, before: ast.AST, after: ast.AST, chain: list) -> None:
         if isinstance(after, ast.ClassDef):
             if not same_except(before, after, "body"):
-                if skip_added(without(before, "body"), without(after, "body")):
+                if self.skip_added(without(before, "body"), without(after, "body")):
                     self.add("WEAKENING", "skip", chain, before, after, "adds or changes a skip or xfail marker")
                 else:
                     self.add("UNCLASSIFIED", "changed-definition", chain, before, after, "changes the class header")
-            self.diff_scope(expand_imports(before.body), expand_imports(after.body), [*chain, (before, after)])
+            self.diff_scope(
+                expand_imports(before.body), expand_imports(after.body), [*chain, (before, after)],
+                self.inherited(before, frozenset()),
+            )
         elif isinstance(after, (ast.FunctionDef, ast.AsyncFunctionDef)):
             self.modified_function(before, after, chain)
-        elif skip_added(before, after):
+        elif self.skip_added(before, after):
             self.add("WEAKENING", "skip", chain, before, after, "adds or changes a skip or xfail marker")
         else:
             detail = f"changes {', '.join(bound_names(after))}"
@@ -812,7 +924,7 @@ class FileDiff:
             self.add("SAFE", "appended-cases", chain, before, after, "appends literal parametrize cases")
             return
         if test:
-            self.changed_tests.append(self.key(chain, after))
+            self.found.changed_tests.append(self.key(chain, after))
             values = self.expected_literal(before, after)
             if values:
                 self.add(
@@ -821,8 +933,8 @@ class FileDiff:
                     old=values[0], new=values[1],
                 )
                 return
-        what = "test" if test else "fixture" if fixture_name(after) else "function"
-        if skip_added(before, after):
+        what = "test" if test else "fixture" if fixture_name(after, self.head.aliases) else "function"
+        if self.skip_added(before, after):
             detail = f"adds or changes a skip or xfail in an existing {what}"
             self.add("WEAKENING", "skip", chain, before, after, detail)
             return
@@ -851,18 +963,20 @@ class FileDiff:
 
     def weakening(self, before: ast.AST, after: ast.AST, chain: list) -> str | None:
         """The WEAKENING subtype when a check of the base version is missing at head, else None."""
-        old = TestFunction(self.base.module, before, [base for base, _ in chain]).checks
-        new_test = TestFunction(self.head.module, after, [head for _, head in chain])
-        missing = Counter(ast.dump(node) for _, node in old) - Counter(ast.dump(node) for _, node in new_test.checks)
+        base_checks = TestFunction(self.base.module, before, [base for base, _ in chain]).checks
+        head_test = TestFunction(self.head.module, after, [head for _, head in chain])
+        old = Counter(ast.dump(node) for _, node in base_checks)
+        new = Counter(ast.dump(node) for _, node in head_test.checks)
+        missing = old - new
         if not missing:
             return None
-        added = Counter(ast.dump(node) for _, node in new_test.checks) - Counter(ast.dump(node) for _, node in old)
-        for _, node in new_test.checks:
+        added = new - old
+        for _, node in head_test.checks:
             if isinstance(node, ast.Assert) and added[ast.dump(node)]:
-                verdict = new_test.assert_verdict(node.test)
+                verdict = head_test.assert_verdict(node.test)
                 if verdict:
                     return verdict[0]
-        gone = [node for _, node in old if missing[ast.dump(node)]]
+        gone = [node for _, node in base_checks if missing[ast.dump(node)]]
         calls = [sub for node in gone for sub in ast.walk(node) if isinstance(sub, ast.Call)]
         names = {(dotted(sub.func) or "").rsplit(".", 1)[-1] for sub in calls}
         if "approx" in names:
@@ -881,7 +995,7 @@ def parse_version(data: bytes | None) -> Version | str | None:
         tree = ast.parse(text)
     except PARSE_ERRORS as error:
         return parse_failure(error)
-    return Version(text, tree, Module(text, tree))
+    return Version(text, tree, Module(text, tree), import_aliases(tree))
 
 
 def static_layer(project: Project, unit: Unit, changes: list[Change]) -> Static:
@@ -889,7 +1003,8 @@ def static_layer(project: Project, unit: Unit, changes: list[Change]) -> Static:
     python = [c.path for c in changes if c.kind in ("test-module", "helper")]
     base_blobs = project.blobs(unit.base, python)
     head_blobs = project.blobs(unit.head, python)
-    items, new_tests, changed_tests, subclass_tests = [], [], [], []
+    result = Static.empty()
+    items = result.items
     for change in changes:
         path = change.path
         verb = {"A": "adds", "D": "removes", "M": "changes"}[change.status]
@@ -914,18 +1029,13 @@ def static_layer(project: Project, unit: Unit, changes: list[Change]) -> Static:
                 items.append(item("UNCLASSIFIED", "configuration", path, detail, diff=diff))
         else:
             base, head = parse_version(base_blobs.get(path)), parse_version(head_blobs.get(path))
-            broken = [found for found in (base, head) if isinstance(found, str)]
+            broken = [reason for reason in (base, head) if isinstance(reason, str)]
             if broken:
                 diff = project.file_diff(unit, path)
                 items.append(item("UNCLASSIFIED", "parse-error", path, "; ".join(broken), diff=diff))
                 continue
-            found = FileDiff(path, base, head, lambda: project.base_fixtures(unit.base))
-            found.classify()
-            items += found.items
-            new_tests += found.new_tests
-            changed_tests += found.changed_tests
-            subclass_tests += found.subclass_tests
-    return Static(items, new_tests, changed_tests, subclass_tests)
+            result.extend(FileDiff(path, base, head, lambda: project.base_fixtures(unit.base)).classify())
+    return result
 
 
 class Session:
@@ -1010,7 +1120,12 @@ class Session:
 
 
 def label_entry(nodeid: str, run: Run, tests: dict) -> dict:
-    """The label of a new test from its run against the base product code."""
+    """The label of a new test from its run against the base product code.
+
+    catching: an assertion failure in the call phase. new-API: a collection
+    error, a setup error, or an exception other than an assertion failure.
+    hardening: a pass.
+    """
     test = tests.get(nodeid)
     if test is None:
         if run.timed_out:
@@ -1057,7 +1172,10 @@ def item_keys(entry: dict, keys: list[str]) -> list[str]:
 
 
 def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool, static: Static) -> tuple:
-    """Layer 1, the collection evidence, and the new-test labels of a unit; returns (items, new tests, run reports)."""
+    """Layer 1, the collection evidence, and the new-test labels of a unit; returns (items, new tests, run reports).
+
+    The items are the layer 2 items, revised with the evidence of the runs, and then the items of the runs.
+    """
     items: list[dict] = []
     reports: dict = {}
     modules = [c for c in changes if c.kind == "test-module"]
@@ -1104,45 +1222,20 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
     evidence = base is not None and base.complete() and (head is None or head.complete())
     base_ids = set(base.collected()) if evidence else set()
     head_ids = set(head.collected()) if head is not None else set()
-    appended = {i["nodeid"]: i for i in static.items if i["subtype"] == "appended-cases"}
-    removed = [i["nodeid"] for i in static.items if i["subtype"] == "removed-test"]
-    existing: set = set()
     if evidence:
-        for nodeid in base.collected():
-            if nodeid in head_ids:
-                continue
-            key = function_key(nodeid)
-            if any(key == k or key.startswith(k + "::") for k in removed):
-                continue
-            if key in appended:
-                entry = appended[key]
-                entry.update({"class": "WEAKENING", "subtype": "missing-node-id"})
-                entry.setdefault("missing", []).append(nodeid)
-                entry["detail"] = "the appended cases change base node IDs: " + ", ".join(entry["missing"])
-            else:
-                items.append(item(
-                    "WEAKENING", "missing-node-id", node_file(nodeid), "a base node ID is not collected at head",
-                    nodeid=nodeid,
-                ))
-        base_keys = {function_key(nodeid) for nodeid in base_ids}
-        for entry in static.items:
-            if entry["subtype"] != "new-test":
-                continue
-            taken = [key for key in item_keys(entry, static.new_tests) if key in base_keys]
-            if taken:
-                existing.update(taken)
-                entry.update({
-                    "class": "UNCLASSIFIED", "subtype": "existing-node-id",
-                    "detail": "adds a test with a node ID that the base collected, so it replaces an inherited "
-                    "test: " + ", ".join(taken),
-                })
+        revised, existing = confirmed(static, base.collected(), head_ids, items)
     else:
-        unconfirmed(static, appended.values())
+        revised, existing = unconfirmed(static), set()
+    if base is None and any(entry.get("fixtures") for entry in revised):
+        fixtures = run("fixtures", unit.base, None, None, collect_only=True)
+    else:
+        fixtures = base
+    revised = fixture_evidence(revised, fixtures.found["fixtures"] if fixtures and fixtures.complete() else None)
 
     new_ids = []
     if head is not None and head.complete():
         keys = set(static.new_tests) - existing
-        kept = {key for key, entry in appended.items() if entry["class"] == "SAFE"}
+        kept = {e["nodeid"] for e in revised if e["subtype"] == "appended-cases" and e["class"] == "SAFE"}
         for nodeid in head.collected():
             key = function_key(nodeid)
             if key in keys or (key in kept and nodeid not in base_ids):
@@ -1154,46 +1247,115 @@ def run_layers(session: Session, unit: Unit, changes: list[Change], mixed: bool,
         entries = [label_entry(nodeid, label, tests) for nodeid in new_ids]
     seen = {function_key(n) for n in new_ids} | existing
     entries += [new_test(key, "not collected at head") for key in static.new_tests if key not in seen]
-    return items, entries, reports
+    return revised + items, entries, reports
 
 
-def unconfirmed(static: Static, appended) -> None:
-    """Mark the items that need collection evidence as UNCLASSIFIED, when the gate has none.
+def confirmed(static: Static, base_ids: list, head_ids: set, items: list) -> tuple[list, set]:
+    """The layer 2 items revised with the collection evidence, and the function keys of the existing node IDs.
+
+    Each base node ID that head does not collect, outside a removed test or
+    a test with appended cases, goes to `items`.
+    """
+    appended = {i["nodeid"] for i in static.items if i["subtype"] == "appended-cases"}
+    removed = [i["nodeid"] for i in static.items if i["subtype"] == "removed-test"]
+    missing: dict = {}
+    for nodeid in base_ids:
+        if nodeid in head_ids:
+            continue
+        key = function_key(nodeid)
+        if any(key == k or key.startswith(k + "::") for k in removed):
+            continue
+        if key in appended:
+            missing.setdefault(key, []).append(nodeid)
+        else:
+            items.append(item(
+                "WEAKENING", "missing-node-id", node_file(nodeid), "a base node ID is not collected at head",
+                nodeid=nodeid,
+            ))
+    base_keys = {function_key(nodeid) for nodeid in base_ids}
+    revised, existing = [], set()
+    for entry in static.items:
+        new = entry["subtype"] == "new-test"
+        taken = [key for key in item_keys(entry, static.new_tests) if key in base_keys] if new else []
+        if entry["subtype"] == "appended-cases" and entry["nodeid"] in missing:
+            lost = missing[entry["nodeid"]]
+            entry = {
+                **entry, "class": "WEAKENING", "subtype": "missing-node-id",
+                "detail": "the appended cases change base node IDs: " + ", ".join(lost), "missing": lost,
+            }
+        elif taken:
+            existing.update(taken)
+            entry = {
+                **entry, "class": "UNCLASSIFIED", "subtype": "existing-node-id",
+                "detail": "adds a test with a node ID that the base collected, so it replaces an inherited test: "
+                + ", ".join(taken),
+            }
+        revised.append(entry)
+    return revised, existing
+
+
+def unconfirmed(static: Static) -> list:
+    """The layer 2 items, with the items that need collection evidence as UNCLASSIFIED, when the gate has none.
 
     Without it, appended parametrize cases can rename base node IDs, and a new
     test in a subclass can replace an inherited test.
     """
-    for entry in appended:
-        entry.update({
-            "class": "UNCLASSIFIED", "subtype": "no-collection-evidence",
-            "detail": "appends literal parametrize cases, but no collection shows that each base node ID stays",
-        })
+    revised = []
     for entry in static.items:
-        if entry["subtype"] == "new-test" and item_keys(entry, static.subclass_tests):
-            entry.update({
-                "class": "UNCLASSIFIED", "subtype": "no-collection-evidence",
-                "detail": "adds a test to a subclass, but no collection shows that the base had no test with its "
-                "node ID",
-            })
+        if entry["subtype"] == "appended-cases":
+            detail = "appends literal parametrize cases, but no collection shows that each base node ID stays"
+        elif entry["subtype"] == "new-test" and item_keys(entry, static.subclass_tests):
+            detail = "adds a test to a subclass, but no collection shows that the base had no test with its node ID"
+        else:
+            detail = None
+        if detail:
+            entry = {**entry, "class": "UNCLASSIFIED", "subtype": "no-collection-evidence", "detail": detail}
+        revised.append(entry)
+    return revised
+
+
+def fixture_evidence(items: list, known: list | None) -> list:
+    """The items, with each SAFE item that defines a fixture checked against the fixture names of a base run.
+
+    pytest reports these names, plugin fixtures included. `known` is None when no complete base run reported them.
+    """
+    revised = []
+    for entry in items:
+        names = entry.get("fixtures") if entry["class"] == "SAFE" else None
+        clash = sorted(set(names or []) & set(known or []))
+        if names and known is None:
+            entry = {
+                **entry, "class": "UNCLASSIFIED", "subtype": "no-collection-evidence",
+                "detail": f"defines the fixture {', '.join(names)}, but no base run shows the fixture names of pytest",
+            }
+        elif clash:
+            entry = {
+                **entry, "class": "UNCLASSIFIED", "subtype": "signal",
+                "detail": f"fixture {', '.join(clash)} has the name of a fixture that pytest reports at base",
+            }
+        revised.append(entry)
+    return revised
 
 
 def check_unit(project: Project, session: Session | None, unit: Unit) -> dict:
     changes, product = project.changes(unit)
     mixed = bool(product)
     static = static_layer(project, unit, changes)
-    items = list(static.items)
     reports: dict = {}
     if session is not None and changes:
-        found, new_tests, reports = run_layers(session, unit, changes, mixed, static)
-        items += found
+        items, new_tests, reports = run_layers(session, unit, changes, mixed, static)
     else:
-        unconfirmed(static, [i for i in items if i["subtype"] == "appended-cases"])
+        items = fixture_evidence(unconfirmed(static), None)
         new_tests = [new_test(key, "not run") for key in static.new_tests]
     items = [{"id": f"{unit.id}-i{n}", **entry} for n, entry in enumerate(items, start=1)]
-    if mixed:
-        status = "fail" if any(i["class"] in FAILING for i in items) else "pass"
-    else:
+    if not mixed:
         status = "needs evidence" if changes else "pass"
+    elif any(i["class"] in FAILING and i["subtype"] != "no-collection-evidence" for i in items):
+        status = "fail"
+    elif any(i["subtype"] == "no-collection-evidence" for i in items):
+        status = "needs evidence"
+    else:
+        status = "pass"
     diff = project.git(
         "diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index", "--binary", unit.base, unit.head
     )
@@ -1253,7 +1415,7 @@ def gate_command(args, extra: list[str]) -> dict:
     labels = Counter(entry["label"] or "unlabeled" for entry in new_tests)
     return {
         "summary": {
-            "passed": not any(unit["status"] == "fail" for unit in results),
+            "passed": all(unit["status"] == "pass" for unit in results if unit["mixed"]),
             "base": args.base,
             "head": args.head,
             "merge_base": merge_base,

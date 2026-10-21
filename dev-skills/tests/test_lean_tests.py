@@ -1467,6 +1467,7 @@ GATE_TESTS = """\
 import pytest
 
 from calc.core import classify, discount, total
+from shared import SharedChecks
 
 try:
     from math import isqrt
@@ -1505,18 +1506,36 @@ def test_discount_plain():
 
 
 class TestShared:
+    def expected(self):
+        return "non-negative"
+
     def test_shared(self):
-        assert classify(3) == "non-negative"
+        assert classify(3) == self.expected()
 
 
 class TestChild(TestShared):
     "Runs the shared tests again."
+
+
+class TestImported(SharedChecks):
+    "Runs the checks of tests/shared.py."
+"""
+
+# A helper module: the gate cannot read the names that TestImported inherits from it.
+GATE_SHARED = """\
+from calc.core import classify
+
+
+class SharedChecks:
+    def test_classify_shared(self):
+        assert classify(4) == "non-negative"
 """
 
 GATE_FILES = {
     "pyproject.toml": '[tool.pytest.ini_options]\ntestpaths = ["tests"]\npythonpath = ["src"]\n',
     "src/calc/__init__.py": "",
     "src/calc/core.py": GATE_CORE,
+    "tests/shared.py": GATE_SHARED,
     "tests/test_core.py": GATE_TESTS,
 }
 GATE = "tests/test_core.py::"
@@ -1546,7 +1565,26 @@ GATE_CASES = {
     "appended": edited(GATE_TESTS, '(5, "non-negative")])', '(5, "non-negative"), (7, "non-negative")])'),
     "new-tests": GATE_TESTS + "\n\ndef test_total_zero():\n    assert total(0, 4) == 0\n",
     "guarded": GATE_TESTS + "\n\ndef isqrt(n):\n    return int(n ** 0.5)\n",
-    "override": GATE_TESTS + "    def test_shared(self):\n        assert True\n",
+    "override": edited(GATE_TESTS, "again.\"\n", "again.\"\n\n    def test_shared(self):\n        assert True\n"),
+    "imported-override": edited(
+        GATE_TESTS, "shared.py.\"\n", "shared.py.\"\n\n    def test_classify_shared(self):\n        assert True\n",
+    ),
+    "inherited-helper": edited(GATE_TESTS, "again.\"\n", "again.\"\n\n    def expected(self):\n        return classify(3)\n"),
+    "builtin": GATE_TESTS + "\n\ndef sum(values):\n    return 0\n",
+    "alias-autouse": edited(GATE_TESTS, "import pytest\n", "import pytest\nfrom pytest import fixture as fx\n")
+    + '\n\n@fx(autouse=True)\ndef skip_all():\n    pytest.skip("off")\n',
+    "computed-name": GATE_TESTS + '\n\nNAME = "tmp_path"\n\n\n@pytest.fixture(name=NAME)\ndef scratch():\n    return None\n',
+    "plugin-fixture": GATE_TESTS + "\n\n@pytest.fixture\ndef linecomp():\n    return None\n",
+    "xunit": GATE_TESTS + '\n\ndef setup_function():\n    pytest.skip("off")\n',
+    "xunit-method": edited(
+        GATE_TESTS, "    def test_shared(self):\n", '    def setup_method(self):\n        pytest.skip("off")\n\n    def test_shared(self):\n',
+    ),
+    "skip-helper": GATE_TESTS + '\n\ndef offline():\n    pytest.skip("offline")\n',
+    "import-alias-write": GATE_TESTS + (
+        "\n\ndef test_patched():\n    import calc.core as core\n    core.discount = lambda price, code: price\n"
+        '    assert core.discount(5, "gold") == 5\n'
+    ),
+    "dunder-test": edited(GATE_TESTS, "class TestShared:\n", "class TestShared:\n    __test__ = False\n\n"),
 }
 
 
@@ -1636,8 +1674,10 @@ class GateRepo:
     def gate(self, head: str, *args: str) -> tuple[int, dict, str]:
         return run_cli("gate", "--project", str(self.root), "--base", "base", "--head", head, *args, env=self.env)
 
-    def run_gate(self, head: str) -> tuple[int, dict, str]:
-        return self.gate(head, "--python", sys.executable, "--work-dir", str(self.work / head))
+    def run_gate(self, head: str, *extra: str) -> tuple[int, dict, str]:
+        """The gate with pytest runs; `extra` holds pytest arguments for each run."""
+        tail = ["--", *extra] if extra else []
+        return self.gate(head, "--python", sys.executable, "--work-dir", str(self.work / head), *tail)
 
 
 def gate_items(data: dict) -> list[tuple]:
@@ -1656,15 +1696,18 @@ class GateStaticTest(unittest.TestCase):
         self.assertIn(code, (0, 1), stderr)
         return code, data
 
-    def assert_fails_with(self, head: str, cls: str, subtype: str, name: str) -> dict:
+    def assert_fails_with(self, head: str, cls: str, subtype: str, name: str | None, status: str = "fail") -> dict:
+        """Assert that the gate fails the mixed change `head` with one item other than SAFE, and return that item."""
         code, data = self.static(head)
         self.assertEqual(code, 1)
         self.assertFalse(data["summary"]["passed"])
         unit = data["units"][0]
         self.assertTrue(unit["mixed"])
-        self.assertEqual(unit["status"], "fail")
-        self.assertEqual(gate_items(data), [(cls, subtype, GATE + name)])
-        return unit["items"][0]
+        self.assertEqual(unit["status"], status)
+        found = [i for i in unit["items"] if i["class"] != "SAFE"]
+        nodeid = GATE + name if name else None
+        self.assertEqual([(i["class"], i["subtype"], i["nodeid"]) for i in found], [(cls, subtype, nodeid)])
+        return found[0]
 
     def test_self_comparison_in_an_existing_test_is_weakening(self) -> None:
         self.assert_fails_with("self-comparison", "WEAKENING", "self-comparison", "test_total")
@@ -1696,14 +1739,61 @@ class GateStaticTest(unittest.TestCase):
     def test_inequality_bound_change_is_not_expected_literal(self) -> None:
         self.assert_fails_with("bound", "WEAKENING", "changed-assert", "test_total_bound")
 
-    def test_appended_cases_without_collection_evidence_are_unclassified(self) -> None:
-        self.assert_fails_with("appended", "UNCLASSIFIED", "no-collection-evidence", "test_classify_cases")
+    def test_appended_cases_without_collection_evidence_need_evidence(self) -> None:
+        self.assert_fails_with(
+            "appended", "UNCLASSIFIED", "no-collection-evidence", "test_classify_cases", status="needs evidence",
+        )
 
     def test_binding_inside_a_try_block_counts_for_the_binding_rule(self) -> None:
         self.assert_fails_with("guarded", "UNCLASSIFIED", "rebinding", "isqrt")
 
-    def test_new_test_in_a_subclass_needs_collection_evidence(self) -> None:
-        self.assert_fails_with("override", "UNCLASSIFIED", "no-collection-evidence", "TestChild::test_shared")
+    def test_new_test_that_replaces_an_inherited_test_of_the_module_is_rebinding(self) -> None:
+        found = self.assert_fails_with("override", "UNCLASSIFIED", "rebinding", "TestChild::test_shared")
+        self.assertIn("from a base class", found["detail"])
+
+    def test_new_test_in_a_subclass_of_an_imported_class_needs_collection_evidence(self) -> None:
+        self.assert_fails_with(
+            "imported-override", "UNCLASSIFIED", "no-collection-evidence", "TestImported::test_classify_shared",
+            status="needs evidence",
+        )
+
+    def test_new_method_that_replaces_an_inherited_helper_is_rebinding(self) -> None:
+        found = self.assert_fails_with("inherited-helper", "UNCLASSIFIED", "rebinding", "TestChild::expected")
+        self.assertIn("binds expected", found["detail"])
+
+    def test_new_definition_that_replaces_a_builtin_is_rebinding(self) -> None:
+        found = self.assert_fails_with("builtin", "UNCLASSIFIED", "rebinding", "sum")
+        self.assertIn("from the builtins", found["detail"])
+
+    def test_fixture_decorator_through_an_import_alias_is_a_signal(self) -> None:
+        found = self.assert_fails_with("alias-autouse", "UNCLASSIFIED", "signal", "skip_all")
+        self.assertIn("autouse fixture skip_all", found["detail"])
+
+    def test_fixture_name_from_an_expression_is_a_signal(self) -> None:
+        found = self.assert_fails_with("computed-name", "UNCLASSIFIED", "signal", "scratch")
+        self.assertIn("takes its name from an expression", found["detail"])
+
+    def test_new_fixture_needs_collection_evidence_without_a_run(self) -> None:
+        found = self.assert_fails_with(
+            "plugin-fixture", "UNCLASSIFIED", "no-collection-evidence", "linecomp", status="needs evidence",
+        )
+        self.assertEqual(found["fixtures"], ["linecomp"])
+
+    def test_new_xunit_function_or_method_is_a_signal(self) -> None:
+        found = self.assert_fails_with("xunit", "UNCLASSIFIED", "signal", "setup_function")
+        self.assertIn("xunit setup or teardown function setup_function", found["detail"])
+        self.assert_fails_with("xunit-method", "UNCLASSIFIED", "signal", "TestShared::setup_method")
+
+    def test_skip_call_in_a_new_definition_is_weakening(self) -> None:
+        self.assert_fails_with("skip-helper", "WEAKENING", "skip", "offline")
+
+    def test_attribute_write_through_an_import_alias_is_a_signal(self) -> None:
+        found = self.assert_fails_with("import-alias-write", "UNCLASSIFIED", "signal", "test_patched")
+        self.assertIn("non-local name core", found["detail"])
+
+    def test_new_dunder_test_binding_is_a_skip(self) -> None:
+        found = self.assert_fails_with("dunder-test", "WEAKENING", "skip", None)
+        self.assertIn("__test__", found["detail"])
 
     def test_documentation_inside_a_product_package_is_product_code(self) -> None:
         code, data = self.static("package-doc")
@@ -1774,7 +1864,9 @@ class GateRunTest(unittest.TestCase):
         cls.before = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
         cls.passing = cls.repo.run_gate("g1")
         cls.failing = cls.repo.run_gate("g2")
-        cls.override = cls.repo.run_gate("override")
+        cls.override = cls.repo.run_gate("imported-override")
+        # -p pytester adds plugin fixtures, linecomp among them, that no test-side file defines.
+        cls.plugin = cls.repo.run_gate("plugin-fixture", "-p", "pytester")
         cls.after = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
 
     def test_mixed_change_with_new_tests_and_appended_cases_that_keep_ids_passes(self) -> None:
@@ -1824,8 +1916,17 @@ class GateRunTest(unittest.TestCase):
     def test_new_test_with_a_node_id_that_the_base_collected_is_not_safe(self) -> None:
         code, data, stderr = self.override
         self.assertEqual(code, 1, stderr)
-        self.assertEqual(gate_items(data), [("UNCLASSIFIED", "existing-node-id", GATE + "TestChild::test_shared")])
+        self.assertEqual(gate_items(data), [
+            ("UNCLASSIFIED", "existing-node-id", GATE + "TestImported::test_classify_shared"),
+        ])
         self.assertEqual(data["new_tests"], [])
+
+    def test_new_fixture_with_the_name_of_a_plugin_fixture_is_a_signal(self) -> None:
+        code, data, stderr = self.plugin
+        self.assertEqual(code, 1, stderr)
+        self.assertEqual(data["units"][0]["status"], "fail")
+        self.assertEqual(gate_items(data), [("UNCLASSIFIED", "signal", GATE + "linecomp")])
+        self.assertIn("pytest reports at base", data["units"][0]["items"][0]["detail"])
 
     def test_gate_leaves_the_project_unchanged_and_removes_its_worktree(self) -> None:
         self.assertEqual(self.after, self.before)

@@ -262,8 +262,8 @@ product code.
 A new test that passes when it runs against the base product code.
 
 **New-API test**:
-A new test that fails against the base product code before its assertions can
-run, for example at collection or import.
+A new test that fails against the base product code with a collection error,
+a setup error, or an exception other than an assertion failure.
 
 **Pinned requirement source**:
 The user's request, or a spec or issue text, recorded with a SHA-256 hash

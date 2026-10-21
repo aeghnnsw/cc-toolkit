@@ -33,7 +33,9 @@ This version has four modes. With no mode, run check.
   the changed product lines that no test executes. It changes no file in
   the project. Run it only when the user's request asks to review the
   tests of a change, or when an agent workflow calls it. Follow
-  [references/review.md](references/review.md).
+  [references/review.md](references/review.md). Before the first
+  implementation change, an agent workflow runs its section
+  [Pin the requirement sources](references/review.md#pin-the-requirement-sources).
 
 ## Safety rules
 

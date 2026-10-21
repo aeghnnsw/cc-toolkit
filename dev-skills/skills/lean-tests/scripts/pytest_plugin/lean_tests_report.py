@@ -4,9 +4,11 @@ lean_tests.py loads this plugin with `-p lean_tests_report` and puts this
 directory in front of the existing PYTHONPATH. LEAN_TESTS_RECORDS names the
 output file. LEAN_TESTS_REVERSE=1 reverses the collected tests. Each line
 records a node ID, a phase (setup, call, or teardown), the outcome, the
-duration, and the exception type name of a failure. When LEAN_TESTS_ADDOPTS
-names a file, pytest instead writes the addopts of its configuration there
-as JSON and exits before collection. Python 3.9 or newer.
+duration, and the exception type name of a failure. The collected record
+also lists the fixture names that pytest knows, plugin fixtures included.
+When LEAN_TESTS_ADDOPTS names a file, pytest instead writes the addopts of
+its configuration there as JSON and exits before collection. Python 3.9 or
+newer.
 """
 
 from __future__ import annotations
@@ -60,7 +62,13 @@ def pytest_collection_modifyitems(session, config, items) -> None:
 def pytest_collection_finish(session) -> None:
     start = _state["start"]
     seconds = None if start is None else time.perf_counter() - start
-    _write({"event": "collected", "seconds": seconds, "nodeids": [item.nodeid for item in session.items]})
+    definitions = getattr(getattr(session, "_fixturemanager", None), "_arg2fixturedefs", None)
+    _write({
+        "event": "collected",
+        "seconds": seconds,
+        "nodeids": [item.nodeid for item in session.items],
+        "fixtures": None if definitions is None else sorted(definitions),
+    })
 
 
 @pytest.hookimpl(optionalhook=True)

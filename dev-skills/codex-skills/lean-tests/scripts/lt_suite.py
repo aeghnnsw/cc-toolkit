@@ -190,7 +190,7 @@ def stop(proc: subprocess.Popen) -> None:
 def read_records(path: Path) -> dict:
     found = {
         "rootdir": None, "pytest_version": None, "collected": None, "collection_seconds": None,
-        "collect_errors": [], "tests": {},
+        "collect_errors": [], "tests": {}, "fixtures": None,
     }
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -210,6 +210,8 @@ def read_records(path: Path) -> dict:
                 found["collected"] = record.get("nodeids") or []
             if record.get("seconds") is not None:
                 found["collection_seconds"] = round(record["seconds"], 6)
+            if record.get("fixtures") is not None:
+                found["fixtures"] = record["fixtures"]
         elif event == "collect-error":
             found["collect_errors"].append(record.get("nodeid"))
         elif event is None and "nodeid" in record:

@@ -415,9 +415,15 @@ uv run --no-project --python /usr/bin/python3 --with pytest --with pytest-cov py
 
 `uv run` removes its environment when it exits, so an interpreter path that
 one `uv run` prints does not work in a later command. To run `lean_tests.py`
-by hand on a fixture, put the commands in a script, run the script with
-`uv run --no-project --python '>=3.11' --with pytest --with pytest-cov bash <script>`,
-and pass `--python "$(which python)"` inside the script.
+by hand on a fixture:
+
+1. Write the commands in a script.
+2. In the script, pass `--python "$(which python)"` to `lean_tests.py`.
+3. Run the script:
+
+   ```bash
+   uv run --no-project --python '>=3.11' --with pytest --with pytest-cov bash <script>
+   ```
 
 When you raise the core-hooks Codex version, also change the version that
 `core-hooks/tests/test_codex_host_adapter.py` pins.
