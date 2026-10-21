@@ -33,6 +33,10 @@ the tracking issue, so the next one starts where the last one ended.
    find ~/.claude/projects ~/.codex/sessions -name '*.jsonl' -newer <tmp-dir>/marker
    ```
 5. Process only copies of the selected transcripts, in one `mktemp -d`
-   directory.
+   directory. Record timestamps have milliseconds. To keep the records
+   after the comment, compare each `timestamp` with the comment time
+   written with milliseconds, such as `2026-10-21T20:22:41.000Z`. As a
+   string, `20:22:41Z` sorts after `20:22:41.847Z`, so a comparison with
+   it drops the records of that second.
 6. Post a new comment on the tracking issue: the sessions read, the
    findings, the fixes made, and the candidates that remain.
