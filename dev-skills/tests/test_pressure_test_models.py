@@ -1,7 +1,7 @@
 """Run the critic-model shell blocks of both pressure-test copies in bash and zsh.
 
-Each check runs the Setup block of a copy, then its Critic model or Flags
-block, each in a new shell as the agent runs them, and reads the critic model
+Each check runs the Setup block of a copy, then its Critic model block, its
+Flags block, or both, each in a new shell as the agent runs them, and reads the critic model
 file in the work directory. The blocks come from SKILL.md, so the checks cover the text
 that an agent runs. The expected models come from allowed-models.json.
 """

@@ -122,6 +122,10 @@ _Avoid_: Hard-coded model
 The allowed model of a model family that a model pin names.
 _Avoid_: Default model, main model
 
+**Fallback model**:
+The second allowed model of a model family.
+_Avoid_: Backup model, secondary model
+
 ## Pressure-test language
 
 **Pressure test**:
@@ -139,10 +143,6 @@ _Avoid_: Reviewer, skeptic
 A safeguard action by a model provider on one critic call, such as a policy
 error or a refusal.
 _Avoid_: Safety stop, block
-
-**Fallback model**:
-The other allowed model of a model family.
-_Avoid_: Backup model, secondary model
 
 **Starting model**:
 The model of the first critic call of a pressure test: the primary model, or

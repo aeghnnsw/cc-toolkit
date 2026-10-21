@@ -54,8 +54,8 @@ Consequences:
 - A change to the allowed models starts in `allowed-models.json`. The same
   change updates both skills, the cc-customize `model-config` skill, and the
   model pins in agent and Codex agent files.
-  The pressure-test tests in `dev-skills/tests/` read their test data from
-  the file.
+  `dev-skills/tests/test_critic_status.py`, `test_codex_critic.py`, and
+  `test_pressure_test_models.py` read their test data from the file.
 - `tests/test_model_pins.py` fails until these conditions are true:
   - Every model pin names the primary model of its family. A Claude Code
     agent can set `inherit` instead.
@@ -71,10 +71,11 @@ in `$CODEX_HOME/models_cache.json`.
 
 ## Critic model choice
 
-Since 2026-10-21, the user or a calling skill can choose the critic model when
-a pressure test starts. The choice is one of the two allowed models of the
-critic family: `gpt-6-astra` or `gpt-6.1-sol` in Claude Code, and
-`claude-opus-5-5` or `claude-sonnet-5-5` in Codex. With no choice, the
+Before 2026-10-21, a user who wanted the fallback model as the critic could
+not get it. Since then, the user or a calling skill can choose the critic
+model when a pressure test starts. The choice is one of the two allowed
+models of the critic family: `gpt-6-astra` or `gpt-6.1-sol` in Claude Code,
+and `claude-opus-5-5` or `claude-sonnet-5-5` in Codex. With no choice, the
 pressure test starts on the primary model. A request for any other model
 starts no critic call: the skill names the two allowed models and asks which
 one to use. When the calling skill forbids questions, the agent chooses one

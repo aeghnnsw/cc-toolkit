@@ -129,6 +129,8 @@ source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
 
 The model of the first critic call is the starting model.
 
+- A request that names the primary model, for example "astra", needs no
+  block.
 - A request for any other model starts no critic call. Tell the user that the
   critic can use only `gpt-6-astra` or `gpt-6.1-sol`, and ask which one to use.
   When the calling skill forbids questions, as `matt-automode` does, choose one

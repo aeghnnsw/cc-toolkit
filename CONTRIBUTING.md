@@ -203,9 +203,9 @@ the relevant instructions. An installed development skill's configuration
 belongs in Git when it expresses conventions shared by this repository.
 
 A design, plan, conclusion, or ADR under `docs/` records decisions as of
-when it was written, and later work can supersede part of it. Before relying on one,
-read any status or superseded note at its top, and confirm current behavior
-in the code it describes.
+when it was written, and later work can supersede part of it. Before
+relying on one, read any status or superseded note at its top, and confirm
+current behavior in the code it describes.
 When a change supersedes part of such a record, add a superseded note at
 its top. Name the date and the issue, and link the replacement. In an ADR,
 also mark each replaced sentence and record the new rule with its reason in
@@ -343,10 +343,10 @@ With a `python3` older than 3.11, the root tests load no test. They print
 this command and stop with exit status 1.
 
 When you change `allowed-models.json` or a pressure-test `SKILL.md`, also
-run the `dev-skills` tests. The pressure-test tests in `dev-skills/tests/`
-read their critic model IDs from `allowed-models.json`, and
-`test_pressure_test_models.py` runs the model blocks of both `SKILL.md`
-copies:
+run the `dev-skills` tests. `dev-skills/tests/test_critic_status.py`,
+`test_codex_critic.py`, and `test_pressure_test_models.py` read their critic
+model IDs from `allowed-models.json`, and `test_pressure_test_models.py`
+runs the model blocks of both `SKILL.md` copies:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'

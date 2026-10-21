@@ -102,7 +102,7 @@ echo "workdir: $DIR"; echo "repo: $REPO"
 
 ## Critic Model
 
-The critic starts on the primary model, `claude-opus-5-5`. The user or a calling skill can choose the fallback model, `claude-sonnet-5-5`, by its ID or a short name, for example "pressure-test this with sonnet". Then run this command once, after setup and before the preflight:
+The critic starts on the primary model, `claude-opus-5-5`. The user or a calling skill can choose the fallback model, `claude-sonnet-5-5`, by its ID or a short name, for example "pressure-test this with sonnet". Then run this block once, after setup and before the preflight:
 
 ```bash
 source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
@@ -110,6 +110,7 @@ source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
 
 The model of the first critic call is the starting model.
 
+- A request that names the primary model, for example "opus", needs no block.
 - A request for any other model starts no critic call. Tell the user that the critic can use only `claude-opus-5-5` or `claude-sonnet-5-5`, and ask which one to use. When the calling skill forbids questions, as `matt-automode` does, choose one of the two models yourself and record the choice in the session record.
 - The choice applies only at setup. To change the model later, start a new pressure test. Inside one pressure test, only a [flag](#flags) changes the model.
 
