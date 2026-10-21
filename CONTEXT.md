@@ -119,8 +119,7 @@ A model value that a shipped agent sets for its own work.
 _Avoid_: Hard-coded model
 
 **Primary model**:
-The allowed model of a model family that a model pin names. A pressure test
-starts on it unless the user or a calling skill chooses the fallback model.
+The allowed model of a model family that a model pin names.
 _Avoid_: Default model, main model
 
 ## Pressure-test language
@@ -142,9 +141,13 @@ error or a refusal.
 _Avoid_: Safety stop, block
 
 **Fallback model**:
-The second allowed model of a model family. A pressure test uses it when the
-user or a calling skill chooses it, or after a flag on the primary model.
+The other allowed model of a model family.
 _Avoid_: Backup model, secondary model
+
+**Starting model**:
+The model of the first critic call of a pressure test: the primary model, or
+the fallback model when the user or a calling skill chooses it.
+_Avoid_: Chosen model, initial model
 
 **Pressure-test packet**:
 The context that the main agent gives the critic in each round of a pressure

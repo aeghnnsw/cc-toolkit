@@ -23,7 +23,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 
 - `ROUND_CAP = 6`
 - `CALL_TIMEOUT = 1800` seconds per critic call; `SMOKE_TIMEOUT = 120` for preflight. At the limit, `limit_call.py` sends SIGTERM to the CLI's process group, waits up to 5 seconds, sends SIGKILL to the group, and reaps the CLI. Only then does it exit 124, so a retry never overlaps the call.
-- Critic model: `claude-opus-5-5`, the primary model. The user or a calling skill can choose the fallback model, `claude-sonnet-5-5`, instead (see [Critic Model](#critic-model)). After a flag, the pressure test switches to the other model once (see [Flags](#flags)). Use no other model. Pass `--model` on every call, and accept a reply only from the current critic model.
+- Critic model: `claude-opus-5-5`, the primary model. The user or a calling skill can choose the fallback model, `claude-sonnet-5-5`, instead (see [Critic Model](#critic-model)). After a flag, the pressure test switches to the other allowed model once (see [Flags](#flags)). Use no other model. Pass `--model` on every call, and accept a reply only from the current critic model.
 - Effort: `xhigh` on critic rounds and `low` on the smoke call.
 - `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`: Claude Code otherwise picks its own model after a refusal. This skill switches models itself.
 - Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell, edit, or write tool. `--permission-mode dontAsk` denies anything that is not pre-approved. `--strict-mcp-config` loads no MCP servers, and `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the critic read evidence files in the work directory.
@@ -108,7 +108,9 @@ The critic starts on the primary model, `claude-opus-5-5`. The user or a calling
 source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
 ```
 
-- A request for any other model starts no critic call. Tell the user that the critic can use only `claude-opus-5-5` or `claude-sonnet-5-5`, and ask which one to use.
+The model of the first critic call is the starting model.
+
+- A request for any other model starts no critic call. Tell the user that the critic can use only `claude-opus-5-5` or `claude-sonnet-5-5`, and ask which one to use. When the calling skill forbids questions, as `matt-automode` does, choose one of the two models yourself and record the choice in the session record.
 - The choice applies only at setup. To change the model later, start a new pressure test. Inside one pressure test, only a [flag](#flags) changes the model.
 
 ## Preflight
@@ -252,14 +254,14 @@ Act on the retry's status line as above. A flag during the retry follows [Flags]
 
 Any safeguard action flags the call, even when the critic finished its answer. `critic_status.py` reports `flagged` when a response ends with `stop_reason: "refusal"`, when the result reports `safety_stops` above zero, or when Claude Code reports a `model_refusal_fallback` or `model_refusal_no_fallback` event.
 
-- **Flag on the starting model** — switch to the other allowed model and re-run the same block once; `prompt.md` is unchanged. The other model of `claude-opus-5-5` is `claude-sonnet-5-5`, and the reverse:
+- **Flag on the starting model** — switch to the other allowed model and re-run the same block once; `prompt.md` is unchanged. The other allowed model of `claude-opus-5-5` is `claude-sonnet-5-5`, and the reverse:
 
   ```bash
   source "<workdir>/env.sh"; CURRENT="$(cat "$DIR/model")"
   if [ "$CURRENT" = "$PRIMARY_MODEL" ]; then echo "$FALLBACK_MODEL"; else echo "$PRIMARY_MODEL"; fi > "$DIR/model"
   ```
 
-  For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the re-run resumes the same session on the other model. Keep the other model for the rest of the pressure test, and record the switch in the session record.
+  For the kickoff, the block calls `new_session` again, because Claude Code refuses to reuse a session ID. For a later round, the re-run resumes the same session on the other allowed model. Keep the other allowed model for the rest of the pressure test, and record the switch in the session record.
 - **Flag after the switch** — stop. Use no other model, and do not continue without a critic. Write a partial conclusion; the ending condition is "critic flagged".
 - A flag is not a failed round: it does not use the failure retry.
 

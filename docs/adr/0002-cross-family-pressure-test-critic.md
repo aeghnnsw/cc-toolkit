@@ -20,7 +20,7 @@ Each critic call names its model. The table records the allowed models
 chosen on 2026-10-14. `allowed-models.json` at the repository root holds the
 current list.
 
-| Critic | Model | After a flag |
+| Critic | Primary model | Fallback model |
 | --- | --- | --- |
 | GPT, through `codex exec` | `gpt-6-astra` | `gpt-6.1-sol` |
 | Claude, through `claude -p` | `claude-opus-5-5` | `claude-sonnet-5-5` |
@@ -31,11 +31,11 @@ with `stop_reason: "refusal"`, a result with `safety_stops` above zero, or
 a refusal event from Claude Code. After a flag, the skill switches to the
 fallback model for the rest of the pressure test. A flag on the fallback
 model ends the pressure test with a partial conclusion. (These two rules
-are superseded; read [Critic model choice](#critic-model-choice).) The skills turn off
-Claude Code's automatic refusal fallback, because Claude Code chooses that
-fallback model itself. In Codex, each call accepts a reply only from the current critic
-model. In Claude Code, the skill finds a model change through the Codex
-reroute notice.
+are superseded; read [Critic model choice](#critic-model-choice).) The
+skills turn off Claude Code's automatic refusal fallback, because Claude
+Code chooses that fallback model itself. In Codex, each call accepts a reply
+only from the current critic model. In Claude Code, the skill finds a model
+change through the Codex reroute notice.
 
 Consequences:
 
@@ -76,7 +76,9 @@ a pressure test starts. The choice is one of the two allowed models of the
 critic family: `gpt-6-astra` or `gpt-6.1-sol` in Claude Code, and
 `claude-opus-5-5` or `claude-sonnet-5-5` in Codex. With no choice, the
 pressure test starts on the primary model. A request for any other model
-starts no critic call. A later change of model starts a new pressure test.
+starts no critic call: the skill names the two allowed models and asks which
+one to use. When the calling skill forbids questions, the agent chooses one
+of them. A later change of model starts a new pressure test.
 
 A flag on the starting model switches the pressure test to the other allowed
 model of the family, once. A flag after that switch ends the pressure test

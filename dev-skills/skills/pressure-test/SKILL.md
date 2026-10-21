@@ -52,9 +52,9 @@ pins the model, enforces the time limits, and prints one status line.
 - Critic model: `gpt-6-astra`, the primary model. The user or a calling skill
   can choose the fallback model, `gpt-6.1-sol`, instead (see
   [Critic model](#critic-model)). After a flag, the pressure test switches to
-  the other model once (see [Flags](#flags)). Use no other model. The runner
-  pins the model on every call, so the skill does not depend on the ambient
-  `~/.codex/config.toml`.
+  the other allowed model once (see [Flags](#flags)). Use no other model. The
+  runner pins the model on every call, so the skill does not depend on the
+  ambient `~/.codex/config.toml`.
 - Reasoning effort: `xhigh` on critic rounds and `low` on the preflight smoke
   call.
 - Codex sandbox: `read-only` on every call. The kickoff passes `-s read-only`.
@@ -127,8 +127,12 @@ setup and before the preflight:
 source "<workdir>/env.sh"; echo "$FALLBACK_MODEL" > "$DIR/model"
 ```
 
+The model of the first critic call is the starting model.
+
 - A request for any other model starts no critic call. Tell the user that the
   critic can use only `gpt-6-astra` or `gpt-6.1-sol`, and ask which one to use.
+  When the calling skill forbids questions, as `matt-automode` does, choose one
+  of the two models yourself and record the choice in the session record.
 - The choice applies only at setup. To change the model later, start a new
   pressure test. Inside one pressure test, only a [flag](#flags) changes the
   model.
@@ -308,7 +312,7 @@ only error events and stderr for these notices, so the critic's own words
 cannot match, and reports `status=flagged`.
 
 - **Flag on the starting model** — switch to the other allowed model and re-run
-  the same block once; `prompt.md` is unchanged. The other model of
+  the same block once; `prompt.md` is unchanged. The other allowed model of
   `gpt-6-astra` is `gpt-6.1-sol`, and the reverse:
 
   ```bash
@@ -317,10 +321,10 @@ cannot match, and reports `status=flagged`.
   ```
 
   For the kickoff, the re-run starts a new thread. For a resume, it continues
-  the same thread on the other model. Codex then warns that the session "was
-  recorded with model" the starting model; ignore that warning. Keep the other
-  model for the rest of the pressure test, and name the switch in the round
-  block and the session record.
+  the same thread on the other allowed model. Codex then warns that the
+  session was recorded with the starting model; ignore that warning. Keep the
+  other allowed model for the rest of the pressure test, and name the switch in
+  the round block and the session record.
 - **Flag after the switch** — stop. Use no other model, and do not continue
   without a critic. Write the conclusion with what exists; the ending
   condition is "critic flagged".
