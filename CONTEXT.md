@@ -193,6 +193,79 @@ One of the eight areas that an evaluator covers, such as Security or User
 Experience. An angle is a topic inside one dimension.
 _Avoid_: Cluster, direction
 
+## Lean-tests language
+
+**Test seam**:
+The public boundary where a test observes behavior without reaching inside.
+The term comes from Matt Pocock's tdd skill.
+_Avoid_: Test boundary
+
+**Test tier**:
+A named set of tests with a trigger and a time budget: inner loop, hand-off,
+pull request, main, or nightly.
+_Avoid_: Test level, stage
+
+**Kill set**:
+The mutants that one test kills in a full kill matrix of a prune scope.
+
+**Killed set**:
+The mutants of a prune scope that at least one in-scope test kills. Every
+mutant in it must stay killed after a removal batch.
+_Avoid_: Mutation score
+
+**Protected test**:
+A test that lean-tests never deletes or merges: a regression,
+characterization, security, compatibility, or performance test, or the one
+happy-path test of a test seam.
+
+**Tautological test**:
+A test whose check cannot fail whatever the product code does: it compares
+a constant with itself, or it computes the expected value the way the code
+does.
+
+**Unmeasured test**:
+A test whose run covers no measured product line, for example because it
+runs the code in a subprocess. Coverage data says nothing about its value.
+
+**Redundant test**:
+A measured, unprotected test whose kill set is empty or covered by one
+retained test, whose scenario is no distinct input class, and whose every
+checked property maps to an assertion in a retained test.
+_Avoid_: Useless test, dead test
+
+**Mixed change**:
+A commit, or the whole pull request when merges squash, that changes product
+code.
+
+**Test weakening**:
+A test-side change in a mixed change that can lower what existing tests
+detect.
+
+**Weakening gate**:
+The lean-tests check that fails a mixed change with a behavior-change,
+weakening, or unclassified test-side item.
+
+**Catching test**:
+A new test that fails with an assertion failure when it runs against the base
+product code.
+
+**Hardening test**:
+A new test that passes when it runs against the base product code.
+
+**New-API test**:
+A new test that fails against the base product code before its assertions can
+run, for example at collection or import.
+
+**Pinned requirement source**:
+The user's request, or a spec or issue text, recorded with a hash before
+implementation starts. Only such text can authorize the acceptance of a
+failing weakening-gate item.
+
+**Acceptance reviewer**:
+A human, or a fresh-context agent in an autonomous run, that may accept a
+failing weakening-gate item by quoting a pinned requirement source.
+_Avoid_: Verifier
+
 ## Git policy language
 
 **Branch creation**:

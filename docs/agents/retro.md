@@ -16,11 +16,22 @@ the tracking issue, so the next one starts where the last one ended.
 2. Read the newest retrospective comment on the tracking issue.
 3. Read the open `documentation` issues. Report a known candidate again only
    with new evidence.
-4. Select the sessions that started after that comment and ran in the main
-   checkout, `trees/*`, or `.claude/worktrees/*`. Claude Code sessions are
-   JSONL files under `~/.claude/projects/` with a `cwd` field. Codex
-   sessions are JSONL files under `~/.codex/sessions/` with the `cwd` in
-   their `session_meta` line.
+4. Select the sessions that have records after that comment and ran in
+   the main checkout, `trees/*`, or `.claude/worktrees/*`. A session that
+   started before the comment can have later records; read only the
+   records after the comment. Claude Code sessions are JSONL files under
+   `~/.claude/projects/` with a `cwd` field, and their sub-agents are under
+   `<session>/subagents/`. Codex sessions are JSONL files under
+   `~/.codex/sessions/` with the `cwd` in their `session_meta` line; keep
+   only those whose `cwd` is in this repository. To list the files that
+   changed after the comment, make the `mktemp -d` directory of step 5 now,
+   put a marker file with the comment's UTC time in it, and keep error
+   output visible:
+
+   ```bash
+   TZ=UTC0 touch -t <YYYYMMDDhhmm.ss> <tmp-dir>/marker
+   find ~/.claude/projects ~/.codex/sessions -name '*.jsonl' -newer <tmp-dir>/marker
+   ```
 5. Process only copies of the selected transcripts, in one `mktemp -d`
    directory.
 6. Post a new comment on the tracking issue: the sessions read, the
