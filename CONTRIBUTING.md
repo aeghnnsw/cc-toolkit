@@ -321,7 +321,8 @@ model-pin test, the argument-placeholder test, and the agent-field test:
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-With a `python3` older than 3.11, many root tests fail and some do not load.
+With a `python3` older than 3.11, the root tests load no test. They print
+this command and stop with exit status 1.
 
 When you change `allowed-models.json`, also run the `dev-skills` tests.
 `dev-skills/tests/test_critic_status.py` and

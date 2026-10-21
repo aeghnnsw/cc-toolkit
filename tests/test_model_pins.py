@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from package_support import FENCE, ROOT, agent_files, frontmatter, git_files, validator
-import tomllib  # after package_support, whose validator names the uv command on Python 3.10
+import tomllib  # after package_support, which names the uv command on a Python without tomllib
 
 ALLOWED_MODELS = 'allowed-models.json'
 # Each pressure-test copy calls a critic from the model family of the other host.

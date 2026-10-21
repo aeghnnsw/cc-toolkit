@@ -1,7 +1,20 @@
 """The package validator module, the Git file list, plugin agents, and the Markdown fence pattern, shared by root tests."""
 import importlib.util
+import os
 from pathlib import Path
 import re
+import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    # unittest discovery reports SystemExit as one import error for each test module and runs the rest,
+    # so print the fix once and end the process.
+    print('FAIL: the root tests need Python 3.11 or newer for tomllib. '
+          f'Python {sys.version.split()[0]} is running. Run:\n'
+          "uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'",
+          file=sys.stderr, flush=True)
+    os._exit(1)
 
 
 ROOT = Path(__file__).resolve().parents[1]
