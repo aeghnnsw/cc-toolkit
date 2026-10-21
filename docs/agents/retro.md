@@ -24,12 +24,13 @@ the tracking issue, so the next one starts where the last one ended.
    `<session>/subagents/`. Codex sessions are JSONL files under
    `~/.codex/sessions/` with the `cwd` in their `session_meta` line; keep
    only those whose `cwd` is in this repository. To list the files that
-   changed after the comment, make a marker file with the comment's UTC
-   time, and keep error output visible:
+   changed after the comment, make the `mktemp -d` directory of step 5 now,
+   put a marker file with the comment's UTC time in it, and keep error
+   output visible:
 
    ```bash
-   TZ=UTC0 touch -t <YYYYMMDDhhmm.ss> <marker>
-   find ~/.claude/projects ~/.codex/sessions -name '*.jsonl' -newer <marker>
+   TZ=UTC0 touch -t <YYYYMMDDhhmm.ss> <tmp-dir>/marker
+   find ~/.claude/projects ~/.codex/sessions -name '*.jsonl' -newer <tmp-dir>/marker
    ```
 5. Process only copies of the selected transcripts, in one `mktemp -d`
    directory.

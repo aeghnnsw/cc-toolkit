@@ -3,8 +3,9 @@
 Each check runs the script in a child process against a small fixture
 project in a temporary directory and compares its JSON output with values
 that follow from the fixture design. The suite, compare, and coverage checks
-need pytest and pytest-cov in the running interpreter. Without them they skip
-and name the command that supplies both. The scan checks need only Python.
+need pytest and pytest-cov in the running interpreter. Without them they skip,
+and the skip reason, which `-v` shows, names the command that supplies both.
+The scan checks need only Python.
 """
 
 from __future__ import annotations

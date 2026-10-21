@@ -222,7 +222,6 @@ happy-path test of a test seam.
 A test whose check cannot fail whatever the product code does: it compares
 a constant with itself, or it computes the expected value the way the code
 does.
-_Avoid_: Trivial test
 
 **Unmeasured test**:
 A test whose run covers no measured product line, for example because it

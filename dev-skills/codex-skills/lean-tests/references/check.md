@@ -6,7 +6,7 @@ file order, and run 2 in reversed order with per-test coverage. A test whose
 outcome differs between the runs is flaky or order-dependent.
 
 Done when the scorecard gives each row a value or a "not measured" reason,
-it names one next step with its reason, and the project's Git status is the
+it names one next mode with its reason, and the project's Git status is the
 same as at the start, or the difference is reported as files the tests
 wrote.
 
@@ -47,7 +47,8 @@ Choose two values for later steps:
 ```
 
 The 600-second timeout is the default check budget. When the user names
-another budget, use it in place of 600 here and in step 3. The command
+another budget, use it here, and use three times that value in step 3. The
+command
 turns off the pytest cache and bytecode files, and loads a bundled plugin
 that records each test phase. It sets `COVERAGE_FILE` to the work
 directory, and when pytest-cov is installed, it adds `--no-cov`, so that the
@@ -60,19 +61,25 @@ project's coverage options write no file. The printed summary gives:
   included. A new file inside a directory that was already ignored does
   not show.
 
-Then measure the import cost of the product code. Do this for each
-`<source>`:
+Then measure the import cost of the product code. Run the command in
+`<project>` for each `<source>`. When the pytest configuration sets
+`pythonpath`, such as `src`, set `PYTHONPATH` to the same directories;
+otherwise leave out `PYTHONPATH=<pythonpath>`.
 
 ```bash
-<python> -B -X importtime -c "import <source>" 2> <work-dir>/importtime-<source>.txt
-sort -t '|' -k 2 -n -r <work-dir>/importtime-<source>.txt | head -n 6
+(cd <project> && PYTHONPATH=<pythonpath> <python> -B -X importtime -c "import <source>") 2> <work-dir>/importtime-<source>.txt
+grep -E '[|] <source>$' <work-dir>/importtime-<source>.txt
+sort -t '|' -k 2 -n -r <work-dir>/importtime-<source>.txt | head -n 8
 ```
 
 `-B` writes no bytecode file into the project. Each line gives the self
-time and the cumulative time in microseconds, and the module name. The
-first line is `<source>` itself: its cumulative time is the import cost.
-The next five lines are the imports with the largest cumulative time. A
-test module that imports `<source>` pays this cost during collection.
+time and the cumulative time in microseconds, and the module name; nested
+imports are indented. The `grep` line is `<source>` itself: its cumulative
+time is the import cost. The `sort` lines are the imports with the largest
+cumulative time; skip interpreter start-up modules such as `site` and
+`encodings` among them. When the import fails, the file ends with the
+error: report the import cost as not measured, with that error. A test
+module that imports `<source>` pays this cost during collection.
 
 When `pytest_exit_code` is 2 or more, read `<work-dir>/run1/pytest.log`
 and report the cause. Exit code 5 means that pytest collected no test.
@@ -155,13 +162,13 @@ tautology, self-comparison, duplicate-shape, and coverage-subset rows, read
 that subject:
 
 ```bash
-git -C <project> log --reverse --format=%s -S "def <test-name>" -- <file> | head -n 1
+git -C <project> log --reverse --format=%s -G "def <test-name>\(" -- <file> | head -n 1
 ```
 
 Here `<test-name>` is the function name without parameters, and `<file>`
 is the test file. Count the test as protected when the subject has an
 issue reference, or the words fix, bug, regression, characterization,
-security, compat, or perf.
+security, compat, or perf, and add it to the Protected tests row.
 
 ## 6. Read per-test coverage and diff coverage
 
@@ -230,7 +237,7 @@ measured" with the reason and the package that enables it.
 | Weak oracle, change detector, trivial code | scan `weak-oracle`, `change-detector`, `trivial-code` |
 | Duplicate-shape groups | scan `duplicate_groups` |
 | Sleep calls | scan `sleep` |
-| Protected tests | scan `protected` |
+| Protected tests | scan `protected`, and the commit subjects of step 5 |
 | Coverage-subset candidates | coverage `equal_groups`, `strict_subsets` |
 | Unmeasured tests | coverage `unmeasured` |
 | Diff coverage against `<base>` | coverage `diff`, with the missed `raise` and `except` lines |
@@ -241,12 +248,13 @@ Then name exactly one next mode, with its reason. Use the first rule that
 applies:
 
 1. **speed**, when run 1 exceeded the check budget, run 1 took longer than
-   2 minutes, or a test changed its outcome between the runs. speed fixes
+   the hand-off budget (default 2 minutes; speed defines a hand-off tier
+   that must fit it), or a test changed its outcome between the runs. speed fixes
    order-dependent tests before it turns on parallel runs. Name the slowest
    phases or the changed tests.
 2. **review**, when no test executes some changed product lines, such as
    changed `raise` or `except` lines.
-3. **prune** of one path, when a test directory or file has
+3. **prune** of one path, when a test directory or file has unprotected
    `no-assertion`, `tautology`, `self-comparison`, `duplicate-shape`, or
    coverage-subset candidates. Name the path with the most candidates.
 4. **check** again after the next change, when no other rule applies. Say

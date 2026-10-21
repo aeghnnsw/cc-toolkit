@@ -312,7 +312,7 @@ with the one on `origin/master`. If `origin/master` has that version or a
 greater one, raise yours above it. Choose a version when the pull request
 is ready, and write no target version in an issue or a ticket. After a
 rebase, run the validator again: when both sides made the same version
-change, the change drops out of the branch.
+change, the rebase removes that change from the branch.
 
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
@@ -384,7 +384,8 @@ python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov. Under a `python3` without them, these
-checks skip and print this command, which supplies both:
+checks skip. Their skip reason, which `-v` shows, gives this command, which
+supplies both:
 
 ```bash
 uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'

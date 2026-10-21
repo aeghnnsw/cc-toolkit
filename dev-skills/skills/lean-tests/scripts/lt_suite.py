@@ -20,6 +20,7 @@ PLUGIN_DIR = Path(__file__).resolve().parent / "pytest_plugin"
 OUTCOMES = ("passed", "failed", "error", "skipped", "xfailed", "xpassed")
 PHASES = ("setup", "call", "teardown")
 LOG_TAIL = 30
+PROBE_TIMEOUT = 600
 SLOWEST = 10
 # pytest-cov options whose value is the next argument when they have no "=".
 COV_VALUE_OPTIONS = frozenset({"--cov-report", "--cov-fail-under", "--cov-context", "--cov-precision"})
@@ -49,12 +50,12 @@ def probe(python: list[str], project: Path, env: dict) -> dict:
     """Ask the target interpreter which test packages it can import."""
     try:
         result = subprocess.run(
-            [*python, "-c", PROBE], cwd=project, env=env, capture_output=True, text=True, timeout=600
+            [*python, "-c", PROBE], cwd=project, env=env, capture_output=True, text=True, timeout=PROBE_TIMEOUT
         )
     except OSError as error:
         raise UsageError(f"cannot run the interpreter {python[0]}: {error.strerror}") from error
     except subprocess.TimeoutExpired as error:
-        raise UsageError("the interpreter did not answer within 600 seconds") from error
+        raise UsageError(f"the interpreter did not answer within {PROBE_TIMEOUT} seconds") from error
     lines = result.stdout.strip().splitlines()
     try:
         return json.loads(lines[-1])
@@ -71,10 +72,10 @@ def ini_addopts(python: list[str], project: Path, env: dict, path: Path) -> list
     try:
         result = subprocess.run(
             cmd, cwd=project, env={**env, "LEAN_TESTS_ADDOPTS": str(path)},
-            capture_output=True, text=True, timeout=600,
+            capture_output=True, text=True, timeout=PROBE_TIMEOUT,
         )
     except subprocess.TimeoutExpired as error:
-        raise UsageError("pytest did not read its configuration within 600 seconds") from error
+        raise UsageError(f"pytest did not read its configuration within {PROBE_TIMEOUT} seconds") from error
     try:
         return json.loads(path.read_text(encoding="utf-8"))["addopts"]
     except (OSError, ValueError, KeyError) as error:

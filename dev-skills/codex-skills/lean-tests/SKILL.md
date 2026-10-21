@@ -1,6 +1,6 @@
 ---
 name: lean-tests
-description: This skill should be used when the user asks to "check the test suite", "audit the tests", or "find out why the tests are slow", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next step. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
+description: This skill should be used when the user asks to "check the test suite", "audit the tests", or "find out why the tests are slow", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
 # Lean Tests
@@ -30,13 +30,15 @@ These rules apply to all work on a test suite.
    that changes product code. A test weakening is a test-side change that
    can lower what existing tests detect, such as removing, skipping,
    loosening, or rewriting an existing test.
-3. Delete or merge a test only with killed-mutant evidence and a written
-   reason for each test, in a commit of its own. When the evidence is
-   incomplete, delete nothing. Equal coverage is not evidence: tests that
+3. Delete or merge a test only with killed-mutant evidence: a mutant is a
+   copy of the product code with one small fault, and a test kills it when
+   the test fails on that copy. Delete in batches of at most 20 tests. Each
+   batch is one commit of its own, with a written reason for each test.
+   When the evidence is incomplete, delete nothing. Equal coverage is not evidence: tests that
    cover the same lines can detect different faults.
 4. Keep protected tests: regression, characterization, security,
    compatibility, and performance tests, and one happy-path test per test
-   seam. Rewrite a protected test only to fix a defect in the test.
+   seam, the public boundary where a test observes behavior. Rewrite a protected test only to fix a defect in the test.
 5. Name each new dependency and its purpose before you add it, and add it
    with the project's own dependency manager.
 6. Report each measurement that you could not take, with the package that
