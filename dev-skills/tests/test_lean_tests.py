@@ -623,7 +623,7 @@ def test_outcome():
 
 # The after run renames test_old_name to test_new_name, and test_outcome fails.
 SPEED_AFTER = SPEED_BEFORE.replace("test_old_name", "test_new_name").replace("== [1, 2]", "== [2, 1]")
-SPEED = "tests/test_speed.py::"
+SPEED_NODE_PREFIX = "tests/test_speed.py::"
 
 
 @needs_pytest
@@ -659,11 +659,11 @@ class NoLossTest(unittest.TestCase):
     def test_renamed_test_and_changed_outcome_fail_the_invariant(self) -> None:
         code, data, stderr = run_cli("compare", self.out["before"], self.out["after"])
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(data["missing"], [SPEED + "test_old_name"])
-        self.assertEqual(data["added"], [SPEED + "test_new_name"])
+        self.assertEqual(data["missing"], [SPEED_NODE_PREFIX + "test_old_name"])
+        self.assertEqual(data["added"], [SPEED_NODE_PREFIX + "test_new_name"])
         self.assertEqual(
             [(c["nodeid"], c["first"], c["second"], c["second_exception"]) for c in data["changed"]],
-            [(SPEED + "test_outcome", "passed", "failed", "AssertionError")],
+            [(SPEED_NODE_PREFIX + "test_outcome", "passed", "failed", "AssertionError")],
         )
         self.assertIs(data["summary"]["no_loss"], False)
 
@@ -678,7 +678,7 @@ class IncompleteRunTest(unittest.TestCase):
     """A run that did not finish cannot prove the no-loss invariant."""
 
     def test_timed_out_run_fails_the_invariant(self) -> None:
-        ids = [SPEED + "test_kept", SPEED + "test_outcome"]
+        ids = [SPEED_NODE_PREFIX + "test_kept", SPEED_NODE_PREFIX + "test_outcome"]
 
         def suite(timed_out: bool, ran: list[str]) -> dict:
             return {
@@ -696,7 +696,7 @@ class IncompleteRunTest(unittest.TestCase):
             code, data, stderr = run_cli("compare", *paths)
         self.assertEqual(code, 0, stderr)
         self.assertEqual((data["missing"], data["changed"]), ([], []))
-        self.assertEqual(data["not_run"]["second"], [SPEED + "test_outcome"])
+        self.assertEqual(data["not_run"]["second"], [SPEED_NODE_PREFIX + "test_outcome"])
         self.assertIs(data["summary"]["no_loss"], False)
 
 

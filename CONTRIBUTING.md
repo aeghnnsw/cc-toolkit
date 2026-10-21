@@ -178,9 +178,11 @@ it. Use this form:
 When both hosts ship the same version, write
 `Claude Code and Codex <version>`. When the versions differ, write
 `Claude Code <version>, Codex <version>`. Start a change outside the
-plugin directories with `Repository:` and give no version. When a pull
-request changes a plugin and files outside it, write one plugin entry and
-one `Repository:` entry. A change only to contributor-only files of a
+plugin directories with `Repository:` and give no version. The plugin entry
+also covers the README catalog entry and the `package-validation.json`
+lines that ship with the plugin change. When a pull request changes a
+plugin and other files outside it, write one plugin entry and one
+`Repository:` entry. A change only to contributor-only files of a
 plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket.

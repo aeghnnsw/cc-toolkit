@@ -18,11 +18,11 @@ This version has two modes. With no mode, run check.
   installs nothing. Follow [references/check.md](references/check.md).
 - **speed**: make the suite faster without deleting a test. It measures
   first, applies fixes one at a time in a fixed order, defines test tiers
-  with time budgets, and writes the tier commands into `CLAUDE.md` and
-  `AGENTS.md`. Run it only when the user's request asks for speed changes,
-  such as "make the tests faster" or "speed up CI". A question about speed,
-  such as why the tests are slow, runs check. Follow
-  [references/speed.md](references/speed.md).
+  with time budgets, and writes the tier commands into the agent instruction
+  files that exist (`CLAUDE.md`, `AGENTS.md`). Run it only when the user's
+  request asks for speed changes, such as "make the tests faster" or "speed
+  up CI". A question about speed, such as why the tests are slow, runs
+  check. Follow [references/speed.md](references/speed.md).
 
 When the user asks to prune or review tests, run check, and say that this
 version has no prune or review mode.

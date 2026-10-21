@@ -98,7 +98,9 @@ check budget", and recommend the speed mode.
 
 Repeat `--coverage-source` for each package. Run 2 records which lines
 each test runs (pytest-cov `--cov-context=test`). It sets
-`COVERAGE_CORE=ctrace`, because `sys.monitoring` loses per-test contexts.
+`COVERAGE_CORE=ctrace`, the C tracer of coverage.py. Under
+`sys.monitoring`, the default of coverage.py 7.9.1 and newer on Python 3.14
+or newer, coverage.py records a line only for the first test that runs it.
 It removes the project's pytest-cov options, except `--cov-config`, from
 `addopts` and `PYTEST_ADDOPTS` for this run, so that no coverage report
 goes into the project. Coverage contexts slow a run, so the timeout is
@@ -260,11 +262,10 @@ applies:
 4. **check** again after the next change, when no other rule applies. Say
    that the suite needs no lean-tests work now.
 
-This version of lean-tests has the check and speed modes. When the next
-mode is speed, say that the user can ask for it, for example with "make the
-tests faster": speed changes files only on request. When the next mode is
-review or prune, say that the mode is not available yet, and give its steps
-as work for the user.
+When the next mode is speed, say that the user can ask for it, for example
+with "make the tests faster": speed changes files only on request. When the
+next mode is not in the [modes list](../SKILL.md#modes), say that it is not
+available in this version, and give its steps as work for the user.
 
 When the scorecard is complete, remove the work directory:
 
