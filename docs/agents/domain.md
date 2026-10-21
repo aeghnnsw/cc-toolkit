@@ -7,7 +7,9 @@ Use one domain context for cc-toolkit. Agreed terms live in
 Before changing terminology or architecture, read the glossary if present
 and the relevant decision records. Use the glossary's terms consistently.
 If proposed work contradicts a decision, surface the conflict and resolve
-it explicitly before changing the documented policy.
+it explicitly before changing the documented policy. To replace a rule in an
+ADR, follow the superseded-note rule in
+[CONTRIBUTING.md](../../CONTRIBUTING.md#what-belongs-in-git).
 
 Keep implementation details in design documents and ADRs, and definitions
 in the glossary. Add an ADR for a consequential trade-off whose rationale

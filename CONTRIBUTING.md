@@ -69,10 +69,16 @@ the purposes of the plugin's skills, add the purpose of the new skill.
   can be bash or zsh. Write each block to run in both shells. Store an exit
   code in a name such as `rc`, because `status` is read-only in zsh. Pass a
   file list through `xargs` or a loop, because zsh does not split an
-  unquoted variable into words. Each tool call can start a new shell, so
-  keep state that later blocks need in a file. In a Claude copy, put code
-  that needs positional parameters in a script under the skill directory.
-  See [Argument placeholders](#argument-placeholders).
+  unquoted variable into words. Compare strings with one `=` in `[ ]`,
+  because zsh expands a word that starts with `=`, such as `==`. Read a file
+  into a variable before a redirection to the same file, because
+  `if ...; fi > file` empties the file before the condition runs. Each tool
+  call can start a new shell, so keep state that later blocks need in a
+  file. In a Claude copy, put code that needs positional parameters in a
+  script under the skill directory. See
+  [Argument placeholders](#argument-placeholders). For a test that runs a
+  skill's blocks in bash and zsh, see
+  `dev-skills/tests/test_pressure_test_models.py`.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
@@ -172,7 +178,8 @@ it. Use this form:
 When both hosts ship the same version, write
 `Claude Code and Codex <version>`. When the versions differ, write
 `Claude Code <version>, Codex <version>`. Start a change outside the
-plugin directories with `Repository:` and give no version.
+plugin directories with `Repository:` and give no version. Link the issue
+that the pull request closes; for a spec with tickets, link the ticket.
 
 ## What belongs in Git
 
@@ -195,12 +202,15 @@ current project, remove unused template assumptions, and add a pointer from
 the relevant instructions. An installed development skill's configuration
 belongs in Git when it expresses conventions shared by this repository.
 
-A design, plan, or conclusion under `docs/` records decisions as of when it
-was written, and later work can supersede part of it. Before relying on one,
+A design, plan, conclusion, or ADR under `docs/` records decisions as of
+when it was written, and later work can supersede part of it. Before relying on one,
 read any status or superseded note at its top, and confirm current behavior
 in the code it describes.
 When a change supersedes part of such a record, add a superseded note at
-its top. Name the date and the issue, and link the replacement.
+its top. Name the date and the issue, and link the replacement. In an ADR,
+also mark each replaced sentence and record the new rule with its reason in
+a new section; see ADR 0002 for an example. A change that only adds facts
+needs no note.
 
 Do not blanket-ignore `docs/`, `docs/agents/`, or `docs/adr/`. Git ignores
 control tracking; they do not define which files belong in a plugin package.
@@ -332,10 +342,11 @@ uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 't
 With a `python3` older than 3.11, the root tests load no test. They print
 this command and stop with exit status 1.
 
-When you change `allowed-models.json`, also run the `dev-skills` tests.
-`dev-skills/tests/test_critic_status.py` and
-`dev-skills/tests/test_codex_critic.py` read their critic model IDs from that
-file:
+When you change `allowed-models.json` or a pressure-test `SKILL.md`, also
+run the `dev-skills` tests. The pressure-test tests in `dev-skills/tests/`
+read their critic model IDs from `allowed-models.json`, and
+`test_pressure_test_models.py` runs the model blocks of both `SKILL.md`
+copies:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
