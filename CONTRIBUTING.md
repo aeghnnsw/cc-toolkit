@@ -41,6 +41,14 @@ A skill that ships to Claude Code and Codex has one copy per host:
 differences host-specific, such as tool names, invocation, and plugin-root
 paths.
 
+For an example pair, see `creator-skills/skills/sci-slides/` and
+`creator-skills/codex-skills/sci-slides/`;
+`creator-skills/tests/test_sci_slides.py` compares the two copies. A new
+skill also needs an entry in both [README.md](README.md) lists of its
+plugin: **Skills:** with a one-line description, and **Codex skills:** with
+its name. When the Codex manifest's `interface.longDescription` names the
+plugin's skills, add the new skill there.
+
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
   skill-creator validator rejects Claude-only keys. Run the skill-creator
