@@ -237,9 +237,14 @@ retained test, whose scenario is no distinct input class, and whose every
 checked property maps to an assertion in a retained test.
 _Avoid_: Useless test, dead test
 
+**Gate unit**:
+The change that the weakening gate checks as one whole. By default it is the
+whole range from the merge base of the base ref and the head ref to the head
+ref. With `--per-commit`, each commit is one gate unit.
+
 **Mixed change**:
-A commit, or the whole pull request when merges squash, that changes product
-code.
+A gate unit that changes product code.
+_Avoid_: Mixed unit
 
 **Test weakening**:
 A test-side change in a mixed change that can lower what existing tests
@@ -257,17 +262,20 @@ product code.
 A new test that passes when it runs against the base product code.
 
 **New-API test**:
-A new test that fails against the base product code before its assertions can
-run, for example at collection or import.
+A new test that fails against the base product code with a collection error,
+a setup error, or an exception other than an assertion failure.
 
 **Pinned requirement source**:
-The user's request, or a spec or issue text, recorded with a hash before
-implementation starts. Only such text can authorize the acceptance of a
+The user's request, or a spec or issue text, recorded with a SHA-256 hash
+before implementation starts. An acceptance reviewer needs one to accept a
 failing weakening-gate item.
+_Avoid_: Pinned source
 
 **Acceptance reviewer**:
-A human, or a fresh-context agent in an autonomous run, that may accept a
-failing weakening-gate item by quoting a pinned requirement source.
+A fresh-context agent in an autonomous run that may accept a failing
+weakening-gate item, only by quoting a whole sentence of a pinned
+requirement source. A human may also accept such an item, without a quote.
+The author of a change never accepts its own items.
 _Avoid_: Verifier
 
 ## Git policy language

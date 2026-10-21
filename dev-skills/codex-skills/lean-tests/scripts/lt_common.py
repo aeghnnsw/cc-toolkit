@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -64,6 +66,22 @@ def rel(path: Path, base: Path) -> str:
 
 def node_file(nodeid: str) -> str:
     return nodeid.split("::", 1)[0]
+
+
+def import_root(project: Path, path: str) -> str:
+    """The directory above the outermost package of a module, relative to the project."""
+    folder = (project / path).parent
+    while folder != project and (folder / "__init__.py").is_file():
+        folder = folder.parent
+    return rel(folder, project)
+
+
+def is_string_statement(node: ast.AST) -> bool:
+    return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def tail(text: str, count: int) -> list[str]:

@@ -53,9 +53,10 @@ a change alters the purpose of a skill, update that purpose in
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator rejects Claude-only keys. Run the skill-creator
-  validator on Codex copies only. Codex installs the skill-creator
-  validator at
+  skill-creator validator rejects Claude-only keys, a `description` longer
+  than 1024 characters, and a `description` that contains `<` or `>`. Run
+  the skill-creator validator on Codex copies only. Codex installs the
+  skill-creator validator at
   `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`.
   `CODEX_HOME` defaults to `~/.codex`. The skill-creator validator takes
   one skill directory as its argument. To supply its PyYAML dependency,
@@ -385,10 +386,11 @@ The `dev-skills` suite takes about 2 minutes, most of it in
 above the CPU count, the waits in that file grow with the load, and the
 suite takes longer. Give its command a timeout of at least 300 seconds (in
 Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
-seconds or run it as a background command. Test runs on one host slow each
-other. When you run agents in parallel, let one agent at a time run a full
-suite; the other agents run single test files until that suite ends. This
-command runs one file:
+seconds or run it as a background command. Start the full suite after your
+last edit; an edit made during the run needs a new run. Test runs on one
+host slow each other. When you run agents in parallel, let one agent at a
+time run a full suite; the other agents run single test files until that
+suite ends. This command runs one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
@@ -402,6 +404,26 @@ supplies both:
 ```bash
 uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
 ```
+
+The lean-tests scripts must run on Python 3.9. On macOS, `/usr/bin/python3`
+is Python 3.9; check it with `/usr/bin/python3 --version`. To run the
+lean-tests checks under Python 3.9, give that interpreter to `uv`:
+
+```bash
+uv run --no-project --python /usr/bin/python3 --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
+```
+
+`uv run` removes its environment when it exits, so an interpreter path that
+one `uv run` prints does not work in a later command. To run `lean_tests.py`
+by hand on a fixture:
+
+1. Write the commands in a script.
+2. In the script, pass `--python "$(which python)"` to `lean_tests.py`.
+3. Run the script:
+
+   ```bash
+   uv run --no-project --python '>=3.11' --with pytest --with pytest-cov bash <script>
+   ```
 
 When you raise the core-hooks Codex version, also change the version that
 `core-hooks/tests/test_codex_host_adapter.py` pins.

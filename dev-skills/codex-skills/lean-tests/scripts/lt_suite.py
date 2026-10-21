@@ -24,6 +24,8 @@ PROBE_TIMEOUT = 600
 SLOWEST = 10
 # pytest-cov options whose value is the next argument when they have no "=".
 COV_VALUE_OPTIONS = frozenset({"--cov-report", "--cov-fail-under", "--cov-context", "--cov-precision"})
+# Failures of a check: assert, unittest and mock assert methods, pytest.fail, and pytest.raises without a raise.
+CHECK_FAILURES = frozenset({"AssertionError", "Failed"})
 PROBE = """\
 import json
 found = {}
@@ -142,6 +144,13 @@ def pytest_env(records: Path, data_file: Path, roots: tuple[str, ...] = ()) -> d
     return env
 
 
+def copy_env(project: Path, records: Path, data_file: Path, roots: tuple[str, ...] = ()) -> dict:
+    """The pytest environment of a run outside the project; `uv run` there uses the project's environment."""
+    env = pytest_env(records, data_file, roots)
+    env.setdefault("UV_PROJECT", str(project))
+    return env
+
+
 def run_pytest(cmd: list[str], project: Path, env: dict, log: Path, timeout: float | None):
     """Run pytest with its output in `log`; return (exit code, timed out)."""
     with open(log, "w", encoding="utf-8") as out:
@@ -181,7 +190,7 @@ def stop(proc: subprocess.Popen) -> None:
 def read_records(path: Path) -> dict:
     found = {
         "rootdir": None, "pytest_version": None, "collected": None, "collection_seconds": None,
-        "collect_errors": [], "tests": {},
+        "collect_errors": [], "tests": {}, "fixtures": None,
     }
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -201,6 +210,8 @@ def read_records(path: Path) -> dict:
                 found["collected"] = record.get("nodeids") or []
             if record.get("seconds") is not None:
                 found["collection_seconds"] = round(record["seconds"], 6)
+            if record.get("fixtures") is not None:
+                found["fixtures"] = record["fixtures"]
         elif event == "collect-error":
             found["collect_errors"].append(record.get("nodeid"))
         elif event is None and "nodeid" in record:
@@ -230,30 +241,43 @@ def final_outcome(phases: dict) -> str:
     return "xpassed" if call["xfail"] else "passed"
 
 
-def pytest_command(args, python: list[str], versions: dict, project: Path, env: dict, work: Path) -> list[str]:
-    """The pytest command of a run, without the extra arguments. A coverage run also changes `env`."""
+def coverage_options(sources: list[str], python: list[str], project: Path, env: dict, work: Path) -> list[str]:
+    """The pytest options of a coverage run with per-test contexts. They also change `env`."""
+    # pytest-cov keeps a report or source that addopts requests, so the run leaves out those options.
+    addopts = ini_addopts(python, project, env, work / "addopts.json")
+    options = ["-o", "addopts=" + shlex.join(without_cov(addopts))]
+    if "PYTEST_ADDOPTS" in env:
+        env["PYTEST_ADDOPTS"] = shlex.join(without_cov(shlex.split(env["PYTEST_ADDOPTS"])))
+    # Under sys.monitoring (the default on Python 3.14+), a line records only the first test's context.
+    env["COVERAGE_CORE"] = "ctrace"
+    options += [f"--cov={source}" for source in sources]
+    return options + ["--cov-branch", "--cov-context=test", "--cov-report="]
+
+
+def pytest_command(
+    python: list[str], versions: dict, targets: list[str], argfile: Path, coverage: list[str] | None = None,
+    every_test: bool = False,
+) -> list[str]:
+    """The pytest command that runs `targets` with outcome records, without the extra arguments.
+
+    `coverage` holds the options of a coverage run; without them, the run
+    adds --no-cov when pytest-cov is installed. With `every_test`, a failing
+    module or test does not stop the run. On pytest 8.2 or newer, `argfile`
+    holds the targets.
+    """
     cmd = [*python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:randomly", "-p", "lean_tests_report"]
-    if args.coverage_source:
-        # pytest-cov keeps a report or source that addopts requests, so the run leaves out those options.
-        addopts = ini_addopts(python, project, env, work / "addopts.json")
-        cmd += ["-o", "addopts=" + shlex.join(without_cov(addopts))]
-        if "PYTEST_ADDOPTS" in env:
-            env["PYTEST_ADDOPTS"] = shlex.join(without_cov(shlex.split(env["PYTEST_ADDOPTS"])))
-        # Under sys.monitoring (the default on Python 3.14+), a line records only the first test's context.
-        env["COVERAGE_CORE"] = "ctrace"
-        cmd += [f"--cov={source}" for source in args.coverage_source]
-        cmd += ["--cov-branch", "--cov-context=test", "--cov-report="]
+    if every_test:
+        cmd += ["--continue-on-collection-errors", "--maxfail=0"]
+    if coverage is not None:
+        cmd += coverage
     elif versions.get("pytest_cov"):
         # Coverage that addopts starts would write its data and reports into the project.
         cmd.append("--no-cov")
-    if args.node_ids:
-        nodeids = read_node_ids(args.node_ids)
-        if version_tuple(versions["pytest"]) >= (8, 2):
-            argfile = work / "node-ids.txt"
-            argfile.write_text("".join(f"{n}\n" for n in nodeids), encoding="utf-8")
-            cmd.append(f"@{argfile}")
-        else:
-            cmd += nodeids
+    if targets and version_tuple(versions["pytest"]) >= (8, 2):
+        argfile.write_text("".join(f"{t}\n" for t in targets), encoding="utf-8")
+        cmd.append(f"@{argfile}")
+    else:
+        cmd += targets
     return cmd
 
 
@@ -311,7 +335,9 @@ def run_suite(args, extra: list[str]) -> dict:
         raise UsageError("the target interpreter cannot import pytest_cov", package="pytest-cov")
 
     before = git_status(project)
-    cmd = pytest_command(args, python, versions, project, env, work) + extra
+    options = coverage_options(args.coverage_source, python, project, env, work) if coverage else None
+    nodeids = read_node_ids(args.node_ids) if args.node_ids else []
+    cmd = pytest_command(python, versions, nodeids, work / "node-ids.txt", options) + extra
     start = time.perf_counter()
     exit_code, timed_out = run_pytest(cmd, project, env, log, args.timeout)
     wall = time.perf_counter() - start
@@ -369,6 +395,13 @@ def run_suite(args, extra: list[str]) -> dict:
         kind = "an internal error" if exit_code == 3 else "a usage error"
         result["error"] = f"pytest stopped with {kind} (exit code {exit_code}); see log_tail"
     return result
+
+
+def kill_type(test: dict) -> str | None:
+    """`assertion` when a check failed, `exception` for any other failure, None when the test did not fail."""
+    if test["outcome"] not in ("failed", "error"):
+        return None
+    return "assertion" if failure(test) in CHECK_FAILURES else "exception"
 
 
 def failure(test: dict) -> str | None:

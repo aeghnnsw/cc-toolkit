@@ -1446,6 +1446,594 @@ class MutateUsageTest(unittest.TestCase):
         self.assertIn("src/m.py", data["error"])
 
 
+GATE_CORE = """\
+def classify(n):
+    if n < 0:
+        return "negative"
+    return "non-negative"
+
+
+def total(qty, unit):
+    return qty * unit
+
+
+def discount(price, code):
+    if code == "gold":
+        return price - 3
+    return price
+"""
+
+GATE_TESTS = """\
+import pytest
+
+from calc.core import classify, discount, total
+from shared import SharedChecks
+
+try:
+    from math import isqrt
+except ImportError:  # before Python 3.8
+    isqrt = None
+
+
+def test_classify_negative():
+    assert classify(-1) == "negative"
+
+
+def test_classify_zero():
+    assert classify(0) == "non-negative"
+
+
+@pytest.mark.parametrize("n, expected", [(-2, "negative"), (5, "non-negative")])
+def test_classify_cases(n, expected):
+    assert classify(n) == expected
+
+
+@pytest.mark.parametrize("n", [1, 2])
+def test_double(n):
+    assert total(n, 2) == 2 * n
+
+
+def test_total():
+    assert total(3, 4) == 12
+
+
+def test_total_bound():
+    assert total(2, 2) <= 4
+
+
+def test_discount_plain():
+    assert discount(10, "none") == 10
+
+
+class TestShared:
+    def expected(self):
+        return "non-negative"
+
+    def test_shared(self):
+        assert classify(3) == self.expected()
+
+
+class TestChild(TestShared):
+    "Runs the shared tests again."
+
+
+class TestImported(SharedChecks):
+    "Runs the checks of tests/shared.py."
+"""
+
+# A helper module: the gate cannot read the names that TestImported inherits from it.
+GATE_SHARED = """\
+from calc.core import classify
+
+
+class SharedChecks:
+    def test_classify_shared(self):
+        assert classify(4) == "non-negative"
+"""
+
+GATE_FILES = {
+    "pyproject.toml": '[tool.pytest.ini_options]\ntestpaths = ["tests"]\npythonpath = ["src"]\n',
+    "src/calc/__init__.py": "",
+    "src/calc/core.py": GATE_CORE,
+    "tests/shared.py": GATE_SHARED,
+    "tests/test_core.py": GATE_TESTS,
+}
+GATE = "tests/test_core.py::"
+
+
+def edited(text: str, *pairs: str) -> str:
+    """`text` with each (old, new) pair of `pairs` replaced once."""
+    for old, new in zip(pairs[0::2], pairs[1::2]):
+        assert text.count(old) == 1, old
+        text = text.replace(old, new)
+    return text
+
+
+# A product change that keeps every base test passing, so the gate unit is a mixed change.
+PRODUCT_EDIT = {"src/calc/core.py": GATE_CORE + "\n\ndef double(n):\n    return 2 * n\n"}
+# Each case is one branch from the base commit with PRODUCT_EDIT and this version of tests/test_core.py.
+GATE_CASES = {
+    "self-comparison": edited(GATE_TESTS, "    assert total(3, 4) == 12", "    actual = total(3, 4)\n    assert actual == actual"),
+    "autouse": GATE_TESTS + "\n\n@pytest.fixture(autouse=True)\ndef reset_state():\n    yield\n",
+    "walrus": edited(GATE_TESTS, "    assert total(n, 2) == 2 * n", "    assert (n := 0) == 0\n    assert total(n, 2) == 2 * n"),
+    "rebinding": GATE_TESTS + "\n\ndef test_total():\n    assert total(0, 4) == 0\n",
+    "removed": edited(GATE_TESTS, 'def test_classify_negative():\n    assert classify(-1) == "negative"\n\n\n', ""),
+    "skip": edited(GATE_TESTS, "def test_total():", '@pytest.mark.skip(reason="slow")\ndef test_total():'),
+    "expected-literal": edited(GATE_TESTS, '== "negative"\n\n\ndef test_classify_zero', '== "neg"\n\n\ndef test_classify_zero'),
+    "two-literals": edited(GATE_TESTS, 'classify(-1) == "negative"', 'classify(-5) == "neg"'),
+    "bound": edited(GATE_TESTS, "total(2, 2) <= 4", "total(2, 2) <= 5"),
+    "appended": edited(GATE_TESTS, '(5, "non-negative")])', '(5, "non-negative"), (7, "non-negative")])'),
+    "new-tests": GATE_TESTS + "\n\ndef test_total_zero():\n    assert total(0, 4) == 0\n",
+    "guarded": GATE_TESTS + "\n\ndef isqrt(n):\n    return int(n ** 0.5)\n",
+    "override": edited(GATE_TESTS, "again.\"\n", "again.\"\n\n    def test_shared(self):\n        assert True\n"),
+    "imported-override": edited(
+        GATE_TESTS, "shared.py.\"\n", "shared.py.\"\n\n    def test_classify_shared(self):\n        assert True\n",
+    ),
+    "inherited-helper": edited(GATE_TESTS, "again.\"\n", "again.\"\n\n    def expected(self):\n        return classify(3)\n"),
+    "builtin": GATE_TESTS + "\n\ndef sum(values):\n    return 0\n",
+    "alias-autouse": edited(GATE_TESTS, "import pytest\n", "import pytest\nfrom pytest import fixture as fx\n")
+    + '\n\n@fx(autouse=True)\ndef skip_all():\n    pytest.skip("off")\n',
+    "computed-name": GATE_TESTS + '\n\nNAME = "tmp_path"\n\n\n@pytest.fixture(name=NAME)\ndef scratch():\n    return None\n',
+    "plugin-fixture": GATE_TESTS + "\n\n@pytest.fixture\ndef linecomp():\n    return None\n",
+    "xunit": GATE_TESTS + '\n\ndef setup_function():\n    pytest.skip("off")\n',
+    "xunit-method": edited(
+        GATE_TESTS, "    def test_shared(self):\n", '    def setup_method(self):\n        pytest.skip("off")\n\n    def test_shared(self):\n',
+    ),
+    "skip-helper": GATE_TESTS + '\n\ndef offline():\n    pytest.skip("offline")\n',
+    "import-alias-write": GATE_TESTS + (
+        "\n\ndef test_patched():\n    import calc.core as core\n    core.discount = lambda price, code: price\n"
+        '    assert core.discount(5, "gold") == 5\n'
+    ),
+    "dunder-test": edited(GATE_TESTS, "class TestShared:\n", "class TestShared:\n    __test__ = False\n\n"),
+}
+
+
+# The product code of g1: a guard in total, and parse_qty.
+G1_CORE = edited(
+    GATE_CORE, "def total(qty, unit):\n", 'def total(qty, unit):\n    if qty < 0:\n        raise ValueError("qty must not be negative")\n',
+) + "\n\ndef parse_qty(text):\n    return int(text)\n"
+
+
+class GateRepo:
+    """A Git project with a base commit and one branch per gate case.
+
+    `g1` adds a guard and parse_qty to the product code, appends a literal
+    case that keeps the existing node IDs, and adds four new tests: one that
+    fails on base with an assertion (catching), one in a module that cannot
+    import at base (new-API), and two that pass on base (hardening).
+    test_discount_gold reaches a branch that no base test covers;
+    test_total_large covers only lines that test_total covers. `g2` makes
+    classify(0) return "zero", changes the expected value of
+    test_classify_zero to match, and appends a duplicate case to
+    test_double, which renames its node ID test_double[2]. The work tree
+    ends on g1.
+    """
+
+    _instance: GateRepo | None = None
+
+    @classmethod
+    def get(cls) -> GateRepo:
+        if cls._instance is None:
+            cls._instance = cls()
+            unittest.addModuleCleanup(cls._instance._tmp.cleanup)
+        return cls._instance
+
+    def __init__(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.root = self.tmp / "proj"
+        self.work = self.tmp / "work"
+        self.env = git_env(self.tmp)
+        self.commit("base", GATE_FILES, new=True)
+        git(self.root, self.env, "tag", "base")
+        for name, tests in GATE_CASES.items():
+            self.branch(name, {**PRODUCT_EDIT, "tests/test_core.py": tests})
+        self.branch("test-only", {"tests/test_core.py": GATE_CASES["expected-literal"]})
+        self.branch("test-only-new", {"tests/test_core.py": GATE_CASES["new-tests"]})
+        self.branch("package-doc", {
+            "tests/test_core.py": GATE_CASES["removed"], "README.md": "# calc\n", "src/calc/template.md": "Total: {}\n",
+        })
+        self.branch("per-commit", {"tests/test_core.py": GATE_CASES["expected-literal"]}, stay=True)
+        self.commit("product", PRODUCT_EDIT)
+        git(self.root, self.env, "checkout", "-q", "base")
+        self.branch("conftest", {**PRODUCT_EDIT, "tests/conftest.py": "import pytest\n"})
+        self.branch("config", {
+            **PRODUCT_EDIT,
+            "pyproject.toml": GATE_FILES["pyproject.toml"] + "addopts = [\"-k\", \"not total\"]\n",
+        })
+        self.branch("g2", {
+            "src/calc/core.py": edited(GATE_CORE, '        return "negative"\n', '        return "negative"\n    if n == 0:\n        return "zero"\n'),
+            "tests/test_core.py": edited(GATE_TESTS, 'classify(0) == "non-negative"', 'classify(0) == "zero"', "[1, 2])", "[1, 2, 2])"),
+        })
+        self.branch("g1", {
+            "src/calc/core.py": G1_CORE,
+            "tests/test_core.py": GATE_CASES["appended"] + (
+                "\n\ndef test_total_rejects_negative():\n    with pytest.raises(ValueError):\n        total(-1, 2)\n"
+                "\n\ndef test_total_large():\n    assert total(1000, 3) == 3000\n"
+                '\n\ndef test_discount_gold():\n    assert discount(10, "gold") == 7\n'
+            ),
+            "tests/test_parse.py": 'from calc.core import parse_qty\n\n\ndef test_parse_qty():\n    assert parse_qty("3") == 3\n',
+        }, stay=True)
+
+    def commit(self, message: str, files: dict[str, str], new: bool = False) -> None:
+        if new:
+            git(self.tmp, self.env, "init", "-q", str(self.root))
+        for name, text in files.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        git(self.root, self.env, "add", *files)
+        git(self.root, self.env, "commit", "-q", "-m", message)
+
+    def branch(self, name: str, files: dict[str, str], stay: bool = False) -> None:
+        git(self.root, self.env, "checkout", "-q", "-b", name, "base")
+        self.commit(name, files)
+        if not stay:
+            git(self.root, self.env, "checkout", "-q", "base")
+
+    def gate(self, head: str, *args: str) -> tuple[int, dict, str]:
+        return run_cli("gate", "--project", str(self.root), "--base", "base", "--head", head, *args, env=self.env)
+
+    def run_gate(self, head: str, *extra: str) -> tuple[int, dict, str]:
+        """The gate with pytest runs; `extra` holds pytest arguments for each run."""
+        tail = ["--", *extra] if extra else []
+        return self.gate(head, "--python", sys.executable, "--work-dir", str(self.work / head), *tail)
+
+
+def gate_items(data: dict) -> list[tuple]:
+    return [(i["class"], i["subtype"], i["nodeid"]) for unit in data["units"] for i in unit["items"]]
+
+
+class GateStaticTest(unittest.TestCase):
+    """Layer 2 of the gate classifies each test-side change of a unit from the syntax trees."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.repo = GateRepo.get()
+
+    def static(self, head: str, *args: str) -> tuple[int, dict]:
+        code, data, stderr = self.repo.gate(head, "--static-only", *args)
+        self.assertIn(code, (0, 1), stderr)
+        return code, data
+
+    def assert_fails_with(self, head: str, cls: str, subtype: str, name: str | None, status: str = "fail") -> dict:
+        """Assert that the gate fails the mixed change `head` with one item other than SAFE, and return that item."""
+        code, data = self.static(head)
+        self.assertEqual(code, 1)
+        self.assertFalse(data["summary"]["passed"])
+        unit = data["units"][0]
+        self.assertTrue(unit["mixed"])
+        self.assertEqual(unit["status"], status)
+        found = [i for i in unit["items"] if i["class"] != "SAFE"]
+        nodeid = GATE + name if name else None
+        self.assertEqual([(i["class"], i["subtype"], i["nodeid"]) for i in found], [(cls, subtype, nodeid)])
+        return found[0]
+
+    def test_self_comparison_in_an_existing_test_is_weakening(self) -> None:
+        self.assert_fails_with("self-comparison", "WEAKENING", "self-comparison", "test_total")
+
+    def test_new_autouse_fixture_is_unclassified(self) -> None:
+        found = self.assert_fails_with("autouse", "UNCLASSIFIED", "signal", "reset_state")
+        self.assertIn("autouse fixture reset_state", found["detail"])
+
+    def test_walrus_assertion_added_inside_an_existing_test_is_unclassified(self) -> None:
+        self.assert_fails_with("walrus", "UNCLASSIFIED", "changed-definition", "test_double")
+
+    def test_same_name_rebinding_is_unclassified(self) -> None:
+        found = self.assert_fails_with("rebinding", "UNCLASSIFIED", "rebinding", "test_total")
+        self.assertIn("assert total(0, 4) == 0", found["diff"])
+
+    def test_removed_test_is_weakening(self) -> None:
+        self.assert_fails_with("removed", "WEAKENING", "removed-test", "test_classify_negative")
+
+    def test_new_skip_marker_is_weakening(self) -> None:
+        self.assert_fails_with("skip", "WEAKENING", "skip", "test_total")
+
+    def test_one_changed_literal_operand_of_an_equality_is_expected_literal(self) -> None:
+        found = self.assert_fails_with("expected-literal", "WEAKENING", "expected-literal", "test_classify_negative")
+        self.assertEqual((found["old"], found["new"]), ('"negative"', '"neg"'))
+
+    def test_a_second_changed_literal_is_not_expected_literal(self) -> None:
+        self.assert_fails_with("two-literals", "WEAKENING", "changed-assert", "test_classify_negative")
+
+    def test_inequality_bound_change_is_not_expected_literal(self) -> None:
+        self.assert_fails_with("bound", "WEAKENING", "changed-assert", "test_total_bound")
+
+    def test_appended_cases_without_collection_evidence_need_evidence(self) -> None:
+        self.assert_fails_with(
+            "appended", "UNCLASSIFIED", "no-collection-evidence", "test_classify_cases", status="needs evidence",
+        )
+
+    def test_binding_inside_a_try_block_counts_for_the_binding_rule(self) -> None:
+        self.assert_fails_with("guarded", "UNCLASSIFIED", "rebinding", "isqrt")
+
+    def test_new_test_that_replaces_an_inherited_test_of_the_module_is_rebinding(self) -> None:
+        found = self.assert_fails_with("override", "UNCLASSIFIED", "rebinding", "TestChild::test_shared")
+        self.assertIn("from a base class", found["detail"])
+
+    def test_new_test_in_a_subclass_of_an_imported_class_needs_collection_evidence(self) -> None:
+        self.assert_fails_with(
+            "imported-override", "UNCLASSIFIED", "no-collection-evidence", "TestImported::test_classify_shared",
+            status="needs evidence",
+        )
+
+    def test_new_method_that_replaces_an_inherited_helper_is_rebinding(self) -> None:
+        found = self.assert_fails_with("inherited-helper", "UNCLASSIFIED", "rebinding", "TestChild::expected")
+        self.assertIn("binds expected", found["detail"])
+
+    def test_new_definition_that_replaces_a_builtin_is_rebinding(self) -> None:
+        found = self.assert_fails_with("builtin", "UNCLASSIFIED", "rebinding", "sum")
+        self.assertIn("from the builtins", found["detail"])
+
+    def test_fixture_decorator_through_an_import_alias_is_a_signal(self) -> None:
+        found = self.assert_fails_with("alias-autouse", "UNCLASSIFIED", "signal", "skip_all")
+        self.assertIn("autouse fixture skip_all", found["detail"])
+
+    def test_fixture_name_from_an_expression_is_a_signal(self) -> None:
+        found = self.assert_fails_with("computed-name", "UNCLASSIFIED", "signal", "scratch")
+        self.assertIn("takes its name from an expression", found["detail"])
+
+    def test_new_fixture_needs_collection_evidence_without_a_run(self) -> None:
+        found = self.assert_fails_with(
+            "plugin-fixture", "UNCLASSIFIED", "no-collection-evidence", "linecomp", status="needs evidence",
+        )
+        self.assertEqual(found["fixtures"], ["linecomp"])
+
+    def test_new_xunit_function_or_method_is_a_signal(self) -> None:
+        found = self.assert_fails_with("xunit", "UNCLASSIFIED", "signal", "setup_function")
+        self.assertIn("xunit setup or teardown function setup_function", found["detail"])
+        self.assert_fails_with("xunit-method", "UNCLASSIFIED", "signal", "TestShared::setup_method")
+
+    def test_skip_call_in_a_new_definition_is_weakening(self) -> None:
+        self.assert_fails_with("skip-helper", "WEAKENING", "skip", "offline")
+
+    def test_attribute_write_through_an_import_alias_is_a_signal(self) -> None:
+        found = self.assert_fails_with("import-alias-write", "UNCLASSIFIED", "signal", "test_patched")
+        self.assertIn("non-local name core", found["detail"])
+
+    def test_new_dunder_test_binding_is_a_skip(self) -> None:
+        found = self.assert_fails_with("dunder-test", "WEAKENING", "skip", None)
+        self.assertIn("__test__", found["detail"])
+
+    def test_documentation_inside_a_product_package_is_product_code(self) -> None:
+        code, data = self.static("package-doc")
+        self.assertEqual(code, 1)
+        self.assertEqual(data["units"][0]["product_files"], ["src/calc/template.md"])
+        self.assertEqual(gate_items(data), [("WEAKENING", "removed-test", GATE + "test_classify_negative")])
+
+    def test_conftest_and_configuration_edits(self) -> None:
+        self.assertEqual(gate_items(self.static("conftest")[1]), [("UNCLASSIFIED", "conftest", None)])
+        code, data = self.static("config")
+        self.assertEqual(code, 1)
+        self.assertEqual(gate_items(data), [("WEAKENING", "config-deselect", None)])
+        self.assertEqual(data["units"][0]["product_files"], ["src/calc/core.py"])
+
+    def test_mixed_change_that_only_adds_test_functions_passes(self) -> None:
+        code, data = self.static("new-tests")
+        self.assertEqual(code, 0)
+        self.assertTrue(data["summary"]["passed"])
+        self.assertEqual(data["units"][0]["status"], "pass")
+        self.assertEqual(gate_items(data), [("SAFE", "new-test", GATE + "test_total_zero")])
+
+    def test_test_only_change_with_only_new_tests_needs_evidence(self) -> None:
+        code, data = self.static("test-only-new")
+        self.assertEqual(code, 0)
+        self.assertEqual(data["units"][0]["status"], "needs evidence")
+        self.assertEqual(gate_items(data), [("SAFE", "new-test", GATE + "test_total_zero")])
+
+    def test_test_only_change_needs_evidence(self) -> None:
+        code, data = self.static("test-only")
+        self.assertEqual(code, 0)
+        unit = data["units"][0]
+        self.assertFalse(unit["mixed"])
+        self.assertEqual(unit["status"], "needs evidence")
+        self.assertEqual(data["summary"]["needs_evidence_units"], 1)
+        self.assertEqual(gate_items(data), [("WEAKENING", "expected-literal", GATE + "test_classify_negative")])
+
+    def test_whole_range_is_one_unit_unless_per_commit(self) -> None:
+        code, data = self.static("per-commit")
+        self.assertEqual(code, 1)
+        self.assertEqual([u["status"] for u in data["units"]], ["fail"])
+        code, data = self.static("per-commit", "--per-commit")
+        self.assertEqual(code, 0)
+        self.assertEqual([(u["subject"], u["status"]) for u in data["units"]], [
+            ("per-commit", "needs evidence"), ("product", "pass"),
+        ])
+
+    def test_item_ids_and_the_unit_diff_hash(self) -> None:
+        _, data = self.static("skip")
+        unit = data["units"][0]
+        self.assertEqual([i["id"] for i in unit["items"]], ["u1-i1"])
+        diff = git(self.repo.root, self.repo.env, "diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index",
+                   "--binary", data["summary"]["merge_base"], data["summary"]["head_sha"])
+        self.assertEqual(unit["diff_sha256"], hashlib.sha256(diff.encode("utf-8")).hexdigest())
+
+    def test_gate_without_python_needs_static_only(self) -> None:
+        code, data, _ = self.repo.gate("skip")
+        self.assertEqual(code, 2)
+        self.assertIn("--static-only", data["error"])
+
+
+@needs_pytest
+class GateRunTest(unittest.TestCase):
+    """The gate's pytest runs in a temporary worktree: replay, collection evidence, and the new-test labels."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.repo = GateRepo.get()
+        cls.before = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
+        cls.passing = cls.repo.run_gate("g1")
+        cls.failing = cls.repo.run_gate("g2")
+        cls.override = cls.repo.run_gate("imported-override")
+        # -p pytester adds plugin fixtures, linecomp among them, that no test-side file defines.
+        cls.plugin = cls.repo.run_gate("plugin-fixture", "-p", "pytester")
+        cls.after = {k: v for k, v in tree_state(cls.repo.root).items() if not k.startswith(".git")}
+
+    def test_mixed_change_with_new_tests_and_appended_cases_that_keep_ids_passes(self) -> None:
+        code, data, stderr = self.passing
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(data["units"][0]["status"], "pass")
+        self.assertEqual(sorted(gate_items(data)), sorted([
+            ("SAFE", "appended-cases", GATE + "test_classify_cases"),
+            ("SAFE", "new-test", GATE + "test_total_rejects_negative"),
+            ("SAFE", "new-test", GATE + "test_total_large"),
+            ("SAFE", "new-test", GATE + "test_discount_gold"),
+            ("SAFE", "new-import", None),
+            ("SAFE", "new-test", "tests/test_parse.py::test_parse_qty"),
+        ]))
+
+    def test_new_tests_are_labeled_by_a_run_against_the_base_product_code(self) -> None:
+        labels = {entry["nodeid"]: entry["label"] for entry in self.passing[1]["new_tests"]}
+        self.assertEqual(labels, {
+            GATE + "test_classify_cases[7-non-negative]": "hardening",
+            GATE + "test_total_rejects_negative": "catching",
+            GATE + "test_total_large": "hardening",
+            GATE + "test_discount_gold": "hardening",
+            "tests/test_parse.py::test_parse_qty": "new-API",
+        })
+        listed = Path(self.passing[1]["files"]["new_tests"]).read_text(encoding="utf-8").split()
+        self.assertEqual(sorted(listed), sorted(labels))
+
+    def test_layer_1_lists_a_base_test_that_fails_against_the_head_product_code(self) -> None:
+        code, data, stderr = self.failing
+        self.assertEqual(code, 1, stderr)
+        changed = [i for i in data["units"][0]["items"] if i["class"] == "BEHAVIOR CHANGE"]
+        self.assertEqual([(i["nodeid"], i["outcome"], i["exception"]) for i in changed], [
+            (GATE + "test_classify_zero", "failed", "AssertionError"),
+        ])
+
+    def test_appended_case_that_renames_an_existing_id_is_weakening(self) -> None:
+        items = {i["subtype"]: i for i in self.failing[1]["units"][0]["items"]}
+        self.assertEqual(items["missing-node-id"]["nodeid"], GATE + "test_double")
+        self.assertEqual(items["missing-node-id"]["missing"], [GATE + "test_double[2]"])
+        self.assertEqual(items["expected-literal"]["class"], "WEAKENING")
+        self.assertEqual(sorted(i["class"] for i in items.values()), ["BEHAVIOR CHANGE", "WEAKENING", "WEAKENING"])
+
+    def test_renamed_cases_are_no_new_tests(self) -> None:
+        self.assertEqual(self.failing[1]["new_tests"], [])
+        self.assertEqual(Path(self.failing[1]["files"]["new_tests"]).read_text(encoding="utf-8"), "")
+
+    def test_new_test_with_a_node_id_that_the_base_collected_is_not_safe(self) -> None:
+        code, data, stderr = self.override
+        self.assertEqual(code, 1, stderr)
+        self.assertEqual(gate_items(data), [
+            ("UNCLASSIFIED", "existing-node-id", GATE + "TestImported::test_classify_shared"),
+        ])
+        self.assertEqual(data["new_tests"], [])
+
+    def test_new_fixture_with_the_name_of_a_plugin_fixture_is_a_signal(self) -> None:
+        code, data, stderr = self.plugin
+        self.assertEqual(code, 1, stderr)
+        self.assertEqual(data["units"][0]["status"], "fail")
+        self.assertEqual(gate_items(data), [("UNCLASSIFIED", "signal", GATE + "linecomp")])
+        self.assertIn("pytest reports at base", data["units"][0]["items"][0]["detail"])
+
+    def test_gate_leaves_the_project_unchanged_and_removes_its_worktree(self) -> None:
+        self.assertEqual(self.after, self.before)
+        listing = git(self.repo.root, self.repo.env, "worktree", "list", "--porcelain")
+        self.assertEqual(listing.count("worktree "), 1)
+        self.assertFalse((self.repo.work / "g1" / "gate" / "worktree").exists())
+
+
+# The node IDs of the new tests of g1, from the design of GateRepo.
+G1_NEW_TESTS = [
+    GATE + "test_classify_cases[7-non-negative]",
+    GATE + "test_total_rejects_negative",
+    GATE + "test_total_large",
+    GATE + "test_discount_gold",
+    "tests/test_parse.py::test_parse_qty",
+]
+
+
+@needs_pytest
+class MutateReviewTest(unittest.TestCase):
+    """mutate with --base and --new-tests mutates the review lines and gives each new test its admission verdict."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        repo = GateRepo.get()
+        work = repo.work / "review"
+        scope = work / "scope.json"
+        code, _, stderr = run_cli(
+            "suite", "--python", sys.executable, "--project", str(repo.root), "--work-dir", str(work),
+            "--label", "scope", "--coverage-source", "calc", "--out", str(scope), env=repo.env,
+        )
+        assert code == 0, stderr
+        new_tests = work / "new-tests.txt"
+        new_tests.write_text("".join(f"{n}\n" for n in G1_NEW_TESTS), encoding="utf-8")
+        output = work / "review.json"
+        cls.code, _, cls.stderr = run_cli(
+            "mutate", "--python", sys.executable, "--suite", str(scope), "--work-dir", str(work), "--workers", "3",
+            "--base", "base", "--new-tests", str(new_tests), "--out", str(output), env=repo.env,
+        )
+        cls.data = json.loads(output.read_text(encoding="utf-8")) if output.is_file() else {}
+
+    def test_mutants_stay_on_changed_lines_and_lines_only_new_tests_cover(self) -> None:
+        self.assertEqual(self.code, 0, self.stderr)
+        lines = {line_of(G1_CORE, s) for s in ("if qty < 0", "raise ValueError", "return price - 3", "return int(text)")}
+        self.assertTrue({m["line"] for m in self.data["mutants"]} <= set(self.data["review_lines"]["src/calc/core.py"]))
+        self.assertEqual({m["line"] for m in self.data["mutants"]}, lines)
+
+    def test_admission_accepts_a_new_test_only_with_a_kill_no_existing_test_makes(self) -> None:
+        verdicts = {entry["nodeid"]: entry["verdict"] for entry in self.data["admission"]}
+        self.assertEqual(verdicts, {
+            GATE + "test_classify_cases[7-non-negative]": "no unique kill",
+            GATE + "test_total_rejects_negative": "accept",
+            GATE + "test_total_large": "no unique kill",
+            GATE + "test_discount_gold": "accept",
+            "tests/test_parse.py::test_parse_qty": "accept",
+        })
+        self.assertEqual(self.data["summary"]["review"]["verdicts"], {"accept": 3, "no unique kill": 2})
+
+
+class PinTest(unittest.TestCase):
+    """pin records SHA-256 hashes of the requirement sources, and checks them and a quote later."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.request = self.tmp / "request.txt"
+        self.request.write_text("Make classify(0) return zero.\nKeep the other\nlabels.\n", encoding="utf-8")
+        self.issue = self.tmp / "issue.txt"
+        self.issue.write_text("Issue 7: zero is its own class.\n", encoding="utf-8")
+        self.record = self.tmp / "pins.json"
+        self.code, self.data, self.stderr = run_cli(
+            "pin", "--record", str(self.record), "--source", f"request={self.request}", "--source", f"issue={self.issue}"
+        )
+
+    def test_records_the_sha256_of_each_source(self) -> None:
+        self.assertEqual(self.code, 0, self.stderr)
+        expected = {
+            "request": hashlib.sha256(self.request.read_bytes()).hexdigest(),
+            "issue": hashlib.sha256(self.issue.read_bytes()).hexdigest(),
+        }
+        self.assertEqual(self.data["summary"]["sha256"], expected)
+        record = json.loads(self.record.read_text(encoding="utf-8"))
+        self.assertEqual({s["name"]: s["text"] for s in record["sources"]}["request"], self.request.read_text())
+
+    def test_never_overwrites_a_record(self) -> None:
+        code, data, _ = run_cli("pin", "--record", str(self.record), "--source", f"request={self.request}")
+        self.assertEqual(code, 2)
+        self.assertIn("exists", data["error"])
+
+    def test_check_finds_a_quote_across_line_breaks(self) -> None:
+        code, data, _ = run_cli("pin", "--check", str(self.record), "--quote", "Keep the other labels.")
+        self.assertEqual(code, 0)
+        self.assertEqual(data["summary"]["quote_found_in"], ["request"])
+        code, data, _ = run_cli("pin", "--check", str(self.record), "--quote", "Make classify(0) return None.")
+        self.assertEqual(code, 1)
+        self.assertEqual(data["summary"]["quote_found_in"], [])
+
+    def test_check_fails_when_a_pinned_text_changed(self) -> None:
+        record = json.loads(self.record.read_text(encoding="utf-8"))
+        record["sources"][1]["text"] = "Issue 7: zero is negative.\n"
+        self.record.write_text(json.dumps(record), encoding="utf-8")
+        code, data, _ = run_cli("pin", "--check", str(self.record))
+        self.assertEqual(code, 1)
+        self.assertEqual(data["summary"]["changed"], ["issue"])
+
+
 def runtime_unions(tree: ast.Module) -> list[int]:
     """Lines where `X | Y` of types is evaluated when the code runs, which needs Python 3.10."""
     postponed = any(
@@ -1512,7 +2100,7 @@ class HostParityTest(unittest.TestCase):
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
         self.assertEqual(fields["codex"]["name"], "lean-tests")
         self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual(fields["claude"]["version"], "1.2.0")
+        self.assertEqual(fields["claude"]["version"], "1.3.0")
         self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
 
     def test_references_and_scripts_match(self) -> None:
@@ -1520,6 +2108,9 @@ class HostParityTest(unittest.TestCase):
         codex = supporting_files(HOST_SKILLS["codex"])
         self.assertIn("references/check.md", sorted(claude))
         self.assertIn("references/speed.md", sorted(claude))
+        self.assertIn("references/review.md", sorted(claude))
+        self.assertIn("scripts/lt_gate.py", sorted(claude))
+        self.assertIn("scripts/lt_pin.py", sorted(claude))
         self.assertIn("scripts/lean_tests.py", sorted(claude))
         self.assertEqual(sorted(claude), sorted(codex))
         for name in claude:
