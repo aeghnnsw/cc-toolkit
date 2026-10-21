@@ -99,6 +99,10 @@ install the project into a shared environment.
   worktree, Claude Code reads the local file at the main checkout's root.
 - Agents use absolute store paths in commands, not in tracked files, and
   never `cd` into the store.
+- These keys and file locations come from the Claude Code and Codex
+  documentation. A write from a live sandbox was not tested. The Codex
+  entry in `~/.codex/config.toml` applies to every Codex session on the
+  machine.
 
 ### Where the store lives
 
@@ -121,9 +125,10 @@ Do not ignore tool output folders such as `outputs/`, `multirun/`,
 writes there by mistake, the folder shows as untracked. The run is then
 marked dirty, and `git worktree remove` refuses to delete the folder.
 
-Set up adds `testpaths = ["tests"]` to `pyproject.toml`, so that a plain
-`pytest` does not collect the tests of other worktrees. The other
-settings below keep tests and type checks out of worktrees and the store:
+The skill's Set up mode adds `testpaths = ["tests"]` to
+`pyproject.toml`, so that a plain `pytest` does not collect the tests of
+other worktrees. The other settings below keep tests and type checks out
+of worktrees and the store:
 
 ```toml
 [tool.pytest.ini_options]
@@ -348,3 +353,9 @@ garbage collection.
   faster than the issue count.
 - A number above 999 is written in full (`1234-<slug>`). It then lists
   before `999-<slug>`.
+
+### The `paths` module
+
+Each project has its own copy of `src/myproj/paths.py`. A later fix to
+the skill's template does not reach it. To take a fix, copy the new
+template and replace the package name again.

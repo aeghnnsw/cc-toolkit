@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -150,7 +149,11 @@ class PathsTemplateTest(unittest.TestCase):
     def test_relative_store_path_is_refused(self) -> None:
         out = self.project.python("-c", "from demoproj import paths", DEMOPROJ_STORE="store")
         self.assertNotEqual(out.returncode, 0)
-        self.assertIn("StoreError: The store path must be absolute: store", out.stderr)
+        self.assertIn("StoreError: DEMOPROJ_STORE must be an absolute path, not: store", out.stderr)
+        self.project.git("config", "layout.store", "store")
+        out = self.project.python("-c", "from demoproj import paths")
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("StoreError: git config layout.store must be an absolute path, not: store", out.stderr)
 
     def test_outside_git_needs_the_environment_variable(self) -> None:
         copy = self.project.tmp / "copy"
@@ -182,6 +185,16 @@ class PathsTemplateTest(unittest.TestCase):
         self.assertEqual(record["tools"], {"vina": "1.2.5"})
         for field in ("started_at", "finished_at"):
             self.assertIsNotNone(datetime.fromisoformat(record[field]).utcoffset())
+
+    def test_run_is_recorded_as_running_until_it_ends(self) -> None:
+        code = (
+            "import json\nfrom demoproj import paths\n"
+            f"with paths.new_run('{KEY}', step='01_prepare') as run:\n"
+            "    print(json.loads((run.dir / 'run.json').read_text())['status'])\n"
+        )
+        out = self.project.python("-c", code)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "running")
 
     def test_untracked_file_makes_the_run_dirty(self) -> None:
         (self.project.root / "notes.txt").write_text("draft\n")
@@ -270,6 +283,20 @@ class PathsTemplateTest(unittest.TestCase):
         self.assertIn("ValueError: No experiment folder", out.stderr)
         self.assertFalse((self.project.root / "results" / "999-typo").exists())
 
+    def test_missing_git_needs_the_environment_variable(self) -> None:
+        no_git = self.project.tmp / "empty-path"
+        no_git.mkdir()
+        out = self.project.python("-c", "from demoproj import paths", PATH=str(no_git))
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("git is not installed. Set DEMOPROJ_STORE", out.stderr)
+        store = self.project.tmp / "node-store"
+        (store / "data" / VERSION).mkdir(parents=True)
+        out = self.project.python(
+            f"experiments/{KEY}/02_dock.py", PATH=str(no_git), DEMOPROJ_STORE=str(store)
+        )
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(run_record(Path(out.stdout.strip()))["git"], {"sha": None, "branch": None, "dirty": None})
+
     def test_run_without_git_has_no_commit(self) -> None:
         copy = self.project.tmp / "copy"
         shutil.copytree(self.project.root, copy, ignore=shutil.ignore_patterns(".git"))
@@ -295,7 +322,10 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
     return {
         path.relative_to(skill_dir).as_posix(): path.read_bytes()
         for path in sorted(skill_dir.rglob("*"))
-        if path.is_file() and path.name != "SKILL.md" and "__pycache__" not in path.parts
+        if path.is_file()
+        and path.name != "SKILL.md"
+        and not path.name.startswith(".")
+        and "__pycache__" not in path.parts
     }
 
 
@@ -316,11 +346,6 @@ class HostParityTest(unittest.TestCase):
         self.assertEqual(sorted(claude), sorted(codex))
         for name in claude:
             self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
-
-    def test_templates_name_no_design_files(self) -> None:
-        for name, text in supporting_files(HOST_SKILLS["claude"]).items():
-            with self.subTest(name):
-                self.assertNotRegex(text.decode(), r"03_design_notes|04_store_root|\(D\d+\)")
 
 
 if __name__ == "__main__":

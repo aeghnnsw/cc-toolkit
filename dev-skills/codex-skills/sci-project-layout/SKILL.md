@@ -8,8 +8,9 @@ description: This skill should be used when the user asks to set up or adopt the
 Give code, data, experiments, and results one place each in a Python
 research project. The layout is one page,
 [templates/layout.md](templates/layout.md). Its reasons and rare cases are
-in [templates/layout-notes.md](templates/layout-notes.md). Set up copies
-both into the project, so the project keeps its layout without this skill.
+in [templates/layout-notes.md](templates/layout-notes.md). The Set up mode
+copies both into the project, so the project keeps its layout without this
+skill.
 
 This skill ships no script to run. Copy the templates and edit files
 yourself.
@@ -19,6 +20,11 @@ Choose the mode from the request:
 - **Set up**: a project with no layout yet.
 - **Adopt**: a project that already has its own layout.
 - **Place**: a question about where a file goes.
+
+In every mode, leave the files that other workflows own where they are:
+`GLOSSARY.md`, `GLOSSARY-MAP.md`, `CODING_STANDARDS.md`, `docs/adr/`,
+`docs/pressure-test/`, and every file in `docs/agents/` except
+`layout.md`, `layout-notes.md`, and `experiment-README.md`.
 
 ## Set up
 
@@ -66,13 +72,8 @@ path.
    written in code, and names.
 3. Write a migration plan: each move, each new file, and each code path to
    change to `paths.DATA` or `paths.RESULTS`.
-4. Move no file until the user approves the plan. Then do Set up, and then
-   the moves.
-
-Leave the files that other workflows own where they are: `GLOSSARY.md`,
-`GLOSSARY-MAP.md`, `CODING_STANDARDS.md`, `docs/adr/`,
-`docs/pressure-test/`, and every file in `docs/agents/` except
-`layout.md`, `layout-notes.md`, and `experiment-README.md`.
+4. Move no file until the user approves the plan. Then do the Set up
+   mode, and then the moves.
 
 ## Place
 

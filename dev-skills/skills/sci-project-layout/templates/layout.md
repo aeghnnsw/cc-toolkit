@@ -63,7 +63,7 @@ Make each folder when you first need it.
    program's output at that folder, and its scratch files at `$TMPDIR`.
    Commit first if you may cite the run: a run with uncommitted changes
    cannot be cited.
-7. **Key results.** To keep a result, cite its run on the branch that made
+7. **Citation.** To keep a result, cite its run on the branch that made
    it, before that branch's PR merges. Follow the four steps in
    [notes section 8](layout-notes.md#8-citation-and-squash-merges): check
    the run and the runs it depends on, make them read-only, and add the

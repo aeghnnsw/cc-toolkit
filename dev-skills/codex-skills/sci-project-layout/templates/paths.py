@@ -1,12 +1,6 @@
 """Paths of this project: the store, and one new folder for each run.
 
-docs/agents/layout.md describes the layout. Make a run like this:
-
-    from myproj import paths
-
-    with paths.new_run("042-docking-baseline", step="02_dock", label="vina-exh16",
-                       inputs=[paths.DATA / "processed/kinase-actives/v2"]) as run:
-        dock(..., out_dir=run.dir)
+docs/agents/layout.md shows how to make a run with new_run().
 """
 
 from __future__ import annotations
@@ -22,43 +16,42 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Iterator
 
-HERE = Path(__file__).resolve().parent  # run git here, never in the current folder
-REPO = HERE.parent.parent  # src/myproj/paths.py is two folders below the checkout
+_HERE = Path(__file__).resolve().parent  # run git here, never in the current folder
+REPO = _HERE.parent.parent  # src/myproj/paths.py is two folders below the checkout
+# Parts below DATA of a version folder: raw/<source>/<dataset>/<version>, processed/<dataset>/<version>
+_VERSION_DEPTH = {"raw": 4, "processed": 3}
 
 
 class StoreError(RuntimeError):
     """The store cannot be found. The message says how to set it."""
 
 
-def _git(*args: str, check: bool = True) -> str:
+def _git(*args: str) -> str:
+    """Return git's output in this checkout, or "" when git fails or is not installed."""
     try:
-        out = subprocess.run(["git", "-C", str(HERE), *args], capture_output=True, text=True)
-    except FileNotFoundError:  # no git on this machine
-        if check:
-            raise StoreError("git is not installed. Set MYPROJ_STORE.") from None
+        out = subprocess.run(["git", "-C", str(_HERE), *args], capture_output=True, text=True)
+    except FileNotFoundError:
         return ""
-    if check and out.returncode != 0:
-        raise StoreError(out.stderr.strip())
     return out.stdout.strip() if out.returncode == 0 else ""
 
 
-def _absolute(value: str) -> Path:
+def _absolute(value: str, source: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
-        raise StoreError(f"The store path must be absolute: {value}")
+        raise StoreError(f"{source} must be an absolute path, not: {value}")
     return path
 
 
 def _store_root() -> Path:
     if env := os.environ.get("MYPROJ_STORE"):
-        return _absolute(env)
-    if _git("rev-parse", "--is-inside-work-tree", check=False) != "true":
+        return _absolute(env, "MYPROJ_STORE")
+    if _git("rev-parse", "--is-inside-work-tree") != "true":
         raise StoreError(
-            f"Cannot find the store: {HERE} is not in a git checkout, or git is not "
+            f"Cannot find the store: {_HERE} is not in a git checkout, or git is not "
             "installed. Set MYPROJ_STORE to the absolute path of the store."
         )
-    if cfg := _git("config", "--local", "--get", "layout.store", check=False):
-        return _absolute(cfg)
+    if cfg := _git("config", "--local", "--get", "layout.store"):
+        return _absolute(cfg, "git config layout.store")
     common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir"))
     if not common.is_absolute() or common.name != ".git":
         raise StoreError("Cannot find the main checkout. Run: git config layout.store <path>")
@@ -74,19 +67,21 @@ RESULTS = STORE / "results"
 class Run:
     id: str
     dir: Path
-    info: dict  # becomes run.json; a step can add keys
+    info: dict  # the run.json record; a step can add keys
 
 
-def _input(path: Path) -> str:
-    """Return a data-version folder or a run folder as a store-relative path."""
+def _input_entry(path: Path) -> str:
+    """Return the run.json entry of a data-version folder or a run folder."""
     found = Path(path).resolve()
-    for name, base in (("data", DATA.resolve()), ("results", RESULTS.resolve())):
-        if found.is_dir() and found.is_relative_to(base):
-            parts = found.relative_to(base).parts
-            if name == "data" and parts and len(parts) == {"raw": 4, "processed": 3}.get(parts[0]):
-                return "/".join((name, *parts))
-            if name == "results" and len(parts) == 2 and (found / "run.json").is_file():
-                return "/".join((name, *parts))
+    data, results = DATA.resolve(), RESULTS.resolve()
+    if found.is_dir() and found.is_relative_to(data):
+        parts = found.relative_to(data).parts
+        if parts and len(parts) == _VERSION_DEPTH.get(parts[0]):
+            return "/".join(("data", *parts))
+    if found.is_dir() and found.is_relative_to(results):
+        parts = found.relative_to(results).parts
+        if len(parts) == 2 and (found / "run.json").is_file():
+            return "/".join(("results", *parts))
     raise ValueError(
         f"Not a data version or a run folder: {path}. inputs takes "
         "paths.DATA / 'raw/<source>/<dataset>/<version>', "
@@ -96,11 +91,11 @@ def _input(path: Path) -> str:
 
 
 def _git_state() -> dict:
-    sha = _git("rev-parse", "HEAD", check=False)
+    sha = _git("rev-parse", "HEAD")
     if not sha:
         return {"sha": None, "branch": None, "dirty": None}
-    branch = _git("branch", "--show-current", check=False) or None
-    return {"sha": sha, "branch": branch, "dirty": bool(_git("status", "--porcelain", check=False))}
+    branch = _git("branch", "--show-current") or None
+    return {"sha": sha, "branch": branch, "dirty": bool(_git("status", "--porcelain"))}
 
 
 def _now() -> str:
@@ -117,7 +112,7 @@ def new_run(key: str, step: str, label: str | None = None, inputs: Iterable[Path
     experiment = REPO / "experiments" / key
     if not experiment.is_dir():
         raise ValueError(f"No experiment folder: {experiment}")
-    recorded = [_input(path) for path in inputs]
+    recorded = [_input_entry(path) for path in inputs]
     started = datetime.now().astimezone()
     base = started.strftime("%Y%m%d-%H%M%S") + (f"_{label}" if label else "")
     (RESULTS / key).mkdir(parents=True, exist_ok=True)
