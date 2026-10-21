@@ -6,31 +6,14 @@
 import json
 import sys
 
-from hook_logs import log_dir
+from hook_logs import append_log
 
 def main():
     try:
         # Read JSON input from stdin
         input_data = json.load(sys.stdin)
 
-        log_path = log_dir() / 'post_tool_use.json'
-
-        # Read existing log data or initialize empty list
-        if log_path.exists():
-            with open(log_path, 'r') as f:
-                try:
-                    log_data = json.load(f)
-                except (json.JSONDecodeError, ValueError):
-                    log_data = []
-        else:
-            log_data = []
-
-        # Append new data
-        log_data.append(input_data)
-
-        # Write back to file with formatting
-        with open(log_path, 'w') as f:
-            json.dump(log_data, f, indent=2)
+        append_log('post_tool_use.jsonl', input_data)
 
         sys.exit(0)
 

@@ -110,7 +110,7 @@ Safety guards and workflow enforcement hooks.
 **Hooks:**
 - **safety_guard.py**: Blocks dangerous `rm` commands
 - **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution
-- **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.json` in the project directory
+- **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Task Loop (`task-loop`)
