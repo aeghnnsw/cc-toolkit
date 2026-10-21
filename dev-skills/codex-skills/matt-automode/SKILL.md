@@ -221,20 +221,48 @@ are merged.
    > use retro skill read previous implementation sessions and find ways to make my repo easier to navigate. Find where agents take too long to find relevant information, or rely on out-of-date docs.
    > Improving navigability is such an underrated way to save tokens and update docs.
 
-   Select this repository's implementation sessions, including worktrees, by
-   recorded workspace or repository metadata before searching their text. Use
-   task prompts and actions to judge relevance. Report the sessions read,
-   navigation findings, and any unavailable history. If previous sessions are
-   unavailable, report that limit and review the current implementation session.
-   Apply in-scope navigation and documentation fixes, run affected checks, and
-   commit those edits. Run `code-review` again against the same comparison
-   commit and verify that its diff includes those edits before the PR phase.
-   Report other candidates as follow-up work.
+   Follow "Navigation retrospective" to select the sessions and record the
+   result. Apply in-scope navigation and documentation fixes, run affected
+   checks, and commit those edits. Run `code-review` again against the same
+   comparison commit and verify that its diff includes those edits before
+   the PR phase. Then post the comment on the tracking issue.
 7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
    changes. Merge after required checks and review pass. Follow repository rules.
 8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
    tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
    state and verify closure alongside Git cleanup.
+
+## Navigation retrospective
+
+Each retrospective starts where the last one ended, so that it does not read
+the same sessions again. If the repository instructions give a retrospective
+procedure, such as a document that `CLAUDE.md` or `AGENTS.md` links, follow
+that procedure. Otherwise, do these steps:
+
+1. Find the tracking issue: the open issue in the issue tracker that records
+   earlier navigation retrospectives, usually with "navigation" in its title.
+   If no such issue is open, publish a tracking issue. Add the documentation
+   label if the tracker has that label.
+2. Read the newest retrospective comment on the tracking issue. Read the open
+   issues with the documentation label. Report a known candidate again only
+   with new evidence.
+3. Select this repository's sessions, including its worktrees, by recorded
+   workspace metadata before you search their text. Claude Code sessions are
+   JSONL files under `~/.claude/projects/` with a `cwd` field. Codex sessions
+   are JSONL files under `~/.codex/sessions/` with the `cwd` in their
+   `session_meta` line. Read only the sessions that started after the newest
+   retrospective comment, and the current session's records after that
+   comment. Use task prompts and actions to judge relevance. If the tracking
+   issue has no retrospective comment, read the earlier implementation
+   sessions. If no earlier session is available, report that limit and
+   review the current session.
+4. Copy the selected transcripts into one `mktemp -d` directory, and process
+   only the copies. Give sub-agents the paths of the copies. Do not write to
+   an original transcript. Remove the directory by its path when the
+   retrospective ends.
+5. Post a new comment on the tracking issue: the sessions read, the sessions
+   skipped and any unavailable history, the findings, the fixes made and
+   their branch, and the candidates that remain as follow-up work.
 
 ## Phase gates
 
@@ -252,7 +280,7 @@ current validity have been checked.
 | 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
 | 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |
 | 5. Code review | Gate 4 passed for this ticket. | The review ran against a recorded comparison commit and the ticket spec. Fixes for actionable Standards and Spec findings are committed, and the tests pass after the fixes. |
-| 6. Retro | Gate 5 passed for this ticket. | The sessions read, navigation findings, and history limits are recorded. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` against the first review's comparison commit includes them in its diff, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
+| 6. Retro | Gate 5 passed for this ticket. | A new comment on the tracking issue records the sessions read, navigation findings, history limits, fixes, and remaining candidates. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` against the first review's comparison commit includes them in its diff, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
 | 7. PR | Gate 6 passed for this ticket. | The PR is open with its issue references, the required checks and required reviews pass, and the PR is merged. Its link is recorded. |
 | 8. Cleanup | Gate 7 passed for every ticket. | Cleanup reported its results. The tickets and any fully satisfied parent spec are verified closed. |
 
@@ -313,8 +341,8 @@ Finish when all tickets have completed implementation, code review, retro, and
 PR merge, all tickets and any fully satisfied parent spec are verified
 closed, and cleanup has reported its results. Report review results, retro
 findings and session-history limits, the design-critical decisions that the
-critic did not assess, issue and PR links, and any issue left open with its
-remaining work.
+critic did not assess, issue and PR links, the retrospective comment links,
+and any issue left open with its remaining work.
 If progress is blocked by missing access, an enforced restriction, or
 repeated failures with no viable next step, report the blocker and retain the
 work. A critic that cannot assess an answer is not such a blocker:
