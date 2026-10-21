@@ -608,6 +608,98 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(data["added"], [n for n in NODEIDS if n not in self.runs.subset])
 
 
+SPEED_BEFORE = """\
+def test_kept():
+    assert 2 + 2 == 4
+
+
+def test_old_name():
+    assert "a".upper() == "A"
+
+
+def test_outcome():
+    assert sorted([2, 1]) == [1, 2]
+"""
+
+# The after run renames test_old_name to test_new_name, and test_outcome fails.
+SPEED_AFTER = SPEED_BEFORE.replace("test_old_name", "test_new_name").replace("== [1, 2]", "== [2, 1]")
+SPEED = "tests/test_speed.py::"
+
+
+@needs_pytest
+class NoLossTest(unittest.TestCase):
+    """compare checks the speed mode's no-loss invariant: no node ID missing and no outcome changed."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(cls._tmp.name)
+        root = tmp / "proj"
+        (root / "tests").mkdir(parents=True)
+        (root / "pyproject.toml").write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n', encoding="utf-8")
+        cls.out = {label: str(tmp / f"{label}.json") for label in ("before", "after")}
+        cls.runs = {}
+        for label, text in (("before", SPEED_BEFORE), ("after", SPEED_AFTER)):
+            (root / "tests" / "test_speed.py").write_text(text, encoding="utf-8")
+            cls.runs[label] = run_cli(
+                "suite", "--python", sys.executable, "--project", str(root), "--work-dir", str(tmp / "work"),
+                "--label", label, "--out", cls.out[label],
+            )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_both_runs_pass_or_fail_as_designed(self) -> None:
+        for label, passed, failed in (("before", 3, 0), ("after", 2, 1)):
+            code, printed, stderr = self.runs[label]
+            self.assertEqual(code, 0, stderr)
+            self.assertEqual((printed["summary"]["counts"]["passed"], printed["summary"]["counts"]["failed"]), (passed, failed))
+
+    def test_renamed_test_and_changed_outcome_fail_the_invariant(self) -> None:
+        code, data, stderr = run_cli("compare", self.out["before"], self.out["after"])
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(data["missing"], [SPEED + "test_old_name"])
+        self.assertEqual(data["added"], [SPEED + "test_new_name"])
+        self.assertEqual(
+            [(c["nodeid"], c["first"], c["second"], c["second_exception"]) for c in data["changed"]],
+            [(SPEED + "test_outcome", "passed", "failed", "AssertionError")],
+        )
+        self.assertIs(data["summary"]["no_loss"], False)
+
+    def test_same_tests_and_outcomes_keep_the_invariant(self) -> None:
+        code, data, stderr = run_cli("compare", self.out["before"], self.out["before"])
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual((data["missing"], data["added"], data["changed"]), ([], [], []))
+        self.assertIs(data["summary"]["no_loss"], True)
+
+
+class IncompleteRunTest(unittest.TestCase):
+    """A run that did not finish cannot prove the no-loss invariant."""
+
+    def test_timed_out_run_fails_the_invariant(self) -> None:
+        ids = [SPEED + "test_kept", SPEED + "test_outcome"]
+
+        def suite(timed_out: bool, ran: list[str]) -> dict:
+            return {
+                "summary": {"timed_out": timed_out, "pytest_exit_code": None if timed_out else 0, "wall_seconds": 1.0},
+                "collected": ids,
+                "tests": [{"nodeid": n, "outcome": "passed", "phases": {}} for n in ran],
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for name, data in (("complete", suite(False, ids)), ("cut", suite(True, ids[:1]))):
+                path = Path(tmp) / f"{name}.json"
+                path.write_text(json.dumps(data), encoding="utf-8")
+                paths.append(str(path))
+            code, data, stderr = run_cli("compare", *paths)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual((data["missing"], data["changed"]), ([], []))
+        self.assertEqual(data["not_run"]["second"], [SPEED + "test_outcome"])
+        self.assertIs(data["summary"]["no_loss"], False)
+
+
 @needs_pytest
 class CoverageTest(unittest.TestCase):
     """coverage reads the contexts of the reversed run and diffs against commit 1."""
@@ -919,13 +1011,14 @@ class HostParityTest(unittest.TestCase):
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
         self.assertEqual(fields["codex"]["name"], "lean-tests")
         self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual(fields["claude"]["version"], "1.0.0")
+        self.assertEqual(fields["claude"]["version"], "1.1.0")
         self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
 
     def test_references_and_scripts_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
         codex = supporting_files(HOST_SKILLS["codex"])
         self.assertIn("references/check.md", sorted(claude))
+        self.assertIn("references/speed.md", sorted(claude))
         self.assertIn("scripts/lean_tests.py", sorted(claude))
         self.assertEqual(sorted(claude), sorted(codex))
         for name in claude:

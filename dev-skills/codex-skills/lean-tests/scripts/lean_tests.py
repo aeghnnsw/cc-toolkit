@@ -73,7 +73,15 @@ def build_parser() -> argparse.ArgumentParser:
     suite.add_argument("--timeout", type=float, help="stop pytest after this many seconds")
     suite.add_argument("--node-ids", help="file with one node ID per line; run only these tests")
 
-    compare = sub.add_parser("compare", parents=[output], help="compare two suite outputs")
+    compare = sub.add_parser(
+        "compare",
+        parents=[output],
+        help="compare two suite outputs",
+        description=(
+            "Compare two suite outputs: changed outcomes, node IDs missing or added, and tests not run. "
+            "summary.no_loss is true when both runs finished and no test is missing, changed, or not run."
+        ),
+    )
     compare.add_argument("first", help="suite output JSON of the first run")
     compare.add_argument("second", help="suite output JSON of the second run")
 

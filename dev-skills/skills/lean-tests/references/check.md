@@ -260,9 +260,11 @@ applies:
 4. **check** again after the next change, when no other rule applies. Say
    that the suite needs no lean-tests work now.
 
-This version of lean-tests has only the check mode. When the next mode is
-speed, review, or prune, say that the mode is not available in this
-version, and give its steps as work for the user.
+This version of lean-tests has the check and speed modes. When the next
+mode is speed, say that the user can ask for it, for example with "make the
+tests faster": speed changes files only on request. When the next mode is
+review or prune, say that the mode is not available yet, and give its steps
+as work for the user.
 
 When the scorecard is complete, remove the work directory:
 

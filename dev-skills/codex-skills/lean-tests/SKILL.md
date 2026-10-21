@@ -1,6 +1,6 @@
 ---
 name: lean-tests
-description: This skill should be used when the user asks to "check the test suite", "audit the tests", or "find out why the tests are slow", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
+description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", or "speed up CI", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
 # Lean Tests
@@ -12,13 +12,20 @@ adds protection when it detects a fault that no other test detects.
 
 ## Modes
 
-This version has one mode. With no mode, run check.
+This version has two modes. With no mode, run check.
 
 - **check**: measure the suite and print a scorecard. It changes no file and
   installs nothing. Follow [references/check.md](references/check.md).
+- **speed**: make the suite faster without deleting a test. It measures
+  first, applies fixes one at a time in a fixed order, defines test tiers
+  with time budgets, and writes the tier commands into `CLAUDE.md` and
+  `AGENTS.md`. Run it only when the user's request asks for speed changes,
+  such as "make the tests faster" or "speed up CI". A question about speed,
+  such as why the tests are slow, runs check. Follow
+  [references/speed.md](references/speed.md).
 
-When the user asks to speed up, prune, or fix tests, run check, and say that
-this version has no mode that changes tests.
+When the user asks to prune or review tests, run check, and say that this
+version has no prune or review mode.
 
 ## Safety rules
 
