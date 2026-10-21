@@ -316,7 +316,12 @@ with the one on `origin/master`. If `origin/master` has that version or a
 greater one, raise yours above it. Choose a version when the pull request
 is ready, and write no target version in an issue or a ticket. After a
 rebase, run the validator again: when both sides made the same version
-change, the rebase removes that change from the branch.
+change, the rebase removes that change from the branch. The validator
+checks only plugin manifest versions. After a rebase, also compare each
+skill frontmatter `version` that you raised with the one on
+`origin/master`. When `origin/master` has that version or a greater one,
+raise yours above it. Update each test that pins the version, such as
+`HostParityTest` in `dev-skills/tests/test_lean_tests.py`.
 
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update

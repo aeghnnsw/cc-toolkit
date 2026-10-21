@@ -1,7 +1,7 @@
 ---
 name: lean-tests
-version: 1.1.0
-description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", or "speed up CI", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
+version: 1.2.0
+description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "speed up CI", or "remove redundant tests", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, or removes redundant tests under one path with killed-mutant evidence. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
 # Lean Tests
@@ -13,7 +13,7 @@ adds protection when it detects a fault that no other test detects.
 
 ## Modes
 
-This version has two modes. With no mode, run check.
+This version has three modes. With no mode, run check.
 
 - **check**: measure the suite and print a scorecard. It changes no file and
   installs nothing. Follow [references/check.md](references/check.md).
@@ -24,9 +24,13 @@ This version has two modes. With no mode, run check.
   request asks for speed changes, such as "make the tests faster" or "speed
   up CI". A question about speed, such as why the tests are slow, runs
   check. Follow [references/speed.md](references/speed.md).
+- **prune `<path>`**: remove redundant tests under one test file or
+  directory. Killed mutants decide, and each deleted test has a written
+  rationale. Run it only when the user asks to prune. Follow
+  [references/prune.md](references/prune.md).
 
-When the user asks to prune or review tests, run check, and say that this
-version has no prune or review mode.
+When the user asks to review tests, run check, and say that this
+version has no review mode.
 
 ## Safety rules
 
@@ -44,9 +48,10 @@ These rules apply to all work on a test suite.
    batch is one commit of its own, with a written reason for each test.
    When the evidence is incomplete, delete nothing. Equal coverage is not evidence: tests that
    cover the same lines can detect different faults.
-4. Keep protected tests: regression, characterization, security,
-   compatibility, and performance tests, and one happy-path test per test
-   seam, the public boundary where a test observes behavior. Rewrite a protected test only to fix a defect in the test.
+4. Never delete or merge a protected test: a regression, characterization,
+   security, compatibility, or performance test, or the one happy-path test
+   of a test seam, the public boundary where a test observes behavior.
+   Rewrite a protected test only to fix a defect in the test.
 5. Name each new dependency and its purpose before you add it, and add it
    with the project's own dependency manager.
 6. Report each measurement that you could not take, with the package that

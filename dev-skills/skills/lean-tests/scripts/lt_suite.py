@@ -125,6 +125,23 @@ def git_status(project: Path) -> set | None:
     return set(found.stdout.splitlines()) | {line for line in ignored.stdout.splitlines() if line.startswith("!! ")}
 
 
+def pytest_env(records: Path, data_file: Path, roots: tuple[str, ...] = ()) -> dict:
+    """The environment of a pytest run.
+
+    The bundled plugin and `roots` come first on PYTHONPATH. pytest writes no
+    bytecode, its outcome records go to `records`, and the coverage data that
+    a run starts goes to `data_file`, not into the project.
+    """
+    env = dict(os.environ)
+    for key in ("LEAN_TESTS_ADDOPTS", "LEAN_TESTS_REVERSE"):
+        env.pop(key, None)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(PLUGIN_DIR), *roots, env.get("PYTHONPATH")) if p)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["LEAN_TESTS_RECORDS"] = str(records)
+    env["COVERAGE_FILE"] = str(data_file)
+    return env
+
+
 def run_pytest(cmd: list[str], project: Path, env: dict, log: Path, timeout: float | None):
     """Run pytest with its output in `log`; return (exit code, timed out)."""
     with open(log, "w", encoding="utf-8") as out:
@@ -282,14 +299,7 @@ def run_suite(args, extra: list[str]) -> dict:
     log = work / "pytest.log"
     data_file = work / "coverage.data"
 
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(PLUGIN_DIR), env.get("PYTHONPATH")) if p)
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["LEAN_TESTS_RECORDS"] = str(records)
-    # Coverage that a run starts writes its data here, not into the project.
-    env["COVERAGE_FILE"] = str(data_file)
-    env.pop("LEAN_TESTS_ADDOPTS", None)
-    env.pop("LEAN_TESTS_REVERSE", None)
+    env = pytest_env(records, data_file)
     if args.reverse:
         env["LEAN_TESTS_REVERSE"] = "1"
 

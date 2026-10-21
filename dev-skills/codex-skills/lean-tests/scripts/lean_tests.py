@@ -9,6 +9,7 @@ success; 2 means a usage or environment error, and the JSON then has an
   compare   compare two suite outputs
   scan      find weak, duplicate, and protected tests in the test files
   coverage  read per-test coverage contexts and diff coverage
+  mutate    build the kill matrix of a prune scope, or recheck its killed set
 
 Run `lean_tests.py <subcommand> --help` for the options.
 """
@@ -30,6 +31,7 @@ import argparse  # noqa: E402
 from typing import Optional  # noqa: E402
 
 import lt_coverage  # noqa: E402
+import lt_mutate  # noqa: E402
 import lt_scan  # noqa: E402
 import lt_suite  # noqa: E402
 from lt_common import UsageError  # noqa: E402
@@ -97,11 +99,38 @@ def build_parser() -> argparse.ArgumentParser:
     coverage.add_argument("--contexts", required=True, help="output of `coverage json --show-contexts`")
     coverage.add_argument("--suite", required=True, help="suite output JSON of the run that recorded the contexts")
     coverage.add_argument("--base", help="base Git ref for diff coverage of changed product lines")
+
+    mutate = sub.add_parser(
+        "mutate",
+        parents=[output],
+        help="kill matrix of a prune scope, or the killed-set check after a removal batch",
+        description=(
+            "Run each mutant of the product modules that the scope's tests cover against every "
+            "in-scope test, in temporary copies of the project. Arguments after `--` go to pytest."
+        ),
+    )
+    mutate.add_argument("--python", required=True, help="target interpreter, or a command that runs it (as for suite)")
+    mutate.add_argument(
+        "--suite",
+        required=True,
+        help="suite output of the scope: a --coverage-source run for a matrix, or the run after a removal batch",
+    )
+    mutate.add_argument("--work-dir", required=True, help="directory outside the project for the copies and records")
+    mutate.add_argument(
+        "--recheck", metavar="MATRIX", help="rerun the killed set of this mutate output against the tests of --suite"
+    )
+    mutate.add_argument(
+        "--budget", type=float, default=lt_mutate.DEFAULT_BUDGET,
+        help="seconds for the whole run (default: %(default)g)",
+    )
+    mutate.add_argument(
+        "--workers", type=int, default=lt_mutate.DEFAULT_WORKERS, help="parallel copies (default: CPU count minus 1)"
+    )
     return parser
 
 
 def split_pytest_args(argv: list[str]) -> tuple[list[str], list[str]]:
-    if argv[:1] == ["suite"] and "--" in argv:
+    if argv[:1] in (["suite"], ["mutate"]) and "--" in argv:
         index = argv.index("--")
         return argv[:index], argv[index + 1:]
     return argv, []
@@ -117,6 +146,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             result = lt_suite.compare(args.first, args.second)
         elif args.command == "scan":
             result = lt_scan.scan_command(args)
+        elif args.command == "mutate":
+            result = lt_mutate.mutate_command(args, extra)
         else:
             result = lt_coverage.coverage_command(args)
     except UsageError as error:

@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 
 from lt_common import (
-    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, rel, suite_node_ids, tail,
+    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, ran_tests, rel, suite_node_ids,
+    tail,
 )
 
 PHASE = re.compile(r"\|(setup|run|teardown)$")
@@ -30,31 +31,14 @@ def coverage_command(args) -> dict:
     project = Path(suite.get("project") or ".").resolve()
     rootdir = Path(suite.get("rootdir") or project).resolve()
     nodeids = suite_node_ids(suite)
-    ran = {t["nodeid"] for t in suite.get("tests", []) if "call" in t.get("phases", {})}
+    ran = ran_tests(suite)
     test_files = {(rootdir / node_file(n)).resolve() for n in nodeids}
 
-    measured_files = {}
-    for name, entry in (data.get("files") or {}).items():
-        path = (project / name).resolve()
-        if not is_test_path(path, test_files, project):
-            measured_files[path] = entry
+    measured_files = product_files(data, project, test_files)
+    lines, run_lines = lines_by_test(measured_files, project)
 
-    lines: dict[str, dict[str, set]] = {}
-    run_context: set = set()
-    for path, entry in measured_files.items():
-        name = rel(path, project)
-        for lineno, contexts in (entry.get("contexts") or {}).items():
-            for context in contexts:
-                match = PHASE.search(context)
-                if not match:
-                    continue  # "" is import time
-                nodeid = context[: match.start()]
-                lines.setdefault(nodeid, {}).setdefault(name, set()).add(int(lineno))
-                if match.group(1) == "run":
-                    run_context.add(nodeid)
-
-    measured = [n for n in nodeids if n in run_context]
-    unmeasured = [n for n in nodeids if n in ran and n not in run_context]
+    measured = [n for n in nodeids if n in run_lines]
+    unmeasured = unmeasured_tests(nodeids, ran, run_lines)
     not_run = [n for n in nodeids if n not in ran]
     equal_groups, strict_subsets = subsets(measured, lines)
     diff = diff_coverage(project, args.base, measured_files, test_files) if args.base else None
@@ -99,6 +83,42 @@ def diff_summary(diff: dict | None) -> dict | None:
     summary["unmeasured_files"] = len(diff["unmeasured_files"])
     summary["unparsed"] = len(diff["unparsed"])
     return summary
+
+
+def product_files(data: dict, project: Path, test_files: set) -> dict:
+    """The coverage entry of each measured file that is not a test file, by resolved path."""
+    files = {}
+    for name, entry in (data.get("files") or {}).items():
+        path = (project / name).resolve()
+        if not is_test_path(path, test_files, project):
+            files[path] = entry
+    return files
+
+
+def lines_by_test(files: dict, project: Path) -> tuple[dict, dict]:
+    """The lines that each test ran in each product file: in any phase, and in its run phase.
+
+    Both are keyed by node ID, then by file path relative to the project.
+    """
+    lines: dict[str, dict[str, set]] = {}
+    run_lines: dict[str, dict[str, set]] = {}
+    for path, entry in files.items():
+        name = rel(path, project)
+        for lineno, contexts in (entry.get("contexts") or {}).items():
+            for context in contexts:
+                match = PHASE.search(context)
+                if not match:
+                    continue  # "" is import time
+                nodeid = context[: match.start()]
+                lines.setdefault(nodeid, {}).setdefault(name, set()).add(int(lineno))
+                if match.group(1) == "run":
+                    run_lines.setdefault(nodeid, {}).setdefault(name, set()).add(int(lineno))
+    return lines, run_lines
+
+
+def unmeasured_tests(nodeids: list[str], ran: set, run_lines: dict) -> list[str]:
+    """The unmeasured tests: tests that ran, but whose run phase ran none of the lines in `run_lines`."""
+    return [n for n in nodeids if n in ran and not any((run_lines.get(n) or {}).values())]
 
 
 def is_test_path(path: Path, test_files: set, project: Path) -> bool:

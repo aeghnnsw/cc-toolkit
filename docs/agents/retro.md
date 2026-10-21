@@ -19,7 +19,11 @@ the tracking issue, so the next one starts where the last one ended.
 4. Select the sessions that have records after that comment and ran in
    the main checkout, `trees/*`, or `.claude/worktrees/*`. A session that
    started before the comment can have later records; read only the
-   records after the comment. Claude Code sessions are JSONL files under
+   records after the comment. Record timestamps have milliseconds, so
+   compare each `timestamp` with the comment time written with
+   milliseconds, such as `2026-10-21T20:22:41.000Z`. As a string,
+   `20:22:41Z` sorts after `20:22:41.847Z`, so a comparison with it drops
+   the records of that second. Claude Code sessions are JSONL files under
    `~/.claude/projects/` with a `cwd` field, and their sub-agents are under
    `<session>/subagents/`. Codex sessions are JSONL files under
    `~/.codex/sessions/` with the `cwd` in their `session_meta` line; keep
