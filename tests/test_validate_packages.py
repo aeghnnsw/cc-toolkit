@@ -233,6 +233,22 @@ class PackageValidationTests(unittest.TestCase):
         self.assertIn(f"uv run --no-project --python '>=3.11' python {shlex.quote(str(COMMAND))} --base abc123",
                       result.stderr)
 
+    def test_root_tests_without_tomllib_stop_with_one_uv_message(self):
+        tests = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as shadow:
+            Path(shadow, 'tomllib.py').write_text(
+                "raise ModuleNotFoundError(\"No module named 'tomllib'\", name='tomllib')\n")
+            # Every root test module except this one, so that a broken guard cannot start this test again.
+            command = [sys.executable, '-m', 'unittest', 'discover', '-s', str(tests), '-p', 'test_[!v]*.py']
+            result = subprocess.run(command, cwd=tests.parent, text=True, capture_output=True,
+                                    env={**os.environ, 'PYTHONPATH': shadow})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stderr.count('FAIL: the root tests need Python 3.11'), 1, result.stderr)
+        self.assertIn(f'Python {sys.version.split()[0]} is running.', result.stderr)
+        self.assertIn("uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'",
+                      result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+
     def test_version_only_increases_pass_and_regressions_fail(self):
         self.bump(value='1.0.1')
         self.assertEqual(self.run_check().returncode, 0)
