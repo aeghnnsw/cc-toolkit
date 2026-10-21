@@ -1482,7 +1482,7 @@ class HostParityTest(unittest.TestCase):
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
         self.assertEqual(fields["codex"]["name"], "lean-tests")
         self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual(fields["claude"]["version"], "1.1.0")
+        self.assertEqual(fields["claude"]["version"], "1.2.0")
         self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
 
     def test_references_and_scripts_match(self) -> None:

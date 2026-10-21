@@ -23,7 +23,7 @@ deleted with a rationale; each committed batch passed the killed-set
 check; the report is complete; and the work directory is removed.
 
 First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
-`<work-dir>`, and `<skill-dir>`.
+`<source>`, `<work-dir>`, and `<skill-dir>`.
 
 ## 1. Check the preconditions
 
@@ -50,12 +50,10 @@ First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
    tests. Under uv, get pytest-cov as the setup does for analysis tools.
    Otherwise ask the user whether to add pytest-cov for this purpose, as
    [safety rule 5](../SKILL.md#safety-rules) says.
-5. Choose `<source>`, the import name of each product package, as in
-   check step 1.
 
-Done when you have `<path>` and `<source>`, `<path>` has no uncommitted
-change, check reports no flaky or order-dependent test under `<path>`, and
-`<python>` imports pytest-cov.
+Done when you have `<path>`, `<path>` has no uncommitted change, check
+reports no flaky or order-dependent test under `<path>`, and `<python>`
+imports pytest-cov.
 
 ## 2. Run the scope with coverage contexts
 
