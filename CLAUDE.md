@@ -45,7 +45,11 @@ Before a navigation retrospective of earlier agent sessions, read
    Branch names include an issue number: `feat-<issue>-<description>`,
    `bugfix-<issue>-<description>`, `doc-<issue>-<description>`,
    `refactor-<issue>-<description>`, `chore-<issue>-<description>`, or
-   `test-<issue>-<description>`.
+   `test-<issue>-<description>`. Run shell commands from the worktree
+   root, and pass paths or `git -C` instead of `cd` into a subdirectory.
+   The core-hooks scripts write a `logs/` directory into the shell's
+   working directory, and that directory breaks tests that list a skill's
+   files.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration
@@ -63,8 +67,9 @@ Before a navigation retrospective of earlier agent sessions, read
    installed core-hooks policy scripts check the text of each shell command
    and can block a command that quotes message text.
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
-   per change on the default branch. Before merging a plugin release, compare
-   the plugin version with `origin/master` as described in
+   per change on the default branch. `master` requires a pull request; it
+   requires no approval and no status check. Before merging a plugin
+   release, compare the plugin version with `origin/master` as described in
    [release validation](CONTRIBUTING.md#package-and-release-validation).
    After merging, use `repo-cleanup` to verify merged branches (including
    squash merges), remove eligible worktrees and branches, prune the upstream
@@ -105,8 +110,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   copies, follow
   [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
 - Record substantive behavior or policy changes in the root
-  [CHANGELOG.md](CHANGELOG.md). Use the
-  [entry format](CONTRIBUTING.md#changelog-entries).
+  [CHANGELOG.md](CHANGELOG.md). Before you open the file, read the
+  [entry format](CONTRIBUTING.md#changelog-entries), which shows how to
+  find the insertion point.
 - Before adding agent-generated files, apply the storage policy in
   [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git). Keep durable project
   decisions and shared configuration discoverable from these instructions.
