@@ -47,7 +47,9 @@ Before a navigation retrospective of earlier agent sessions, read
    `refactor-<issue>-<description>`, `chore-<issue>-<description>`, or
    `test-<issue>-<description>`. Run shell commands from the worktree
    root, and pass paths or `git -C` instead of `cd` into a subdirectory.
-   The commands in CONTRIBUTING.md use paths relative to that root.
+   The commands in CONTRIBUTING.md use paths relative to that root. In
+   zsh, quote a word that starts with `=`, such as `echo '====='`. On
+   macOS, use BSD tool options; GNU `timeout` is absent.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
    suites for executable changes; validate content, links, and configuration

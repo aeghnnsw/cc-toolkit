@@ -110,7 +110,7 @@ Document processing and AI-accessible content extraction.
 Safety guards and workflow enforcement hooks.
 
 **Hooks:**
-- **safety_guard.py**: Blocks dangerous `rm` commands
+- **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed
 - **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion

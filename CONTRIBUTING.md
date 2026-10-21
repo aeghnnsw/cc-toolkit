@@ -178,8 +178,12 @@ it. Use this form:
 When both hosts ship the same version, write
 `Claude Code and Codex <version>`. When the versions differ, write
 `Claude Code <version>, Codex <version>`. Start a change outside the
-plugin directories with `Repository:` and give no version. Link the issue
-that the pull request closes; for a spec with tickets, link the ticket.
+plugin directories with `Repository:` and give no version. When a pull
+request changes a plugin and files outside it, write one plugin entry and
+one `Repository:` entry. A change only to contributor-only files of a
+plugin, such as its `tests/`, needs no version and is also a `Repository:`
+entry. Link the issue that the pull request closes; for a spec with
+tickets, link the ticket.
 
 ## What belongs in Git
 
@@ -305,7 +309,10 @@ Release validation compares only with the merge base, so it does not see
 a version that another pull request released after the merge base. Before
 merging, run `git fetch origin master` and compare each version you raised
 with the one on `origin/master`. If `origin/master` has that version or a
-greater one, raise yours above it.
+greater one, raise yours above it. Choose a version when the pull request
+is ready, and write no target version in an issue or a ticket. After a
+rebase, run the validator again: when both sides made the same version
+change, the change drops out of the branch.
 
 [package-validation.json](package-validation.json) holds the ownership
 exceptions, required resources, and contributor-only exemptions. Update
