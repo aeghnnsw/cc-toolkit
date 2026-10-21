@@ -11,10 +11,12 @@ The scan checks need only Python.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -943,6 +945,353 @@ class UsageTest(unittest.TestCase):
             )
         self.assertEqual(code, 2)
         self.assertIn("error", data)
+
+
+MUTATE_CORE = """\
+import functools
+
+LIMIT = 5
+
+
+def classify(n):
+    if n < 0:  # sign check
+        return "negative"
+    return "non-negative"
+
+
+def total(qty, unit):
+    return qty * unit
+
+
+@functools.lru_cache(maxsize=None)
+def rate(code):
+    if code == "gold":
+        return 3
+    return 1
+
+
+def discount(code, price):
+    return price - rate(code)
+"""
+
+MUTATE_TESTS = """\
+from shop.core import LIMIT, classify, discount, rate, total
+
+
+def test_limit():
+    assert LIMIT == 5
+
+
+def test_classify_negative():
+    assert classify(-1) == "negative"
+
+
+def test_classify_negative_copy():
+    assert classify(-1) == "negative"
+
+
+def test_classify_zero():
+    assert classify(0) == "non-negative"
+
+
+def test_total():
+    assert total(3, 4) == 12
+
+
+def test_total_tautology():
+    assert total(2, 3) == total(2, 3)
+
+
+def test_rate_gold():
+    assert rate("gold") == 3
+
+
+def test_discount_gold():
+    assert discount("gold", 10) == 7
+"""
+
+# No pytest `pythonpath`: PYTHONPATH names src/, as an editable install of the project would.
+MUTATE_FILES = {
+    "pyproject.toml": '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n',
+    "src/shop/__init__.py": "",
+    "src/shop/core.py": MUTATE_CORE,
+    "tests/test_shop.py": MUTATE_TESTS,
+}
+SHOP = "tests/test_shop.py::"
+
+
+def tree_state(root: Path) -> dict[str, tuple]:
+    """Each path under `root` with its SHA-256 and modification time; a directory has neither."""
+    state = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            state[path.relative_to(root).as_posix()] = (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns)
+        else:
+            state[path.relative_to(root).as_posix()] = ()
+    return state
+
+
+def shop_env(root: Path) -> dict:
+    return {**os.environ, "PYTHONPATH": str(root / "src")}
+
+
+def without_test(text: str, name: str) -> str:
+    blocks = text.split("\n\n\n")
+    kept = [block for block in blocks if not block.startswith(f"def {name}(")]
+    assert len(kept) == len(blocks) - 1, name
+    return "\n\n\n".join(kept)
+
+
+class Mutation:
+    """The shop project, its coverage run, and its kill matrix, shared by the mutate checks.
+
+    The expected kill sets follow from MUTATE_CORE and MUTATE_TESTS. Each
+    mutant runs in a fresh pytest process, so rate() computes its value in
+    test_rate_gold, and test_discount_gold gets the cached value.
+    """
+
+    _instance: Mutation | None = None
+
+    @classmethod
+    def get(cls) -> Mutation:
+        if cls._instance is None:
+            cls._instance = cls()
+            unittest.addModuleCleanup(cls._instance._tmp.cleanup)
+        return cls._instance
+
+    def __init__(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.root = self.tmp / "shop"
+        for name, text in MUTATE_FILES.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        self.env = shop_env(self.root)
+        self.work = self.tmp / "work"
+        self.scope = self.work / "scope.json"
+        self.matrix = self.work / "matrix.json"
+        code, _, stderr = run_cli(
+            "suite", "--python", sys.executable, "--project", str(self.root), "--work-dir", str(self.work),
+            "--label", "scope", "--coverage-source", "shop", "--out", str(self.scope), env=self.env,
+        )
+        assert code == 0, stderr
+        self.before = tree_state(self.root)
+        self.code, self.printed, self.stderr = self.mutate("--out", str(self.matrix))
+        self.after = tree_state(self.root)
+        self.data = json.loads(self.matrix.read_text(encoding="utf-8")) if self.matrix.is_file() else {}
+        self.tests = {test["nodeid"]: test for test in self.data.get("tests", [])}
+
+    def mutate(self, *args: str, suite: Path | None = None, env: dict | None = None) -> tuple[int, dict, str]:
+        return run_cli(
+            "mutate", "--python", sys.executable, "--suite", str(suite or self.scope),
+            "--work-dir", str(self.work), "--workers", "3", *args, env=env or self.env,
+        )
+
+    def mutant(self, snippet: str, after: str) -> dict:
+        """The one mutant whose changed line contains `snippet` and reads `after` once mutated."""
+        line = line_of(MUTATE_CORE, snippet)
+        found = [m for m in self.data["mutants"] if m["line"] == line and m["after"] == after]
+        assert len(found) == 1, (snippet, after, [(m["line"], m["after"]) for m in self.data["mutants"]])
+        return found[0]
+
+
+@needs_pytest
+class MutateMatrixTest(unittest.TestCase):
+    """mutate runs every mutant of the covered modules against every in-scope test."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.m = Mutation.get()
+
+    def entry(self, name: str) -> dict:
+        return self.m.tests[SHOP + name]
+
+    def test_matrix_is_complete_after_the_sanity_mutant_is_killed(self) -> None:
+        self.assertEqual(self.m.code, 0, self.m.stderr)
+        summary = self.m.data["summary"]
+        self.assertTrue(summary["complete"], summary["incomplete_reason"])
+        self.assertEqual(self.m.printed, {"summary": summary, "output": str(self.m.matrix)})
+        self.assertEqual((summary["tests"], summary["modules"], summary["survived"]), (8, 1, 0))
+        self.assertEqual(summary["killed"], summary["mutants"])
+        [sanity] = self.m.data["sanity"]
+        self.assertEqual(sanity["path"], "src/shop/core.py")
+        self.assertTrue(sanity["killed"])
+
+    def test_duplicate_tests_are_subsumed_by_each_other(self) -> None:
+        negative, copy = SHOP + "test_classify_negative", SHOP + "test_classify_negative_copy"
+        for test, other in ((negative, copy), (copy, negative)):
+            entry = self.m.tests[test]
+            self.assertEqual((entry["class"], entry["subsumed_by"]), ("subsumed", [other]), test)
+        self.assertEqual(self.m.data["equal_groups"], [[negative, copy]])
+
+    def test_tautological_test_has_an_empty_kill_set(self) -> None:
+        tautology = self.entry("test_total_tautology")
+        self.assertEqual((tautology["class"], tautology["kills"]), ("empty", []))
+
+    def test_test_whose_kills_another_test_also_makes_is_subsumed(self) -> None:
+        rate = self.entry("test_rate_gold")
+        self.assertEqual((rate["class"], rate["subsumed_by"]), ("subsumed", [SHOP + "test_discount_gold"]))
+
+    def test_branch_specific_test_has_a_unique_kill(self) -> None:
+        zero = self.entry("test_classify_zero")
+        boundary = self.m.mutant("if n < 0", "if n <= 0:  # sign check")
+        self.assertEqual(zero["class"], "unique")
+        self.assertIn(boundary["id"], zero["unique"])
+        self.assertEqual(boundary["killed_by"], {SHOP + "test_classify_zero": "assertion"})
+        self.assertEqual(boundary["operator"], "comparison")
+
+    def test_kill_through_a_memoized_value_counts(self) -> None:
+        mutant = self.m.mutant("return 3", "return 4")
+        self.assertEqual(
+            mutant["killed_by"], {SHOP + "test_rate_gold": "assertion", SHOP + "test_discount_gold": "assertion"}
+        )
+        # Coverage gives the line only to test_rate_gold: test_discount_gold gets the cached value.
+        scope = json.loads(self.m.scope.read_text(encoding="utf-8"))
+        report = json.loads(Path(scope["files"]["coverage_json"]).read_text(encoding="utf-8"))
+        contexts = report["files"]["src/shop/core.py"]["contexts"][str(mutant["line"])]
+        self.assertEqual(contexts, [SHOP + "test_rate_gold|run"])
+
+    def test_kills_record_the_failure_type(self) -> None:
+        mutant = self.m.mutant("return 3", "return None")
+        self.assertEqual(
+            mutant["killed_by"], {SHOP + "test_rate_gold": "assertion", SHOP + "test_discount_gold": "exception"}
+        )
+        self.assertEqual(mutant["operator"], "return-none")
+
+    def test_unmeasured_test_is_labeled_and_keeps_its_kill(self) -> None:
+        limit = self.entry("test_limit")
+        mutant = self.m.mutant("LIMIT = 5", "LIMIT = 6")
+        self.assertEqual(limit["class"], "unmeasured")
+        self.assertEqual(limit["kills"], [mutant["id"]])
+        self.assertEqual(mutant["killed_by"], {SHOP + "test_limit": "assertion"})
+
+    def test_summary_counts_each_class(self) -> None:
+        classes = self.m.data["summary"]["classes"]
+        self.assertEqual(classes, {"unique": 3, "subsumed": 3, "union-only": 0, "empty": 1, "unmeasured": 1, "incomplete": 0})
+
+    def test_mutated_text_is_spliced_into_the_original_line(self) -> None:
+        # The comment stays, so only the operator changed. Unparsing the whole file drops comments.
+        boundary = self.m.mutant("if n < 0", "if n <= 0:  # sign check")
+        self.assertEqual(boundary["before"], "if n < 0:  # sign check")
+        stub = self.m.mutant("if n < 0", "return None")
+        self.assertEqual(stub["operator"], "stub")
+
+    def test_a_line_that_no_test_runs_gets_no_mutant(self) -> None:
+        self.assertNotIn(line_of(MUTATE_CORE, "return 1"), {m["line"] for m in self.m.data["mutants"]})
+
+    def test_mutants_never_change_the_project(self) -> None:
+        self.assertEqual(self.m.after, self.m.before)
+
+
+@needs_pytest
+class MutateBudgetTest(unittest.TestCase):
+    """mutate gives incomplete evidence and no deletion classes when the budget runs out."""
+
+    def test_budget_overrun_is_incomplete_evidence(self) -> None:
+        m = Mutation.get()
+        with tempfile.TemporaryDirectory() as tmp:
+            code, data, stderr = run_cli(
+                "mutate", "--python", sys.executable, "--suite", str(m.scope), "--work-dir", tmp,
+                "--workers", "1", "--budget", "1", env=m.env,
+            )
+        self.assertEqual(code, 0, stderr)
+        summary = data["summary"]
+        self.assertFalse(summary["complete"])
+        self.assertIn("budget", summary["incomplete_reason"])
+        self.assertGreater(summary["not_run"], 0)
+        self.assertIsNone(summary["classes"])
+        self.assertEqual([t["class"] for t in data["tests"] if t["class"] is not None], [])
+        self.assertEqual(tree_state(m.root), m.before)
+
+
+@needs_pytest
+class MutateRecheckTest(unittest.TestCase):
+    """The killed-set check reruns the killed set against the tests that remain after a removal batch."""
+
+    def recheck(self, removed: str) -> dict:
+        m = Mutation.get()
+        tmp = Path(tempfile.mkdtemp(dir=m.tmp))
+        root = tmp / "shop"
+        shutil.copytree(m.root, root)
+        (root / "tests" / "test_shop.py").write_text(without_test(MUTATE_TESTS, removed), encoding="utf-8")
+        env = shop_env(root)
+        after = tmp / "after.json"
+        code, _, stderr = run_cli(
+            "suite", "--python", sys.executable, "--project", str(root), "--work-dir", str(tmp / "work"),
+            "--label", "after", "--out", str(after), env=env,
+        )
+        self.assertEqual(code, 0, stderr)
+        before = tree_state(root)
+        code, data, stderr = m.mutate("--recheck", str(m.matrix), suite=after, env=env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(tree_state(root), before)
+        return data
+
+    def test_removing_a_test_with_a_unique_kill_fails(self) -> None:
+        m = Mutation.get()
+        data = self.recheck("test_classify_zero")
+        summary = data["summary"]
+        self.assertTrue(summary["complete"], summary["incomplete_reason"])
+        self.assertFalse(summary["passed"])
+        lost = [mutant["id"] for mutant in data["lost"]]
+        self.assertEqual(sorted(lost), sorted(m.tests[SHOP + "test_classify_zero"]["unique"]))
+        self.assertIn(m.mutant("if n < 0", "if n <= 0:  # sign check")["id"], lost)
+        self.assertEqual(summary["lost"], len(lost))
+        self.assertEqual(data["lost"][0]["killed_before_by"], [SHOP + "test_classify_zero"])
+
+    def test_removing_a_true_duplicate_passes(self) -> None:
+        m = Mutation.get()
+        data = self.recheck("test_classify_negative_copy")
+        summary = data["summary"]
+        self.assertTrue(summary["complete"], summary["incomplete_reason"])
+        self.assertTrue(summary["passed"])
+        self.assertEqual(data["lost"], [])
+        self.assertEqual(summary["tests"], 7)
+        self.assertEqual(summary["still_killed"], summary["killed_set"])
+        self.assertEqual(summary["killed_set"], m.data["summary"]["killed"])
+
+
+class MutateUsageTest(unittest.TestCase):
+    """mutate stops with exit status 2 before it runs a test when its inputs cannot give evidence."""
+
+    def test_matrix_needs_coverage_contexts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            project.mkdir()
+            suite = Path(tmp) / "suite.json"
+            suite.write_text(json.dumps({
+                "summary": {}, "project": str(project), "rootdir": str(project),
+                "collected": ["tests/test_x.py::test_x"], "tests": [], "files": {},
+            }), encoding="utf-8")
+            code, data, _ = run_cli(
+                "mutate", "--python", sys.executable, "--suite", str(suite), "--work-dir", str(Path(tmp) / "work")
+            )
+        self.assertEqual(code, 2)
+        self.assertIn("--coverage-source", data["error"])
+
+    def test_recheck_refuses_changed_product_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            (project / "src").mkdir(parents=True)
+            (project / "src" / "m.py").write_text("X = 2\n", encoding="utf-8")
+            matrix = Path(tmp) / "matrix.json"
+            matrix.write_text(json.dumps({
+                "summary": {"mode": "matrix", "complete": True},
+                "modules": [{"path": "src/m.py", "sha256": hashlib.sha256(b"X = 1\n").hexdigest()}],
+                "tests": [], "mutants": [],
+            }), encoding="utf-8")
+            suite = Path(tmp) / "suite.json"
+            suite.write_text(json.dumps({
+                "summary": {}, "project": str(project), "rootdir": str(project),
+                "collected": ["tests/test_x.py::test_x"], "tests": [], "files": {},
+            }), encoding="utf-8")
+            code, data, _ = run_cli(
+                "mutate", "--python", sys.executable, "--suite", str(suite), "--recheck", str(matrix),
+                "--work-dir", str(Path(tmp) / "work"),
+            )
+        self.assertEqual(code, 2)
+        self.assertIn("src/m.py", data["error"])
 
 
 def runtime_unions(tree: ast.Module) -> list[int]:
