@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
 EXAMPLES = 5
+# The errors of reading and parsing a Python file; UnicodeDecodeError is a ValueError.
+PARSE_ERRORS = (OSError, SyntaxError, ValueError)
 
 
 class UsageError(Exception):
@@ -56,6 +59,22 @@ def rel(path: Path, base: Path) -> str:
 
 def node_file(nodeid: str) -> str:
     return nodeid.split("::", 1)[0]
+
+
+def tail(text: str, count: int) -> list[str]:
+    return text.splitlines()[-count:]
+
+
+def parse_failure(error: Exception) -> str:
+    """The reason, for the output, that a Python file could not be read or parsed."""
+    if isinstance(error, SyntaxError):
+        version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        return f"syntax error at line {error.lineno} under Python {version}: {error.msg}"
+    if isinstance(error, UnicodeDecodeError):
+        return "the file is not UTF-8 text"
+    if isinstance(error, OSError):
+        return f"cannot read the file: {error.strerror}"
+    return str(error)
 
 
 def git(project: Path, *args: str) -> subprocess.CompletedProcess:

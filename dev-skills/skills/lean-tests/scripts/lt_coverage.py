@@ -11,12 +11,15 @@ import ast
 import re
 from pathlib import Path
 
-from lt_common import EXAMPLES, UsageError, git, load_json, node_file, rel, suite_node_ids
+from lt_common import (
+    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, rel, suite_node_ids, tail,
+)
 
 PHASE = re.compile(r"\|(setup|run|teardown)$")
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 TEST_DIRS = frozenset({"tests", "test", "testing"})
 SUPERSETS_SHOWN = 5
+GIT_TAIL = 5
 
 
 def coverage_command(args) -> dict:
@@ -90,10 +93,11 @@ def coverage_command(args) -> dict:
 def diff_summary(diff: dict | None) -> dict | None:
     if diff is None:
         return None
-    summary = {k: v for k, v in diff.items() if k not in ("files", "unmeasured_files")}
+    summary = {k: v for k, v in diff.items() if k not in ("files", "unmeasured_files", "unparsed")}
     summary["raise_missed"] = sum(len(f["raise"]["missed"]) for f in diff["files"])
     summary["except_missed"] = sum(len(f["except"]["missed"]) for f in diff["files"])
     summary["unmeasured_files"] = len(diff["unmeasured_files"])
+    summary["unparsed"] = len(diff["unparsed"])
     return summary
 
 
@@ -156,18 +160,18 @@ def changed_lines(project: Path, base: str) -> tuple[str, dict]:
     """The merge base of `base` and HEAD, and the added line numbers of each file since it."""
     top = git(project, "rev-parse", "--show-toplevel")
     if top.returncode != 0:
-        raise UsageError("diff coverage needs a Git work tree", log_tail=top.stderr.splitlines()[-5:])
+        raise UsageError("diff coverage needs a Git work tree", log_tail=tail(top.stderr, GIT_TAIL))
     root = Path(top.stdout.strip()).resolve()
     found = git(project, "merge-base", base, "HEAD")
     if found.returncode != 0:
-        raise UsageError(f"cannot find the merge base of {base} and HEAD", log_tail=found.stderr.splitlines()[-5:])
+        raise UsageError(f"cannot find the merge base of {base} and HEAD", log_tail=tail(found.stderr, GIT_TAIL))
     merge_base = found.stdout.strip()
     diff = git(
         project, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
         "--src-prefix=a/", "--dst-prefix=b/", merge_base, "--", ".",
     )
     if diff.returncode != 0:
-        raise UsageError(f"git diff against {merge_base} failed", log_tail=diff.stderr.splitlines()[-5:])
+        raise UsageError(f"git diff against {merge_base} failed", log_tail=tail(diff.stderr, GIT_TAIL))
     changed: dict[Path, set] = {}
     current = None
     in_header = False
@@ -200,11 +204,8 @@ def changed_lines(project: Path, base: str) -> tuple[str, dict]:
 
 
 def error_lines(path: Path) -> tuple[set, set]:
-    """Line numbers of the raise statements and the except clauses in a file."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
-        return set(), set()
+    """Line numbers of the raise statements and the except clauses in a file. Raises PARSE_ERRORS."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     raises = {n.lineno for n in ast.walk(tree) if isinstance(n, ast.Raise)}
     excepts = {n.lineno for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler)}
     return raises, excepts
@@ -214,6 +215,7 @@ def diff_coverage(project: Path, base: str, measured_files: dict, test_files: se
     merge_base, changed = changed_lines(project, base)
     files = []
     unmeasured_files = []
+    unparsed = []
     totals = {"changed_lines": 0, "executable": 0, "executed": 0, "missed": 0}
     for path in sorted(changed):
         if path.suffix != ".py" or is_test_path(path, test_files, project) or not changed[path]:
@@ -228,7 +230,11 @@ def diff_coverage(project: Path, base: str, measured_files: dict, test_files: se
         missed = changed[path] & set(entry.get("missing_lines") or [])
         if not executed and not missed:
             continue
-        raises, excepts = error_lines(path)
+        try:
+            raises, excepts = error_lines(path)
+        except PARSE_ERRORS as error:
+            raises, excepts = set(), set()
+            unparsed.append({"file": rel(path, project), "reason": parse_failure(error)})
         totals["executable"] += len(executed) + len(missed)
         totals["executed"] += len(executed)
         totals["missed"] += len(missed)
@@ -247,4 +253,5 @@ def diff_coverage(project: Path, base: str, measured_files: dict, test_files: se
         "percent": None if not executable else round(100.0 * totals["executed"] / executable, 1),
         "files": files,
         "unmeasured_files": unmeasured_files,
+        "unparsed": unparsed,
     }

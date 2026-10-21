@@ -9,6 +9,8 @@ and name the command that supplies both. The scan checks need only Python.
 
 from __future__ import annotations
 
+import ast
+import importlib
 import importlib.util
 import json
 import os
@@ -80,6 +82,7 @@ def notify(sender, message):
 """
 
 FILES = {
+    ".gitignore": "*.log\n",
     "pyproject.toml": """\
         [tool.pytest.ini_options]
         testpaths = ["tests"]
@@ -114,6 +117,7 @@ FILES = {
         def test_writes_report_file():
             target = Path(__file__).resolve().parent / "report.txt"
             target.write_text("ok")  # Write UTF-8 text.
+            target.with_suffix(".log").write_text("ok")  # .gitignore lists *.log.
             assert target.read_text() == "ok"
         """,
     "tests/test_core.py": """\
@@ -263,13 +267,14 @@ def line_of(text: str, snippet: str) -> int:
     return lines[0]
 
 
-def run_cli(*args: str, cwd: Path | None = None) -> tuple[int, dict, str]:
+def run_cli(*args: str, cwd: Path | None = None, env: dict | None = None) -> tuple[int, dict, str]:
     """Run lean_tests.py; return the exit code, the parsed stdout JSON, and stderr."""
     result = subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         capture_output=True,
         text=True,
         cwd=cwd,
+        env=env,
     )
     try:
         data = json.loads(result.stdout) if result.stdout.strip() else {}
@@ -397,11 +402,56 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertEqual({u["nodeid"] for u in data["unresolved"]}, {CORE + "test_missing", "tests/test_gone.py::test_x"})
 
+    def test_syntax_error_names_the_line_and_the_python_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests").mkdir()
+            (root / "tests" / "test_broken.py").write_text("x = 1\ndef test_x(:\n    pass\n", encoding="utf-8")
+            nodeids = root / "nodeids.txt"
+            nodeids.write_text("tests/test_broken.py::test_x\n", encoding="utf-8")
+            code, data, stderr = run_cli("scan", "--project", str(root), "--node-ids", str(nodeids))
+        self.assertEqual(code, 0, stderr)
+        [entry] = data["unresolved"]
+        version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        self.assertTrue(entry["reason"].startswith(f"syntax error at line 2 under Python {version}: "), entry)
+
+    def test_node_ids_are_relative_to_the_working_directory_by_default(self) -> None:
+        code, data, stderr = run_cli("scan", "--node-ids", str(self.nodeids), cwd=self.root)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(data, self.data)
+
 
 def git(root: Path, env: dict, *args: str) -> str:
     result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, env=env)
     assert result.returncode == 0, result.stderr
     return result.stdout
+
+
+def git_env(tmp: Path) -> dict:
+    """The environment without the user's Git configuration, for a repository under `tmp`."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        GIT_CONFIG_GLOBAL=str(tmp / "gitconfig"),
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CEILING_DIRECTORIES=str(tmp),
+        GIT_AUTHOR_NAME="Test",
+        GIT_AUTHOR_EMAIL="test@example.com",
+        GIT_COMMITTER_NAME="Test",
+        GIT_COMMITTER_EMAIL="test@example.com",
+    )
+    return env
+
+
+def import_script(name: str):
+    """Import a module of the scripts directory without writing bytecode beside it."""
+    scripts = str(SCRIPT.parent)
+    sys.path.insert(0, scripts)
+    previous, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        return importlib.import_module(name)
+    finally:
+        sys.dont_write_bytecode = previous
+        sys.path.remove(scripts)
 
 
 class Runs:
@@ -425,16 +475,7 @@ class Runs:
         tmp = Path(self._tmp.name)
         self.root = tmp / "proj"
         self.work = tmp / "work"
-        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-        self.env.update(
-            GIT_CONFIG_GLOBAL=str(tmp / "gitconfig"),
-            GIT_CONFIG_NOSYSTEM="1",
-            GIT_CEILING_DIRECTORIES=str(tmp),
-            GIT_AUTHOR_NAME="Test",
-            GIT_AUTHOR_EMAIL="test@example.com",
-            GIT_COMMITTER_NAME="Test",
-            GIT_COMMITTER_EMAIL="test@example.com",
-        )
+        self.env = git_env(tmp)
         write_project(self.root, core=CORE_BASE)
         git(self.root, self.env, "init", "-q")
         names = [*FILES, "src/calc/core.py"]
@@ -506,7 +547,8 @@ class SuiteTest(unittest.TestCase):
         self.assertGreaterEqual(slowest["setup"][0]["seconds"], 0.15)
 
     def test_reports_files_the_tests_wrote_and_writes_none_itself(self) -> None:
-        self.assertEqual(self.runs.run1[1]["summary"]["files_written"], ["?? tests/report.txt"])
+        # The ignored file counts too; run2 rewrites both files, which then exist already.
+        self.assertEqual(self.runs.run1[1]["summary"]["files_written"], ["!! tests/report.log", "?? tests/report.txt"])
         self.assertEqual(self.runs.run2[1]["summary"]["files_written"], [])
         added = set(self.runs.status_after.splitlines()) - set(self.runs.status_before.splitlines())
         self.assertEqual(added, {"?? tests/report.txt"})
@@ -637,6 +679,130 @@ class CoverageTest(unittest.TestCase):
         self.assertIn("--show-contexts", data["error"])
 
 
+ADDOPTS_FILES = {
+    ".gitignore": ".coverage\ncoverage.xml\nhtmlcov/\n",
+    "pyproject.toml": """\
+        [tool.pytest.ini_options]
+        addopts = "--cov=pkg --cov-report=xml"
+        testpaths = ["tests"]
+        pythonpath = ["src"]
+        """,
+    "src/pkg/__init__.py": """\
+        def f(x):
+            return x + 1
+        """,
+    "tests/test_f.py": """\
+        from pkg import f
+
+
+        def test_f():
+            assert f(1) == 2
+        """,
+}
+
+
+@needs_pytest
+class ProjectCoverageOptionsTest(unittest.TestCase):
+    """The project's own pytest-cov options write no coverage file into the project.
+
+    The project's addopts ask for coverage with an XML report, and
+    PYTEST_ADDOPTS asks for an HTML report. .gitignore lists all three files.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(cls._tmp.name)
+        cls.root = tmp / "proj"
+        env = git_env(tmp)
+        for name, text in ADDOPTS_FILES.items():
+            path = cls.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(textwrap.dedent(text), encoding="utf-8")
+        git(cls.root, env, "init", "-q")
+        git(cls.root, env, "add", *ADDOPTS_FILES)
+        git(cls.root, env, "commit", "-q", "-m", "base")
+        env["PYTEST_ADDOPTS"] = "--cov-report=html"
+        common = ("suite", "--python", sys.executable, "--project", str(cls.root), "--work-dir", str(tmp / "work"))
+        cls.plain = run_cli(*common, "--label", "plain", env=env)
+        cls.covered = run_cli(*common, "--label", "covered", "--coverage-source", "pkg", env=env)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_runs_write_no_coverage_file_into_the_project(self) -> None:
+        for code, data, stderr in (self.plain, self.covered):
+            self.assertEqual(code, 0, stderr)
+            self.assertEqual(data["summary"]["counts"]["passed"], 1, data["log_tail"])
+            self.assertEqual(data["summary"]["files_written"], [])
+        for name in (".coverage", "coverage.xml", "htmlcov"):
+            self.assertFalse((self.root / name).exists(), name)
+
+    def test_coverage_run_still_records_per_test_contexts(self) -> None:
+        report = json.loads(Path(self.covered[1]["files"]["coverage_json"]).read_text(encoding="utf-8"))
+        contexts = report["files"]["src/pkg/__init__.py"]["contexts"]
+        self.assertIn("tests/test_f.py::test_f|run", {c for found in contexts.values() for c in found})
+
+
+class CoverageParseTest(unittest.TestCase):
+    """Diff coverage names a changed product file that it cannot parse."""
+
+    def test_changed_file_with_a_syntax_error_is_unparsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            root = tmp / "proj"
+            module = root / "src" / "pkg" / "mod.py"
+            module.parent.mkdir(parents=True)
+            module.write_text("x = 1\n", encoding="utf-8")
+            env = git_env(tmp)
+            git(root, env, "init", "-q")
+            git(root, env, "add", "src/pkg/mod.py")
+            git(root, env, "commit", "-q", "-m", "base")
+            module.write_text("x = 1\ndef f(:\n    pass\n", encoding="utf-8")
+            contexts = tmp / "contexts.json"
+            contexts.write_text(json.dumps({
+                "meta": {"show_contexts": True},
+                "files": {"src/pkg/mod.py": {"executed_lines": [1], "missing_lines": [2], "contexts": {"1": [""]}}},
+            }), encoding="utf-8")
+            suite = tmp / "suite.json"
+            suite.write_text(json.dumps({
+                "summary": {}, "project": str(root), "rootdir": str(root),
+                "collected": ["tests/test_mod.py::test_x"], "tests": [],
+            }), encoding="utf-8")
+            code, data, stderr = run_cli(
+                "coverage", "--contexts", str(contexts), "--suite", str(suite), "--base", "HEAD", env=env
+            )
+        self.assertEqual(code, 0, stderr)
+        [entry] = data["diff"]["unparsed"]
+        self.assertEqual(entry["file"], "src/pkg/mod.py")
+        version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        self.assertTrue(entry["reason"].startswith(f"syntax error at line 2 under Python {version}: "), entry)
+        self.assertEqual(data["summary"]["diff"]["unparsed"], 1)
+        self.assertEqual(data["diff"]["files"][0]["missed"], [2])
+
+
+class WithoutCovTest(unittest.TestCase):
+    """A coverage run removes the project's pytest-cov options from addopts."""
+
+    def test_drops_each_option_shape_and_keeps_cov_config(self) -> None:
+        without_cov = import_script("lt_suite").without_cov
+        cases = [
+            (["--cov=pkg", "--cov-report=xml", "-q"], ["-q"]),
+            (["--cov", "pkg", "-q"], ["-q"]),
+            (["--cov", "-q"], ["-q"]),
+            (["-q", "--cov"], ["-q"]),
+            (["--cov-report", "xml", "--cov-fail-under", "90", "-x"], ["-x"]),
+            (["--cov-context", "test", "--cov-precision", "2", "-x"], ["-x"]),
+            (["--cov-fail-under=90", "--cov-context=test", "--cov-precision=2"], []),
+            (["--cov-branch", "--cov-append", "--cov-reset", "--no-cov", "--no-cov-on-fail", "tests"], ["tests"]),
+            (["--cov-config", "setup.cfg", "--cov-config=.coveragerc", "--cov=pkg"], ["--cov-config", "setup.cfg", "--cov-config=.coveragerc"]),
+            (["-p", "xdist", "--cov-report"], ["-p", "xdist"]),
+        ]
+        for args, kept in cases:
+            self.assertEqual(without_cov(args), kept, args)
+
+
 class UsageTest(unittest.TestCase):
     """Usage and environment errors exit with status 2."""
 
@@ -648,6 +814,22 @@ class UsageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             code, _, _ = run_cli("scan", "--project", tmp)
         self.assertEqual(code, 2)
+
+    def test_scan_of_a_suite_output_takes_no_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, data, _ = run_cli("scan", "--suite", str(Path(tmp) / "run1.json"), "--project", tmp)
+        self.assertEqual(code, 2)
+        self.assertIn("--project", data["error"])
+
+    def test_python_older_than_3_9_stops_with_one_line(self) -> None:
+        code = (
+            "import runpy, sys; sys.argv = [sys.argv[1], 'scan']; sys.version_info = (3, 8, 0); "
+            "runpy.run_path(sys.argv[0], run_name='__main__')"
+        )
+        result = subprocess.run([sys.executable, "-c", code, str(SCRIPT)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stderr, "lean_tests.py: needs Python 3.9 or newer, not Python 3.8\n")
+        self.assertEqual(json.loads(result.stdout), {"error": "needs Python 3.9 or newer, not Python 3.8"})
 
     def test_suite_with_an_interpreter_that_cannot_import_pytest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -668,6 +850,41 @@ class UsageTest(unittest.TestCase):
             )
         self.assertEqual(code, 2)
         self.assertIn("error", data)
+
+
+def runtime_unions(tree: ast.Module) -> list[int]:
+    """Lines where `X | Y` of types is evaluated when the code runs, which needs Python 3.10."""
+    postponed = any(
+        isinstance(node, ast.ImportFrom) and node.module == "__future__" and any(a.name == "annotations" for a in node.names)
+        for node in tree.body
+    )
+    evaluated = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("isinstance", "issubclass"):
+            evaluated += node.args[1:]
+        elif not postponed and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            args = node.args
+            params = [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]
+            evaluated += [p.annotation for p in params if p is not None and p.annotation is not None]
+            evaluated += [node.returns] if node.returns is not None else []
+        elif not postponed and isinstance(node, ast.AnnAssign):
+            evaluated.append(node.annotation)
+    return [
+        sub.lineno for node in evaluated for sub in ast.walk(node)
+        if isinstance(sub, ast.BinOp) and isinstance(sub.op, ast.BitOr)
+    ]
+
+
+class ScriptSyntaxTest(unittest.TestCase):
+    """The scripts run on Python 3.9. Python 3.9 is not installed, so its grammar stands in."""
+
+    def test_scripts_parse_with_the_python_3_9_grammar_and_evaluate_no_type_union(self) -> None:
+        paths = sorted(SCRIPT.parent.rglob("*.py"))
+        self.assertIn(SCRIPT, paths)
+        for path in paths:
+            with self.subTest(path=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path), feature_version=(3, 9))
+                self.assertEqual(runtime_unions(tree), [])
 
 
 def split_skill(path: Path) -> tuple[dict[str, str], str]:

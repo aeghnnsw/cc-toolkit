@@ -5,10 +5,10 @@ description: This skill should be used when the user asks to "check the test sui
 
 # Lean Tests
 
-Measure a pytest suite and find the tests that do not earn their place:
-slow tests and fixtures, flaky or order-dependent tests, tests that check
-nothing, and tests whose coverage other tests repeat. A test earns its place
-when it detects a fault that no other test detects.
+Measure a pytest suite and find the tests that cost time or add no
+protection: slow tests and fixtures, flaky or order-dependent tests, tests
+that check nothing, and tests whose coverage other tests repeat. A test
+adds protection when it detects a fault that no other test detects.
 
 ## Modes
 
@@ -25,10 +25,11 @@ this version has no mode that changes tests.
 These rules apply to all work on a test suite.
 
 1. Change a file only when the user's request asks for a change.
-2. Keep each test's protection. Never weaken a test in the same change as a
-   production change: a commit, or the whole pull request when merges
-   squash. Weakening is removing, skipping, loosening, or rewriting an
-   existing test.
+2. Keep each test's protection. Put no test weakening in a mixed change. A
+   mixed change is a commit, or the whole pull request when merges squash,
+   that changes product code. A test weakening is a test-side change that
+   can lower what existing tests detect, such as removing, skipping,
+   loosening, or rewriting an existing test.
 3. Delete or merge a test only with killed-mutant evidence and a written
    reason for each test, in a commit of its own. When the evidence is
    incomplete, delete nothing. Equal coverage is not evidence: tests that
@@ -44,8 +45,8 @@ These rules apply to all work on a test suite.
 ## Boundaries
 
 - lean-tests works on Python projects that run their tests with pytest.
-- The `tdd` skill decides where a new test goes. lean-tests decides whether
-  a test earns its place and how the suite stays fast.
+- The `tdd` skill decides where a new test goes. lean-tests measures which
+  tests add protection and how the suite stays fast.
 - Use coverage to find untested changes. Do not set a coverage percentage
   as a target.
 
@@ -74,11 +75,12 @@ These rules apply to all work on a test suite.
 
    Records, logs, coverage data, and reports go there. When the work is
    done, remove it by its path: `rm -r <work-dir>`.
-5. Run the bundled command-line entry with `python3` (Python 3.9 or newer,
-   standard library only):
+5. Run the bundled command-line entry with `<python>`, so that it parses
+   the project's files with the project's Python version. The entry needs
+   Python 3.9 or newer and only the standard library:
 
    ```bash
-   python3 <skill-dir>/scripts/lean_tests.py <subcommand> --help
+   <python> <skill-dir>/scripts/lean_tests.py <subcommand> --help
    ```
 
    Here `<skill-dir>` is this skill's directory. Each subcommand prints

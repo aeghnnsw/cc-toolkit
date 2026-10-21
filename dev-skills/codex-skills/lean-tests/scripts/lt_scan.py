@@ -13,7 +13,7 @@ import re
 import tokenize
 from pathlib import Path
 
-from lt_common import EXAMPLES, UsageError, load_json, read_node_ids, suite_node_ids
+from lt_common import EXAMPLES, PARSE_ERRORS, UsageError, load_json, parse_failure, read_node_ids, suite_node_ids
 
 MOCK_ASSERTS = frozenset({
     "assert_called", "assert_called_once", "assert_called_with", "assert_called_once_with",
@@ -69,14 +69,15 @@ LARGE_NUMBER = 100_000
 
 
 def scan_command(args) -> dict:
-    project = Path(args.project).resolve()
     if args.suite:
+        if args.project is not None:
+            raise UsageError("--project goes only with --node-ids; the suite output names its project")
         data = load_json(args.suite, "suite output")
         nodeids = suite_node_ids(data)
-        root = Path(data.get("rootdir") or data.get("project") or project)
+        root = Path(data.get("rootdir") or data.get("project") or ".").resolve()
     else:
         nodeids = read_node_ids(args.node_ids)
-        root = project
+        root = Path(args.project or ".").resolve()
     if not root.is_dir():
         raise UsageError(f"project directory {root} does not exist")
     return scan(root, nodeids)
@@ -115,7 +116,7 @@ def scan(root: Path, nodeids: list[str]) -> dict:
         func, classes = found
         test = TestFunction(module, func, classes)
         for code, line, detail in test.findings():
-            findings.append({"code": code, "nodeid": key, "file": path, "line": line, "detail": detail})
+            findings.append(finding(code, key, path, line, detail))
         shapes.setdefault(test.shape(), []).append((key, path, func.lineno))
 
     groups = []
@@ -125,18 +126,16 @@ def scan(root: Path, nodeids: list[str]) -> dict:
         number = len(groups) + 1
         groups.append({"group": number, "nodeids": [key for key, _, _ in members]})
         for key, path, line in members:
-            findings.append({
-                "code": "duplicate-shape", "nodeid": key, "file": path, "line": line, "detail": f"group {number}",
-            })
+            findings.append(finding("duplicate-shape", key, path, line, f"group {number}"))
 
     findings.sort(key=lambda f: (f["file"], f["line"], f["code"], f["nodeid"]))
     counts: dict[str, int] = {}
     examples: dict[str, list[str]] = {}
-    for finding in findings:
-        counts[finding["code"]] = counts.get(finding["code"], 0) + 1
-        shown = examples.setdefault(finding["code"], [])
-        if len(shown) < EXAMPLES and finding["nodeid"] not in shown:
-            shown.append(finding["nodeid"])
+    for entry in findings:
+        counts[entry["code"]] = counts.get(entry["code"], 0) + 1
+        shown = examples.setdefault(entry["code"], [])
+        if len(shown) < EXAMPLES and entry["nodeid"] not in shown:
+            shown.append(entry["nodeid"])
     return {
         "summary": {
             "nodeids": len(nodeids),
@@ -153,17 +152,17 @@ def scan(root: Path, nodeids: list[str]) -> dict:
     }
 
 
+def finding(code: str, nodeid: str, path: str, line: int, detail: str) -> dict:
+    return {"code": code, "nodeid": nodeid, "file": path, "line": line, "detail": detail}
+
+
 def load_module(path: Path):
+    """The parsed module, or the reason it could not be parsed."""
     try:
         source = path.read_text(encoding="utf-8")
-    except OSError as error:
-        return f"cannot read the file: {error.strerror}"
-    except UnicodeDecodeError:
-        return "the file is not UTF-8 text"
-    try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError as error:
-        return f"syntax error on line {error.lineno}: {error.msg}"
+    except PARSE_ERRORS as error:
+        return parse_failure(error)
     return Module(source, tree)
 
 

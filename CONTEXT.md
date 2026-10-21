@@ -218,6 +218,12 @@ A test that lean-tests never deletes or merges: a regression,
 characterization, security, compatibility, or performance test, or the one
 happy-path test of a test seam.
 
+**Tautological test**:
+A test whose check cannot fail whatever the product code does: it compares
+a constant with itself, or it computes the expected value the way the code
+does.
+_Avoid_: Trivial test
+
 **Unmeasured test**:
 A test whose run covers no measured product line, for example because it
 runs the code in a subprocess. Coverage data says nothing about its value.

@@ -13,15 +13,21 @@ success; 2 means a usage or environment error, and the JSON then has an
 Run `lean_tests.py <subcommand> --help` for the options.
 """
 
-from __future__ import annotations
-
+# No `from __future__ import annotations` here: Python 3.6 must reach the version check.
+import json
 import sys
+
+if sys.version_info < (3, 9):
+    MESSAGE = "needs Python 3.9 or newer, not Python %d.%d" % sys.version_info[:2]
+    print(json.dumps({"error": MESSAGE}, indent=1))
+    print("lean_tests.py: " + MESSAGE, file=sys.stderr)
+    sys.exit(2)
 
 # Leave no __pycache__ directory beside the scripts.
 sys.dont_write_bytecode = True
 
 import argparse  # noqa: E402
-import json  # noqa: E402
+from typing import Optional  # noqa: E402
 
 import lt_coverage  # noqa: E402
 import lt_scan  # noqa: E402
@@ -66,14 +72,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     suite.add_argument("--timeout", type=float, help="stop pytest after this many seconds")
     suite.add_argument("--node-ids", help="file with one node ID per line; run only these tests")
-    suite.add_argument("--top", type=int, default=10, help="length of each slowest list (default: 10)")
 
     compare = sub.add_parser("compare", parents=[output], help="compare two suite outputs")
     compare.add_argument("first", help="suite output JSON of the first run")
     compare.add_argument("second", help="suite output JSON of the second run")
 
     scan = sub.add_parser("scan", parents=[output], help="AST scan of the collected tests")
-    scan.add_argument("--project", default=".", help="project directory (default: .)")
+    scan.add_argument(
+        "--project", help="project directory of the --node-ids file (default: .); --suite names its own"
+    )
     source = scan.add_mutually_exclusive_group(required=True)
     source.add_argument("--suite", help="suite output JSON; scan its collected node IDs")
     source.add_argument("--node-ids", help="file with one node ID per line, relative to --project")
@@ -92,7 +99,7 @@ def split_pytest_args(argv: list[str]) -> tuple[list[str], list[str]]:
     return argv, []
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     own, extra = split_pytest_args(list(sys.argv[1:] if argv is None else argv))
     args = build_parser().parse_args(own)
     try:

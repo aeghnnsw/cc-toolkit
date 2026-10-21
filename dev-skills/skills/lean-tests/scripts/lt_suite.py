@@ -14,16 +14,19 @@ import subprocess
 import time
 from pathlib import Path
 
-from lt_common import EXAMPLES, UsageError, git, load_json, read_node_ids, suite_node_ids
+from lt_common import EXAMPLES, UsageError, git, load_json, read_node_ids, suite_node_ids, tail
 
 PLUGIN_DIR = Path(__file__).resolve().parent / "pytest_plugin"
 OUTCOMES = ("passed", "failed", "error", "skipped", "xfailed", "xpassed")
 PHASES = ("setup", "call", "teardown")
 LOG_TAIL = 30
+SLOWEST = 10
+# pytest-cov options whose value is the next argument when they have no "=".
+COV_VALUE_OPTIONS = frozenset({"--cov-report", "--cov-fail-under", "--cov-context", "--cov-precision"})
 PROBE = """\
 import json
 found = {}
-for name in ("pytest", "pytest_cov", "coverage"):
+for name in ("pytest", "pytest_cov"):
     try:
         found[name] = getattr(__import__(name), "__version__", "unknown")
     except Exception:
@@ -42,10 +45,6 @@ def interpreter(command: str) -> list[str]:
     return argv
 
 
-def tail(text: str, count: int = LOG_TAIL) -> list[str]:
-    return text.splitlines()[-count:]
-
-
 def probe(python: list[str], project: Path, env: dict) -> dict:
     """Ask the target interpreter which test packages it can import."""
     try:
@@ -62,8 +61,47 @@ def probe(python: list[str], project: Path, env: dict) -> dict:
     except (IndexError, json.JSONDecodeError) as error:
         raise UsageError(
             f"the interpreter exited with {result.returncode} and printed no package list",
-            log_tail=tail(result.stderr),
+            log_tail=tail(result.stderr, LOG_TAIL),
         ) from error
+
+
+def ini_addopts(python: list[str], project: Path, env: dict, path: Path) -> list[str]:
+    """The addopts of the project's pytest configuration, from a pytest run that exits before collection."""
+    cmd = [*python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "lean_tests_report", "--no-cov"]
+    try:
+        result = subprocess.run(
+            cmd, cwd=project, env={**env, "LEAN_TESTS_ADDOPTS": str(path)},
+            capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise UsageError("pytest did not read its configuration within 600 seconds") from error
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))["addopts"]
+    except (OSError, ValueError, KeyError) as error:
+        raise UsageError(
+            f"pytest exited with {result.returncode} before it reported its addopts",
+            log_tail=tail(result.stdout + result.stderr, LOG_TAIL),
+        ) from error
+
+
+def without_cov(args: list[str]) -> list[str]:
+    """`args` without the pytest-cov options and their values, except --cov-config.
+
+    --cov-config only names the coverage configuration, and COVERAGE_FILE
+    overrides the data file that the configuration sets.
+    """
+    kept = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        index += 1
+        if not arg.startswith(("--cov", "--no-cov")) or arg.split("=", 1)[0] == "--cov-config":
+            kept.append(arg)
+        elif arg in COV_VALUE_OPTIONS:
+            index += 1
+        elif arg == "--cov" and index < len(args) and not args[index].startswith("-"):
+            index += 1  # --cov takes an optional value
+    return kept
 
 
 def version_tuple(version: str) -> tuple[int, ...]:
@@ -71,12 +109,19 @@ def version_tuple(version: str) -> tuple[int, ...]:
 
 
 def git_status(project: Path) -> set | None:
-    """The porcelain status lines of the project, or None outside a Git work tree."""
+    """The porcelain status lines of the project with its ignored files, or None outside a Git work tree.
+
+    Each ignored directory is one line, so a file written inside one is not seen.
+    """
+    status = ("--no-optional-locks", "status", "--porcelain")
     try:
-        result = git(project, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", ".")
+        found = git(project, *status, "--untracked-files=all", "--", ".")
+        ignored = git(project, *status, "--untracked-files=normal", "--ignored=traditional", "--", ".")
     except UsageError:
         return None  # git is not installed
-    return set(result.stdout.splitlines()) if result.returncode == 0 else None
+    if found.returncode != 0 or ignored.returncode != 0:
+        return None
+    return set(found.stdout.splitlines()) | {line for line in ignored.stdout.splitlines() if line.startswith("!! ")}
 
 
 def run_pytest(cmd: list[str], project: Path, env: dict, log: Path, timeout: float | None):
@@ -167,45 +212,22 @@ def final_outcome(phases: dict) -> str:
     return "xpassed" if call["xfail"] else "passed"
 
 
-def run_suite(args, extra: list[str]) -> dict:
-    project = Path(args.project).resolve()
-    if not project.is_dir():
-        raise UsageError(f"project directory {project} does not exist")
-    python = interpreter(args.python)
-    work = Path(args.work_dir).resolve() / args.label
-    work.mkdir(parents=True, exist_ok=True)
-    records = work / "records.jsonl"
-    records.write_text("", encoding="utf-8")
-    log = work / "pytest.log"
-    for stale in ("coverage.json", "node-ids.txt"):
-        if (work / stale).is_file():
-            (work / stale).unlink()
-
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(PLUGIN_DIR), env.get("PYTHONPATH")) if p)
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["LEAN_TESTS_RECORDS"] = str(records)
-    env.pop("LEAN_TESTS_REVERSE", None)
-    if args.reverse:
-        env["LEAN_TESTS_REVERSE"] = "1"
-
-    versions = probe(python, project, env)
-    if not versions.get("pytest"):
-        raise UsageError("the target interpreter cannot import pytest", package="pytest")
-    coverage = bool(args.coverage_source)
-    if coverage and not versions.get("pytest_cov"):
-        raise UsageError("the target interpreter cannot import pytest_cov", package="pytest-cov")
-
+def pytest_command(args, python: list[str], versions: dict, project: Path, env: dict, work: Path) -> list[str]:
+    """The pytest command of a run, without the extra arguments. A coverage run also changes `env`."""
     cmd = [*python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:randomly", "-p", "lean_tests_report"]
-    files = {"records": str(records), "log": str(log)}
-    if coverage:
-        data_file = work / "coverage.data"
-        env["COVERAGE_FILE"] = str(data_file)
+    if args.coverage_source:
+        # pytest-cov keeps a report or source that addopts requests, so the run leaves out those options.
+        addopts = ini_addopts(python, project, env, work / "addopts.json")
+        cmd += ["-o", "addopts=" + shlex.join(without_cov(addopts))]
+        if "PYTEST_ADDOPTS" in env:
+            env["PYTEST_ADDOPTS"] = shlex.join(without_cov(shlex.split(env["PYTEST_ADDOPTS"])))
         # sys.monitoring drops per-test contexts; the C tracer keeps them.
         env["COVERAGE_CORE"] = "ctrace"
         cmd += [f"--cov={source}" for source in args.coverage_source]
         cmd += ["--cov-branch", "--cov-context=test", "--cov-report="]
-        files["coverage_data"] = str(data_file)
+    elif versions.get("pytest_cov"):
+        # Coverage that addopts starts would write its data and reports into the project.
+        cmd.append("--no-cov")
     if args.node_ids:
         nodeids = read_node_ids(args.node_ids)
         if version_tuple(versions["pytest"]) >= (8, 2):
@@ -214,27 +236,11 @@ def run_suite(args, extra: list[str]) -> dict:
             cmd.append(f"@{argfile}")
         else:
             cmd += nodeids
-    cmd += extra
+    return cmd
 
-    before = git_status(project)
-    start = time.perf_counter()
-    exit_code, timed_out = run_pytest(cmd, project, env, log, args.timeout)
-    wall = time.perf_counter() - start
 
-    result_extra = {}
-    if coverage:
-        json_path = work / "coverage.json"
-        report = subprocess.run(
-            [*python, "-m", "coverage", "json", "--show-contexts", "-o", str(json_path)],
-            cwd=project, env=env, capture_output=True, text=True,
-        )
-        if json_path.is_file():
-            files["coverage_json"] = str(json_path)
-        else:
-            result_extra["coverage_error"] = tail(report.stdout + report.stderr)
-    after = git_status(project)
-
-    found = read_records(records)
+def test_entries(found: dict) -> list[dict]:
+    """One entry per test of the records: the final outcome, the total seconds, and the phases."""
     tests = []
     for test in found["tests"].values():
         phases = test["phases"]
@@ -247,14 +253,78 @@ def run_suite(args, extra: list[str]) -> dict:
                 for when, phase in phases.items()
             },
         })
-    counts = {outcome: 0 for outcome in OUTCOMES}
-    for test in tests:
-        counts[test["outcome"]] = counts.get(test["outcome"], 0) + 1
-    slowest = {}
+    return tests
+
+
+def slowest(tests: list[dict]) -> dict:
+    """The slowest tests of each phase, slowest first."""
+    found = {}
     for when in PHASES:
         timed = [(t["phases"][when]["seconds"], t["nodeid"]) for t in tests if when in t["phases"]]
         timed.sort(key=lambda pair: -pair[0])
-        slowest[when] = [{"nodeid": n, "seconds": s} for s, n in timed[: args.top] if s > 0]
+        found[when] = [{"nodeid": n, "seconds": s} for s, n in timed[:SLOWEST] if s > 0]
+    return found
+
+
+def run_suite(args, extra: list[str]) -> dict:
+    project = Path(args.project).resolve()
+    if not project.is_dir():
+        raise UsageError(f"project directory {project} does not exist")
+    python = interpreter(args.python)
+    work = Path(args.work_dir).resolve() / args.label
+    work.mkdir(parents=True, exist_ok=True)
+    for stale in ("coverage.json", "coverage.data", "node-ids.txt", "addopts.json"):
+        if (work / stale).is_file():
+            (work / stale).unlink()
+    records = work / "records.jsonl"
+    records.write_text("", encoding="utf-8")
+    log = work / "pytest.log"
+    data_file = work / "coverage.data"
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(PLUGIN_DIR), env.get("PYTHONPATH")) if p)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["LEAN_TESTS_RECORDS"] = str(records)
+    # Coverage that a run starts writes its data here, not into the project.
+    env["COVERAGE_FILE"] = str(data_file)
+    env.pop("LEAN_TESTS_ADDOPTS", None)
+    env.pop("LEAN_TESTS_REVERSE", None)
+    if args.reverse:
+        env["LEAN_TESTS_REVERSE"] = "1"
+
+    versions = probe(python, project, env)
+    if not versions.get("pytest"):
+        raise UsageError("the target interpreter cannot import pytest", package="pytest")
+    coverage = bool(args.coverage_source)
+    if coverage and not versions.get("pytest_cov"):
+        raise UsageError("the target interpreter cannot import pytest_cov", package="pytest-cov")
+
+    before = git_status(project)
+    cmd = pytest_command(args, python, versions, project, env, work) + extra
+    start = time.perf_counter()
+    exit_code, timed_out = run_pytest(cmd, project, env, log, args.timeout)
+    wall = time.perf_counter() - start
+
+    files = {"records": str(records), "log": str(log)}
+    result_extra = {}
+    if coverage:
+        files["coverage_data"] = str(data_file)
+        json_path = work / "coverage.json"
+        report = subprocess.run(
+            [*python, "-m", "coverage", "json", "--show-contexts", "-o", str(json_path)],
+            cwd=project, env=env, capture_output=True, text=True,
+        )
+        if json_path.is_file():
+            files["coverage_json"] = str(json_path)
+        else:
+            result_extra["coverage_error"] = tail(report.stdout + report.stderr, LOG_TAIL)
+    after = git_status(project)
+
+    found = read_records(records)
+    tests = test_entries(found)
+    counts = {outcome: 0 for outcome in OUTCOMES}
+    for test in tests:
+        counts[test["outcome"]] = counts.get(test["outcome"], 0) + 1
     collected = found["collected"] if found["collected"] is not None else [t["nodeid"] for t in tests]
 
     log_text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
@@ -268,7 +338,7 @@ def run_suite(args, extra: list[str]) -> dict:
             "collected": len(collected),
             "counts": counts,
             "collect_errors": len(found["collect_errors"]),
-            "slowest": slowest,
+            "slowest": slowest(tests),
             "files_written": None if before is None or after is None else sorted(after - before),
             "reverse": bool(args.reverse),
             "coverage": coverage,
@@ -281,7 +351,7 @@ def run_suite(args, extra: list[str]) -> dict:
         "collect_errors": found["collect_errors"],
         "tests": tests,
         "files": files,
-        "log_tail": tail(log_text),
+        "log_tail": tail(log_text, LOG_TAIL),
         **result_extra,
     }
     if exit_code in (3, 4):
@@ -323,17 +393,6 @@ def compare(first_path: str, second_path: str) -> dict:
                 "first_exception": failure(a),
                 "second_exception": failure(b),
             })
-    timing = [
-        {
-            "nodeid": nodeid,
-            "first_seconds": tests_first[nodeid]["seconds"],
-            "second_seconds": tests_second[nodeid]["seconds"],
-            "delta_seconds": round(tests_second[nodeid]["seconds"] - tests_first[nodeid]["seconds"], 6),
-        }
-        for nodeid in ids_first
-        if nodeid in tests_first and nodeid in tests_second
-    ]
-    timing.sort(key=lambda entry: -abs(entry["delta_seconds"]))
     missing = [n for n in ids_first if n not in in_second]
     added = [n for n in ids_second if n not in in_first]
     not_run = {
@@ -367,5 +426,4 @@ def compare(first_path: str, second_path: str) -> dict:
         "missing": missing,
         "added": added,
         "not_run": not_run,
-        "timing": timing,
     }

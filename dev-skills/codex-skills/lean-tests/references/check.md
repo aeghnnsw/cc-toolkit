@@ -17,9 +17,14 @@ First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
 
 ```bash
 git -C <project> status --porcelain --untracked-files=all > <work-dir>/status-before.txt
+git -C <project> status --porcelain --untracked-files=normal --ignored=traditional > <work-dir>/ignored-before.txt
 ```
 
-When the project is not a Git work tree, this command fails. Then report
+The second command also lists ignored files, such as a `.coverage` file
+that the project's `.gitignore` names. It lists an ignored directory as one
+line.
+
+When the project is not a Git work tree, these commands fail. Then report
 that check cannot prove that it changed no file, skip diff coverage, and
 continue.
 
@@ -36,31 +41,50 @@ Choose two values for later steps:
 ## 2. Run 1: file order
 
 ```bash
-python3 <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
+<python> <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
   --project <project> --work-dir <work-dir> --label run1 --timeout 600 \
   --out <work-dir>/run1.json
 ```
 
-The 600-second timeout is the check budget. The command turns off the
-pytest cache and bytecode files, and loads a bundled plugin that records
-each test phase. The printed summary gives:
+The 600-second timeout is the default check budget. When the user names
+another budget, use it in place of 600 here and in step 3. The command
+turns off the pytest cache and bytecode files, and loads a bundled plugin
+that records each test phase. It sets `COVERAGE_FILE` to the work
+directory, and when pytest-cov is installed, it adds `--no-cov`, so that the
+project's coverage options write no file. The printed summary gives:
 
 - `counts`, `wall_seconds`, and `collection_seconds`.
 - `slowest`: the slowest `call`, `setup`, and `teardown` phases. Slow setup
   or teardown points at a fixture, not at the test body.
-- `files_written`: Git status lines that the tests added.
+- `files_written`: Git status lines that the tests added, ignored files
+  included. A new file inside a directory that was already ignored does
+  not show.
+
+Then measure the import cost of the product code. Do this for each
+`<source>`:
+
+```bash
+<python> -B -X importtime -c "import <source>" 2> <work-dir>/importtime-<source>.txt
+sort -t '|' -k 2 -n -r <work-dir>/importtime-<source>.txt | head -n 6
+```
+
+`-B` writes no bytecode file into the project. Each line gives the self
+time and the cumulative time in microseconds, and the module name. The
+first line is `<source>` itself: its cumulative time is the import cost.
+The next five lines are the imports with the largest cumulative time. A
+test module that imports `<source>` pays this cost during collection.
 
 When `pytest_exit_code` is 2 or more, read `<work-dir>/run1/pytest.log`
 and report the cause. Exit code 5 means that pytest collected no test.
 
 When `timed_out` is true, the suite is too slow to measure twice. Skip
 steps 3, 4, and 6, report their rows as "not measured: run 1 exceeded the
-check budget", and recommend speed work.
+check budget", and recommend the speed mode.
 
 ## 3. Run 2: reversed order with coverage contexts
 
 ```bash
-python3 <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
+<python> <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
   --project <project> --work-dir <work-dir> --label run2 --reverse \
   --coverage-source <source> --timeout 1800 --out <work-dir>/run2.json
 ```
@@ -68,7 +92,10 @@ python3 <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
 Repeat `--coverage-source` for each package. Run 2 records which lines
 each test runs (pytest-cov `--cov-context=test`). It sets
 `COVERAGE_CORE=ctrace`, because `sys.monitoring` loses per-test contexts.
-Coverage contexts slow a run, so the timeout is three times the budget.
+It removes the project's pytest-cov options, except `--cov-config`, from
+`addopts` and `PYTEST_ADDOPTS` for this run, so that no coverage report
+goes into the project. Coverage contexts slow a run, so the timeout is
+three times the budget.
 
 - When the command exits with status 2 and `package` is `pytest-cov`: under
   uv, run it again with
@@ -83,7 +110,7 @@ Coverage contexts slow a run, so the timeout is three times the budget.
 ## 4. Compare the runs
 
 ```bash
-python3 <skill-dir>/scripts/lean_tests.py compare <work-dir>/run1.json \
+<python> <skill-dir>/scripts/lean_tests.py compare <work-dir>/run1.json \
   <work-dir>/run2.json --out <work-dir>/compare.json
 ```
 
@@ -96,7 +123,7 @@ python3 <skill-dir>/scripts/lean_tests.py compare <work-dir>/run1.json \
 ## 5. Scan the tests
 
 ```bash
-python3 <skill-dir>/scripts/lean_tests.py scan --suite <work-dir>/run1.json \
+<python> <skill-dir>/scripts/lean_tests.py scan --suite <work-dir>/run1.json \
   --out <work-dir>/scan.json
 ```
 
@@ -118,7 +145,23 @@ candidate from the test source alone, not a verdict.
 | `sleep` | calls `time.sleep` |
 
 `unresolved` lists node IDs whose function the scan did not find, for
-example a test inherited from another module.
+example a test inherited from another module, with the reason. A syntax
+error reason names the Python version that parsed the file. When that
+version is not the project's, run the scan again with `<python>`.
+
+The scan does not read Git history. The subject of the commit that added a
+test is also a protection signal. For each test in the no-assertion,
+tautology, self-comparison, duplicate-shape, and coverage-subset rows, read
+that subject:
+
+```bash
+git -C <project> log --reverse --format=%s -S "def <test-name>" -- <file> | head -n 1
+```
+
+Here `<test-name>` is the function name without parameters, and `<file>`
+is the test file. Count the test as protected when the subject has an
+issue reference, or the words fix, bug, regression, characterization,
+security, compat, or perf.
 
 ## 6. Read per-test coverage and diff coverage
 
@@ -126,7 +169,7 @@ Skip this step when run 2 has no coverage contexts. Then
 `<work-dir>/run2/coverage.json` does not exist.
 
 ```bash
-python3 <skill-dir>/scripts/lean_tests.py coverage \
+<python> <skill-dir>/scripts/lean_tests.py coverage \
   --contexts <work-dir>/run2/coverage.json --suite <work-dir>/run2.json \
   --base <base> --out <work-dir>/coverage.json
 ```
@@ -143,7 +186,8 @@ Without a `<base>`, leave out `--base`.
   HEAD, with uncommitted and untracked files. It counts the changed lines
   that the tests executed and missed, and the `raise` and `except` lines
   among them. `unmeasured_files` are changed Python files that coverage did
-  not measure.
+  not measure. `unparsed` are changed files whose `raise` and `except`
+  lines the command could not find, with the reason. Report them.
 
 ## 7. Find agent instructions that force test growth
 
@@ -160,6 +204,7 @@ rules make a suite that can only grow. Change them only when the user asks.
 
 ```bash
 git -C <project> status --porcelain --untracked-files=all | diff <work-dir>/status-before.txt -
+git -C <project> status --porcelain --untracked-files=normal --ignored=traditional | diff <work-dir>/ignored-before.txt -
 ```
 
 Each difference is a file that the tests wrote. The `files_written` list
@@ -176,6 +221,7 @@ measured" with the reason and the package that enables it.
 | Tests collected | run 1 `collected` |
 | Outcomes | run 1 `counts` |
 | Wall time and collection time | run 1 `wall_seconds`, `collection_seconds` |
+| Import cost | step 2 import time of each `<source>`, with its five largest imports |
 | Slowest tests | run 1 `slowest.call` |
 | Slowest setup and teardown | run 1 `slowest.setup`, `slowest.teardown` |
 | Flaky or order-dependent | compare `changed` |
@@ -191,21 +237,24 @@ measured" with the reason and the package that enables it.
 | Instructions that force test growth | step 7 |
 | Files the tests wrote | step 8 |
 
-Then name exactly one next step, with its reason. Use the first rule that
+Then name exactly one next mode, with its reason. Use the first rule that
 applies:
 
-1. **Speed work**, when run 1 exceeded the check budget, a test changed its
-   outcome between the runs, or run 1 took longer than 2 minutes. Name the
-   slowest phases or the changed tests.
-2. **A review of the current change**, when no test executes some changed
-   product lines, such as changed `raise` or `except` lines.
-3. **Pruning of one path**, when a test directory or file has
+1. **speed**, when run 1 exceeded the check budget, run 1 took longer than
+   2 minutes, or a test changed its outcome between the runs. speed fixes
+   order-dependent tests before it turns on parallel runs. Name the slowest
+   phases or the changed tests.
+2. **review**, when no test executes some changed product lines, such as
+   changed `raise` or `except` lines.
+3. **prune** of one path, when a test directory or file has
    `no-assertion`, `tautology`, `self-comparison`, `duplicate-shape`, or
    coverage-subset candidates. Name the path with the most candidates.
-4. **None**, when no rule applies.
+4. **check** again after the next change, when no other rule applies. Say
+   that the suite needs no lean-tests work now.
 
-This version of lean-tests has no mode for these steps. Say that the step
-is work for the user or a later version.
+This version of lean-tests has only the check mode. When the next mode is
+speed, review, or prune, say that the mode is not available in this
+version, and give its steps as work for the user.
 
 When the scorecard is complete, remove the work directory:
 
