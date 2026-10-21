@@ -22,12 +22,15 @@ import queue
 import shutil
 import time
 import tokenize
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
 
-from lt_common import EXAMPLES, PARSE_ERRORS, UsageError, load_json, node_file, parse_failure, rel, suite_node_ids, tail
-from lt_coverage import lines_by_test, product_files, ran_tests, unmeasured_tests
+from lt_common import (
+    EXAMPLES, PARSE_ERRORS, UsageError, load_json, node_file, parse_failure, ran_tests, rel, suite_node_ids, tail,
+)
+from lt_coverage import lines_by_test, product_files, unmeasured_tests
 from lt_suite import (
     failure, interpreter, load_suite, probe, pytest_env, read_records, run_pytest, test_entries, version_tuple,
 )
@@ -80,6 +83,36 @@ class Module(NamedTuple):
     text: str
 
 
+class Verdict(NamedTuple):
+    """The result of one mutant run: the kill of each test, the unreached tests, and a kill that no test gets."""
+
+    killed_by: dict
+    not_reached: list
+    unassigned_kill: str | None
+
+    def killed(self) -> bool:
+        return bool(self.killed_by or self.unassigned_kill)
+
+
+class Baseline(NamedTuple):
+    """The in-scope and excluded tests of the baseline run, and the command that runs the in-scope tests."""
+
+    tests: list
+    excluded: list
+    cmd: list
+
+
+class Evidence(NamedTuple):
+    """The result of the runs of one mutate call. `reason` is None for complete evidence."""
+
+    reason: str | None
+    tests: list
+    excluded: list
+    sanity: list
+    statuses: Counter
+    timing: dict
+
+
 class Source:
     """A module's text, with AST and token positions turned into text offsets."""
 
@@ -92,23 +125,23 @@ class Source:
             self.starts.append(offset)
             offset += len(line) + 1
         self.tokens = [
-            Token(self.at(*token.start), self.at(*token.end))
+            Token(self.token_offset(*token.start), self.token_offset(*token.end))
             for token in tokenize.generate_tokens(io.StringIO(text).readline)
             if token.type in (tokenize.OP, tokenize.NAME) and token.string not in ("(", ")")
         ]
         self.token_starts = [token.start for token in self.tokens]
 
-    def at(self, lineno: int, column: int) -> int:
+    def token_offset(self, lineno: int, column: int) -> int:
         """The offset of a token position: a line and a character column."""
         return self.starts[lineno - 1] + column
 
-    def offset(self, lineno: int, column: int) -> int:
+    def node_offset(self, lineno: int, column: int) -> int:
         """The offset of an AST position: a line and a UTF-8 byte column."""
         line = self.lines[lineno - 1].encode("utf-8")
         return self.starts[lineno - 1] + len(line[:column].decode("utf-8", errors="replace"))
 
     def span(self, node: ast.AST) -> tuple[int, int]:
-        return self.offset(node.lineno, node.col_offset), self.offset(node.end_lineno, node.end_col_offset)
+        return self.node_offset(node.lineno, node.col_offset), self.node_offset(node.end_lineno, node.end_col_offset)
 
     def operator_span(self, start: int, end: int) -> tuple[int, int] | None:
         """The span from the first to the last operator or keyword token between two offsets, or None."""
@@ -116,8 +149,8 @@ class Source:
         inside = list(itertools.takewhile(lambda token: token.end <= end, itertools.islice(self.tokens, index, None)))
         return (inside[0].start, inside[-1].end) if inside else None
 
-    def check_field(self, node: ast.expr) -> bool:
-        """Whether an f-string field's expression is at its position; add its tokens when it has none.
+    def add_field(self, node: ast.expr) -> bool:
+        """Add the tokens of an f-string field's expression when it has none; False when its position is wrong.
 
         Before Python 3.12, an f-string is one string token, and the positions
         of the expressions inside it can be wrong.
@@ -288,7 +321,7 @@ class Finder:
             start, end = self.source.span(node)
             self.add("constant", [(start, start, '("XX" + '), (end, end, ' + "XX")')])
         for value in node.values:
-            if isinstance(value, ast.FormattedValue) and self.source.check_field(value.value):
+            if isinstance(value, ast.FormattedValue) and self.source.add_field(value.value):
                 self.visit(value.value, stmt)
 
     def stub(self, node: ast.AST) -> None:
@@ -300,8 +333,8 @@ class Finder:
         ellipsis = isinstance(only, ast.Expr) and isinstance(only.value, ast.Constant) and only.value.value is Ellipsis
         if ellipsis or isinstance(only, (ast.Return, ast.Raise)) or all(is_arid(statement) for statement in body):
             return  # the body does nothing, is arid, or return-none or raise-removal covers it
-        start = self.source.offset(body[0].lineno, body[0].col_offset)
-        end = self.source.offset(body[-1].end_lineno, body[-1].end_col_offset)
+        start = self.source.node_offset(body[0].lineno, body[0].col_offset)
+        end = self.source.node_offset(body[-1].end_lineno, body[-1].end_col_offset)
         self.add("stub", [(start, end, "return None" + "\n" * (body[-1].end_lineno - body[0].lineno))])
 
 
@@ -381,11 +414,11 @@ def scope(project: Path, coverage: dict, nodeids: list[str]) -> tuple[dict, dict
     """The product modules of the prune scope.
 
     Returns the modules that an in-scope test covers, with their executed
-    lines; the modules where the run phase of each test ran a line; and the
+    lines; the lines that the run phase of each test ran, by module; and the
     covered modules that a copy cannot change.
     """
     files = product_files(coverage, project, {(project / node_file(n)).resolve() for n in nodeids})
-    lines, run_modules = lines_by_test(files, project)
+    lines, run_lines = lines_by_test(files, project)
     covered = {name for nodeid in nodeids for name in lines.get(nodeid, {})}
     modules: dict[str, set] = {}
     skipped = []
@@ -397,7 +430,7 @@ def scope(project: Path, coverage: dict, nodeids: list[str]) -> tuple[dict, dict
             skipped.append({"path": name, "reason": "outside the project, so a copy cannot change it"})
         else:
             modules[name] = set(entry.get("executed_lines") or [])
-    return modules, run_modules, skipped
+    return modules, run_lines, skipped
 
 
 def skip_copy(directory: str, names: list) -> set:
@@ -464,8 +497,8 @@ def kill_type(test: dict) -> str | None:
     return "assertion" if failure(test) in CHECK_FAILURES else "exception"
 
 
-def verdict(run: dict, nodeids: list[str]) -> tuple[dict, list, str | None]:
-    """The kill of each test, the tests the run did not reach, and a kill that no test gets.
+def verdict(run: dict, nodeids: list[str]) -> Verdict:
+    """The verdict of one mutant run.
 
     When the run stops early, the first test without a complete record gets
     the timeout or crash; the tests after it were not reached.
@@ -473,8 +506,8 @@ def verdict(run: dict, nodeids: list[str]) -> tuple[dict, list, str | None]:
     found = run["found"]
     if found["collected"] is None:
         if run["timed_out"]:
-            return {}, list(nodeids), "timeout"
-        return {n: "collection" for n in nodeids}, [], None
+            return Verdict({}, list(nodeids), "timeout")
+        return Verdict({n: "collection" for n in nodeids}, [], None)
     collected = set(found["collected"])
     tests = {test["nodeid"]: test for test in test_entries(found)}
     stopped = run["timed_out"] or run["exit_code"] not in (0, 1)
@@ -494,18 +527,21 @@ def verdict(run: dict, nodeids: list[str]) -> tuple[dict, list, str | None]:
             stop_kill = None
         else:
             not_reached.append(nodeid)
-    return killed_by, not_reached, "timeout" if run["timed_out"] and stop_kill is not None else None
+    return Verdict(killed_by, not_reached, "timeout" if run["timed_out"] and stop_kill is not None else None)
 
 
 class Runner:
     """The copies, the pytest command, and the budget of one mutate call."""
 
-    def __init__(self, args, extra: list[str], project: Path, roots: list[str], workers: int) -> None:
-        self.budget = args.budget
-        self.deadline = time.monotonic() + args.budget
-        self.python = interpreter(args.python)
+    def __init__(
+        self, python: list[str], extra: list[str], project: Path, roots: list[str], work: Path, budget: float,
+        workers: int,
+    ) -> None:
+        self.budget = budget
+        self.deadline = time.monotonic() + budget
+        self.python = python
         self.extra = extra
-        self.work = Path(args.work_dir).resolve() / ("recheck" if args.recheck else "mutate")
+        self.work = work
         if self.work == project or project in self.work.parents:
             raise UsageError(f"the work directory {self.work} is inside the project; use one outside it")
         self.work.mkdir(parents=True, exist_ok=True)
@@ -593,7 +629,7 @@ class Runner:
             copy.remove()
 
 
-def check_sanity(runner: Runner, modules: dict, cmd: list[str], nodeids: list[str]) -> tuple[list, str | None]:
+def check_sanity(runner: Runner, baseline: Baseline, modules: dict) -> tuple[list, str | None]:
     """Run one module-level raise per mutated module; each must be killed.
 
     Returns the sanity entries and an incomplete-evidence reason. A sanity
@@ -601,11 +637,10 @@ def check_sanity(runner: Runner, modules: dict, cmd: list[str], nodeids: list[st
     """
     jobs = [(path, module.raw, module.raw + SANITY) for path, module in modules.items()]
     entries = []
-    for (path, _, _), run in zip(jobs, runner.run_all(jobs, cmd)):
+    for (path, _, _), run in zip(jobs, runner.run_all(jobs, baseline.cmd)):
         if run is None:
             return entries, "the budget ran out before the sanity mutants finished"
-        killed_by, _, lost_kill = verdict(run, nodeids)
-        entries.append({"path": path, "killed": bool(killed_by or lost_kill)})
+        entries.append({"path": path, "killed": verdict(run, baseline.tests).killed()})
     survived = [entry["path"] for entry in entries if not entry["killed"]]
     if survived:
         raise UsageError(
@@ -616,33 +651,33 @@ def check_sanity(runner: Runner, modules: dict, cmd: list[str], nodeids: list[st
     return entries, None
 
 
-def run_mutants(runner: Runner, mutants: list[dict], texts: dict, cmd: list[str], nodeids: list[str]) -> None:
+def run_mutants(runner: Runner, baseline: Baseline, mutants: list[dict], texts: dict) -> None:
     """Run each mutant against every in-scope test and record its status and kills in place."""
     jobs = []
     for mutant in mutants:
         module = texts[mutant["path"]]
         mutated = apply(module.text, [tuple(s) for s in mutant["splices"]])
         jobs.append((mutant["path"], module.raw, module.bom + mutated.encode("utf-8")))
-    for mutant, run in zip(mutants, runner.run_all(jobs, cmd)):
+    for mutant, run in zip(mutants, runner.run_all(jobs, baseline.cmd)):
         if run is None:
             continue
-        killed_by, not_reached, lost_kill = verdict(run, nodeids)
+        result = verdict(run, baseline.tests)
         mutant.update(
-            status="killed" if killed_by or lost_kill else "survived",
-            killed_by=killed_by,
-            not_reached=not_reached,
+            status="killed" if result.killed() else "survived",
+            killed_by=result.killed_by,
+            not_reached=result.not_reached,
             timed_out=run["timed_out"],
         )
 
 
-def prepare(runner: Runner, suite: dict, nodeids: list[str], files: list[str]) -> tuple[dict | None, list, list, list]:
-    """The baseline run: the in-scope tests, the excluded tests, and the run command.
+def prepare(runner: Runner, suite: dict, nodeids: list[str], files: list[str]) -> Baseline | None:
+    """Run the scope once in the unchanged copy; None when the budget runs out.
 
     An in-scope test passed in the suite output and in the unchanged copy.
     """
     run = runner.baseline(runner.command("baseline", files, []))
     if run is None:
-        return None, [], [], []
+        return None
     in_suite = {test["nodeid"]: test["outcome"] for test in suite["tests"]}
     in_copy = {test["nodeid"]: test["outcome"] for test in test_entries(run["found"])}
     passed, excluded = [], []
@@ -659,33 +694,44 @@ def prepare(runner: Runner, suite: dict, nodeids: list[str], files: list[str]) -
         )
     keep = set(passed)
     deselect = [n for n in run["found"]["collected"] if n not in keep]
-    return run, passed, excluded, runner.command("mutants", files, deselect)
+    return Baseline(passed, excluded, runner.command("mutants", files, deselect))
 
 
-def not_run() -> dict:
+def status_before_run() -> dict:
+    """The status fields of a mutant that has not run."""
     return {"status": "not-run", "killed_by": {}, "not_reached": [], "timed_out": False}
 
 
-def gather(runner: Runner, suite: dict, files: list[str], texts: dict, mutants: list[dict]) -> tuple:
-    """Run the baseline, the sanity mutants, and every mutant, then remove the copies.
+def gather(
+    args, extra: list[str], suite: dict, project: Path, texts: dict, mutants: list[dict], started: float,
+) -> Evidence:
+    """Run the baseline, the sanity mutants, and every mutant, each in a copy of the project; then remove the copies.
 
-    Returns the incomplete-evidence reason (None for complete evidence), the
-    in-scope tests, the excluded tests, and the sanity entries.
+    `texts` holds the product modules that the mutants change, by path.
     """
     nodeids = suite_node_ids(suite)
+    files = test_files(project, nodeids)
+    roots = list(dict.fromkeys(import_root(project, path) for path in texts))
+    work = Path(args.work_dir).resolve() / ("recheck" if args.recheck else "mutate")
+    workers = min(args.workers, len(mutants))
+    runner = Runner(interpreter(args.python), extra, project, roots, work, args.budget, workers)
+    sanity: list = []
     try:
-        run, in_scope, excluded, cmd = prepare(runner, suite, nodeids, files)
-        if run is None:
-            return "the budget ran out before the baseline run finished", list(nodeids), [], []
-        mutated = {path: texts[path] for path in dict.fromkeys(m["path"] for m in mutants)}
-        sanity, reason = check_sanity(runner, mutated, cmd, in_scope)
-        if reason is None:
-            run_mutants(runner, mutants, texts, cmd, in_scope)
-            if any(m["status"] == "not-run" for m in mutants):
-                reason = "the budget ran out before every mutant ran"
-        return reason, in_scope, excluded, sanity
+        baseline = prepare(runner, suite, nodeids, files)
+        if baseline is None:
+            reason = "the budget ran out before the baseline run finished"
+            baseline = Baseline(list(nodeids), [], [])
+        else:
+            mutated = {path: texts[path] for path in dict.fromkeys(m["path"] for m in mutants)}
+            sanity, reason = check_sanity(runner, baseline, mutated)
+            if reason is None:
+                run_mutants(runner, baseline, mutants, texts)
+                if any(m["status"] == "not-run" for m in mutants):
+                    reason = "the budget ran out before every mutant ran"
     finally:
         runner.close()
+    statuses = Counter(m["status"] for m in mutants)
+    return Evidence(reason, baseline.tests, baseline.excluded, sanity, statuses, runner.timing(started))
 
 
 def test_files(project: Path, nodeids: list[str]) -> list[str]:
@@ -729,7 +775,7 @@ def matrix(args, extra: list[str]) -> dict:
         raise UsageError(
             "the suite output has no coverage contexts; run suite with --coverage-source for each product package"
         )
-    executed, run_modules, skipped = scope(project, load_json(contexts, "coverage JSON"), nodeids)
+    executed, run_lines, skipped = scope(project, load_json(contexts, "coverage JSON"), nodeids)
     texts = {}
     mutants = []
     for path, lines in executed.items():
@@ -746,14 +792,17 @@ def matrix(args, extra: list[str]) -> dict:
         mutants += found
     if not mutants:
         raise UsageError("the covered product modules have no mutant", skipped=skipped)
-    mutants = [{"id": f"m{number}", **mutant, **not_run()} for number, mutant in enumerate(mutants, start=1)]
-    # Only the mutated modules count as measured: a test that reaches only skipped modules is unmeasured.
-    mutated = set(texts)
-    measured_in = {nodeid: modules & mutated for nodeid, modules in run_modules.items()}
-    files = test_files(project, nodeids)
-    roots = list(dict.fromkeys(import_root(project, path) for path in texts))
-    runner = Runner(args, extra, project, roots, min(args.workers, len(mutants)))
-    reason, in_scope, excluded, sanity = gather(runner, suite, files, texts, mutants)
+    mutants = [
+        {"id": f"m{number}", **mutant, **status_before_run()} for number, mutant in enumerate(mutants, start=1)
+    ]
+    # A test whose run phase ran no line that a mutant changes is unmeasured.
+    changed = changed_lines(mutants, texts)
+    measured_in = {
+        nodeid: {path: lines & changed.get(path, set()) for path, lines in by_module.items()}
+        for nodeid, by_module in run_lines.items()
+    }
+    evidence = gather(args, extra, suite, project, texts, mutants, started)
+    reason, in_scope = evidence.reason, evidence.tests
     unmeasured = set(unmeasured_tests(in_scope, ran_tests(suite), measured_in))
     tests, groups = classify(in_scope, unmeasured, mutants, complete=reason is None)
     modules = [
@@ -764,24 +813,23 @@ def matrix(args, extra: list[str]) -> dict:
         }
         for path, module in texts.items()
     ]
-    statuses = [m["status"] for m in mutants]
     summary = {
         "mode": "matrix",
         "complete": reason is None,
         "incomplete_reason": reason,
         "tests": len(in_scope),
-        "excluded": len(excluded),
+        "excluded": len(evidence.excluded),
         "unmeasured": len(unmeasured),
         "modules": len(modules),
         "skipped_modules": len(skipped),
         "mutants": len(mutants),
-        "killed": statuses.count("killed"),
-        "survived": statuses.count("survived"),
-        "not_run": statuses.count("not-run"),
+        "killed": evidence.statuses["killed"],
+        "survived": evidence.statuses["survived"],
+        "not_run": evidence.statuses["not-run"],
         "timeouts": sum(1 for m in mutants if m.get("timed_out")),
         "classes": {c: sum(1 for t in tests if t["class"] == c) for c in CLASSES} if reason is None else None,
         "demote": sum(1 for t in tests if t["demote"]),
-        **runner.timing(started),
+        **evidence.timing,
         "examples": {
             **{c: [t["nodeid"] for t in tests if t["class"] == c][:EXAMPLES] for c in CLASSES},
             "survived": [label(m) for m in mutants if m["status"] == "survived"][:EXAMPLES],
@@ -793,13 +841,23 @@ def matrix(args, extra: list[str]) -> dict:
         "suite": str(Path(args.suite).resolve()),
         "modules": modules,
         "skipped_modules": skipped,
-        "sanity": sanity,
-        "excluded": excluded,
+        "sanity": evidence.sanity,
+        "excluded": evidence.excluded,
         "unmeasured": [n for n in in_scope if n in unmeasured],
         "tests": tests,
         "equal_groups": groups,
         "mutants": mutants,
     }
+
+
+def changed_lines(mutants: list[dict], texts: dict) -> dict[str, set]:
+    """The lines that the mutants change, by module."""
+    lines: dict[str, set] = {}
+    for mutant in mutants:
+        end = max(end for _, end, _ in mutant["splices"])
+        last = texts[mutant["path"]].text.count("\n", 0, end) + 1
+        lines.setdefault(mutant["path"], set()).update(range(mutant["line"], last + 1))
+    return lines
 
 
 def label(mutant: dict) -> str:
@@ -893,7 +951,7 @@ def recheck(args, extra: list[str]) -> dict:
         raise UsageError(f"{args.recheck} is not the output of a mutate matrix run")
     if not summary.get("complete"):
         raise UsageError(f"the matrix {args.recheck} is incomplete evidence; it cannot back a removal")
-    suite, project, nodeids = load_scope_suite(args.suite)
+    suite, project, _ = load_scope_suite(args.suite)
     texts = {}
     for module in before.get("modules", []):
         path = module["path"]
@@ -905,33 +963,30 @@ def recheck(args, extra: list[str]) -> dict:
             raise UsageError(f"the product module {path} changed after the matrix run; run mutate again")
     keys = ("id", "path", "line", "operator", "before", "after", "splices")
     killed = [m for m in before.get("mutants", []) if m.get("status") == "killed"]
-    mutants = [{**{k: m[k] for k in keys}, **not_run()} for m in killed]
+    mutants = [{**{k: m[k] for k in keys}, **status_before_run()} for m in killed]
     killed_before = {m["id"]: sorted(m["killed_by"]) for m in killed}
     if not mutants:
         raise UsageError(f"the matrix {args.recheck} has no killed mutant to check")
-    files = test_files(project, nodeids)
-    roots = list(dict.fromkeys(import_root(project, path) for path in texts))
-    runner = Runner(args, extra, project, roots, min(args.workers, len(mutants)))
-    reason, in_scope, excluded, sanity = gather(runner, suite, files, texts, mutants)
+    evidence = gather(args, extra, suite, project, texts, mutants, started)
+    reason = evidence.reason
     in_matrix = {t["nodeid"] for t in before.get("tests", [])}
-    broken = [e for e in excluded if e["nodeid"] in in_matrix]
+    broken = [e for e in evidence.excluded if e["nodeid"] in in_matrix]
     lost = [
         {**{k: m[k] for k in keys if k != "splices"}, "killed_before_by": killed_before[m["id"]]}
         for m in mutants if m["status"] == "survived"
     ]
-    statuses = [m["status"] for m in mutants]
     result_summary = {
         "mode": "recheck",
         "complete": reason is None,
         "incomplete_reason": reason,
         "passed": reason is None and not lost and not broken,
-        "tests": len(in_scope),
+        "tests": len(evidence.tests),
         "killed_set": len(mutants),
-        "still_killed": statuses.count("killed"),
+        "still_killed": evidence.statuses["killed"],
         "lost": len(lost),
-        "not_run": statuses.count("not-run"),
+        "not_run": evidence.statuses["not-run"],
         "broken": len(broken),
-        **runner.timing(started),
+        **evidence.timing,
         "examples": {
             "lost": [label(m) for m in mutants if m["status"] == "survived"][:EXAMPLES],
             "broken": [e["nodeid"] for e in broken][:EXAMPLES],
@@ -941,8 +996,8 @@ def recheck(args, extra: list[str]) -> dict:
         "summary": result_summary,
         "project": str(project),
         "matrix": str(Path(args.recheck).resolve()),
-        "sanity": sanity,
-        "excluded": excluded,
+        "sanity": evidence.sanity,
+        "excluded": evidence.excluded,
         "broken": broken,
         "lost": lost,
         "mutants": mutants,

@@ -120,7 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--recheck", metavar="MATRIX", help="rerun the killed set of this mutate output against the tests of --suite"
     )
     mutate.add_argument(
-        "--budget", type=float, default=lt_mutate.DEFAULT_BUDGET, help="seconds for the whole run (default: 1800)"
+        "--budget", type=float, default=lt_mutate.DEFAULT_BUDGET,
+        help="seconds for the whole run (default: %(default)g)",
     )
     mutate.add_argument(
         "--workers", type=int, default=lt_mutate.DEFAULT_WORKERS, help="parallel copies (default: CPU count minus 1)"

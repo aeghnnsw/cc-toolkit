@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 
 from lt_common import (
-    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, rel, suite_node_ids, tail,
+    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, node_file, parse_failure, ran_tests, rel, suite_node_ids,
+    tail,
 )
 
 PHASE = re.compile(r"\|(setup|run|teardown)$")
@@ -34,10 +35,10 @@ def coverage_command(args) -> dict:
     test_files = {(rootdir / node_file(n)).resolve() for n in nodeids}
 
     measured_files = product_files(data, project, test_files)
-    lines, run_files = lines_by_test(measured_files, project)
+    lines, run_lines = lines_by_test(measured_files, project)
 
-    measured = [n for n in nodeids if n in run_files]
-    unmeasured = unmeasured_tests(nodeids, ran, run_files)
+    measured = [n for n in nodeids if n in run_lines]
+    unmeasured = unmeasured_tests(nodeids, ran, run_lines)
     not_run = [n for n in nodeids if n not in ran]
     equal_groups, strict_subsets = subsets(measured, lines)
     diff = diff_coverage(project, args.base, measured_files, test_files) if args.base else None
@@ -84,11 +85,6 @@ def diff_summary(diff: dict | None) -> dict | None:
     return summary
 
 
-def ran_tests(suite: dict) -> set:
-    """The tests of a suite output whose call phase ran."""
-    return {t["nodeid"] for t in suite.get("tests", []) if "call" in t.get("phases", {})}
-
-
 def product_files(data: dict, project: Path, test_files: set) -> dict:
     """The coverage entry of each measured file that is not a test file, by resolved path."""
     files = {}
@@ -100,12 +96,12 @@ def product_files(data: dict, project: Path, test_files: set) -> dict:
 
 
 def lines_by_test(files: dict, project: Path) -> tuple[dict, dict]:
-    """The lines that each test ran in each product file, in any phase; and the files where its run phase ran a line.
+    """The lines that each test ran in each product file: in any phase, and in its run phase.
 
-    Both are keyed by node ID, with file paths relative to the project.
+    Both are keyed by node ID, then by file path relative to the project.
     """
     lines: dict[str, dict[str, set]] = {}
-    run_files: dict[str, set] = {}
+    run_lines: dict[str, dict[str, set]] = {}
     for path, entry in files.items():
         name = rel(path, project)
         for lineno, contexts in (entry.get("contexts") or {}).items():
@@ -116,13 +112,13 @@ def lines_by_test(files: dict, project: Path) -> tuple[dict, dict]:
                 nodeid = context[: match.start()]
                 lines.setdefault(nodeid, {}).setdefault(name, set()).add(int(lineno))
                 if match.group(1) == "run":
-                    run_files.setdefault(nodeid, set()).add(name)
-    return lines, run_files
+                    run_lines.setdefault(nodeid, {}).setdefault(name, set()).add(int(lineno))
+    return lines, run_lines
 
 
-def unmeasured_tests(nodeids: list[str], ran: set, run_files: dict) -> list[str]:
-    """The unmeasured tests: tests that ran, but whose run phase ran no line of a file in `run_files`."""
-    return [n for n in nodeids if n in ran and not run_files.get(n)]
+def unmeasured_tests(nodeids: list[str], ran: set, run_lines: dict) -> list[str]:
+    """The unmeasured tests: tests that ran, but whose run phase ran none of the lines in `run_lines`."""
+    return [n for n in nodeids if n in ran and not any((run_lines.get(n) or {}).values())]
 
 
 def is_test_path(path: Path, test_files: set, project: Path) -> bool:

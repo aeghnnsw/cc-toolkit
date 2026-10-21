@@ -49,6 +49,11 @@ def suite_node_ids(data: dict) -> list[str]:
     return list(collected) if collected else [test["nodeid"] for test in data.get("tests", [])]
 
 
+def ran_tests(data: dict) -> set:
+    """The tests of a suite output whose call phase ran."""
+    return {test["nodeid"] for test in data.get("tests", []) if "call" in test.get("phases", {})}
+
+
 def rel(path: Path, base: Path) -> str:
     """`path` relative to `base` in POSIX form, or absolute when it is on another drive."""
     try:

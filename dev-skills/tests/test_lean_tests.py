@@ -972,10 +972,15 @@ def rate(code):
 
 def discount(code, price):
     return price - rate(code)
+
+
+class Cart:
+    def __repr__(self):
+        return "Cart()"
 """
 
 MUTATE_TESTS = """\
-from shop.core import LIMIT, classify, discount, rate, total
+from shop.core import LIMIT, Cart, classify, discount, rate, total
 
 
 def test_limit():
@@ -1008,6 +1013,10 @@ def test_rate_gold():
 
 def test_discount_gold():
     assert discount("gold", 10) == 7
+
+
+def test_cart_repr():
+    assert repr(Cart()) == "Cart()"
 """
 
 # The mutator finds no mutant in this module: a docstring and `pass` are arid code.
@@ -1066,7 +1075,8 @@ class Mutation:
     The expected kill sets follow from MUTATE_CORE and MUTATE_TESTS. Each
     mutant runs in a fresh pytest process, so rate() computes its value in
     test_rate_gold, and test_discount_gold gets the cached value. The hook
-    test reaches only MUTATE_HOOKS, which has no mutant.
+    test reaches only MUTATE_HOOKS, which has no mutant. test_cart_repr runs
+    only `__repr__`, which gets no mutant.
     """
 
     _instance: Mutation | None = None
@@ -1131,7 +1141,7 @@ class MutateMatrixTest(unittest.TestCase):
         summary = self.m.data["summary"]
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertEqual(self.m.printed, {"summary": summary, "output": str(self.m.matrix)})
-        self.assertEqual((summary["tests"], summary["modules"], summary["survived"]), (9, 1, 0))
+        self.assertEqual((summary["tests"], summary["modules"], summary["survived"]), (10, 1, 0))
         self.assertEqual(summary["killed"], summary["mutants"])
         [sanity] = self.m.data["sanity"]
         self.assertEqual(sanity["path"], "src/shop/core.py")
@@ -1191,11 +1201,17 @@ class MutateMatrixTest(unittest.TestCase):
         [skipped] = self.m.data["skipped_modules"]
         self.assertEqual(skipped["path"], "src/shop/hooks.py")
         self.assertIn("no mutant", skipped["reason"])
-        self.assertEqual(self.m.data["unmeasured"], [HOOK_TEST, SHOP + "test_limit"])
+        self.assertEqual(self.m.data["unmeasured"], [HOOK_TEST, SHOP + "test_limit", SHOP + "test_cart_repr"])
+
+    def test_test_that_runs_only_lines_without_a_mutant_is_unmeasured(self) -> None:
+        cart = self.entry("test_cart_repr")
+        self.assertEqual((cart["class"], cart["measured"], cart["kills"]), ("unmeasured", False, []))
+        repr_line = line_of(MUTATE_CORE, 'return "Cart()"')
+        self.assertNotIn(repr_line, {m["line"] for m in self.m.data["mutants"]})
 
     def test_summary_counts_each_class(self) -> None:
         classes = self.m.data["summary"]["classes"]
-        self.assertEqual(classes, {"unique": 3, "subsumed": 3, "union-only": 0, "empty": 1, "unmeasured": 2, "incomplete": 0})
+        self.assertEqual(classes, {"unique": 3, "subsumed": 3, "union-only": 0, "empty": 1, "unmeasured": 3, "incomplete": 0})
 
     def test_no_reported_line_has_more_than_three_mutants(self) -> None:
         lines = [(m["path"], m["line"]) for m in self.m.data["mutants"]]
@@ -1278,7 +1294,7 @@ class MutateRecheckTest(unittest.TestCase):
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertTrue(summary["passed"])
         self.assertEqual(data["lost"], [])
-        self.assertEqual(summary["tests"], 8)
+        self.assertEqual(summary["tests"], 9)
         self.assertEqual(summary["still_killed"], summary["killed_set"])
         self.assertEqual(summary["killed_set"], m.data["summary"]["killed"])
 
@@ -1336,7 +1352,7 @@ class MutantFinderTest(unittest.TestCase):
 
 
 class DemotionTest(unittest.TestCase):
-    """The tests that stay in the fast tiers keep every mutant of the killed set killed after the demotions."""
+    """Every mutant that a demoted test kills stays killed by a test that stays in the fast tiers."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -1351,16 +1367,19 @@ class DemotionTest(unittest.TestCase):
         entries, _ = self.classify(tests, set(), mutants, complete=True)
         return {entry["nodeid"]: entry for entry in entries}
 
-    def assert_fast_tiers_kill(self, entries: dict, killed: set) -> None:
+    def assert_demoted_kills_stay(self, entries: dict) -> None:
         stay = [e for e in entries.values() if not e["demote"] and e["class"] not in ("empty", "subsumed")]
-        self.assertEqual(set().union(*(e["kills"] for e in stay)), killed)
+        kept = set().union(*(e["kills"] for e in stay))
+        for entry in entries.values():
+            if entry["demote"]:
+                self.assertLessEqual(set(entry["kills"]) | set(entry["unknown"]), kept, entry["nodeid"])
 
     def test_one_of_two_union_only_duplicates_stays(self) -> None:
         # The run of m3 timed out in z, so m3 is unknown for x and y, and neither subsumes the other.
         entries = self.matrix(["z", "x", "y"], {"m1": ["x", "y"], "m2": ["x", "y"], "m3": ["z"]}, {"m3": ["x", "y"]})
         self.assertEqual({n: e["class"] for n, e in entries.items()}, {"z": "unique", "x": "union-only", "y": "union-only"})
         self.assertEqual([n for n, e in entries.items() if e["demote"]], ["x"])
-        self.assert_fast_tiers_kill(entries, {"m1", "m2", "m3"})
+        self.assert_demoted_kills_stay(entries)
 
     def test_union_only_tests_whose_other_killers_can_be_deleted_stay(self) -> None:
         entries = self.matrix(["a", "b", "c", "d"], {"m1": ["a", "c"], "m2": ["a", "b"], "m3": ["b", "d"]})
@@ -1369,7 +1388,18 @@ class DemotionTest(unittest.TestCase):
             {"a": "union-only", "b": "union-only", "c": "subsumed", "d": "subsumed"},
         )
         self.assertEqual([n for n, e in entries.items() if e["demote"]], [])
-        self.assert_fast_tiers_kill(entries, {"m1", "m2", "m3"})
+        self.assert_demoted_kills_stay(entries)
+
+    def test_a_demotion_relies_on_no_test_of_a_deletion_class(self) -> None:
+        # x and y are subsumed by each other; the decision step keeps one of them, so m1 stays killed.
+        killers = {"m1": ["x", "y"], "m2": ["a", "w"], "m3": ["b", "w"], "m4": ["a"], "m5": ["b"]}
+        entries = self.matrix(["x", "y", "a", "b", "w"], killers)
+        self.assertEqual(
+            {n: e["class"] for n, e in entries.items()},
+            {"x": "subsumed", "y": "subsumed", "a": "unique", "b": "unique", "w": "union-only"},
+        )
+        self.assertEqual([n for n, e in entries.items() if e["demote"]], ["w"])
+        self.assert_demoted_kills_stay(entries)
 
 
 def write_suite(tmp: Path, project: Path) -> Path:

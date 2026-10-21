@@ -224,8 +224,12 @@ a constant with itself, or it computes the expected value the way the code
 does.
 
 **Unmeasured test**:
-A test whose run covers no measured product line, for example because it
-runs the code in a subprocess. Coverage data says nothing about its value.
+A test whose run covers no line that the measurement uses: in check, no
+measured product line; in prune, no line that a mutant changes. For
+example, the test runs the code in a subprocess, reaches only product
+modules without mutants, or runs only code that gets no mutant, such as a
+docstring, `__repr__`, or a logging call. Coverage data says nothing about
+its value.
 
 **Redundant test**:
 A measured, unprotected test whose kill set is empty or covered by one
