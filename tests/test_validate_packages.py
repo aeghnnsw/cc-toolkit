@@ -104,11 +104,14 @@ class PackageValidationTests(unittest.TestCase):
         self.assert_failure('outside')
 
     def test_skill_header_contract(self):
+        self.bump()  # Only a header error can fail.
         for header in [
             'name: greet',
             'name: greet\ndescription: ',
             'name: INVALID\ndescription: Hello',
             'name: greet\nname: greet\ndescription: Hello',
+            'name: greet\ndescription: Hello\nversion: 1.0',
+            'name: greet\ndescription: Hello\nversion: 1.0.0\nversion: 1.0.1',
         ]:
             with self.subTest(header=header):
                 self.write('demo/skills/greet/SKILL.md', '---\n' + header + '\n---\n')
@@ -256,6 +259,53 @@ class PackageValidationTests(unittest.TestCase):
         self.assert_failure('version must increase')
         self.bump(value='1.0.01')
         self.assert_failure('invalid plugin version')
+
+    def write_skill(self, description, version=None, path='demo/skills/greet/SKILL.md'):
+        line = f'version: {version}\n' if version else ''
+        self.write(path, f'---\nname: {Path(path).parent.name}\ndescription: {description}\n{line}---\n')
+
+    def version_baseline_skill(self):
+        self.write_skill('Say hello.', '1.0.0')
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+
+    def test_changed_versioned_skill_requires_a_skill_version_increase(self):
+        self.version_baseline_skill()
+        self.write('demo/skills/greet/references/notes.md', 'Changed reference.\n')
+        self.bump()
+        result = self.assert_failure('demo [claude]: skill greet version must increase above 1.0.0')
+        self.assertIn('changed demo/skills/greet/references/notes.md (host discovery path)', result.stderr)
+        self.write_skill('Say hello.', '1.1.0')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_new_skill_and_first_skill_version_need_no_increase(self):
+        self.write_skill('Changed.', '1.0.0')
+        self.write_skill('Wave.', '1.0.0', 'demo/skills/wave/SKILL.md')
+        self.bump()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_source_move_keeps_skill_version_history(self):
+        self.version_baseline_skill()
+        self.git('mv', 'demo', 'relocated')
+        registry = self.read_json('.claude-plugin/marketplace.json')
+        registry['plugins'][0]['source'] = './relocated'
+        self.write('.claude-plugin/marketplace.json', registry)
+        self.write('relocated/.claude-plugin/plugin.json', {'name': 'demo', 'version': '1.0.1'})
+        self.assert_failure('skill greet version must increase above 1.0.0')
+        self.write_skill('Say hello.', '1.0.1', 'relocated/skills/greet/SKILL.md')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_exempt_skill_file_needs_no_skill_version_increase(self):
+        self.version_baseline_skill()
+        rules = self.read_json('package-validation.json')
+        rules['plugins']['demo'] = {'exempt': ['skills/greet/evals/']}
+        self.write('package-validation.json', rules)
+        self.write('demo/skills/greet/evals/case.json', {'prompt': 'Hello'})
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_staged_unstaged_new_and_deleted_files_require_versions(self):
         for state in ('new', 'staged', 'unstaged', 'deleted'):
