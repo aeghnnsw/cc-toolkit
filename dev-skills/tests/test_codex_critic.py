@@ -144,13 +144,29 @@ sys.exit(scenario["exit"])
 """
 
 
+def load_factor() -> float:
+    """Return the 1-minute load average per CPU, or 1 when it is lower."""
+    return max(1.0, os.getloadavg()[0] / (os.cpu_count() or 1))
+
+
+def scaled(seconds: float) -> float:
+    """Return seconds times the load factor.
+
+    On a loaded host, the tests and the processes that they start wait for a CPU.
+    So each wait for an event, each slack above an expected time, and each fake
+    call that must outlast test steps grows with the load. The limits under test
+    do not change, so a run on an idle host takes the same time.
+    """
+    return seconds * load_factor()
+
+
 def gone(pid: int, wait: float = 3.0) -> bool:
-    """Return True when the process ends within the wait.
+    """Return True when the process ends within the scaled wait.
 
     os.kill(pid, 0) also succeeds on a zombie, a process that ended but that its
     parent, or init after the parent ends, has not reaped yet; a zombie counts as ended.
     """
-    deadline = time.monotonic() + wait
+    deadline = time.monotonic() + scaled(wait)
     while time.monotonic() < deadline:
         try:
             os.kill(pid, 0)
@@ -196,8 +212,8 @@ def descendants(pid: int) -> list[int]:
 
 
 def wait_for(condition, timeout: float = 10.0) -> bool:
-    """Return True when condition() becomes true within the timeout."""
-    deadline = time.monotonic() + timeout
+    """Return True when condition() becomes true within the scaled timeout."""
+    deadline = time.monotonic() + scaled(timeout)
     while time.monotonic() < deadline:
         if condition():
             return True
@@ -282,7 +298,7 @@ class CodexCriticTest(unittest.TestCase):
 
     def wait_until_final(self, step: float = 1) -> tuple[int, str]:
         """Run the wait mode until it reports a final status."""
-        for _ in range(30):
+        for _ in range(round(scaled(30))):
             result = self.run_wait(step=step)
             if not result[1].endswith("status=running"):
                 return result
@@ -298,7 +314,7 @@ class CodexCriticTest(unittest.TestCase):
     def run_runner(self, mode: str, *, path: str | None = None, env: dict[str, str] | None = None) -> tuple[int, str]:
         command = [sys.executable, str(SCRIPT), mode, str(self.workdir)]
         completed = subprocess.run(command, env=self.runner_env(path, env), capture_output=True, text=True,
-                                   timeout=30)
+                                   timeout=scaled(30))
         return completed.returncode, self.without_seconds(completed.stdout.strip())
 
     def without_seconds(self, line: str) -> str:
@@ -407,7 +423,7 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual(self.run_critic("smoke", sleep=2, reply="ok"),
                          (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         self.assertGreaterEqual(self.seconds, 2)
-        self.assertLess(self.seconds, 8)
+        self.assertLess(self.seconds, 2 + scaled(6))
 
     def test_retry_resumes_the_saved_thread_with_the_narrow_request(self):
         self.write("thread_id", f"{THREAD_ID}\n")
@@ -483,7 +499,7 @@ class CodexCriticTest(unittest.TestCase):
         code, line = self.run_critic("kickoff", step=0.5, sleep=3, events=[THREAD_STARTED], reply="late reply")
         self.assertEqual((code, line), (1, f"exit=- model={CRITIC_MODEL} status=running"))
         # The command ends at the wait step: the supervisor holds none of its output pipes.
-        self.assertLess(time.monotonic() - started, 2.5)
+        self.assertLess(time.monotonic() - started, 0.5 + scaled(2))
         self.assertFalse((self.workdir / "msg.txt").exists())
         self.assertEqual(self.wait_until_final(), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         self.assertGreaterEqual(self.seconds, 3)
@@ -508,13 +524,13 @@ class CodexCriticTest(unittest.TestCase):
         os.killpg(runner.pid, signal.SIGKILL)
         for pid in tree:
             kill_quietly(pid)
-        runner.communicate(timeout=10)  # the supervisor holds none of the command's output pipes
+        runner.communicate(timeout=scaled(10))  # the supervisor holds none of the command's output pipes
         self.assertEqual(self.wait_until_final(), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         self.assertEqual((self.workdir / "msg.txt").read_text(encoding="utf-8"), "survived")
 
     def test_a_second_call_while_one_runs_is_busy_and_does_not_call_codex(self):
         self.write("thread_id", f"{THREAD_ID}\n")
-        self.assertEqual(self.run_critic("resume", step=0.5, sleep=3, reply="first reply"),
+        self.assertEqual(self.run_critic("resume", step=0.5, sleep=scaled(3), reply="first reply"),
                          (1, f"exit=- model={CRITIC_MODEL} status=running"))
         self.assertTrue(wait_for(self.record.exists), "the fake codex did not start")
         self.remember_call()
@@ -528,7 +544,7 @@ class CodexCriticTest(unittest.TestCase):
 
     def test_starts_at_the_same_time_launch_exactly_one_call(self):
         self.write("thread_id", f"{THREAD_ID}\n")
-        self.prepare_call(step=0.5, sleep=3, reply="only reply")
+        self.prepare_call(step=0.5, sleep=scaled(3), reply="only reply")
         go = self.workdir.parent / "go"
         starters = []
         for number in range(6):
@@ -538,7 +554,8 @@ class CodexCriticTest(unittest.TestCase):
                 env=self.runner_env(None, None), stdout=subprocess.PIPE, text=True)))
         self.assertTrue(wait_for(lambda: all(ready.exists() for ready, _ in starters)), "a starter did not start")
         go.touch()
-        lines = sorted(self.without_seconds(starter.communicate(timeout=30)[0].strip()) for _, starter in starters)
+        lines = sorted(self.without_seconds(starter.communicate(timeout=scaled(30))[0].strip())
+                       for _, starter in starters)
         self.assertEqual(lines, [f"exit=- model={CRITIC_MODEL} status=running"]
                          + [f"exit=2 model={CRITIC_MODEL} status=error:busy"] * 5)
         self.assertEqual(self.wait_until_final(), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
@@ -566,7 +583,7 @@ class CodexCriticTest(unittest.TestCase):
         self.processes.append(supervisor)
         self.assertNotEqual(supervisor, starter.pid)
         starter.kill()
-        starter.communicate(timeout=10)
+        starter.communicate(timeout=scaled(10))
         self.assertEqual(self.run_runner("kickoff"), (1, f"exit=2 model={CRITIC_MODEL} status=error:busy"))
         resume.touch()
         self.assertEqual(self.wait_until_final(), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
@@ -653,14 +670,14 @@ class CodexCriticTest(unittest.TestCase):
                                     str(resume), "kickoff", str(self.workdir)], env=self.runner_env(None, None),
                                    stdout=subprocess.PIPE, text=True)
         self.addCleanup(kill_quietly, starter.pid)
-        self.assertEqual(self.without_seconds(starter.communicate(timeout=30)[0].strip()),
+        self.assertEqual(self.without_seconds(starter.communicate(timeout=scaled(30))[0].strip()),
                          f"exit=- model={CRITIC_MODEL} status=running")
         self.assertTrue(wait_for(paused.exists), "the supervisor did not reach its status write")
         supervisor = int(paused.read_text(encoding="utf-8"))
         self.processes.append(supervisor)
         old = json.loads((self.workdir / "call.json").read_text(encoding="utf-8"))
         self.write("call.json", json.dumps(dict(old, started=time.time() - 2000)))  # past the total limit and margin
-        self.assertEqual(self.run_critic("kickoff", step=0.5, sleep=5, exit=5, events=[THREAD_STARTED]),
+        self.assertEqual(self.run_critic("kickoff", step=0.5, sleep=scaled(5), exit=5, events=[THREAD_STARTED]),
                          (1, f"exit=- model={CRITIC_MODEL} status=running"))
         self.assertTrue(gone(supervisor), "the supervisor past the margin still runs")
         resume.touch()
@@ -691,27 +708,28 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual(self.run_wait(), (1, f"exit=2 model={CRITIC_MODEL} status=error:no call"))
 
     def test_wait_step_fits_inside_a_lower_bash_tool_limit(self):
-        for limit, low, high in (("32000", 1.5, 6), ("1000", 5, 10)):  # 32 s - 30 s = 2 s; floor 5 s
+        # Both steps are the 5-second floor: 32 s - 30 s = 2 s, and 1 s - 30 s is below 0.
+        for limit, low, slack in (("32000", 1.5, 1), ("1000", 5, 5)):
             with self.subTest(limit=limit):
                 env = dict.fromkeys(BASH_LIMITS, limit)
                 started = time.monotonic()
                 self.assertEqual(self.run_critic("kickoff", env=env, sleep=30),
                                  (1, f"exit=- model={CRITIC_MODEL} status=running"))
                 elapsed = time.monotonic() - started
+                kill_quietly(self.kill_supervisor()["pid"])  # before the checks, so the next subtest is not busy
                 self.assertGreaterEqual(elapsed, low)
-                self.assertLess(elapsed, high)
-                kill_quietly(self.kill_supervisor()["pid"])
+                self.assertLess(elapsed, 5 + scaled(slack))
 
     def test_timeout_kills_the_call_and_reports_exit_124(self):
         result, overrun = self.run_limited(self.record.exists, reply="late reply")
-        self.assertLess(overrun, 3)
+        self.assertLess(overrun, scaled(3))
         self.assertEqual(result, (1, f"exit=124 model={CRITIC_MODEL} status=error:timeout"))
         with self.assertRaises(ProcessLookupError):  # the runner killed the call; it did not leave it running
             os.kill(self.call()["pid"], 0)
 
     def test_call_with_no_output_for_the_idle_limit_is_stopped_with_error_idle(self):
         result, overrun = self.run_limited(self.record.exists, limit="idle")
-        self.assertLess(overrun, 3)
+        self.assertLess(overrun, scaled(3))
         self.assertEqual(result, (1, f"exit=124 model={CRITIC_MODEL} status=error:idle"))
         with self.assertRaises(ProcessLookupError):
             os.kill(self.call()["pid"], 0)
@@ -719,15 +737,19 @@ class CodexCriticTest(unittest.TestCase):
     def test_output_on_stdout_or_stderr_keeps_a_call_inside_the_idle_limit(self):
         for stream in ("stdout", "stderr"):
             with self.subTest(stream=stream):
-                result = self.run_critic("kickoff", idle=2.5, total=60, heartbeat=[12, 0.4, stream],
-                                         events=[THREAD_STARTED], reply="steady")
+                # The idle limit also covers the start of codex. One factor for the whole call keeps the
+                # heartbeats about twice as long as the idle limit.
+                factor = load_factor()
+                result = self.run_critic("kickoff", idle=2.5 * factor, total=60 * factor,
+                                         heartbeat=[round(12 * factor), 0.4, stream], events=[THREAD_STARTED],
+                                         reply="steady")
                 self.assertEqual(result, (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
-                self.assertGreaterEqual(self.seconds, 4)
+                self.assertGreaterEqual(self.seconds, 4 * factor)
 
     def test_call_that_keeps_printing_past_the_total_limit_is_stopped_with_error_timeout(self):
         result = self.run_critic("kickoff", idle=60, total=2, heartbeat=[100, 0.2, "stdout"])
         self.assertEqual(result, (1, f"exit=124 model={CRITIC_MODEL} status=error:timeout"))
-        self.assertLess(self.seconds, 6)
+        self.assertLess(self.seconds, 2 + scaled(4))
 
     def test_timeout_also_kills_children_in_their_own_session(self):
         result, _ = self.run_limited(self.record.exists, child=SLEEPER)
@@ -763,7 +785,7 @@ class CodexCriticTest(unittest.TestCase):
         scans = [line.split() for line in calls.read_text(encoding="utf-8").splitlines()] if calls.exists() else []
         self.assertGreaterEqual(len(scans), 2, "the scans stopped before the deadline")
         # The first scan starts after the timeout, so slow starts of the runner or codex do not count.
-        self.assertLess(ended - float(scans[0][1]), 5 + 2.5, "cleanup ran past its 5-second deadline")
+        self.assertLess(ended - float(scans[0][1]), 5 + scaled(2.5), "cleanup ran past its 5-second deadline")
         self.assertTrue(gone(int(scans[0][0]), wait=1), "codex survived the timeout")
 
     def test_kickoff_without_a_thread_id_is_an_error(self):

@@ -365,9 +365,11 @@ uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest di
 ```
 
 The `dev-skills` suite takes about 2 minutes, most of it in
-`dev-skills/tests/test_codex_critic.py`. Give its command a timeout of at
-least 300 seconds (in Claude Code, a Bash tool `timeout` of 300000), or run
-one file:
+`dev-skills/tests/test_codex_critic.py`. When the 1-minute load average is
+above the CPU count, the waits in that file grow with the load, and the
+suite takes longer. Give its command a timeout of at least 300 seconds (in
+Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
+seconds or run it as a background command. You can also run one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
