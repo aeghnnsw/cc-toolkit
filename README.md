@@ -70,12 +70,14 @@ Development workflows, repository hygiene, documentation, and review.
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. The user or a calling skill can choose the critic model from the two allowed models of its family. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **sci-project-layout**: Set up or adopt the layout of a scientific Python research project, and find where a file goes in it: one store for data and results that every worktree finds, one folder for each experiment and each run, and read-only cited runs for the results you keep
+- **lean-tests**: Check a pytest suite without changing a file: run time, the slowest tests and fixtures, flaky or order-dependent tests, tests that check nothing, coverage-subset candidates, and diff coverage of recent changes, with one recommended next step
 - **project-eval**: Evaluate a feature, a design document, a running web app, or a whole project with skeptical evaluator agents; a separate verifier checks every finding before it enters one report
 - **discord-setup**: Configure Discord plugin prerequisites
 
 **Codex skills:**
 - **doc-update**
 - **goal-rubric**
+- **lean-tests**
 - **matt-automode**
 - **pressure-test**
 - **repo-cleanup**

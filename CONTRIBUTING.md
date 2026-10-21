@@ -375,6 +375,14 @@ seconds or run it as a background command. You can also run one file:
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
 ```
 
+The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
+pytest need pytest and pytest-cov. Under a `python3` without them, these
+checks skip and print this command, which supplies both:
+
+```bash
+uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
+```
+
 When you raise the core-hooks Codex version, also change the version that
 `core-hooks/tests/test_codex_host_adapter.py` pins.
 
