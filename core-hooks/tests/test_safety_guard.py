@@ -15,9 +15,11 @@ CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
 
 
 def run_hook(payload, env=None):
-    process_env = os.environ.copy()
-    process_env.update(env or {})
     with tempfile.TemporaryDirectory() as temp_dir:
+        process_env = os.environ.copy()
+        # Keep hook logs out of the project that runs the tests.
+        process_env["CLAUDE_PROJECT_DIR"] = temp_dir
+        process_env.update(env or {})
         return subprocess.run(
             [sys.executable, str(SCRIPT)],
             input=json.dumps(payload),

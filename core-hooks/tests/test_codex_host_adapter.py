@@ -70,6 +70,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 for script_name, _, _ in POLICY_CASES:
                     (scripts_dir / script_name).write_text(failing_script)
             process_env = os.environ.copy()
+            # Codex gives hooks no project directory.
+            process_env.pop("CLAUDE_PROJECT_DIR", None)
             process_env.update(
                 {
                     "PLUGIN_ROOT": str(plugin_root),
@@ -88,8 +90,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 check=False,
             )
 
-    def test_codex_adapter_has_the_1_0_17_release_version(self):
-        self.assertEqual(load_manifest()["version"], "1.0.17")
+    def test_codex_adapter_has_the_1_0_18_release_version(self):
+        self.assertEqual(load_manifest()["version"], "1.0.18")
 
     def test_manifest_selects_only_the_codex_hook_configuration(self):
         manifest = load_manifest()

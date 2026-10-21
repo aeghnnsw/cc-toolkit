@@ -5,17 +5,15 @@
 
 import json
 import sys
-from pathlib import Path
+
+from hook_logs import log_dir
 
 def main():
     try:
         # Read JSON input from stdin
         input_data = json.load(sys.stdin)
 
-        # Ensure log directory exists
-        log_dir = Path.cwd() / 'logs'
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / 'post_tool_use.json'
+        log_path = log_dir() / 'post_tool_use.json'
 
         # Read existing log data or initialize empty list
         if log_path.exists():
