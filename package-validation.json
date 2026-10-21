@@ -45,8 +45,18 @@
         {"path": "skills/project-eval/references/dimensions.md", "hosts": ["claude"]},
         {"path": "skills/project-eval/references/report-format.md", "hosts": ["claude"]},
         {"path": "skills/pressure-test/scripts/codex_critic.py", "hosts": ["claude"]},
+        {"path": "skills/sci-project-layout/templates/experiment-README.md", "hosts": ["claude"]},
+        {"path": "skills/sci-project-layout/templates/gitignore", "hosts": ["claude"]},
+        {"path": "skills/sci-project-layout/templates/layout-notes.md", "hosts": ["claude"]},
+        {"path": "skills/sci-project-layout/templates/layout.md", "hosts": ["claude"]},
+        {"path": "skills/sci-project-layout/templates/paths.py", "hosts": ["claude"]},
         {"path": "codex-skills/pressure-test/scripts/critic_status.py", "hosts": ["codex"]},
         {"path": "codex-skills/pressure-test/scripts/limit_call.py", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-project-layout/templates/experiment-README.md", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-project-layout/templates/gitignore", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-project-layout/templates/layout-notes.md", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-project-layout/templates/layout.md", "hosts": ["codex"]},
+        {"path": "codex-skills/sci-project-layout/templates/paths.py", "hosts": ["codex"]},
         {"path": "scripts/resolve_skill.py", "hosts": ["claude", "codex"]}
       ]
     },

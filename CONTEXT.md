@@ -88,6 +88,26 @@ addition to checking the number against its source.
 **Reused figure**:
 A figure from a paper or another earlier source that a slide shows.
 
+## Research layout language
+
+**Store**:
+The one folder that holds a research project's `data/` and `results/`. By
+default it is the main checkout.
+_Avoid_: Data dir, cache
+
+**Experiment**:
+One scientific question and its folder, named by the issue that asks the
+question.
+_Avoid_: Study, analysis folder
+
+**Run**:
+One execution of one experiment step, in its own folder in the store.
+_Avoid_: Job, output folder
+
+**Cited run**:
+A run that is read-only and listed under Runs in its experiment README.
+_Avoid_: Key result folder, final run
+
 ## Model language
 
 **Allowed model**:

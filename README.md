@@ -69,6 +69,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; pressure-tests each grilling round’s design-critical decisions with an independent critic; requires the Matt skills plugin
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
+- **sci-project-layout**: Set up, adopt, or explain the layout of a scientific Python research project: one store for data and results that every worktree finds, one folder for each experiment and each run, and read-only cited runs for key results
 - **project-eval**: Evaluate a feature, a design document, a running web app, or a whole project with skeptical evaluator agents; a separate verifier checks every finding before it enters one report
 - **discord-setup**: Configure Discord plugin prerequisites
 
@@ -78,6 +79,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **matt-automode**
 - **pressure-test**
 - **repo-cleanup**
+- **sci-project-layout**
 - **step-workflow**
 
 ### Creator Skills (`creator-skills`)
