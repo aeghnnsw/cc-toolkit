@@ -5,7 +5,9 @@ mutator puts one small fault at a time into the product modules that the
 in-scope tests cover. Each mutant runs against every in-scope test in one
 pytest run, in a temporary copy of the project, so the project never
 changes. Coverage contexts only choose the modules and lines and label the
-unmeasured tests; the kill matrix is the evidence.
+unmeasured tests; the kill matrix is the evidence. For review, the matrix
+covers only the changed product lines and the lines that only the new tests
+cover, and it gives each new test its admission verdict.
 """
 
 from __future__ import annotations
@@ -28,14 +30,17 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lt_common import (
-    EXAMPLES, PARSE_ERRORS, UsageError, load_json, node_file, parse_failure, ran_tests, rel, suite_node_ids, tail,
+    EXAMPLES, PARSE_ERRORS, UsageError, load_json, node_file, parse_failure, ran_tests, read_node_ids, rel,
+    suite_node_ids, tail,
 )
+from lt_coverage import changed_lines as changed_since
 from lt_coverage import lines_by_test, product_files, unmeasured_tests
 from lt_suite import (
     failure, interpreter, load_suite, probe, pytest_env, read_records, run_pytest, test_entries, version_tuple,
 )
 
 DEFAULT_BUDGET = 1800.0
+DEFAULT_REVIEW_BUDGET = 300.0
 DEFAULT_WORKERS = max(1, (os.cpu_count() or 2) - 1)
 TIMEOUT_FLOOR = 10.0
 TIMEOUT_FACTOR = 3.0
@@ -100,6 +105,28 @@ class Baseline(NamedTuple):
     tests: list
     excluded: list
     cmd: list
+
+
+class Scope(NamedTuple):
+    """The product modules of a prune scope, with their executed lines, and the lines of each test.
+
+    `lines` holds the lines of each test in any phase, and `run_lines` in its
+    run phase, by node ID and then by module. `skipped` lists the covered
+    modules that a copy cannot change.
+    """
+
+    modules: dict
+    lines: dict
+    run_lines: dict
+    skipped: list
+
+
+class ReviewScope(NamedTuple):
+    """The lines that a review mutates, by module, and the new tests of the review."""
+
+    merge_base: str
+    lines: dict
+    new_tests: list
 
 
 class Evidence(NamedTuple):
@@ -410,13 +437,8 @@ def import_root(project: Path, path: str) -> str:
     return rel(folder, project)
 
 
-def scope(project: Path, coverage: dict, nodeids: list[str]) -> tuple[dict, dict, list]:
-    """The product modules of the prune scope.
-
-    Returns the modules that an in-scope test covers, with their executed
-    lines; the lines that the run phase of each test ran, by module; and the
-    covered modules that a copy cannot change.
-    """
+def scope(project: Path, coverage: dict, nodeids: list[str]) -> Scope:
+    """The product modules that an in-scope test covers, and the lines of each test."""
     files = product_files(coverage, project, {(project / node_file(n)).resolve() for n in nodeids})
     lines, run_lines = lines_by_test(files, project)
     covered = {name for nodeid in nodeids for name in lines.get(nodeid, {})}
@@ -430,7 +452,7 @@ def scope(project: Path, coverage: dict, nodeids: list[str]) -> tuple[dict, dict
             skipped.append({"path": name, "reason": "outside the project, so a copy cannot change it"})
         else:
             modules[name] = set(entry.get("executed_lines") or [])
-    return modules, run_lines, skipped
+    return Scope(modules, lines, run_lines, skipped)
 
 
 def skip_copy(directory: str, names: list) -> set:
@@ -530,6 +552,23 @@ def verdict(run: dict, nodeids: list[str]) -> Verdict:
     return Verdict(killed_by, not_reached, "timeout" if run["timed_out"] and stop_kill is not None else None)
 
 
+def scope_command(python: list[str], versions: dict, targets: list[str], argfile: Path, extra: list[str]) -> list[str]:
+    """The pytest command that runs `targets` with outcome records; `argfile` holds them on pytest 8.2 or newer."""
+    cmd = [
+        *python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:randomly", "-p", "lean_tests_report",
+        # Every test runs: a failing module or test does not stop the run.
+        "--continue-on-collection-errors", "--maxfail=0",
+    ]
+    if versions.get("pytest_cov"):
+        cmd.append("--no-cov")
+    if version_tuple(versions["pytest"]) >= (8, 2):
+        argfile.write_text("".join(f"{t}\n" for t in targets), encoding="utf-8")
+        cmd.append(f"@{argfile}")
+    else:
+        cmd += targets
+    return cmd + extra
+
+
 class Runner:
     """The copies, the pytest command, and the budget of one mutate call."""
 
@@ -565,21 +604,8 @@ class Runner:
         return self.deadline - time.monotonic()
 
     def command(self, name: str, files: list[str], deselect: list[str]) -> list[str]:
-        cmd = [
-            *self.python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:randomly", "-p", "lean_tests_report",
-            # Every test runs: a failing module or test does not stop the run.
-            "--continue-on-collection-errors", "--maxfail=0",
-        ]
-        if self.versions.get("pytest_cov"):
-            cmd.append("--no-cov")
         targets = [*files, *(f"--deselect={n}" for n in deselect)]
-        if version_tuple(self.versions["pytest"]) >= (8, 2):
-            argfile = self.work / f"{name}-args.txt"
-            argfile.write_text("".join(f"{t}\n" for t in targets), encoding="utf-8")
-            cmd.append(f"@{argfile}")
-        else:
-            cmd += targets
-        return cmd + self.extra
+        return scope_command(self.python, self.versions, targets, self.work / f"{name}-args.txt", self.extra)
 
     def baseline(self, cmd: list[str]) -> dict | None:
         """Run the scope once on the unchanged copy; None when the budget runs out."""
@@ -758,6 +784,12 @@ def load_scope_suite(path: str) -> tuple[dict, Path, list[str]]:
 
 
 def mutate_command(args, extra: list[str]) -> dict:
+    if bool(args.base) != bool(args.new_tests):
+        raise UsageError("--base and --new-tests go together")
+    if args.recheck and args.base:
+        raise UsageError("--recheck takes no --base or --new-tests")
+    if args.budget is None:
+        args.budget = DEFAULT_REVIEW_BUDGET if args.base else DEFAULT_BUDGET
     if args.budget <= 0:
         raise UsageError("--budget must be more than 0 seconds")
     if args.workers < 1:
@@ -775,22 +807,30 @@ def matrix(args, extra: list[str]) -> dict:
         raise UsageError(
             "the suite output has no coverage contexts; run suite with --coverage-source for each product package"
         )
-    executed, run_lines, skipped = scope(project, load_json(contexts, "coverage JSON"), nodeids)
+    covered = scope(project, load_json(contexts, "coverage JSON"), nodeids)
+    skipped = covered.skipped
+    review = review_scope(project, args, covered, nodeids) if args.base else None
     texts = {}
     mutants = []
-    for path, lines in executed.items():
+    for path, lines in covered.modules.items():
+        allowed = None if review is None else review.lines.get(path)
+        if review is not None and not allowed:
+            continue
         try:
             module = read_module(project / path)
             found = module_mutants(path, module.text, lines)
         except (*PARSE_ERRORS, tokenize.TokenError) as error:
             skipped.append({"path": path, "reason": parse_failure(error)})
             continue
+        if allowed is not None:
+            found = [mutant for mutant in found if mutant["line"] in allowed]
         if not found:
-            skipped.append({"path": path, "reason": "no mutant on the lines that the tests ran"})
+            where = "the review lines" if review else "the lines that the tests ran"
+            skipped.append({"path": path, "reason": f"no mutant on {where}"})
             continue
         texts[path] = module
         mutants += found
-    if not mutants:
+    if not mutants and review is None:
         raise UsageError("the covered product modules have no mutant", skipped=skipped)
     mutants = [
         {"id": f"m{number}", **mutant, **status_before_run()} for number, mutant in enumerate(mutants, start=1)
@@ -799,9 +839,12 @@ def matrix(args, extra: list[str]) -> dict:
     changed = changed_lines(mutants, texts)
     measured_in = {
         nodeid: {path: lines & changed.get(path, set()) for path, lines in by_module.items()}
-        for nodeid, by_module in run_lines.items()
+        for nodeid, by_module in covered.run_lines.items()
     }
-    evidence = gather(args, extra, suite, project, texts, mutants, started)
+    if mutants:
+        evidence = gather(args, extra, suite, project, texts, mutants, started)
+    else:
+        evidence = without_mutants(suite, nodeids, args.budget, started)
     reason, in_scope = evidence.reason, evidence.tests
     unmeasured = set(unmeasured_tests(in_scope, ran_tests(suite), measured_in))
     tests, groups = classify(in_scope, unmeasured, mutants, complete=reason is None)
@@ -835,7 +878,7 @@ def matrix(args, extra: list[str]) -> dict:
             "survived": [label(m) for m in mutants if m["status"] == "survived"][:EXAMPLES],
         },
     }
-    return {
+    result = {
         "summary": summary,
         "project": str(project),
         "suite": str(Path(args.suite).resolve()),
@@ -848,6 +891,83 @@ def matrix(args, extra: list[str]) -> dict:
         "equal_groups": groups,
         "mutants": mutants,
     }
+    if review is not None:
+        admission = admit(review.new_tests, in_scope, mutants, complete=reason is None)
+        summary["review"] = {
+            "base": args.base,
+            "merge_base": review.merge_base,
+            "lines": sum(len(lines) for lines in review.lines.values()),
+            "new_tests": len(admission),
+            "verdicts": dict(Counter(entry["verdict"] for entry in admission)),
+        }
+        result["review_lines"] = {path: sorted(lines) for path, lines in review.lines.items()}
+        result["admission"] = admission
+    return result
+
+
+def review_scope(project: Path, args, covered: Scope, nodeids: list[str]) -> ReviewScope:
+    """The changed product lines since the merge base of --base and HEAD, and the lines that only new tests cover."""
+    new_tests = read_node_ids(args.new_tests)
+    merge_base, changed = changed_since(project, args.base)
+    existing = [n for n in nodeids if n not in set(new_tests)]
+
+    def union(tests: list[str], path: str) -> set:
+        return set().union(*(covered.lines.get(nodeid, {}).get(path, set()) for nodeid in tests))
+
+    lines = {}
+    for path in covered.modules:
+        found = changed.get((project / path).resolve(), set()) | (union(new_tests, path) - union(existing, path))
+        if found:
+            lines[path] = found
+    return ReviewScope(merge_base, lines, new_tests)
+
+
+def without_mutants(suite: dict, nodeids: list[str], budget: float, started: float) -> Evidence:
+    """Complete evidence for a review scope with no mutant: no test kills a mutant."""
+    outcomes = {test["nodeid"]: test["outcome"] for test in suite["tests"]}
+    excluded = [
+        {"nodeid": n, "run": "suite", "outcome": outcomes.get(n, "not run")} for n in nodeids if outcomes.get(n) != "passed"
+    ]
+    timing = {
+        "workers": 0, "budget_seconds": budget, "mutant_timeout_seconds": None,
+        "wall_seconds": round(time.monotonic() - started, 3),
+    }
+    passed = [n for n in nodeids if outcomes.get(n) == "passed"]
+    return Evidence(None, passed, excluded, [], Counter(), timing)
+
+
+def admit(new_tests: list[str], in_scope: list[str], mutants: list[dict], complete: bool) -> list[dict]:
+    """The admission verdict of each new test: a kill that no existing in-scope test makes, or none.
+
+    A collection kill hits every test of a module alike, so it never counts.
+    A mutant that stopped before an existing test may be killed by that test,
+    so it never counts either.
+    """
+    existing = set(in_scope) - set(new_tests)
+    entries = []
+    for nodeid in new_tests:
+        if nodeid not in in_scope:
+            entries.append({
+                "nodeid": nodeid, "verdict": "unverified", "new_kills": [], "weak_oracle": False,
+                "reason": "not an in-scope test: it did not pass in the suite run or in the unchanged copy",
+            })
+            continue
+        kills = {}
+        new_kills = []
+        for mutant in mutants:
+            kind = mutant["killed_by"].get(nodeid)
+            if kind is None or kind == "collection":
+                continue
+            kills[mutant["id"]] = kind
+            if not existing & (set(mutant["killed_by"]) | set(mutant["not_reached"])):
+                new_kills.append(mutant["id"])
+        verdict = "unverified" if not complete else "accept" if new_kills else "no unique kill"
+        entries.append({
+            "nodeid": nodeid, "verdict": verdict, "new_kills": new_kills,
+            # A test that kills mutants only through other exceptions checks no value.
+            "weak_oracle": bool(kills) and "assertion" not in kills.values(),
+        })
+    return entries
 
 
 def changed_lines(mutants: list[dict], texts: dict) -> dict[str, set]:

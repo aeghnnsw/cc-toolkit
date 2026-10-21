@@ -2,14 +2,18 @@
 """lean-tests command-line entry: measure and inspect a pytest suite.
 
 Each subcommand prints one JSON object to stdout. Exit status 0 means
-success; 2 means a usage or environment error, and the JSON then has an
-"error" key. Python 3.9 or newer, standard library only.
+success; 1 means that the gate failed, or that pin --check found a changed
+source or no source with the quote; 2 means a usage or environment error,
+and the JSON then has an "error" key. Python 3.9 or newer, standard library
+only.
 
   suite     run pytest with one outcome record per test phase
   compare   compare two suite outputs
   scan      find weak, duplicate, and protected tests in the test files
   coverage  read per-test coverage contexts and diff coverage
-  mutate    build the kill matrix of a prune scope, or recheck its killed set
+  mutate    build the kill matrix of a prune or review scope, or recheck its killed set
+  gate      the weakening gate between two Git refs, with the labels of the new tests
+  pin       pin requirement sources with SHA-256 hashes, or check a pin record
 
 Run `lean_tests.py <subcommand> --help` for the options.
 """
@@ -31,6 +35,7 @@ import argparse  # noqa: E402
 from typing import Optional  # noqa: E402
 
 import lt_coverage  # noqa: E402
+import lt_gate  # noqa: E402
 import lt_mutate  # noqa: E402
 import lt_scan  # noqa: E402
 import lt_suite  # noqa: E402
@@ -103,10 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
     mutate = sub.add_parser(
         "mutate",
         parents=[output],
-        help="kill matrix of a prune scope, or the killed-set check after a removal batch",
+        help="kill matrix of a prune or review scope, or the killed-set check after a removal batch",
         description=(
             "Run each mutant of the product modules that the scope's tests cover against every "
-            "in-scope test, in temporary copies of the project. Arguments after `--` go to pytest."
+            "in-scope test, in temporary copies of the project. With --base and --new-tests, mutate "
+            "only the review lines and give each new test its admission verdict. Arguments after `--` "
+            "go to pytest."
         ),
     )
     mutate.add_argument("--python", required=True, help="target interpreter, or a command that runs it (as for suite)")
@@ -120,17 +127,74 @@ def build_parser() -> argparse.ArgumentParser:
         "--recheck", metavar="MATRIX", help="rerun the killed set of this mutate output against the tests of --suite"
     )
     mutate.add_argument(
-        "--budget", type=float, default=lt_mutate.DEFAULT_BUDGET,
-        help="seconds for the whole run (default: %(default)g)",
+        "--base",
+        help="review scope: mutate only the product lines changed since the merge base of BASE and HEAD, "
+        "and the lines that only the --new-tests tests cover",
+    )
+    mutate.add_argument("--new-tests", metavar="FILE", help="file with the node IDs of the new tests; goes with --base")
+    mutate.add_argument(
+        "--budget", type=float,
+        help=f"seconds for the whole run (default: {lt_mutate.DEFAULT_BUDGET:g}, "
+        f"or {lt_mutate.DEFAULT_REVIEW_BUDGET:g} with --base)",
     )
     mutate.add_argument(
         "--workers", type=int, default=lt_mutate.DEFAULT_WORKERS, help="parallel copies (default: CPU count minus 1)"
+    )
+
+    gate = sub.add_parser(
+        "gate",
+        parents=[output],
+        help="the weakening gate between two Git refs",
+        description=(
+            "Classify each test-side change from BASE to HEAD, replay the changed base tests against the "
+            "head product code, and run each new test against the base product code, in a temporary "
+            "detached worktree. Exit status 1 means that a mixed unit has a BEHAVIOR CHANGE, WEAKENING, "
+            "or UNCLASSIFIED item. Arguments after `--` go to pytest."
+        ),
+    )
+    gate.add_argument("--project", default=".", help="project directory in a Git work tree (default: .)")
+    gate.add_argument("--base", required=True, help="base Git ref; the change starts at the merge base of BASE and HEAD")
+    gate.add_argument("--head", default="HEAD", help="head Git ref (default: HEAD)")
+    gate.add_argument(
+        "--per-commit", action="store_true",
+        help="one unit per commit, for a merge method that keeps commits (default: the whole range is one unit)",
+    )
+    gate.add_argument("--python", help="target interpreter, or a command that runs it (as for suite)")
+    gate.add_argument("--work-dir", help="directory outside the repository for the worktree, records, and logs")
+    gate.add_argument(
+        "--static-only", action="store_true",
+        help="run only the static classification: no replay, no collection evidence, and no new-test labels",
+    )
+    gate.add_argument(
+        "--timeout", type=float, default=lt_gate.DEFAULT_TIMEOUT,
+        help="stop each pytest run after this many seconds (default: %(default)g)",
+    )
+
+    pin = sub.add_parser(
+        "pin",
+        parents=[output],
+        help="pin requirement sources with SHA-256 hashes, or check a pin record",
+        description=(
+            "With --record, write each --source file's text and SHA-256 hash to a new pin record. With "
+            "--check, recompute the hash of each pinned text, and with --quote, find the pinned sources "
+            "that contain the quote. Exit status 1 means that the check failed."
+        ),
+    )
+    action = pin.add_mutually_exclusive_group(required=True)
+    action.add_argument("--record", metavar="FILE", help="write a new pin record; the file must not exist")
+    action.add_argument("--check", metavar="FILE", help="check the pin record FILE")
+    pin.add_argument(
+        "--source", action="append", default=[], metavar="NAME=PATH",
+        help="a requirement source to pin (repeatable; goes with --record)",
+    )
+    pin.add_argument(
+        "--quote", help="text that a pinned source must contain (goes with --check); white space matches any white space"
     )
     return parser
 
 
 def split_pytest_args(argv: list[str]) -> tuple[list[str], list[str]]:
-    if argv[:1] in (["suite"], ["mutate"]) and "--" in argv:
+    if argv[:1] in (["suite"], ["mutate"], ["gate"]) and "--" in argv:
         index = argv.index("--")
         return argv[:index], argv[index + 1:]
     return argv, []
@@ -148,6 +212,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             result = lt_scan.scan_command(args)
         elif args.command == "mutate":
             result = lt_mutate.mutate_command(args, extra)
+        elif args.command == "gate":
+            result = lt_gate.gate_command(args, extra)
+        elif args.command == "pin":
+            result = lt_gate.pin_command(args)
         else:
             result = lt_coverage.coverage_command(args)
     except UsageError as error:
@@ -167,7 +235,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(brief, indent=1))
     else:
         print(json.dumps(result, indent=1))
-    return 2 if "error" in result else 0
+    if "error" in result:
+        return 2
+    failed = args.command in ("gate", "pin") and result["summary"].get("passed") is False
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -259,9 +259,9 @@ applies:
 
 When the next mode is speed or prune, say that the user can ask for it, for
 example with "make the tests faster" or "prune the tests in <path>": these
-modes change files only on request. When the next mode is not in the
-[modes list](../SKILL.md#modes), say that it is not available in this
-version, and give its steps as work for the user.
+modes change files only on request. When the next mode is review, say
+that the user can ask for it, for example with "review the tests in this
+change". [review.md](review.md) gives its steps.
 
 When the scorecard is complete, remove the work directory:
 
