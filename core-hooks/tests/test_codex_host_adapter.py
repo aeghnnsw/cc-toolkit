@@ -40,6 +40,7 @@ POLICY_CASES = (
     ("pre_git_hook.py", 2, "BLOCKED"),
     ("post_tool_use.py", 0, "WARNING"),
     ("system_notification.py", 0, "WARNING"),
+    ("zsh_traps.py", 0, "WARNING"),
 )
 
 
@@ -90,8 +91,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 check=False,
             )
 
-    def test_codex_adapter_has_the_1_0_19_release_version(self):
-        self.assertEqual(load_manifest()["version"], "1.0.19")
+    def test_codex_adapter_has_the_1_0_20_release_version(self):
+        self.assertEqual(load_manifest()["version"], "1.0.20")
 
     def test_manifest_selects_only_the_codex_hook_configuration(self):
         manifest = load_manifest()

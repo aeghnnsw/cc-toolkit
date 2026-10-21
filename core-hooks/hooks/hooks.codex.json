@@ -16,6 +16,10 @@
           {
             "type": "command",
             "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/pre_git_hook.py\" || { status=$?; printf 'BLOCKED: core-hooks git policy hook failed (exit %s)\\n' \"$status\" >&2; exit 2; }"
+          },
+          {
+            "type": "command",
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/zsh_traps.py\" || { status=$?; printf 'WARNING: core-hooks zsh trap hook failed (exit %s)\\n' \"$status\" >&2; exit 0; }"
           }
         ]
       }

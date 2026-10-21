@@ -16,6 +16,10 @@
           {
             "type": "command",
             "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/pre_git_hook.py"
+          },
+          {
+            "type": "command",
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/zsh_traps.py"
           }
         ]
       }
