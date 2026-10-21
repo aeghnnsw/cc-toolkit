@@ -381,9 +381,9 @@ above the CPU count, the waits in that file grow with the load, and the
 suite takes longer. Give its command a timeout of at least 300 seconds (in
 Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
 seconds or run it as a background command. Test runs on one host slow each
-other: start the full suite when no other full suite or lean-tests mutation
-run is active on the host, and run shorter checks after it finishes. You
-can also run one file:
+other. When you run agents in parallel, let one agent at a time run a full
+suite; the other agents run single test files until that suite ends. This
+command runs one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'

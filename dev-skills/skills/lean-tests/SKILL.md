@@ -72,11 +72,14 @@ These rules apply to all work on a test suite.
      `.venv/bin/python`, or the interpreter that the user names.
    - When the project has no environment, stop and ask the user. lean-tests
      creates no environment.
-3. Get analysis tools without an install. When the project runs under uv,
+3. Find `<source>`: the import name of each package of the project's own
+   code, for example `mypkg` for `src/mypkg/`. Read it from the package
+   layout and `pyproject.toml`.
+4. Get analysis tools without an install. When the project runs under uv,
    add `--with <package>` for each missing tool, for example
    `uv run --no-sync --with pytest-cov python`. Otherwise use only the
    packages that the environment has.
-4. Make one work directory outside the project, and write its printed path
+5. Make one work directory outside the project, and write its printed path
    as `<work-dir>` in later commands:
 
    ```bash
@@ -85,7 +88,7 @@ These rules apply to all work on a test suite.
 
    Records, logs, coverage data, and reports go there. When the work is
    done, remove it by its path: `rm -r <work-dir>`.
-5. Run the bundled command-line entry with `<python>`, so that it parses
+6. Run the bundled command-line entry with `<python>`, so that it parses
    the project's files with the project's Python version. The entry needs
    Python 3.9 or newer and only the standard library:
 

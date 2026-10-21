@@ -11,10 +11,9 @@ reply, and the before/after table is printed.
 ## Setup
 
 1. Complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
-   `<work-dir>`, and `<skill-dir>`.
-2. Find `<source>`, the import name of each package of the project's own
-   code, such as `mypkg` for `src/mypkg/`. Find `<pytest>`, the project's
-   way to start pytest, such as `uv run pytest` or `python -m pytest`.
+   `<source>`, `<work-dir>`, and `<skill-dir>`.
+2. Find `<pytest>`, the project's way to start pytest, such as
+   `uv run pytest` or `python -m pytest`.
 3. In this file, "run `suite` with the label `<label>`" means this command.
    Add the options that the step names; pytest options go after `--`. The
    timeout only stops a run that hangs:
@@ -35,7 +34,9 @@ reply, and the before/after table is printed.
 ## Test tiers
 
 A test tier is a named set of tests with a trigger, a command, and a time
-budget. These are the defaults; step 5 fits them to the project.
+budget. These are the defaults; step 5 fits them to the project. A `suite`
+label for a tier starts with the tier name in lowercase with hyphens, such
+as `inner-loop` or `hand-off`.
 
 | Tier | When | Command | Default budget |
 | --- | --- | --- | --- |
@@ -49,6 +50,8 @@ budget. These are the defaults; step 5 fits them to the project.
   threshold. The default threshold is 1 second; the project can change it.
 - The fast tiers are the hand-off and pull request tiers. They leave out the
   slow tests, which fix 8 marks.
+- When `addopts` keeps `-n` (fix 2), add `-n 0` to the inner-loop command.
+  `-n 0` turns off the pytest-xdist workers for a run of one test.
 - `--lf` runs the tests that failed in the last run, `-x` stops at the first
   failure, and `-q` keeps the output short for the agent's context.
 
@@ -99,22 +102,33 @@ wall times vary between runs.
    `--collect-only` run. A full run with pytest-xdist reports
    `collection_seconds` as `null`.
 3. Measure the import cost of each `<source>` with the `-X importtime`
-   commands of check step 2. Each pytest-xdist worker pays this cost again.
+   commands of check step 2. Each pytest-xdist worker imports `<source>`
+   again and adds this cost.
 4. Run `suite` with the label `reversed` and `--reverse`, and compare
    `reversed`. `changed` lists the order-dependent tests. When the project's
    options turn on pytest-xdist (`-n`), add `-- -n 0`, because pytest-xdist
    does not keep the reversed order.
-5. Time the inner loop: run `suite` with the label `inner-before` and
+5. Time the inner loop: run `suite` with the label `inner-loop-before` and
    `-- "<node-id>" -x -q`. `<node-id>` is the first node ID in `collected`
    of the before run.
-6. When the project runs coverage, for example in CI, time its coverage
-   command `<coverage-command>`, such as `<python> -m pytest --cov=<source>`,
-   with the shell's `time`, because `suite` turns coverage off.
-   `COVERAGE_FILE` keeps the coverage data in `<work-dir>`:
+6. Time each test command that the project already runs for a tier, such
+   as a CI job with `-m "not slow"` or a nightly job. For a command without
+   coverage, run `suite` with the label `<tier>-before`, such as
+   `hand-off-before`, and the pytest options of the command after `--`. A
+   plain `pytest` command needs no run: the before run gives its time. For
+   a command that runs coverage, `<coverage-command>`, such as
+   `<python> -m pytest --cov=<source>`, use the shell's `time`, because
+   `suite` turns coverage off. `COVERAGE_FILE` keeps the coverage data in
+   `<work-dir>`:
 
    ```bash
    (cd <project> && time env COVERAGE_FILE=<work-dir>/coverage-before.data <coverage-command>)
    ```
+
+Done when the before run meets no stop condition of step 2.1, and you have
+the collection time, the reversed comparison, the import cost of each
+`<source>`, the inner-loop time, and the time of each test command that
+the project already runs for a tier.
 
 ## 3. Choose the fixes
 
@@ -160,6 +174,9 @@ revert or correct the change that caused them. When no change caused an
 outcome change, the test is flaky: follow the
 [flaky-test policy](#flaky-test-policy).
 
+Done when each fix that step 3 marked "apply" is committed on its own, or
+reverted with its reason.
+
 ### Fix 1: order-dependent tests
 
 Risk: low. A changed setup can change what a test detects.
@@ -179,7 +196,8 @@ assertion and each input as it is. An order plugin, such as pytest-order,
 only hides the dependence.
 
 Verify: run the reversed run of step 2.4 again with the label
-`reversed-fix-1`, and compare `reversed-fix-1`. `no_loss` must be true.
+`reversed-fix-<n>`, and compare `reversed-fix-<n>`. `<n>` is the number of
+the fix, as in step 4.3. `no_loss` must be true.
 
 ### Fix 2: parallel runs with pytest-xdist
 
@@ -190,7 +208,9 @@ Add pytest-xdist, and put `-n auto` into the tier commands. When `addopts`
 already has `-n`, each CI command that runs plain `pytest` depends on it.
 When the user's request covers CI (step 5), move `-n` from `addopts` into
 the tier commands and into each such CI command. Otherwise keep `addopts`
-as it is, and give the move and the changed CI commands in the reply.
+as it is, add `-n 0` to the inner-loop command as the
+[test tiers](#test-tiers) say, and give the move and the changed CI
+commands in the reply.
 
 Give each worker its own copy of each shared resource:
 
@@ -206,32 +226,37 @@ module or class to one worker.
 
 Verify: run `suite` with the label `fix-2-again` and `-- -n auto`, and
 compare `fix-2-again`. This run and the run of step 4.3 must both give
-`no_loss` true. Run the inner loop of step 2.5 again with the label
-`inner-fix-2`: it must not get slower.
+`no_loss` true. Run the inner-loop command on the node ID of step 2.5 with
+the label `inner-loop-fix-2`. Its `wall_seconds` must not be higher than in
+`<work-dir>/inner-loop-before.json`.
 
 ### Fix 3: `COVERAGE_CORE=sysmon`
 
 Risk: low. The measured lines stay the same. A run that falls back to the
-default tracer gets no faster.
+C tracer gets no faster.
 
 With `COVERAGE_CORE=sysmon`, coverage.py 7.4.0 and newer measure with
-`sys.monitoring`, which has less overhead than the default tracer. Set the
-variable only for a coverage run that meets each of these conditions:
+`sys.monitoring`. `sys.monitoring` has less overhead than the C tracer
+(`ctrace`), which coverage.py uses by default on Python 3.12 and 3.13. Set
+the variable only for a coverage run that meets each of these conditions:
 
 - It runs Python 3.12 or 3.13 with coverage.py 7.4.0 or newer. On Python
   3.14 or newer, coverage.py 7.9.1 and newer use `sys.monitoring` by
   default, so the fix changes nothing there.
-- It measures no branch coverage. On Python 3.12 and 3.13, coverage.py 7.7
-  and newer then warn and use the default tracer.
+- It measures no branch coverage. When a run on Python 3.12 or 3.13
+  measures branch coverage, coverage.py 7.7 and newer warn and use the C
+  tracer.
 - It records no per-test contexts, because `sys.monitoring` cannot record
   them. With `--cov-context=test`, coverage.py loses contexts. With
   `dynamic_context = test_function`, coverage.py 7.4 to 7.6 lose them, and
-  7.7 and newer warn and use the default tracer.
+  7.7 and newer warn and use the C tracer.
 
-Set the variable in the environment of each such run, such as the CI job,
-the tox or nox session, or the command that runs coverage. When `addopts`
-turns on coverage, every run pays for it, the inner loop too. Report this to
-the user; the pull request tier can run coverage instead.
+Set the variable in the environment of each such run outside CI, such as
+the tox or nox session or the command that runs coverage. When the user's
+request covers CI (step 5), also set it in each such CI job. Otherwise give
+the CI setting in the reply. When `addopts` turns on coverage, each run
+measures coverage, the inner loop too. Report this cost to the user, and
+suggest that only the pull request tier runs coverage.
 
 Verify: time the coverage command with the variable, and compare the totals
 of both coverage runs. They must be equal:
@@ -272,10 +297,10 @@ Risk: high. A shared resource that a test changes makes later tests depend
 on the order, and it can hide a bug.
 
 `slowest.setup` of the before run names the tests with slow setup. List the
-fixtures of such a test:
+fixtures of such a test, `<slow-setup-node-id>`:
 
 ```bash
-(cd <project> && <python> -m pytest -p no:cacheprovider --fixtures-per-test -q "<node-id>")
+(cd <project> && <python> -m pytest -p no:cacheprovider --fixtures-per-test -q "<slow-setup-node-id>")
 ```
 
 Widen the scope of a slow fixture to `module` or `session` only when no test
@@ -286,8 +311,7 @@ pytest-django uses rollback for `django_db` tests;
 `django_db(transaction=True)` empties the database after each test and is
 slow.
 
-Verify: run the reversed run of step 2.4 again with the label
-`reversed-fix-5`, and compare `reversed-fix-5`. `no_loss` must be true.
+Verify: as for fix 1.
 
 ### Fix 6: clock control or polling instead of sleeps
 
@@ -419,13 +443,26 @@ Run the smallest test tier that covers your change, and keep the output short.
 <tier-table>
 
 - Mark a test `@pytest.mark.slow` when its setup plus call takes more than <threshold> seconds.
-- Keep `-n auto` out of `addopts`: it starts worker processes for a run of one test too.
+<workers-line>
 - When a test passes in one run and fails in another, find the cause: order
   dependence, shared state, time, network, randomness, or a real bug. Fix the
   cause. Keep the failure visible: add no retries, such as `--reruns`.
 ```
 
+When `addopts` has no `-n`, replace `<workers-line>` with the first line
+below. When `addopts` keeps `-n`, replace it with the second line. When the
+project has no pytest-xdist, remove `<workers-line>`.
+
+```markdown
+- Keep `-n auto` out of `addopts`: it starts worker processes for a run of one test too.
+- `addopts` starts pytest-xdist workers for each run: add `-n 0` to a run of one test.
+```
+
 Commit the tier changes and the "Tests" section on their own.
+
+Done when each agent instruction file that exists has the new "Tests"
+section or the user kept its old section, the reply gives the section when
+neither file exists, and the commit holds the tier changes and the section.
 
 ## 7. Prove that no test was lost
 
@@ -439,20 +476,26 @@ pytest-xdist. The no-loss invariant holds when:
   its own.
 
 When the invariant fails, find the change that caused it, revert or correct
-it, and run this step again until the invariant holds.
+it, and run this step again.
+
+Done when the no-loss invariant holds.
 
 ## 8. Print the before/after table
 
 Measure each tier command after the fixes. For a command without coverage,
-run `suite` with the label of the tier and its options after `--`, for
-example the label `hand-off` and `-- -m "not slow" -n auto -q`. For a
-command that runs coverage, use the shell's `time`, as in step 2.6.
+run `suite` with the label `<tier>-after` and the pytest options of the
+command after `--`, for example the label `hand-off-after` and
+`-- -m "not slow" -n auto -q`. For the inner loop, use the node ID of step
+2.5. For the main tier, use the `final` run of step 7. For a command that
+runs coverage, use the shell's `time` as in step 2.6, with
+`<work-dir>/coverage-after.data`.
 
 Print the tiers of step 5 in a table with the columns Tier, Command, Budget,
-Before, and After. Take each wall time from `wall_seconds` of a suite
-summary. The before value of a tier is its command before the fixes; when
-the tier had no command of its own, it is the before run. Below the table,
-give:
+Before, and After. Give the source of each time in its cell: the `suite`
+label, whose summary gives `wall_seconds`, or `time`, whose `real` line
+gives the wall time. The Before value of a tier comes from step 2.5 or step
+2.6. When the project had no command for the tier, give the time of the
+before run, and mark the cell "no tier command". Below the table, give:
 
 - The tests collected before and after, the collection time before and
   after, and the `no_loss` result of step 7.
@@ -462,6 +505,9 @@ give:
   cost, and each flaky test that is still open.
 
 When the table is complete, remove the work directory: `rm -r <work-dir>`.
+
+Done when the table and the list below it are printed, and the work
+directory is removed.
 
 ## Flaky-test policy
 
