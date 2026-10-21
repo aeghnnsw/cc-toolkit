@@ -1,18 +1,24 @@
 # Prune
 
 prune removes redundant tests under one path, `<path>`: a test file or a
-test directory, relative to `<project>`. Killed mutants decide, not
-coverage. A mutant is a copy of the product code with one small fault. A
-test kills a mutant when the test fails on that copy. The bundled mutator
-runs every mutant against every in-scope test, so the kill set of each
-test is complete. A test is deleted only with a written rationale.
-Deletions go in batches, and each batch is checked and committed.
+test directory, relative to `<project>`. The tests under `<path>` are the
+in-scope tests. The prune scope is these tests and the product modules
+that they cover. Killed mutants decide, not coverage.
+
+The kill matrix of the prune scope records, for each mutant of the covered
+product modules, the in-scope tests that kill it. The bundled mutator runs
+every mutant against every in-scope test, so the kill set of each test,
+the mutants that it kills, is complete. The killed set is the mutants that
+at least one in-scope test kills. A test is deleted only with a written
+rationale. Deletions go in batches. The killed-set check proves that each
+batch keeps every mutant of the killed set killed, and each batch is one
+commit.
 
 prune changes files only when the user's request asks for pruning, and
 only under `<path>`. It writes no report file into the project: each
 rationale goes into a commit message.
 
-Done when each in-scope test is kept with a reason, merged, demoted, or
+Done when each in-scope test is retained with a reason, merged, demoted, or
 deleted with a rationale; each committed batch passed the killed-set
 check; the report is complete; and the work directory is removed.
 
@@ -40,13 +46,16 @@ First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
    repeat, so the kill matrix is not evidence. check removes its work
    directory at its end, so make a new `<work-dir>` for prune.
 4. Make sure that `<python>` can import pytest-cov. prune needs per-test
-   coverage contexts to choose the mutation scope and to find unmeasured
-   tests. When the project runs under uv, use
-   `uv run --no-sync --with pytest-cov python` as `<python>`. Otherwise
-   name pytest-cov and this purpose to the user, and add it with the
-   project's dependency manager only when the user agrees.
+   coverage contexts to choose the prune scope and to find unmeasured
+   tests. Under uv, get pytest-cov as the setup does for analysis tools.
+   Otherwise ask the user whether to add pytest-cov for this purpose, as
+   [safety rule 5](../SKILL.md#safety-rules) says.
 5. Choose `<source>`, the import name of each product package, as in
    check step 1.
+
+Done when you have `<path>` and `<source>`, `<path>` has no uncommitted
+change, check reports no flaky or order-dependent test under `<path>`, and
+`<python>` imports pytest-cov.
 
 ## 2. Run the scope with coverage contexts
 
@@ -57,11 +66,16 @@ First complete the [setup](../SKILL.md#setup): `<project>`, `<python>`,
 ```
 
 Repeat `--coverage-source` for each package. The arguments after `--` go
-to pytest, so the run collects only the tests under `<path>`: the in-scope
-tests. When the project's pytest options turn on pytest-xdist (`-n`), add
-`-n 0` after `<path>`, here and in each later command that takes pytest
-arguments. Report each test that does not pass: mutate leaves it out of
-the scope.
+to pytest, so the run collects only the in-scope tests. When the project's
+pytest options turn on pytest-xdist (`-n`), add `-n 0` after `<path>`,
+here and in each later command that takes pytest arguments. Report each
+test that does not pass: mutate leaves it out of the prune scope.
+
+When `pytest_exit_code` is 2 or more, read `<work-dir>/scope/pytest.log`,
+report the cause, and stop.
+
+Done when the command exits with status 0, `pytest_exit_code` is 0 or 1,
+and you have reported each in-scope test that did not pass.
 
 ## 3. Scan the scope
 
@@ -76,6 +90,9 @@ findings and the `duplicate_groups` (see check step 5). Also read the
 subject of the commit that added each test, as in check step 5. A subject
 with an issue reference or a protection word makes the test protected.
 
+Done when you have the scan findings and know which in-scope tests are
+protected.
+
 ## 4. Build the kill matrix
 
 ```bash
@@ -88,12 +105,13 @@ mutate makes mutants in the product modules that the in-scope tests
 cover, on the lines that the coverage run executed. The operators are
 comparison swap, boolean operator swap, arithmetic swap, constant change,
 condition negation, return value to `None`, `raise` removal, and function
-body to `return None`, with at most 3 mutants per line. It skips
-docstrings, annotations, logging calls, and `__repr__`. Each mutant runs
-against all in-scope tests in one pytest run, in a temporary copy of the
-project, so the project does not change. First a sanity mutant, a
-`raise` at the end of each mutated module, must be killed. This proves
-that the tests import the copy and not an installed copy of the package.
+body to `return None`, with at most 3 mutants per line. Arid code gets no
+mutant: docstrings, annotations, logging calls, `pass`, and `__repr__`.
+Each mutant runs against all in-scope tests in one pytest run, in a
+temporary copy of the project, so the project does not change. First a
+sanity mutant, a `raise` at the end of each mutated module, must be
+killed. This proves that the tests import the copy and not an installed
+copy of the package.
 
 The run has a budget of 1800 seconds; `--budget` changes it. `--workers`
 sets the number of parallel copies (default: the CPU count minus 1). Each
@@ -113,76 +131,92 @@ of `mutants` gives the changed line (`before`, `after`) and `killed_by`,
 the kill of each test: `assertion`, `exception`, `collection`, `timeout`,
 or `crash`.
 
-Each entry of `tests` gives the test's `kills` (its kill set), `unique`
-(the mutants that only this test kills), `subsumed_by`, and `class`:
+`skipped_modules` lists the covered product modules that have no mutant,
+with the reason: the module is outside the project, it does not parse, or
+its executed lines are arid. `excluded` lists the tests that did not pass
+in the scope run (`run` is `suite`) or in the unchanged copy (`run` is
+`copy`), with their `outcome`.
+
+Each entry of `tests` gives the test's `kills` (its kill set), `unknown`
+(the mutants whose run stopped before the test), `unique` (the mutants
+that only this test kills), `subsumed_by`, `demote`, and `class`:
 
 | `class` | The test | Default decision |
 | --- | --- | --- |
 | `unique` | kills a mutant that no other in-scope test kills | keep |
-| `unmeasured` | ran no measured product line, for example through a subprocess; its value is unknown | keep |
-| `incomplete` | has kills that are not known, because a run stopped before the test, and no other test covers them | keep |
-| `empty` | kills no mutant | candidate |
-| `subsumed` | kills only mutants that each test in `subsumed_by` also kills | candidate |
-| `union-only` | kills only mutants that other tests kill, but no one other test kills them all | demote |
+| `unmeasured` | is an unmeasured test: its run covers no line of a module that has mutants, for example because it runs the code in a subprocess or reaches only modules in `skipped_modules` | keep |
+| `incomplete` | has unknown kills that no other test covers | keep |
+| `empty` | kills no mutant | delete when redundant (step 5) |
+| `subsumed` | kills only mutants that each test in `subsumed_by` also kills | delete when redundant (step 5) |
+| `union-only` | kills only mutants that other tests kill, but no one other test kills them all | demote when `demote` is true, else keep |
 
 `equal_groups` lists tests with equal kill sets. Equal kill sets do not
 prove that the tests are the same: step 5 also needs the input class and
-the checks. `excluded` lists tests that did not pass in the unchanged
-copy; keep them and report them. `unknown` lists, for each test, the
-mutants whose run stopped before the test.
+the checks.
+
+Done when `complete` is true, or you have stopped and reported why.
 
 ## 5. Decide each test
 
 Always keep these tests:
 
-1. Protected tests: a `protected` scan finding, or a protection signal in
-   the subject of the commit that added the test.
-2. Tests of class `unique`, `unmeasured`, or `incomplete`, and excluded
-   tests.
-3. At least one test per public test seam, the public boundary where a
-   test observes behavior. Keep a happy-path test for each public
-   function, class, or command that the in-scope tests call.
+1. Protected tests ([safety rule 4](../SKILL.md#safety-rules)): a
+   `protected` scan finding, or a protection signal in the subject of the
+   commit that added the test.
+2. Tests of class `unique`, `unmeasured`, or `incomplete`, and the tests
+   in `excluded`.
+3. At least one test per public test seam: a happy-path test for each
+   public function, class, or command that the in-scope tests call.
 
-A candidate is a test of class `empty`, or of class `subsumed` when a test
-in `subsumed_by` stays. In a group of equal kill sets, keep at least one
-test. Delete a candidate only when its rationale states both:
+A test of class `empty`, or of class `subsumed` when a test in
+`subsumed_by` is retained, is a redundant test only when its rationale
+states both of these:
 
 1. **Input class.** Why its scenario is not a distinct input class. The
    markers of a distinct input class are boundary values, different types,
    unicode or encoding, time zones and DST, large sizes, error paths,
    concurrency, locale, and platform. An `input-class` scan finding names
-   a marker. For a test with such a marker, name the kept test that covers
-   the same input class.
+   a marker. For a test with such a marker, name the retained test that
+   covers the same input class.
 2. **Checks.** Each output, state, or error check that the test makes,
-   mapped to an assertion in a kept test under equivalent inputs and
+   mapped to an assertion in a retained test under equivalent inputs and
    setup. When the test makes no real check (a `no-assertion`,
    `tautology`, or `self-comparison` finding), say so.
 
-When a candidate cannot meet both conditions, do the first of these that
-applies:
+Delete each redundant test. In a group of `equal_groups`, retain at least
+one test. For a test of class `empty` or `subsumed` that is not
+redundant, do the first of these that applies:
 
-1. **Merge.** When `duplicate_groups` puts the test in one group with a
-   kept test (the ASTs are equal except for literals), merge them into one
-   parametrized test. Each literal becomes one case, so each input stays.
+1. **Merge.** When `duplicate_groups` puts the test in one group with an
+   unprotected retained test (the ASTs are equal except for literals),
+   merge them into one parametrized test. Each literal becomes one case,
+   so each input stays.
 2. **Move.** When the input class is covered but some checks are not, move
-   each unmapped assertion into the kept test, then delete the candidate.
+   each unmapped assertion into an unprotected retained test under
+   equivalent inputs and setup, then delete the test.
 3. **Keep.** Keep the test, and report why.
 
-Demote a test of class `union-only` to the nightly tier, the test tier
-that runs the slow tests, when the project defines one: add the marker
-that the project uses for that tier. When the project has no nightly
-tier, keep the test and report it as a demotion candidate.
+Demote each unprotected test whose `demote` is true to the nightly tier,
+the test tier that runs the slow tests: add the marker that the project
+uses for that tier. mutate sets `demote` to true only when the fast tiers
+still kill every mutant of the killed set without the demoted tests and
+without the tests of class `empty` or `subsumed`. Keep each other test of
+class `union-only`. When the project has no nightly tier, keep the test
+and report that it could move to a nightly tier.
 
 Do not delete or rewrite a test for a `change-detector` or `weak-oracle`
-finding. Report these tests for rewriting: a kept test should check
+finding. Report these tests for rewriting: a retained test should check
 behavior.
+
+Done when each in-scope test has one decision: keep with a reason, delete,
+merge, move, or demote.
 
 ## 6. Write the rationale
 
 Write one line for each changed test, in this format:
 
 ```text
-- remove <nodeid>: kills <none | a subset of <kept nodeid>>; input: <why the scenario is not a distinct input class>; checks: <check> -> <kept nodeid> line <n>[; <check> -> <kept nodeid> line <n>]
+- remove <nodeid>: kills <none | a subset of <retained nodeid>>; input: <why the scenario is not a distinct input class>; checks: <check> -> <retained nodeid> line <n>[; <check> -> <retained nodeid> line <n>]
 - merge <nodeid>, <nodeid> into <new test name>: equal except for literals; cases: <literal>, <literal>
 - demote <nodeid> to the nightly tier: its kills need <nodeid> and <nodeid> together
 ```
@@ -191,20 +225,22 @@ For a moved assertion, write `(moved)` after its target line. For a test
 that makes no real check, write `checks: none, <the reason>`. Examples:
 
 ```text
-- remove tests/test_shop.py::test_classify_negative_copy: kills a subset of tests/test_shop.py::test_classify_negative; input: the same negative int as the kept test; checks: classify(-1) == "negative" -> tests/test_shop.py::test_classify_negative line 9
+- remove tests/test_shop.py::test_classify_negative_copy: kills a subset of tests/test_shop.py::test_classify_negative; input: the same negative int as the retained test; checks: classify(-1) == "negative" -> tests/test_shop.py::test_classify_negative line 9
 - remove tests/test_shop.py::test_total_tautology: kills none; input: ordinary positive ints, as in tests/test_shop.py::test_total; checks: none, the test compares total(2, 3) with itself
 ```
 
+Done when each deleted, merged, or demoted test has one rationale line.
+
 ## 7. Remove in batches
 
-Group the deletions, merges, and moves by test module. A batch holds the
-changes of one module and deletes at most 20 tests. Do the batches one
-at a time:
+Group the deletions, merges, moves, and demotions by test module. A batch
+holds the changes of one module and deletes at most 20 tests. Do the
+batches one at a time:
 
 1. Change only files under `<path>`. Delete the batch's tests. Delete an
    import or helper only when no remaining test uses it. Change no other
-   test, except a kept test that receives a moved assertion or becomes a
-   merged test.
+   test, except an unprotected retained test that receives a moved
+   assertion, becomes a merged test, or gets the nightly marker.
 2. Run the scope again. Every test must pass:
 
    ```bash
@@ -254,6 +290,9 @@ Each later batch uses the same matrix of step 4. mutate stops with exit
 status 2 when a mutated product module changed after the matrix run; then
 run steps 2 to 4 again.
 
+Done when each batch is committed after a passed killed-set check, or
+reverted and reported.
+
 ## 8. Report
 
 Report:
@@ -261,8 +300,10 @@ Report:
 - Each committed batch: its commit, and the tests it deleted, merged,
   moved, or demoted.
 - Each reverted batch, with its lost mutants and the tests that held them.
-- The kept candidates and demotion candidates, with the reason for each.
-- The protected, unmeasured, incomplete, and excluded tests.
+- The tests of class `empty` or `subsumed` that you kept, and the tests of
+  class `union-only` that you did not demote, with the reason for each.
+- The protected, unmeasured, incomplete, and excluded tests, and the
+  `skipped_modules` with their reasons.
 - The change-detector and weak-oracle tests, for rewriting.
 - The count of survived mutants.
 - The test count before and after: `collected` of `scope.json` and of the
@@ -273,3 +314,5 @@ Then remove the work directory:
 ```bash
 rm -r <work-dir>
 ```
+
+Done when the report is complete and the work directory is removed.

@@ -1010,14 +1010,32 @@ def test_discount_gold():
     assert discount("gold", 10) == 7
 """
 
+# The mutator finds no mutant in this module: a docstring and `pass` are arid code.
+MUTATE_HOOKS = """\
+def on_sale(item):
+    \"\"\"Run after each sale; the default hook does nothing.\"\"\"
+    pass
+"""
+
+MUTATE_HOOK_TESTS = """\
+from shop.hooks import on_sale
+
+
+def test_on_sale_hook():
+    assert on_sale("pen") is None
+"""
+
 # No pytest `pythonpath`: PYTHONPATH names src/, as an editable install of the project would.
 MUTATE_FILES = {
     "pyproject.toml": '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n',
     "src/shop/__init__.py": "",
     "src/shop/core.py": MUTATE_CORE,
+    "src/shop/hooks.py": MUTATE_HOOKS,
+    "tests/test_hooks.py": MUTATE_HOOK_TESTS,
     "tests/test_shop.py": MUTATE_TESTS,
 }
 SHOP = "tests/test_shop.py::"
+HOOK_TEST = "tests/test_hooks.py::test_on_sale_hook"
 
 
 def tree_state(root: Path) -> dict[str, tuple]:
@@ -1047,7 +1065,8 @@ class Mutation:
 
     The expected kill sets follow from MUTATE_CORE and MUTATE_TESTS. Each
     mutant runs in a fresh pytest process, so rate() computes its value in
-    test_rate_gold, and test_discount_gold gets the cached value.
+    test_rate_gold, and test_discount_gold gets the cached value. The hook
+    test reaches only MUTATE_HOOKS, which has no mutant.
     """
 
     _instance: Mutation | None = None
@@ -1112,7 +1131,7 @@ class MutateMatrixTest(unittest.TestCase):
         summary = self.m.data["summary"]
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertEqual(self.m.printed, {"summary": summary, "output": str(self.m.matrix)})
-        self.assertEqual((summary["tests"], summary["modules"], summary["survived"]), (8, 1, 0))
+        self.assertEqual((summary["tests"], summary["modules"], summary["survived"]), (9, 1, 0))
         self.assertEqual(summary["killed"], summary["mutants"])
         [sanity] = self.m.data["sanity"]
         self.assertEqual(sanity["path"], "src/shop/core.py")
@@ -1129,7 +1148,7 @@ class MutateMatrixTest(unittest.TestCase):
         tautology = self.entry("test_total_tautology")
         self.assertEqual((tautology["class"], tautology["kills"]), ("empty", []))
 
-    def test_test_whose_kills_another_test_also_makes_is_subsumed(self) -> None:
+    def test_kill_set_within_another_tests_kill_set_is_subsumed(self) -> None:
         rate = self.entry("test_rate_gold")
         self.assertEqual((rate["class"], rate["subsumed_by"]), ("subsumed", [SHOP + "test_discount_gold"]))
 
@@ -1166,9 +1185,21 @@ class MutateMatrixTest(unittest.TestCase):
         self.assertEqual(limit["kills"], [mutant["id"]])
         self.assertEqual(mutant["killed_by"], {SHOP + "test_limit": "assertion"})
 
+    def test_test_that_reaches_only_a_skipped_module_is_unmeasured(self) -> None:
+        hook = self.m.tests[HOOK_TEST]
+        self.assertEqual((hook["class"], hook["measured"], hook["kills"]), ("unmeasured", False, []))
+        [skipped] = self.m.data["skipped_modules"]
+        self.assertEqual(skipped["path"], "src/shop/hooks.py")
+        self.assertIn("no mutant", skipped["reason"])
+        self.assertEqual(self.m.data["unmeasured"], [HOOK_TEST, SHOP + "test_limit"])
+
     def test_summary_counts_each_class(self) -> None:
         classes = self.m.data["summary"]["classes"]
-        self.assertEqual(classes, {"unique": 3, "subsumed": 3, "union-only": 0, "empty": 1, "unmeasured": 1, "incomplete": 0})
+        self.assertEqual(classes, {"unique": 3, "subsumed": 3, "union-only": 0, "empty": 1, "unmeasured": 2, "incomplete": 0})
+
+    def test_no_reported_line_has_more_than_three_mutants(self) -> None:
+        lines = [(m["path"], m["line"]) for m in self.m.data["mutants"]]
+        self.assertLessEqual(max(lines.count(line) for line in lines), 3)
 
     def test_mutated_text_is_spliced_into_the_original_line(self) -> None:
         # The comment stays, so only the operator changed. Unparsing the whole file drops comments.
@@ -1247,9 +1278,108 @@ class MutateRecheckTest(unittest.TestCase):
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertTrue(summary["passed"])
         self.assertEqual(data["lost"], [])
-        self.assertEqual(summary["tests"], 7)
+        self.assertEqual(summary["tests"], 8)
         self.assertEqual(summary["still_killed"], summary["killed_set"])
         self.assertEqual(summary["killed_set"], m.data["summary"]["killed"])
+
+
+class MutantFinderTest(unittest.TestCase):
+    """The mutator chooses the mutants of a module from its text and executed lines, without a pytest run."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module_mutants = staticmethod(import_script("lt_mutate").module_mutants)
+
+    def mutants(self, text: str) -> list[dict]:
+        text = textwrap.dedent(text)
+        return self.module_mutants("m.py", text, set(range(1, text.count("\n") + 1)))
+
+    def test_a_stub_counts_toward_the_cap_of_the_line_that_reports_it(self) -> None:
+        found = self.mutants("""\
+            def shipping(weight):
+                return weight * 2 + 5
+            """)
+        self.assertEqual([(m["line"], m["operator"]) for m in found], [(2, "arithmetic"), (2, "return-none"), (2, "constant")])
+
+    def test_f_string_gets_mutants_like_other_code(self) -> None:
+        found = self.mutants("""\
+            def label(count):
+                prefix = "n"
+                text = f"{prefix}: {count + 1} items"
+                return text
+            """)
+        self.assertEqual({m["after"] for m in found if m["line"] == 3}, {
+            'text = ("XX" + f"{prefix}: {count + 1} items" + "XX")',
+            'text = f"{prefix}: {count - 1} items"',
+            'text = f"{prefix}: {count + 2} items"',
+        })
+
+    def test_arid_code_gets_no_mutant(self) -> None:
+        found = self.mutants('''\
+            import logging
+
+            log = logging.getLogger(__name__)
+
+
+            def audit(event: str) -> None:
+                """Log the event."""
+                log.info("event %s", event)
+
+
+            class Box:
+                size: int = 3
+
+                def __repr__(self):
+                    return "Box(" + str(self.size) + ")"
+            ''')
+        self.assertEqual([(m["line"], m["after"]) for m in found], [(12, "size: int = 4")])
+
+
+class DemotionTest(unittest.TestCase):
+    """The tests that stay in the fast tiers keep every mutant of the killed set killed after the demotions."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.classify = staticmethod(import_script("lt_mutate").classify)
+
+    def matrix(self, tests: list[str], killers: dict[str, list[str]], not_reached: dict | None = None) -> dict:
+        """The test entries of a complete matrix with these killers of each mutant."""
+        mutants = [
+            {"id": mutant, "killed_by": dict.fromkeys(names, "assertion"), "not_reached": (not_reached or {}).get(mutant, [])}
+            for mutant, names in killers.items()
+        ]
+        entries, _ = self.classify(tests, set(), mutants, complete=True)
+        return {entry["nodeid"]: entry for entry in entries}
+
+    def assert_fast_tiers_kill(self, entries: dict, killed: set) -> None:
+        stay = [e for e in entries.values() if not e["demote"] and e["class"] not in ("empty", "subsumed")]
+        self.assertEqual(set().union(*(e["kills"] for e in stay)), killed)
+
+    def test_one_of_two_union_only_duplicates_stays(self) -> None:
+        # The run of m3 timed out in z, so m3 is unknown for x and y, and neither subsumes the other.
+        entries = self.matrix(["z", "x", "y"], {"m1": ["x", "y"], "m2": ["x", "y"], "m3": ["z"]}, {"m3": ["x", "y"]})
+        self.assertEqual({n: e["class"] for n, e in entries.items()}, {"z": "unique", "x": "union-only", "y": "union-only"})
+        self.assertEqual([n for n, e in entries.items() if e["demote"]], ["x"])
+        self.assert_fast_tiers_kill(entries, {"m1", "m2", "m3"})
+
+    def test_union_only_tests_whose_other_killers_can_be_deleted_stay(self) -> None:
+        entries = self.matrix(["a", "b", "c", "d"], {"m1": ["a", "c"], "m2": ["a", "b"], "m3": ["b", "d"]})
+        self.assertEqual(
+            {n: e["class"] for n, e in entries.items()},
+            {"a": "union-only", "b": "union-only", "c": "subsumed", "d": "subsumed"},
+        )
+        self.assertEqual([n for n, e in entries.items() if e["demote"]], [])
+        self.assert_fast_tiers_kill(entries, {"m1", "m2", "m3"})
+
+
+def write_suite(tmp: Path, project: Path) -> Path:
+    """A suite output with one collected test of `project` and no coverage contexts."""
+    suite = tmp / "suite.json"
+    suite.write_text(json.dumps({
+        "summary": {}, "project": str(project), "rootdir": str(project),
+        "collected": ["tests/test_x.py::test_x"], "tests": [], "files": {},
+    }), encoding="utf-8")
+    return suite
 
 
 class MutateUsageTest(unittest.TestCase):
@@ -1259,11 +1389,7 @@ class MutateUsageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
             project.mkdir()
-            suite = Path(tmp) / "suite.json"
-            suite.write_text(json.dumps({
-                "summary": {}, "project": str(project), "rootdir": str(project),
-                "collected": ["tests/test_x.py::test_x"], "tests": [], "files": {},
-            }), encoding="utf-8")
+            suite = write_suite(Path(tmp), project)
             code, data, _ = run_cli(
                 "mutate", "--python", sys.executable, "--suite", str(suite), "--work-dir", str(Path(tmp) / "work")
             )
@@ -1281,11 +1407,7 @@ class MutateUsageTest(unittest.TestCase):
                 "modules": [{"path": "src/m.py", "sha256": hashlib.sha256(b"X = 1\n").hexdigest()}],
                 "tests": [], "mutants": [],
             }), encoding="utf-8")
-            suite = Path(tmp) / "suite.json"
-            suite.write_text(json.dumps({
-                "summary": {}, "project": str(project), "rootdir": str(project),
-                "collected": ["tests/test_x.py::test_x"], "tests": [], "files": {},
-            }), encoding="utf-8")
+            suite = write_suite(Path(tmp), project)
             code, data, _ = run_cli(
                 "mutate", "--python", sys.executable, "--suite", str(suite), "--recheck", str(matrix),
                 "--work-dir", str(Path(tmp) / "work"),

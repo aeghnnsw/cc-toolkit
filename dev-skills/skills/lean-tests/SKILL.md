@@ -48,9 +48,10 @@ These rules apply to all work on a test suite.
    batch is one commit of its own, with a written reason for each test.
    When the evidence is incomplete, delete nothing. Equal coverage is not evidence: tests that
    cover the same lines can detect different faults.
-4. Keep protected tests: regression, characterization, security,
-   compatibility, and performance tests, and one happy-path test per test
-   seam, the public boundary where a test observes behavior. Rewrite a protected test only to fix a defect in the test.
+4. Never delete or merge a protected test: a regression, characterization,
+   security, compatibility, or performance test, or the one happy-path test
+   of a test seam, the public boundary where a test observes behavior.
+   Rewrite a protected test only to fix a defect in the test.
 5. Name each new dependency and its purpose before you add it, and add it
    with the project's own dependency manager.
 6. Report each measurement that you could not take, with the package that
