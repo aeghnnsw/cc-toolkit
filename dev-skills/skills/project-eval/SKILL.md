@@ -99,7 +99,8 @@ When an evaluator finishes:
 1. If its result has no findings list, or the result is partial (turn
    limit), resume the evaluator once with SendMessage and ask for its
    findings so far in its final-message format.
-2. Save its result as `<RUN>/E<N>.md`.
+2. Save its full result, verbatim, as `<RUN>/E<N>.md`. Do not shorten it:
+   the saved files are the record of the run if your context is compacted.
 3. Split its findings into batches of at most 10. Send one verifier for each
    batch:
 
@@ -119,7 +120,7 @@ When an evaluator finishes:
 
 When a verifier finishes:
 
-1. Save its result as `<RUN>/V-E<N>-<b>.md`.
+1. Save its full result, verbatim, as `<RUN>/V-E<N>-<b>.md`.
 2. Compare the IDs in its verdicts with the IDs of its batch.
 3. For missing IDs, resume the verifier once with SendMessage. If it cannot
    resume, send one new verifier for the missing IDs only.
@@ -144,8 +145,9 @@ When every evaluator and verifier has finished:
 
 - Evaluators and verifiers return text. Only you write files: the run
   results and the report.
-- An evaluator or verifier changes no project files and no Git state, starts
-  no server, and takes no action with external effects.
+- An evaluator or verifier creates, changes, or deletes no project files,
+  changes no Git state, starts no server, and takes no action with external
+  effects.
 - When no browser tools are available, or the session refuses a browser
   call, the report says that browser checks were skipped.
 - Earlier reports are context for the reader. Do not pass their findings to

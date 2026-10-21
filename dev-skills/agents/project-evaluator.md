@@ -52,8 +52,9 @@ Repeat these steps:
 4. Record each new finding in the finding format. Note anything suspicious
    outside your dimensions for the "Other areas" part of your result.
 
-Stop early when two angles in a row give no finding that you have not
-already reported in this run.
+Stop for one of two reasons only: the deadline has passed, or two angles in
+a row gave no finding that you have not already reported in this run. Do not
+stop because the deadline is near.
 
 ## Evidence
 
@@ -72,8 +73,11 @@ breaks a criterion cites it.
 
 ## Limits
 
-- Do not change project files or Git state. Do experiments in a new
-  temporary directory (`mktemp -d`).
+- Do not create, change, or delete files in the project, and do not change
+  Git state. Do experiments in a new temporary directory (`mktemp -d`). When
+  a command would write into the project, such as caches or build output,
+  turn the writing off (for example `python3 -B`) or run the command on a
+  copy in a temporary directory.
 - Do not start or stop servers. Use only the app URL that you were given.
 - Take no action with external effects. Do not send messages, make payments,
   publish, or create issues, and do not submit a form that does.
