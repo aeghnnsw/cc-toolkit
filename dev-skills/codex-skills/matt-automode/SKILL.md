@@ -207,11 +207,28 @@ are merged.
    questions, resolve the design questions, and record the domain terms and
    decisions.
 2. `mattpocock-skills:to-spec`: choose the testing seams and publish the spec.
+   Then compare each glossary entry that this run added, such as in
+   `CONTEXT.md`, with the spec decisions. Change each entry that contradicts
+   a decision.
 3. `mattpocock-skills:to-tickets`: choose the ticket breakdown and publish it
    with blocking dependencies. Track the parent spec, all task tickets, and their
    PRs through completion. Preserve the parent during ticket publication.
+   Make one ticket block another when both edit the same shared file: a
+   `SKILL.md` that routes to the changed parts, a plugin manifest,
+   `CHANGELOG.md`, or a registry such as `package-validation.json`. Write no
+   target version in a ticket; choose the versions when the PR is ready.
+   If the repository has a pytest suite, open the
+   [lean-tests skill](../lean-tests/SKILL.md) before the first
+   implementation change, and run "Pin the requirement sources" in its
+   review mode. Pin the user's original request, the spec, and each ticket,
+   so that a later review can use an acceptance reviewer. The pin needs no
+   other setup step: use any Python 3.9 or newer as `<python>`. Record the
+   pin directory and each `sha256` value in the planning files, and give
+   the values in the final report.
 4. `mattpocock-skills:implement`: complete the next ready ticket. Follow its
-   testing workflow and commit the changes for review.
+   testing workflow and commit the changes for review. Before the implementer
+   commits, it searches its new prose for the `_Avoid_` terms of the glossary
+   and lists in its report each helper that it imports from another module.
 5. `mattpocock-skills:code-review`: review the changes against a fixed comparison
    commit and the ticket spec. This phase fulfills `implement`'s code-review
    requirement. Fix actionable Standards and Spec findings before continuing.
@@ -228,9 +245,26 @@ are merged.
    the PR phase. Then post the comment on the tracking issue.
 7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
    changes. Merge after required checks and review pass. Follow repository rules.
+   When a merged ticket makes the branch conflict, give the agent that
+   rebases one resolution rule for each conflicted file and the version that
+   each raised version field must have after the rebase. A rebase drops a
+   version change that both sides made, and reports no conflict for it.
 8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
    tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
    state and verify closure alongside Git cleanup.
+
+## Sub-agent briefs
+
+Give each sub-agent a brief that it can follow without this conversation.
+
+- In the brief of an implementer, a reviewer, or a fix agent, name the
+  planning-file sections that it uses, by file and line.
+- Tell each sub-agent not to call the host's plan, task-list, or wrap-up
+  tools. This session owns them.
+- When agents run at the same time, let one agent at a time run a full test
+  suite. The other agents run single test files until that suite ends.
+- Tell a reviewer to support each finding about the behavior of an
+  external tool with a run that the reviewer measured.
 
 ## Navigation retrospective
 
@@ -248,14 +282,18 @@ that procedure. Otherwise, do these steps:
    with new evidence.
 3. Select this repository's sessions, including its worktrees, by recorded
    workspace metadata before you search their text. Claude Code sessions are
-   JSONL files under `~/.claude/projects/` with a `cwd` field. Codex sessions
-   are JSONL files under `~/.codex/sessions/` with the `cwd` in their
-   `session_meta` line. Read only the sessions that started after the newest
-   retrospective comment, and the current session's records after that
-   comment. Use task prompts and actions to judge relevance. If the tracking
-   issue has no retrospective comment, read the earlier implementation
-   sessions. If no earlier session is available, report that limit and
-   review the current session.
+   JSONL files under `~/.claude/projects/` with a `cwd` field, and their
+   sub-agents are under `<session>/subagents/`. Codex sessions are JSONL
+   files under `~/.codex/sessions/` with the `cwd` in their `session_meta`
+   line. Select the sessions that have records after the newest
+   retrospective comment, and read only those records. A session that
+   started before the comment, such as the current session, can have later
+   records. Record timestamps have milliseconds: compare each `timestamp`
+   with the comment time written with milliseconds, such as
+   `2026-10-21T20:22:41.000Z`. Use task prompts and actions to judge
+   relevance. If the tracking issue has no retrospective comment, read the
+   earlier implementation sessions. If no earlier session is available,
+   report that limit and review the current session.
 4. Copy the selected transcripts into one `mktemp -d` directory, and process
    only the copies. Give sub-agents the paths of the copies. Do not write to
    an original transcript. Remove the directory by its path when the
