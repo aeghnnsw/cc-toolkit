@@ -1,81 +1,183 @@
 ---
 name: project-eval
-version: 1.0.0
-description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "review this feature", "evaluate the auth module", "find issues", or wants multi-angle project evaluation with long-running critic agents. Dispatches skeptical evaluator agents that iterate through evaluation angles to find issues across code, architecture, security, UX, product, and design dimensions.
+version: 2.0.0
+description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It dispatches skeptical evaluator agents, has a separate verifier check every finding, and writes one report. For a diff or PR, use /code-review; for one decision or design choice, use pressure-test.
 ---
 
-Dispatch long-running skeptical critic agents to evaluate a project from multiple directions. Inspired by the principle that separating creation from evaluation — and tuning evaluators for skepticism — produces far better quality assessment than self-review.
+# Project Evaluation
 
-## Critical Lifecycle Rules
+Skeptical evaluator agents search a target for issues, each along assigned
+dimensions. A neutral verifier agent checks every finding against the current
+project. You write one report with the verified findings.
 
-- Critic agents are **long-running team agents** — NEVER kill them unless the user explicitly asks to stop
-- Do NOT wait for critics to finish before responding to the user
-- Dispatch critics as background agents and inform the user they are running
-- Critics self-terminate based on mode: convergence (Focus) or deadline (Explore)
+## When to Use
 
-## Mode Detection
+- **Use** for a feature or module, a design document or plan, a running web
+  app, or a whole project.
+- **Use instead**: `/code-review` for a diff or PR, `/security-review` for
+  the security of a diff, and `pressure-test` for one decision, design
+  choice, or position.
 
-| User intent | Mode |
-|-------------|------|
-| "evaluate auth module", "review the payment flow", "check this feature" | **Focus** |
-| "evaluate the project", "run a deep eval", "explore the codebase" | **Explore** |
+## Inputs
 
-If ambiguous, ask the user to clarify: "Would you like to focus on a specific feature, or explore the entire project?"
+Take these from the user's message, or from a calling skill. Ask only when
+the target is unclear.
 
-## Focus Mode
+- **Target**: files, a feature or module, a document, an app URL, or the
+  whole project.
+- **Time budget**: 30 minutes by default.
+- **Evaluator count**: 1-3 for a target and 3-5 for the whole project by
+  default. A count that the user gives wins.
+- **Criteria** (optional): a spec, issue, rubric (for example from
+  `goal-rubric`), or design document to check against.
+- **App URL** (optional): the URL of a running app. Without one, use a local
+  dev server only if it already runs. Do not start or stop a server.
+- **Report path** (optional): by default a new file in `docs/eval/`, named
+  by the rules in [references/report-format.md](references/report-format.md).
 
-Target a specific feature or module. Critics iterate until no new issues are found, then self-terminate.
+## Workflow
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/angles.md` — scan the 8 direction clusters
-2. Read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/focus-mode.md` — follow the complete workflow
-3. Identify target scope from user's message (search codebase for relevant files)
-4. Select 1-3 direction clusters relevant to the target
-5. Dispatch critic agents (one per direction, background, long-running)
-6. Inform user and respond — do not block
-7. Consolidate findings when all critics converge
+### 1. Scope the Target
 
-## Explore Mode
+1. Find the files in scope, or survey the whole project: README,
+   CLAUDE.md or AGENTS.md, the top-level layout, and `git log --oneline -20`.
+2. If the target has a web UI and you have no app URL, look for a local dev
+   server that already runs, for example with
+   `lsof -nP -iTCP -sTCP:LISTEN`.
+3. Use the URL of a server only when it runs from this project, for
+   example when `lsof -a -p <PID> -d cwd` shows the project directory.
+4. Read [references/dimensions.md](references/dimensions.md). Choose
+   dimensions that fit the target:
+   - Code feature or module: Code, Security, Architecture, and Data & API
+     for endpoints.
+   - Design document or plan: Architecture, Product, Documentation &
+     Convention, and the dimensions of the system that it designs.
+   - Running web app: User Experience, Frontend & Design, and Product.
+   - Whole project: spread the evaluators across all eight dimensions.
+     Give each evaluator a different starting area.
+5. Assign dimensions so that evaluators do not overlap.
 
-Evaluate the entire project for a time-limited period (default 30 minutes). Critics explore diverse angles until the deadline.
+### 2. Set Up the Run
 
-1. Parse time limit from user's message (default: 30 min)
-2. Read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/angles.md`
-3. Read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/explore-mode.md` — follow the complete workflow
-4. Survey the project structure, recent changes, and documentation
-5. Dispatch 3-5 critic agents with diverse directions and the deadline timestamp
-6. Inform user and respond — do not block
-7. Consolidate findings when all critics reach the deadline
+Set up the run just before dispatch, so that scoping does not use the time
+budget. Each Bash call can start a new shell, so keep the run state in a
+file. Set `MINUTES` to the time budget:
 
-## Fan-Out Strategy
+```bash
+MINUTES=30
+RUN="$(mktemp -d "${TMPDIR:-/tmp}/project-eval.XXXXXX")"
+printf 'RUN="%s"\nDEADLINE=%s\nSTARTED="%s"\n' "$RUN" \
+  "$(( $(date +%s) + MINUTES * 60 ))" "$(date '+%Y-%m-%d %H:%M %Z')" > "$RUN/run.env"
+cat "$RUN/run.env"
+```
 
-- **User specifies count** (e.g., "use 3 critics"): use that count
-- **Default — Focus mode**: 1-3 critics based on relevant direction clusters
-- **Default — Explore mode**: 3-5 critics to maximize early coverage
-- Coordinate direction assignment so critics do not overlap
-- If the platform limits concurrent agents, reduce fan-out and dispatch remaining directions after the first batch completes
+Use the printed `RUN` path and `DEADLINE` value in the steps below. If you
+lose the `RUN` path, find the newest run with
+`ls -dt "${TMPDIR:-/tmp}"/project-eval.* | head -1`.
 
-## Consolidation
+Tell the user the scope, the dimensions of each evaluator, and the deadline
+in two or three lines.
 
-When all critics complete, read `${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/finding-format.md` for the report format, then:
+### 3. Dispatch the Evaluators
 
-1. Read all per-critic findings files matching `docs/eval/findings-<timestamp>-critic-*.md` (use this run's timestamp)
-2. Deduplicate findings (same file + same issue = one finding)
-3. Assign global IDs: F1, F2, ... ordered by severity (critical first)
-4. Write consolidated report to `docs/eval/findings-<YYYYMMDD-HHMMSS>.md`
-5. Delete per-critic files only after the consolidated report is fully written
-6. Present the final report to the user
+Send one Agent call for each evaluator, all in one message:
 
-## Direction Clusters (Quick Reference)
+```text
+Agent(
+  subagent_type: "dev-skills:project-evaluator",
+  description: "Evaluator E<N>: <dimensions>",
+  prompt: "
+    Evaluator number: <N>
+    Target: <files, feature, document, URL, or the whole project>
+    Dimensions: <names>
+    Deadline: <DEADLINE>
+    Criteria: <path or issue, or none>
+    App URL: <URL, or none>
+    Starting point: <area, or none>
+  "
+)
+```
 
-Read `angles.md` for full details and calibration examples. The 8 clusters:
+The evaluators run in the background. Reply to the user and do not wait.
+Do not stop an evaluator unless the user asks.
 
-1. **Code** — logic, error handling, state, completeness, concurrency
-2. **Architecture** — coupling, boundaries, consistency, scalability
-3. **Security** — injection, auth, secrets, data privacy
-4. **Frontend & Design** — visual coherence, responsiveness, accessibility, components
-5. **User Experience** — flow, feedback, discoverability, edge states
-6. **Product** — feature gaps, requirement drift, coherence, value
-7. **Data & API** — contracts, schema, validation, performance
-8. **Documentation & Convention** — project rules, documentation, test quality
+### 4. Verify Each Result When It Arrives
 
-These are a starting menu — critics explore freely within their assigned direction.
+When an evaluator finishes:
+
+1. Save its full result, verbatim, as `<RUN>/E<N>.md`. Do not shorten it:
+   the saved files are the record of the run if your context is compacted.
+2. If the result has no findings list, or the result is partial (turn
+   limit), resume the evaluator once with SendMessage. Ask for its findings
+   so far in its final-message format.
+3. Append the answer of a resumed evaluator to `<RUN>/E<N>.md`.
+4. Check that each finding has a unique ID that starts with `E<N>-`.
+5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
+   duplicate ID.
+6. Split its findings into batches of at most 10.
+7. Send one verifier for each batch:
+
+   ```text
+   Agent(
+     subagent_type: "dev-skills:finding-verifier",
+     description: "Verify E<N> batch <b>",
+     prompt: "
+       Target: <as for the evaluator>
+       Criteria: <as for the evaluator>
+       App URL: <as for the evaluator>
+       Findings:
+       <the findings of this batch, verbatim, with their IDs>
+     "
+   )
+   ```
+
+When a verifier finishes:
+
+1. Save its full result, verbatim, as `<RUN>/V-E<N>-<b>.md`.
+2. Compare the IDs in its verdicts with the IDs of its batch.
+3. For missing IDs, resume the verifier once with SendMessage.
+4. If the verifier cannot resume, send one new verifier for the missing IDs
+   only.
+5. Append each later answer to `<RUN>/V-E<N>-<b>.md`.
+6. A finding that still has no verdict is **Not verified**.
+
+### 5. Write the Report
+
+When every evaluator and verifier has finished:
+
+1. Read the saved results in `<RUN>`.
+2. Choose the report path. For the default path, follow the name rules in
+   [references/report-format.md](references/report-format.md).
+3. Find the earlier reports with the same slug in the report directory.
+4. Write the report in the format of `report-format.md`. Merge duplicates,
+   use the verified severities, and list Rejected and Not verified findings
+   in their own sections.
+5. Save the report at the report path.
+6. Present the report path, the status line, the summary table, the
+   Critical and Major findings, and what was not covered.
+
+## Rules
+
+- Evaluators and verifiers return their results as text. They write no
+  report files, and they create, change, or delete no project files. They do
+  experiments only in a temporary directory. Only you write the run results
+  and the report.
+- Evaluators and verifiers change no Git state, start no server, and take no
+  action with external effects.
+- When no browser tools are available, or the session refuses a browser
+  call, the report says that browser checks were skipped.
+- Earlier reports are context for the reader. Do not pass their findings to
+  evaluators: an old finding must not hide a new one.
+
+## Browser Servers
+
+Both agents can use the tools of these browser MCP servers: the desktop
+app's browser (`Claude_Browser`), Claude in Chrome (`claude-in-chrome`),
+Chrome DevTools (`chrome-devtools`), and Playwright (`playwright`, or the
+Playwright plugin). To support another server, add its tool prefix to the
+`tools` line of both agents in the dev-skills plugin:
+`mcp__<server>__*` for a server that the user configured, or
+`mcp__plugin_<plugin>_<server>__*` for a server that a plugin provides.
+
+A tool in the list still needs permission in the session. A server that
+connects after an agent starts gives that agent no tools.

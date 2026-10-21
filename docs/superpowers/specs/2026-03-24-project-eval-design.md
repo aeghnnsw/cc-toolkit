@@ -1,9 +1,15 @@
 # Project Eval — Design Spec
 
+> **Superseded (2026-10-20, issue #313).** project-eval now has one
+> workflow instead of Focus and Explore modes. Evaluators return findings as
+> text, a verifier checks every finding, and the `eval-critic` agent is now
+> `project-evaluator`. Read the current
+> [skill](../../../dev-skills/skills/project-eval/SKILL.md) and
+> [#313](https://github.com/aeghnnsw/cc-toolkit/issues/313).
+>
 > **Superseded in part (2026-10-14, issue #284).** The `eval-critic` agent
 > now uses `claude-opus-5-5`, not `sonnet`. Read
-> [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md) and the
-> current [agent](../../../dev-skills/agents/eval-critic.md).
+> [ADR 0002](../../adr/0002-cross-family-pressure-test-critic.md).
 
 A skill for dev-skills that dispatches long-running critic agents to evaluate a project from multiple directions. Inspired by [Anthropic's harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps), specifically the finding that separating creation from evaluation — and tuning evaluators for skepticism — produces far better quality assessment than self-review.
 

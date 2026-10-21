@@ -137,17 +137,25 @@ can read those worktrees and match many copies of the same file. To also
 search new files that are not yet added, pass `--untracked`.
 
 Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
-describe replaced behavior. To search current text only, exclude them:
+describe replaced behavior. The task-loop plugin is
+[not usable now](task-loop/README.md#status), but its copies of shared
+skills match many terms. To search current text only, exclude all three:
 
 ```bash
-git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md'
+git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'
 ```
+
+Keep task-loop in the search when the change renames a skill or changes a
+model pin.
 
 ## Changelog entries
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
 Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
-or `### Changed`. Put the newest entry first. Use this form:
+or `### Changed`. Put the newest entry first. Each entry is one long line.
+To find the insertion point, get the line number of the target `###`
+heading with `grep -n '^##' CHANGELOG.md`, and read only a few lines below
+it. Use this form:
 
 ```text
 - <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
@@ -170,7 +178,7 @@ a person or an agent wrote it.
 | Accepted architecture decisions | Commit concise records under `docs/adr/`. |
 | Agreed domain terminology | Commit a root `CONTEXT.md` when a glossary is needed. |
 | Durable designs and review conclusions | Commit under a relevant `docs/` directory and link them from the issue or relevant documentation. |
-| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Promote useful conclusions into shared documentation. |
+| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning directory `.scratch/<issue>-<description>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning directory to the main checkout before the worktree is removed. Promote useful conclusions into shared documentation. |
 | Logs, caches, local worktrees, and generated binaries | Keep out of Git using the shared `.gitignore`. |
 | Personal tool settings and local-only notes | Keep outside the repository or exclude specific paths locally. |
 
@@ -263,6 +271,11 @@ The validator does not check external links,
 interpret paths in prose or shell examples, infer code dependencies, or
 run plugins and host loaders.
 
+The root agent-field test, `tests/test_agent_fields.py`, checks agent
+headers. It fails when a plugin agent sets `hooks`, `mcpServers`,
+`permissionMode`, or `initialPrompt`, which Claude Code ignores for plugin
+agents.
+
 Release validation compares both package layouts across the merge base.
 Changed shipped content requires a greater numeric `major.minor.patch`
 version for each affected existing host registration. One increase covers
@@ -302,7 +315,7 @@ queue, checkout, and runner startup time are separate.
 Run the root tests when you change the validator, a skill, an agent,
 `allowed-models.json`, or `package-validation.json`. The root tests contain
 the validator's command-interface fixtures, the skill link test, the
-model-pin test, and the argument-placeholder test:
+model-pin test, the argument-placeholder test, and the agent-field test:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'

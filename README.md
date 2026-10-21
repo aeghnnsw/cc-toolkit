@@ -32,10 +32,10 @@ cc-toolkit/
 ├── CHANGELOG.md                      # Plugin and repository changes
 ├── package-validation.json           # Package and release validation rules
 ├── scripts/validate_packages.py      # Package and release validator
-├── tests/                            # Root tests: validator, skill links, model pins, placeholders
+├── tests/                            # Root tests: validator, skill links, model pins, placeholders, agent fields
 ├── docs/
 │   ├── adr/                          # Accepted architecture decisions
-│   ├── agents/                       # Issue tracker, triage, and domain conventions
+│   ├── agents/                       # Issue tracker, triage, domain, and retrospective conventions
 │   ├── design/                       # Durable designs, such as package validation
 │   └── superpowers/                  # Dated specs, plans, and conclusions; some superseded
 ├── cc-customize/                     # Claude Code model, statusline, and prompt config skills
@@ -69,7 +69,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **matt-automode**: Run Matt’s planning, ticket implementation, code review, navigation retrospective, PR merge, and cleanup workflows without human checkpoints; pressure-tests each grilling round’s design-critical decisions with an independent critic; requires the Matt skills plugin
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
-- **project-eval**: Dispatch evaluator agents for multi-angle project review
+- **project-eval**: Evaluate a feature, a design document, a running web app, or a whole project with skeptical evaluator agents; a separate verifier checks every finding before it enters one report
 - **discord-setup**: Configure Discord plugin prerequisites
 
 **Codex skills:**

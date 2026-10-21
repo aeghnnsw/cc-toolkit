@@ -1,4 +1,4 @@
-"""The package validator module, the Git file list, and the Markdown fence pattern, shared by root tests."""
+"""The package validator module, the Git file list, plugin agents, and the Markdown fence pattern, shared by root tests."""
 import importlib.util
 from pathlib import Path
 import re
@@ -16,3 +16,26 @@ def git_files(root):
     """Return the files that Git tracks or can add: tracked files and untracked files that are not ignored."""
     return set(validator.git(root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z')
                .decode().split('\0'))
+
+
+def agent_files(root):
+    """Return the Markdown agents that Git includes, from the agents paths the validator finds for each plugin."""
+    files = git_files(root)
+    found = {}
+    for package in validator.load_packages(root).values():
+        for field, path in validator.discovery_paths(root, package):
+            if field == 'agents':
+                target = root / package.source / path
+                candidates = [target] if target.is_file() else sorted(target.rglob('*.md'))
+                found.update(dict.fromkeys(agent for agent in candidates
+                                           if validator.included_location(root, agent, files)))
+    return list(found)
+
+
+def frontmatter(text):
+    """Return the text between the opening and closing `---` lines, or '' when the file has no header."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != '---':
+        return ''
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == '---'), 0)
+    return '\n'.join(lines[1:end])
