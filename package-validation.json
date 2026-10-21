@@ -24,7 +24,8 @@
         {"path": "scripts/post_tool_use.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/pre_git_hook.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/safety_guard.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/system_notification.py", "hosts": ["claude", "codex"]}
+        {"path": "scripts/system_notification.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/zsh_traps.py", "hosts": ["claude", "codex"]}
       ]
     },
     "creator-skills": {
