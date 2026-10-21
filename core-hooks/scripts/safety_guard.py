@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from hook_logs import log_dir
+from hook_logs import append_log, log_dir
 from hook_payload import get_shell_command
 
 
@@ -1086,24 +1086,7 @@ def main():
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
             sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
 
-        log_path = log_dir() / 'pre_tool_use.json'
-
-        # Read existing log data or initialize empty list
-        if log_path.exists():
-            with open(log_path, 'r') as f:
-                try:
-                    log_data = json.load(f)
-                except (json.JSONDecodeError, ValueError):
-                    log_data = []
-        else:
-            log_data = []
-
-        # Append new data
-        log_data.append(input_data)
-
-        # Write back to file with formatting
-        with open(log_path, 'w') as f:
-            json.dump(log_data, f, indent=2)
+        append_log('pre_tool_use.jsonl', input_data)
 
         sys.exit(0)
 

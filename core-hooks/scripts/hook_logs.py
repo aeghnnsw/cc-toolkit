@@ -1,5 +1,6 @@
-"""Choose the directory where hooks write their logs."""
+"""Choose the directory where hooks write their logs, and append to logs."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -39,3 +40,18 @@ def log_dir():
     path = root / "logs"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def append_log(name, record):
+    """Append `record` as one JSON line to the log file `name`.
+
+    The line goes to the end of the file in one `write` call on a file
+    opened with `O_APPEND`. Concurrent hook runs therefore keep every line,
+    and no call reads or rewrites earlier lines.
+    """
+    line = (json.dumps(record) + "\n").encode()
+    fd = os.open(log_dir() / name, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, line)
+    finally:
+        os.close(fd)

@@ -4,14 +4,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 LOGGING_HOOKS = (
-    ("post_tool_use.py", "post_tool_use.json"),
-    ("safety_guard.py", "pre_tool_use.json"),
+    ("post_tool_use.py", "post_tool_use.jsonl"),
+    ("safety_guard.py", "pre_tool_use.jsonl"),
 )
 PAYLOAD = {
     "hook_event_name": "PreToolUse",
@@ -20,13 +21,21 @@ PAYLOAD = {
 }
 
 
-class HookLogDirectoryTests(unittest.TestCase):
+def read_log(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def numbered_payload(number, size=0):
+    return dict(PAYLOAD, tool_input={"command": f"echo {number}"}, output="x" * size)
+
+
+class HookLogTests(unittest.TestCase):
     def setUp(self):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         self.temp = Path(temp_dir.name).resolve()
 
-    def run_hook(self, script_name, cwd, project_dir=None):
+    def run_hook(self, script_name, cwd, project_dir=None, payload=PAYLOAD):
         env = os.environ.copy()
         env.pop("CLAUDE_PROJECT_DIR", None)
         # Stop Git from finding a repository that contains the temp directory.
@@ -35,7 +44,7 @@ class HookLogDirectoryTests(unittest.TestCase):
             env["CLAUDE_PROJECT_DIR"] = str(project_dir)
         return subprocess.run(
             [sys.executable, str(SCRIPTS / script_name)],
-            input=json.dumps(PAYLOAD),
+            input=json.dumps(payload),
             text=True,
             capture_output=True,
             cwd=cwd,
@@ -56,7 +65,7 @@ class HookLogDirectoryTests(unittest.TestCase):
                 result = self.run_hook(script_name, cwd, project_dir)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 log_path = root / "logs" / log_name
-                self.assertEqual(json.loads(log_path.read_text()), [PAYLOAD])
+                self.assertEqual(read_log(log_path), [PAYLOAD])
         if cwd != root:
             self.assertFalse((cwd / "logs").exists())
 
@@ -84,6 +93,43 @@ class HookLogDirectoryTests(unittest.TestCase):
         workdir.mkdir()
 
         self.assert_logs_in(workdir, workdir)
+
+    def test_each_run_appends_one_line_and_keeps_old_logs(self):
+        project = self.temp / "project"
+        (project / "logs").mkdir(parents=True)
+        old_log = project / "logs" / "post_tool_use.json"
+        old_log.write_text("[]")
+        payloads = [numbered_payload(number) for number in range(3)]
+
+        for script_name, log_name in LOGGING_HOOKS:
+            with self.subTest(script_name=script_name):
+                for payload in payloads:
+                    result = self.run_hook(script_name, project, project, payload)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(read_log(project / "logs" / log_name), payloads)
+        self.assertEqual(old_log.read_text(), "[]")
+
+    def test_concurrent_runs_keep_every_line(self):
+        project = self.temp / "project"
+        project.mkdir()
+        # Payloads larger than a pipe or I/O buffer make split writes visible.
+        payloads = [numbered_payload(number, size=200_000) for number in range(16)]
+
+        for script_name, log_name in LOGGING_HOOKS:
+            with self.subTest(script_name=script_name):
+                with ThreadPoolExecutor(max_workers=len(payloads)) as pool:
+                    results = list(
+                        pool.map(
+                            lambda payload: self.run_hook(
+                                script_name, project, project, payload
+                            ),
+                            payloads,
+                        )
+                    )
+                for result in results:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                entries = read_log(project / "logs" / log_name)
+                self.assertCountEqual(entries, payloads)
 
 
 if __name__ == "__main__":
