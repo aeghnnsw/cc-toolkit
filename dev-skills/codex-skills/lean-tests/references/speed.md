@@ -113,10 +113,9 @@ wall times vary between runs.
 5. Time the inner loop: run `suite` with the label `inner-loop-before` and
    `-- "<node-id>" -x -q`. `<node-id>` is the first node ID in `collected`
    of the before run.
-6. Time each local test command: a test command that the project defines
-   in the "Tests" section of the agent instruction files, in a tox or nox
-   session, in a Makefile or task-runner target, or in the project's
-   documentation. Match each command to the tier that it serves, for
+6. Time each local test command: each test command that the project
+   defines in one of the local sources that the [Rules](#rules) name.
+   Match each command to the tier that it serves, for
    example a command with `-m "not slow"` to the hand-off tier. For a
    command without coverage, run `suite` with the label `<tier>-before`,
    such as `hand-off-before`, and the pytest options of the command after
@@ -439,9 +438,9 @@ Run the smallest test tier that covers your change, and keep the output short.
 
 <tier-table>
 
-- A passing hand-off run does not replace the full run of a finished
-  change. A full run does not cover a later edit: run the full tier again
-  after the last edit.
+- A passing run of another tier does not replace the full run of a
+  finished change. A full run does not cover a later edit: run the full
+  tier again after the last edit.
 - Mark a test `@pytest.mark.slow` when its setup plus call takes more than <threshold> seconds.
 <workers-line>
 - When a test passes in one run and fails in another, find the cause: order

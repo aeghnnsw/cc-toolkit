@@ -1352,7 +1352,11 @@ class MutantFinderTest(unittest.TestCase):
 
 
 class DemotionTest(unittest.TestCase):
-    """Every mutant that a candidate kills stays killed by a staying test, assuming that each staying test runs and passes, with the same kills, in the hand-off tier."""
+    """Every mutant that a candidate kills stays killed by a staying test.
+
+    This assumes that each staying test runs and passes, with the same kills,
+    in the hand-off tier.
+    """
 
     @classmethod
     def setUpClass(cls) -> None:

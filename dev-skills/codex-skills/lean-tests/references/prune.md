@@ -199,13 +199,13 @@ redundant, do the first of these that applies:
 
 prune moves no test between [test tiers](speed.md#test-tiers) and adds no
 marker. Each `union-only` test whose `demote` is true is a candidate to
-leave the hand-off tier, a protected test too: a report changes no test.
-mutate sets `demote` to true only when each mutant that the test kills, or
-may kill, is also killed by the staying tests: the tests whose `demote` is
-false and whose class is not `empty` or `subsumed`. For each candidate,
-find the tests whose kills it needs together: the staying tests in
-`killed_by` of each mutant that the candidate kills or may kill. Step 8
-reports the candidates.
+leave the hand-off tier. A protected test can be a candidate too, because
+a report changes no test. mutate sets `demote` to true only when each
+mutant that the test kills, or may kill, is also killed by the staying
+tests: the tests whose `demote` is false and whose class is not `empty` or
+`subsumed`. For each candidate, find the tests whose kills it needs
+together: the staying tests in `killed_by` of each mutant that the
+candidate kills or may kill. Step 8 reports the candidates.
 
 Report each test with a `change-detector` or `weak-oracle` finding for
 rewriting, so that it checks behavior. Decide on such a test by its class

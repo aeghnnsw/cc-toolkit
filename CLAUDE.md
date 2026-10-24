@@ -87,7 +87,7 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - zsh does not split an unquoted variable into words. Put a multi-word
   command in a function or in a script that `bash` runs.
 - zsh stops a command when an unquoted glob matches no file. Quote the
-  glob, such as `--include='*.md'`, or list files with
+  glob, such as `--include='*.md'`, or list tracked files with
   `git ls-files '<pattern>'`.
 - Use BSD tool options. GNU `timeout` is absent.
 

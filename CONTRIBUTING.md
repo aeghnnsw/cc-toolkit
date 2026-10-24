@@ -24,14 +24,20 @@ A root documentation change does not require changing plugin versions.
 Installed copies under `~/.claude/plugins/cache/` and
 `~/.codex/plugins/cache/` are release snapshots. They can lag this checkout,
 and each update replaces them. Read and edit the plugin directory in this
-repository. To update the installed copies on a host:
+repository. To update the installed Claude Code copies:
 
-- Claude Code: run `claude plugin marketplace update cc-toolkit`, then
-  `claude plugin update <plugin>@cc-toolkit` for each installed plugin,
-  and restart the session.
-- Codex: run `codex plugin marketplace upgrade cc-toolkit`. It also
-  updates the copies under `~/.codex/plugins/cache/`, so Codex needs no
-  command for each plugin.
+1. Run `claude plugin marketplace update cc-toolkit`.
+2. For each installed plugin, run `claude plugin update <plugin>@cc-toolkit`.
+3. Restart the session.
+
+To update the installed Codex copies:
+
+1. Run `codex plugin marketplace upgrade cc-toolkit`.
+2. Check that `~/.codex/plugins/cache/cc-toolkit/<plugin>/` has the new
+   version of each installed plugin. The upgrade did not always update
+   this cache.
+3. For each plugin without the new version, run
+   `codex plugin add <plugin>@cc-toolkit`.
 
 The Core Hooks policy scripts that check your shell commands are the
 installed copy. A denial names its path, such as
