@@ -411,13 +411,6 @@ def main():
                 f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
             )
 
-        if saw_valid_branch:
-            response = {
-                "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
-            }
-            print(json.dumps(response))
-            sys.exit(0)
-
         if "gh pr merge" in command and "--squash" not in command:
             remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.")
 
@@ -426,6 +419,15 @@ def main():
                 "Contribution Guidelines: Keep messages concise and accurate. "
                 "Avoid AI attribution in commit messages or PR descriptions/comments."
             )
+
+        # The praise goes last: it is for the user, and the reminders above
+        # must reach the agent.
+        if saw_valid_branch:
+            response = {
+                "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
+            }
+            print(json.dumps(response))
+            sys.exit(0)
 
     sys.exit(0)
 

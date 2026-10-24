@@ -37,6 +37,7 @@ from safety_guard import (
     MAX_NESTED_SHELL_DEPTH,
     _find_backtick_end,
     _find_substitution_end,
+    _heredoc_delimiters,
     strip_heredoc_bodies,
 )
 
@@ -50,7 +51,8 @@ DECLARATION_COMMANDS = {
 WORD_BREAKS = set(" \t\n;&|()<>")
 OPERATOR_RE = re.compile(r";;&?|;&|;|\|&|\|\||\||&&|&|\n|\(|\)")
 REDIRECTION_RE = re.compile(r"\d*(?:<<<|<<-?|<>|>>|>\||>&|<&|&>>?|<|>)")
-ASSIGNMENT_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\+?=")
+# `NAME=`, `NAME+=`, or an element assignment such as `NAME[1]=`.
+ASSIGNMENT_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?\+?=")
 # A word that is one unquoted variable and nothing else: `$NAME` or `${NAME}`.
 BARE_VARIABLE_RE = re.compile(
     r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})"
@@ -167,12 +169,51 @@ def _substitution_end(text, index, bodies, command):
             return len(text)
         bodies.append(text[index + 1:end])
         return end + 1
-    end = _find_substitution_end(text, index + 2)
+    # A `)` in a heredoc body is data, so it does not close the substitution.
+    end = _find_substitution_end(_blank_heredoc_bodies(text[index + 2:]), 0)
     if end is None:
         return len(text)
+    end += index + 2
     if command and not text.startswith("((", index + 1):
         bodies.append(text[index + 2:end])
     return end + 1
+
+
+def _blank_heredoc_bodies(text):
+    """Replace each heredoc body line of `text` with spaces.
+
+    Unlike `strip_heredoc_bodies`, this keeps every index of `text`.
+    """
+    lines = text.split("\n")
+    quote = None
+    index = 0
+    while index < len(lines):
+        delimiters, quote = _heredoc_delimiters(lines[index], quote)
+        index += 1
+        for delimiter in delimiters:
+            while index < len(lines):
+                body_line = lines[index]
+                lines[index] = " " * len(body_line)
+                index += 1
+                if body_line.strip() == delimiter:
+                    break
+    return "\n".join(lines)
+
+
+def _single_quote_end(text, index):
+    """Return the index of the `'` that closes a string opened before `index`.
+
+    In `$'...'`, a backslash escapes the next character, such as `\'`.
+    """
+    ansi = text[index - 2:index - 1] == "$"
+    while index < len(text):
+        if ansi and text[index] == "\\":
+            index += 2
+        elif text[index] == "'":
+            return index
+        else:
+            index += 1
+    return len(text)
 
 
 def _read_word(text, index, bodies):
@@ -185,8 +226,7 @@ def _read_word(text, index, bodies):
             quoted_space = quoted_space or text[index + 1:index + 2].isspace()
             index += 2
         elif character == "'":
-            end = text.find("'", index + 1)
-            end = len(text) if end < 0 else end
+            end = _single_quote_end(text, index + 1)
             quoted_space = quoted_space or any(
                 c.isspace() for c in text[index:end]
             )
@@ -274,7 +314,9 @@ def _record_assignment(word, findings):
         kind = "spaced"
     else:
         kind = "scalar"
-    findings.assignments[match.group(1)] = kind
+    # An element assignment does not change the kind of the variable.
+    if match.group(2) is None:
+        findings.assignments[match.group(1)] = kind
 
 
 def _analyze(text, findings, depth):
@@ -377,7 +419,9 @@ def _matches_no_file(word, directory):
         return True
     if not directory or "**" in word:
         return False
-    pattern = os.path.join(glob.escape(directory), os.path.expanduser(word))
+    # zsh negates a bracket with `^` or `!`; Python's glob only with `!`.
+    word = os.path.expanduser(word).replace("[^", "[!")
+    pattern = os.path.join(glob.escape(directory), word)
     return next(glob.iglob(pattern), None) is None
 
 

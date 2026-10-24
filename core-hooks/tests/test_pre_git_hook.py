@@ -441,6 +441,15 @@ class PreGitHookTests(unittest.TestCase):
         )
         self.assertReminds(response, "Merge Strategy")
 
+    def test_reminder_reaches_the_agent_after_a_valid_branch(self):
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'git checkout -b feat-1-x && git commit -m "Fix typo"'},
+            }
+        )
+        self.assertReminds(response, "Contribution Guidelines")
+
     def test_squash_merge_gets_no_reminder(self):
         result = run_hook_raw(
             {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 1 --squash"}}

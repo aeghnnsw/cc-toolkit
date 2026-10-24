@@ -41,6 +41,7 @@ EQUALS_TRAPS = {
     "cat <<'EOF'\nbody\nEOF\necho ====": "====",
     "if [[ -n x ]]; then echo ====; fi": "====",
     "n=$(echo ====)": "====",
+    "echo \"$(cat <<'EOF'\n1) a list item\nEOF\n)\"; echo ====": "====",
     'echo "$(echo ====)"': "====",
 }
 
@@ -59,6 +60,9 @@ EQUALS_SAFE = [
     "echo hi # =====",
     "cat =(echo a) <(echo b)",
     "awk '$1 == 1' /dev/null",
+    "echo \"$(cat <<'EOF'\nDone :) now `==` is quoted\nEOF\n)\"",
+    "printf '%s\\n' \"$(cat <<'EOF'\n1) Compare with \"a == b\"\nEOF\n)\"",
+    "echo $'it\\'s ==x'",
 ]
 
 # zsh replaces `=sh` with the path of `sh`; the hook warns but allows it.
@@ -74,6 +78,7 @@ SPLIT_TRAPS = {
     'f() { local CMD="ls -l"; $CMD; }; f': "$CMD",
     "pr=$(gh pr list --json number); set -- $pr": "$pr",
     'files=$(git ls-files); for f in $files; do echo "$f"; done': "$files",
+    'PY="uv run python"; PY[1]=u; $PY -V': "$PY",
     'for line in "a b"; do set -- $line; done': "$line",
 }
 
@@ -82,6 +87,7 @@ SPLIT_SAFE = [
     "sha=$(git rev-parse HEAD); git show $sha",
     'for f in $(git ls-files); do echo "$f"; done',
     "files=(a b c); for f in $files; do echo $f; done",
+    "files=(a b c); files[1]=x; for f in $files; do echo $f; done",
     "a=$(echo 1); b=$(echo 2); for n in $a $b; do echo $n; done",
     'set -euo pipefail; set -- "$a" $b',
     "pr=$(gh pr list); set -- ${=pr}",
@@ -117,6 +123,8 @@ GLOB_SAFE = [
     "[[ a.md == *.md ]] && echo md",
     "[ -f a.txt ]",
     "cd sub && ls *.md",
+    "ls [^b]*.txt",
+    "x[1]=b; typeset -A m; m[k]=v",
 ]
 
 
