@@ -1352,7 +1352,7 @@ class MutantFinderTest(unittest.TestCase):
 
 
 class DemotionTest(unittest.TestCase):
-    """Every mutant that a demoted test kills stays killed by a test that stays in the fast tiers."""
+    """Every mutant that a demoted test kills stays killed by a staying test, assuming that each staying test runs and passes, with the same kills, in the hand-off tier."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -2100,7 +2100,7 @@ class HostParityTest(unittest.TestCase):
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
         self.assertEqual(fields["codex"]["name"], "lean-tests")
         self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual(fields["claude"]["version"], "1.3.0")
+        self.assertEqual(fields["claude"]["version"], "1.4.0")
         self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
 
     def test_references_and_scripts_match(self) -> None:

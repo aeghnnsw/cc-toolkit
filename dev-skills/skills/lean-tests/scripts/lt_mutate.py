@@ -1003,12 +1003,13 @@ def classify(in_scope: list[str], unmeasured: set, mutants: list[dict], complete
 
 
 def demotions(tests: list[dict]) -> list[str]:
-    """The `union-only` tests that can leave the fast tiers, in test order.
+    """The `union-only` tests that could leave the hand-off tier, in test order.
 
-    The tests that stay in the fast tiers are the tests of no deletion class
-    that are not demoted. Each demoted test's kills, unknowns included, stay
-    known kills of these tests. A deletion of a test of a deletion class, or
-    a demotion that is left out, keeps this true.
+    The staying tests are the tests of no deletion class that are not in the
+    result. Each result test's kills, unknowns included, stay known kills of
+    the staying tests. A deletion of a test of a deletion class, or a result
+    test that stays, keeps this true. The result assumes that each staying
+    test runs and passes, with the same kills, in the hand-off tier.
     """
     stay = {t["nodeid"]: set(t["kills"]) for t in tests if t["class"] not in DELETION_CLASSES}
     demoted = []

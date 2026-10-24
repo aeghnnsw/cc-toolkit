@@ -203,7 +203,7 @@ _Avoid_: Test boundary
 
 **Test tier**:
 A named set of tests with a trigger, a command, and a time budget: inner
-loop, hand-off, pull request, main, or nightly.
+loop, hand-off, or full.
 _Avoid_: Test level, stage
 
 **Kill set**:
