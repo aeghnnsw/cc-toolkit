@@ -24,14 +24,19 @@ A root documentation change does not require changing plugin versions.
 Installed copies under `~/.claude/plugins/cache/` and
 `~/.codex/plugins/cache/` are release snapshots. They can lag this checkout,
 and each update replaces them. Read and edit the plugin directory in this
-repository.
+repository. To update the installed copies on a host:
+
+- Claude Code: run `claude plugin marketplace update cc-toolkit`, then
+  `claude plugin update <plugin>@cc-toolkit` for each installed plugin,
+  and restart the session.
+- Codex: run `codex plugin marketplace upgrade cc-toolkit`. It also
+  updates the copies under `~/.codex/plugins/cache/`, so Codex needs no
+  command for each plugin.
 
 The Core Hooks policy scripts that check your shell commands are the
 installed copy. A denial names its path, such as
 `core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
-keeps blocking a command that this checkout allows. To update the Claude
-Code copy, run `claude plugin marketplace update cc-toolkit`, then
-`claude plugin update core-hooks@cc-toolkit`, and restart the session.
+keeps blocking a command that this checkout allows.
 
 ### Skills for both hosts
 
@@ -100,7 +105,11 @@ a change alters the purpose of a skill, update that purpose in
   `<plugin-root>/`, and `<skill-dir>/` paths from each discovered skill and
   through the Markdown files that the skill reaches. Each target must be a
   file inside the plugin. A link anchor must match a heading. The target
-  must be listed for the host.
+  must be listed for the host. In a file that the test reaches through
+  links, `<skill-dir>/` still names the directory of the skill where the
+  test started. A link into another skill's reference file that uses
+  `<skill-dir>/` paths therefore fails; link that skill's `SKILL.md` and
+  name the section instead.
 
 ### Argument placeholders
 
@@ -169,10 +178,17 @@ model pin.
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
 Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
-or `### Changed`. Put the newest entry first. Each entry is one long line.
-To find the insertion point, get the line number of the target `###`
-heading with `grep -n '^##' CHANGELOG.md`, and read only a few lines below
-it. Use this form:
+or `### Changed`. Put the newest entry first. Each entry is one long line,
+often longer than 1,000 characters. To find the insertion point, get the
+line number of the target `###` heading with `grep -n '^##' CHANGELOG.md`.
+Then read only the heading and the first entry below it, cut to 200
+characters:
+
+```bash
+awk -v n=<line> 'NR >= n && NR <= n + 2' CHANGELOG.md | cut -c1-200
+```
+
+Use this form:
 
 ```text
 - <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
@@ -189,6 +205,10 @@ plugin and other files outside it, write one plugin entry and one
 plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket.
+
+When a rebase makes `CHANGELOG.md` conflict, keep both entries, and put
+the entry of the rebased branch first. To find the conflict markers, run
+`grep -n -E '^(<<<<<<<|=======|>>>>>>>)' CHANGELOG.md`.
 
 ## What belongs in Git
 
@@ -392,11 +412,12 @@ The `dev-skills` suite takes about 2 minutes, most of it in
 above the CPU count, the waits in that file grow with the load, and the
 suite takes longer. Give its command a timeout of at least 300 seconds (in
 Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
-seconds or run it as a background command. Start the full suite after your
-last edit; an edit made during the run needs a new run. Test runs on one
-host slow each other. When you run agents in parallel, let one agent at a
-time run a full suite; the other agents run single test files until that
-suite ends. This command runs one file:
+seconds or run it as a background command. Start the full suite last:
+after your last edit, and after the faster checks, such as the root tests
+and the validator, pass. An edit made during the run needs a new run. Test
+runs on one host slow each other. When you run agents in parallel, let one
+agent at a time run a full suite; the other agents run single test files
+until that suite ends. This command runs one file:
 
 ```bash
 python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
