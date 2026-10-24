@@ -42,13 +42,12 @@ as `inner-loop` or `hand-off`.
 | --- | --- | --- | --- |
 | Inner loop | after each edit | `<pytest> <test-file-or-node-id> -x -q`, or `<pytest> --lf -x -q` | seconds |
 | Hand-off | before the agent hands back work in progress | `<pytest> -m "not slow" -n auto -q` | 2 minutes |
-| Full | after the last change of a finished change: before the agent hands it off for review or merge, before the agent merges it; and when the user asks | `<pytest> -n auto` | none: every test |
+| Full | after the last edit of a finished change: before the agent submits it for review or merge, before the agent merges it; and when the user asks | `<pytest> -n auto` | none: every test |
 
 - A slow test is a test whose setup plus call takes more than the slow
   threshold. The default threshold is 1 second; the project can change it.
 - The hand-off tier leaves out the slow tests, which fix 8 marks. The slow
   tests run only in the full tier.
-- A full run counts only when no change follows it.
 - When `addopts` keeps `-n` (fix 2), add `-n 0` to the inner-loop command.
   `-n 0` turns off the pytest-xdist workers for a run of one test.
 - `--lf` runs the tests that failed in the last run, `-x` stops at the first
@@ -61,9 +60,13 @@ as `inner-loop` or `hand-off`.
   `added` node ID.
 - Change only test-side files: test modules, conftest files, test helpers,
   the pytest configuration, the development dependencies and their lock
-  file, the local test commands of step 2.6, and the "Tests" section of the
-  agent instruction files. Report a needed product-code change, such as a
-  lazy import, to the user.
+  file, the tox or nox sessions and other local commands that run coverage
+  (fix 3), and the "Tests" section of the agent instruction files. Report a
+  needed product-code change, such as a lazy import, to the user.
+- Read test commands, Python versions, and options only from these local
+  sources: the pytest configuration, the dependency files and their lock
+  file, the agent instruction files, tox or nox sessions, Makefile or
+  task-runner targets, the project's documentation, and the environment.
 - Put `-n auto` and `-m "not slow"` only in the tier commands, outside the
   default options (`addopts`). Then a plain `pytest` runs the full suite,
   and a run of one test starts no worker processes.
@@ -113,13 +116,12 @@ wall times vary between runs.
 6. Time each local test command: a test command that the project defines
    in the "Tests" section of the agent instruction files, in a tox or nox
    session, in a Makefile or task-runner target, or in the project's
-   documentation. Read test commands from no other file. Match each command
-   to the tier that it serves, for example a command with `-m "not slow"`
-   to the hand-off tier. For a command without coverage, run `suite` with
-   the label `<tier>-before`, such as `hand-off-before`, and the pytest
-   options of the command after `--`. A plain `pytest` command needs no
-   run: the before run gives its time. For a command that runs coverage,
-   `<coverage-command>`, such as
+   documentation. Match each command to the tier that it serves, for
+   example a command with `-m "not slow"` to the hand-off tier. For a
+   command without coverage, run `suite` with the label `<tier>-before`,
+   such as `hand-off-before`, and the pytest options of the command after
+   `--`. A plain `pytest` command needs no run: the before run gives its
+   time. For a command that runs coverage, `<coverage-command>`, such as
    `<python> -m pytest --cov=<source>`, use the shell's `time`, because
    `suite` turns coverage off. `COVERAGE_FILE` keeps the coverage data in
    `<work-dir>`:
@@ -401,14 +403,14 @@ threshold or to raise the budget.
 ## 5. Set the tier commands
 
 Fit the [test tiers](#test-tiers) to the project: fill in `<pytest>`, use
-the project's own budgets, and leave out each tier that the project does
-not use. When the hand-off command leaves out a test, such as a slow test,
-keep the full tier. Leave out `-n auto` when the project did not keep
-pytest-xdist. Add the socket options of fix 7 to the hand-off command when
-the project kept pytest-socket.
+the project's own budgets, and leave out the inner-loop or hand-off tier
+when the project does not use it. Keep the full tier in every project: it
+is the check of a finished change. Leave out `-n auto` when the project did
+not keep pytest-xdist. Add the socket options of fix 7 to the hand-off
+command when the project kept pytest-socket.
 
 Done when each tier that the project uses has a command and a budget, and
-the full tier is kept when the hand-off command leaves out a test.
+the tiers include the full tier.
 
 ## 6. Write the "Tests" section
 
@@ -437,10 +439,9 @@ Run the smallest test tier that covers your change, and keep the output short.
 
 <tier-table>
 
-- Before you hand off a finished change for review or merge, and before you
-  merge it, run the full tier after its last change. A passing hand-off run
-  does not replace this full run. A full run counts only when no change
-  follows it.
+- A passing hand-off run does not replace the full run of a finished
+  change. A full run does not cover a later edit: run the full tier again
+  after the last edit.
 - Mark a test `@pytest.mark.slow` when its setup plus call takes more than <threshold> seconds.
 <workers-line>
 - When a test passes in one run and fails in another, find the cause: order
@@ -448,7 +449,6 @@ Run the smallest test tier that covers your change, and keep the output short.
   cause. Keep the failure visible: add no retries, such as `--reruns`.
 ```
 
-When step 5 left out the full tier, remove the line about the full tier.
 When `addopts` has no `-n`, replace `<workers-line>` with the first line
 below. When `addopts` keeps `-n`, replace it with the second line. When the
 project has no pytest-xdist, remove `<workers-line>`.

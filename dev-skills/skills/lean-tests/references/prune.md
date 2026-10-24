@@ -198,13 +198,14 @@ redundant, do the first of these that applies:
 3. **Keep.** Keep the test, and report why.
 
 prune moves no test between [test tiers](speed.md#test-tiers) and adds no
-marker. An unprotected `union-only` test whose `demote` is true is a
-candidate to leave the hand-off tier. mutate sets `demote` to true only
-when each mutant that the test kills, or may kill, is also killed by the
-staying tests: the tests whose `demote` is false and whose class is not
-`empty` or `subsumed`. For each candidate, find the tests whose kills it
-needs together: the staying tests in `killed_by` of each mutant that the
-candidate kills or may kill. Step 8 reports the candidates.
+marker. Each `union-only` test whose `demote` is true is a candidate to
+leave the hand-off tier, a protected test too: a report changes no test.
+mutate sets `demote` to true only when each mutant that the test kills, or
+may kill, is also killed by the staying tests: the tests whose `demote` is
+false and whose class is not `empty` or `subsumed`. For each candidate,
+find the tests whose kills it needs together: the staying tests in
+`killed_by` of each mutant that the candidate kills or may kill. Step 8
+reports the candidates.
 
 Report each test with a `change-detector` or `weak-oracle` finding for
 rewriting, so that it checks behavior. Decide on such a test by its class
@@ -309,8 +310,8 @@ Report:
   kills it needs together. State the limit: prune cannot verify that the
   hand-off tier still detects the faults that the candidate detects,
   because the settings and the selection of the hand-off command can change
-  what the staying tests detect. The user decides whether the test leaves
-  the hand-off tier.
+  what the staying tests detect. Say that each candidate stays in the
+  hand-off tier until the user moves it.
 - The protected, unmeasured, incomplete, and excluded tests, and the
   `skipped_modules` with their reasons.
 - The change-detector and weak-oracle tests, for rewriting.

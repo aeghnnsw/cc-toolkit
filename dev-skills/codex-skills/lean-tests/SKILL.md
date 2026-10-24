@@ -65,8 +65,8 @@ These rules apply to all work on a test suite.
    enables it.
 7. Leave the CI (continuous integration) configuration to the user.
    lean-tests creates no CI configuration, changes none, and suggests no CI
-   change, also when the request names CI. A CI change is its own task
-   outside lean-tests: make it only when the user asks for it in words.
+   change, also when the request names CI. When the user explicitly asks
+   for a CI change, make it as its own task outside lean-tests.
 
 ## Boundaries
 
