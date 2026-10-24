@@ -132,6 +132,22 @@ def block(reason):
     sys.exit(2)
 
 
+def remind(message):
+    """Show a reminder to the user and the agent, then allow the command.
+
+    `systemMessage` reaches only the user; `additionalContext` reaches the
+    agent.
+    """
+    print(json.dumps({
+        "systemMessage": message,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "additionalContext": message,
+        },
+    }))
+    sys.exit(0)
+
+
 def split_commands(command):
     """Split a shell command line into its individual commands.
 
@@ -395,23 +411,20 @@ def main():
                 f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
             )
 
+        if "gh pr merge" in command and "--squash" not in command:
+            remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.")
+
+        if is_contribution_cmd:
+            remind(
+                "Contribution Guidelines: Keep messages concise and accurate. "
+                "Avoid AI attribution in commit messages or PR descriptions/comments."
+            )
+
+        # The praise goes last: it is for the user, and the reminders above
+        # must reach the agent.
         if saw_valid_branch:
             response = {
                 "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
-            }
-            print(json.dumps(response))
-            sys.exit(0)
-
-        if "gh pr merge" in command and "--squash" not in command:
-            response = {
-                "systemMessage": "Merge Strategy: Prefer --squash when merging PRs to keep history clean."
-            }
-            print(json.dumps(response))
-            sys.exit(0)
-
-        if is_contribution_cmd:
-            response = {
-                "systemMessage": "Contribution Guidelines: Keep messages concise and accurate. Avoid AI attribution in commit messages or PR descriptions/comments."
             }
             print(json.dumps(response))
             sys.exit(0)
