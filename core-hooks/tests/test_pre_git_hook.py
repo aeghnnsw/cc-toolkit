@@ -63,6 +63,15 @@ def codex_payload(cmd):
 
 
 class PreGitHookTests(unittest.TestCase):
+    def assertReminds(self, response, title):
+        """Check that the hook allows the command and shows the reminder to the
+        user (`systemMessage`) and to the agent (`additionalContext`)."""
+        output = response["hookSpecificOutput"]
+        self.assertEqual(output["hookEventName"], "PreToolUse")
+        self.assertNotIn("permissionDecision", output)
+        self.assertIn(title, output["additionalContext"])
+        self.assertEqual(response["systemMessage"], output["additionalContext"])
+
     def test_blocks_invalid_grok_branch_name(self):
         result = run_blocked_hook(
             {
@@ -207,8 +216,7 @@ class PreGitHookTests(unittest.TestCase):
             }
         )
         # Advisory message fires, but the operation is not denied.
-        self.assertNotIn("hookSpecificOutput", response)
-        self.assertIn("Contribution Guidelines", response.get("systemMessage", ""))
+        self.assertReminds(response, "Contribution Guidelines")
 
     def test_blocks_attribution_despite_spaces_and_global_flags(self):
         # The guard must survive extra whitespace and gh global flags placed
@@ -232,8 +240,7 @@ class PreGitHookTests(unittest.TestCase):
                 "tool_input": {"command": 'git commit -m "Fix typo in README"'},
             }
         )
-        self.assertNotIn("hookSpecificOutput", response)
-        self.assertIn("Contribution Guidelines", response.get("systemMessage", ""))
+        self.assertReminds(response, "Contribution Guidelines")
 
     def test_blocks_attribution_in_gh_pr_review(self):
         result = run_blocked_hook(
@@ -415,11 +422,7 @@ class PreGitHookTests(unittest.TestCase):
                 response = run_hook(
                     {"tool_name": "Bash", "tool_input": {"command": command}}
                 )
-                self.assertNotIn("hookSpecificOutput", response)
-                self.assertIn(
-                    "Contribution Guidelines",
-                    response.get("systemMessage", ""),
-                )
+                self.assertReminds(response, "Contribution Guidelines")
 
     def test_allows_descriptive_ai_tool_mention_in_pull_request_body(self):
         response = run_hook(
@@ -430,7 +433,20 @@ class PreGitHookTests(unittest.TestCase):
                 },
             }
         )
-        self.assertNotIn("hookSpecificOutput", response)
+        self.assertReminds(response, "Contribution Guidelines")
+
+    def test_merge_without_squash_gets_a_reminder(self):
+        response = run_hook(
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 1 --merge"}}
+        )
+        self.assertReminds(response, "Merge Strategy")
+
+    def test_squash_merge_gets_no_reminder(self):
+        result = run_hook_raw(
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 1 --squash"}}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "")
 
     def test_blocks_attribution_forms(self):
         for message in [
@@ -462,11 +478,7 @@ class PreGitHookTests(unittest.TestCase):
                 },
             }
         )
-        self.assertNotIn("hookSpecificOutput", response)
-        self.assertIn(
-            "Contribution Guidelines",
-            response.get("systemMessage", ""),
-        )
+        self.assertReminds(response, "Contribution Guidelines")
 
     # --- #280: attribution checks stay linear on long commands ---
 

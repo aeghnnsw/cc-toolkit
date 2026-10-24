@@ -2,25 +2,32 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Warn about two zsh traps in a shell command before it runs.
+"""Check a shell command for three zsh traps before it runs.
 
 1. zsh replaces an unquoted word `=name` with the path of the command
    `name` (`=ls` gives `/bin/ls`). For `=====` or `==`, no such command
-   exists, so zsh prints "not found" and stops the whole command line.
+   exists, so zsh prints "not found" and stops the rest of the command
+   line. The commands before the word have already run.
 2. zsh does not split an unquoted variable into words. After
    `PY="uv run python"`, `$PY x` looks for one command named
    `uv run python`, and `set -- $pr` sets one positional parameter.
+3. zsh stops a command when an unquoted glob matches no file, such as
+   `grep --include=*.md`. It prints "no matches found", and the command
+   does not run.
 
-The hook only warns. It runs when the user's shell is zsh, prints JSON
-with context that the agent reads, and exits 0. It reads the command as
-shell words, so quoted text, heredoc bodies, comments, `[[ ... ]]` tests,
-and `(( ... ))` arithmetic give no warning. This is a heuristic, not a
-full zsh parser.
+The hook runs when the user's shell is zsh, prints JSON, and exits 0. It
+denies a command when an `=name` word names no command on `PATH`, because
+zsh would stop the command line there. For each other trap, it gives the
+agent a warning. It reads the command as shell words, so quoted text,
+heredoc bodies, comments, `[[ ... ]]` tests, and `(( ... ))` arithmetic
+give no finding. This is a heuristic, not a full zsh parser.
 """
 
+import glob
 import json
 import os
 import re
+import shutil
 import sys
 from collections import namedtuple
 
@@ -48,6 +55,13 @@ ASSIGNMENT_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\+?=")
 BARE_VARIABLE_RE = re.compile(
     r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})"
 )
+# An unquoted `*`, `?`, or `[...]` makes a word a glob.
+GLOB_RE = re.compile(r"[*?]|\[[^\]]+\]")
+# Quotes, escapes, expansions, and brace lists change what a glob matches,
+# so the glob check skips a word that holds one.
+UNMODELED_RE = re.compile(r"""['"\\$`{}()]""")
+# After one of these commands, a glob expands in another directory.
+DIRECTORY_COMMANDS = {"cd", "popd", "pushd"}
 
 EQUALS_WARNING = (
     "zsh trap: the unquoted word `{word}` starts with `=`. zsh replaces "
@@ -55,11 +69,24 @@ EQUALS_WARNING = (
     "exist, zsh stops the whole command line. Quote the word, for example "
     "`'{word}'`. To compare in `[ ]` or `test`, use one `=`."
 )
+EQUALS_DENIAL = (
+    "zsh trap: the unquoted word `{word}` starts with `=`, and no command "
+    "`{name}` is on PATH. zsh would stop the whole command line at this "
+    "word, after the commands before it had run, so the hook blocked the "
+    "command. Quote the word, for example `'{word}'`. To compare in `[ ]` "
+    "or `test`, use one `=`."
+)
 SPLIT_WARNING = (
     "zsh trap: zsh does not split the unquoted variable `{word}` into words. "
     "The value stays one command name or one argument. To keep a command in "
     "a variable, define a function. To split a value into words, run the "
     "commands in a script with `bash`."
+)
+GLOB_WARNING = (
+    "zsh trap: the unquoted glob `{word}` matches no file. zsh stops the "
+    "command that holds it with \"no matches found\", so that command did "
+    "not run. When the command reads the pattern itself, quote the word, "
+    "for example `'{word}'`. Otherwise, name files that exist."
 )
 
 
@@ -67,6 +94,10 @@ SPLIT_WARNING = (
 # quoted or escaped part of the word holds whitespace, as in
 # `"uv run python"`; text inside `$(...)` does not count.
 Word = namedtuple('Word', 'text quoted_space')
+
+# One finding: the message for the agent, and whether zsh would stop the
+# whole command line there, so that the hook blocks the command.
+Trap = namedtuple('Trap', 'message stops_line')
 
 
 class Findings:
@@ -80,6 +111,11 @@ class Findings:
         self.split_lists = []
         # Variable name -> "array", "spaced", or "scalar".
         self.assignments = {}
+        # Unquoted globs, such as `*.md` or `--include=*.md`.
+        self.glob_words = []
+        # True when the command changes the directory, so that a glob can
+        # expand in another directory.
+        self.changes_directory = False
 
 
 def _double_quote_end(text, index, bodies):
@@ -216,6 +252,11 @@ def _starts_with_equals(text):
     return len(text) > 1 and text[0] == "=" and text[1] != "("
 
 
+def _is_glob(word):
+    """Report whether `word` is an unquoted glob that the check can match."""
+    return bool(GLOB_RE.search(word)) and not UNMODELED_RE.search(word)
+
+
 def _variable_name(word):
     """Return NAME when `word` is `$NAME` or `${NAME}`, otherwise None."""
     match = BARE_VARIABLE_RE.fullmatch(word)
@@ -249,6 +290,8 @@ def _analyze(text, findings, depth):
     for_state = None
     # The words of the current `set` command or `for ... in` list.
     split_words = None
+    # True between `case` and `esac`, where words are patterns.
+    in_case = False
     for kind, token in _tokens(strip_heredoc_bodies(text), bodies):
         if in_condition:
             in_condition = not (kind == "word" and token.text == "]]")
@@ -288,6 +331,10 @@ def _analyze(text, findings, depth):
                 _record_assignment(token, findings)
                 continue
             command_start, command_word = False, word
+            if word in DIRECTORY_COMMANDS:
+                findings.changes_directory = True
+            if word in ("case", "esac"):
+                in_case = word == "case"
             if word == "for":
                 for_state = "name"
                 continue
@@ -300,6 +347,8 @@ def _analyze(text, findings, depth):
             continue
         if _starts_with_equals(word):
             findings.equals_words.append(word)
+        elif not in_case and command_word != "noglob" and _is_glob(word):
+            findings.glob_words.append(word)
         if split_words is not None and not (
             command_word == "set" and word.startswith("-")
         ):
@@ -311,12 +360,35 @@ def _analyze(text, findings, depth):
         _analyze(body, findings, depth + 1)
 
 
-def zsh_trap_warnings(command):
-    """Return one warning for each zsh trap in `command`.
+def _names_no_command(word):
+    """Report whether `=name` names no command, so that zsh stops there."""
+    name = word[1:]
+    return "/" not in name and shutil.which(name) is None
+
+
+def _matches_no_file(word, directory):
+    """Report whether the glob `word` matches no file in `directory`.
+
+    A word that starts with `-` is an option, such as `--include=*.md`, and
+    matches no file. Without a known directory, and for a recursive `**`
+    glob, the check reports no finding.
+    """
+    if word.startswith("-"):
+        return True
+    if not directory or "**" in word:
+        return False
+    pattern = os.path.join(glob.escape(directory), os.path.expanduser(word))
+    return next(glob.iglob(pattern), None) is None
+
+
+def zsh_traps(command, cwd=None):
+    """Return one Trap for each zsh trap in `command`.
 
     A variable is a trap when it holds a quoted value with whitespace, such
     as `PY="uv run python"`, or when it is the only word of a `set` command
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
+    `cwd` is the directory where the command runs. The glob check uses it
+    unless the command changes the directory.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -331,12 +403,33 @@ def zsh_trap_warnings(command):
         and _variable_name(words[0])
         and assignments.get(_variable_name(words[0])) != "array"
     ]
-    warnings = []
-    if findings.equals_words:
-        warnings.append(EQUALS_WARNING.format(word=findings.equals_words[0]))
+    missing = [word for word in findings.equals_words if _names_no_command(word)]
+    directory = None if findings.changes_directory else cwd
+    unmatched = [
+        word for word in findings.glob_words if _matches_no_file(word, directory)
+    ]
+    traps = []
+    if missing:
+        traps.append(Trap(EQUALS_DENIAL.format(word=missing[0], name=missing[0][1:]), True))
+    elif findings.equals_words:
+        traps.append(Trap(EQUALS_WARNING.format(word=findings.equals_words[0]), False))
     if unsplit:
-        warnings.append(SPLIT_WARNING.format(word=unsplit[0]))
-    return warnings
+        traps.append(Trap(SPLIT_WARNING.format(word=unsplit[0]), False))
+    if unmatched:
+        traps.append(Trap(GLOB_WARNING.format(word=unmatched[0]), False))
+    return traps
+
+
+def _working_directory(input_data):
+    """Return the directory where the command runs, or None."""
+    cwd = input_data.get("cwd")
+    cwd = cwd if isinstance(cwd, str) and os.path.isdir(cwd) else None
+    tool_input = input_data.get("tool_input", input_data.get("toolInput"))
+    workdir = tool_input.get("workdir") if isinstance(tool_input, dict) else None
+    if isinstance(workdir, str) and workdir:
+        workdir = os.path.join(cwd or "", workdir)
+        return workdir if os.path.isabs(workdir) and os.path.isdir(workdir) else None
+    return cwd
 
 
 def main():
@@ -345,18 +438,19 @@ def main():
         command = get_shell_command(input_data)
         if not command or os.path.basename(os.environ.get("SHELL", "")) != "zsh":
             sys.exit(0)
-        warnings = zsh_trap_warnings(command)
+        traps = zsh_traps(command, _working_directory(input_data))
     except Exception:
-        # A warning hook never stops a command.
+        # A hook error never stops a command.
         sys.exit(0)
-    if warnings:
-        message = "\n".join(warnings)
+    if traps:
+        message = "\n".join(trap.message for trap in traps)
+        if any(trap.stops_line for trap in traps):
+            decision = {"permissionDecision": "deny", "permissionDecisionReason": message}
+        else:
+            decision = {"additionalContext": message}
         print(json.dumps({
             "systemMessage": message,
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "additionalContext": message,
-            },
+            "hookSpecificOutput": {"hookEventName": "PreToolUse", **decision},
         }))
     sys.exit(0)
 

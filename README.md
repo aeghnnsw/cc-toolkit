@@ -112,7 +112,7 @@ Safety guards and workflow enforcement hooks.
 **Hooks:**
 - **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed
 - **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution
-- **zsh_traps.py**: When the shell is zsh, warns before a shell command runs if the command has an unquoted word that starts with `=`, such as `echo =====`, or an unquoted variable that zsh does not split into words, such as `$PY` after `PY="uv run python"`. The warning names the fix and does not block the command
+- **zsh_traps.py**: When the shell is zsh, checks a shell command before it runs. It blocks the command when an unquoted word `=name` names no command, such as `echo =====`, because zsh would stop the whole command line there. It warns about an unquoted word `=name` that names a command, an unquoted variable that zsh does not split into words, such as `$PY` after `PY="uv run python"`, and an unquoted glob that matches no file, such as `--include=*.md`. Each message names the fix
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
 
