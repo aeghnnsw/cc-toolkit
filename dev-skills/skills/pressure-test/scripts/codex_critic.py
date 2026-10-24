@@ -270,7 +270,9 @@ def is_flagged(workdir: Path) -> bool:
 def codex_command(form: str, workdir: Path, repo: str, model: str) -> list[str]:
     """Return the codex argument list for one call."""
     effort = "low" if form == "smoke" else "xhigh"
-    options = ["--json", "--skip-git-repo-check", "-m", model, "-c", f'model_reasoning_effort="{effort}"']
+    # `--disable plugins` loads no plugin skill, such as pressure-test itself, into the critic session.
+    options = ["--json", "--skip-git-repo-check", "--disable", "plugins", "-m", model,
+               "-c", f'model_reasoning_effort="{effort}"']
     output = ["-o", str(workdir / "msg.txt"), SMOKE_PROMPT if form == "smoke" else "-"]
     if form == "resume":
         # `codex exec resume` rejects -s and -C and does not keep the kickoff sandbox.

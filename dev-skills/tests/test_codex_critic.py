@@ -375,7 +375,7 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual((code, line), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         call = self.call()
         self.assertEqual(call["argv"], [
-            "exec", "--json", "--skip-git-repo-check", "-m", CRITIC_MODEL,
+            "exec", "--json", "--skip-git-repo-check", "--disable", "plugins", "-m", CRITIC_MODEL,
             "-c", 'model_reasoning_effort="xhigh"', "-s", "read-only", "-C", str(self.repo),
             "-o", str(self.workdir / "msg.txt"), "-",
         ])
@@ -396,7 +396,7 @@ class CodexCriticTest(unittest.TestCase):
         self.assertEqual((code, line), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         call = self.call()
         self.assertEqual(call["argv"], [
-            "exec", "resume", THREAD_ID, "--json", "--skip-git-repo-check", "-m", CRITIC_MODEL,
+            "exec", "resume", THREAD_ID, "--json", "--skip-git-repo-check", "--disable", "plugins", "-m", CRITIC_MODEL,
             "-c", 'model_reasoning_effort="xhigh"', "-c", 'sandbox_mode="read-only"',
             "-o", str(self.workdir / "msg.txt"), "-",
         ])
@@ -412,7 +412,7 @@ class CodexCriticTest(unittest.TestCase):
                                  (code, f"exit=0 model={CRITIC_MODEL} status={status}"))
                 call = self.call()
                 self.assertEqual(call["argv"], [
-                    "exec", "--json", "--skip-git-repo-check", "-m", CRITIC_MODEL,
+                    "exec", "--json", "--skip-git-repo-check", "--disable", "plugins", "-m", CRITIC_MODEL,
                     "-c", 'model_reasoning_effort="low"', "-s", "read-only", "-C", str(self.repo),
                     "-o", str(self.workdir / "msg.txt"), "Reply with exactly: ok",
                 ])

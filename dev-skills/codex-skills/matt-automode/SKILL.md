@@ -265,6 +265,9 @@ Give each sub-agent a brief that it can follow without this conversation.
   suite. The other agents run single test files until that suite ends.
 - Tell a reviewer to support each finding about the behavior of an
   external tool with a run that the reviewer measured.
+- When the repository instructions give a search rule, such as the paths
+  that a search skips, state it in each reviewer brief. A sub-agent loads
+  `CLAUDE.md` or `AGENTS.md`, but not the documents that they link.
 
 ## Navigation retrospective
 

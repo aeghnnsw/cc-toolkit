@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.7.0
+version: 1.8.0
 description: This skill should be used when the user asks to "run matt automode", "use matt-automode", "run the Matt workflow without checkpoints", "take this from design to merge autonomously", or delegates a task fully to the agent for design decisions, issue publication, implementation, code review, a navigation retrospective, PR merge, issue closure, and repository cleanup with no human approval steps. Requires Matt Pocock's engineering skills plugin.
 ---
 
@@ -271,6 +271,9 @@ Give each sub-agent a brief that it can follow without this conversation.
   suite. The other agents run single test files until that suite ends.
 - Tell a reviewer to support each finding about the behavior of an
   external tool with a run that the reviewer measured.
+- When the repository instructions give a search rule, such as the paths
+  that a search skips, state it in each reviewer brief. A sub-agent loads
+  `CLAUDE.md` or `AGENTS.md`, but not the documents that they link.
 
 ## Navigation retrospective
 

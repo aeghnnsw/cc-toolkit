@@ -61,6 +61,9 @@ pins the model, enforces the time limits, and prints one status line.
   `codex exec resume` rejects `-s` and does not keep the kickoff sandbox; it
   reads `sandbox_mode` from the user config. The runner therefore passes
   `-c sandbox_mode="read-only"` on each resume.
+- Plugins: the runner passes `--disable plugins` on every call, so the
+  critic loads no plugin skill. With plugins, the critic opened this skill's
+  Codex copy, because a packet matches its trigger.
 - Working directory: the runner runs every codex call from `$REPO`.
   `codex exec resume` rejects `-C` and uses the current directory.
 - One goal per critic thread. A new goal starts a new pressure test with its
@@ -100,6 +103,8 @@ You are an independent adversarial critic. Do not approve, praise, or soften the
 When the packet lists question IDs, first give a one-line assessment of the current answer for every ID: objection, no substantive objection, or not assessed with the reason. Then develop the strongest objection.
 
 Find the single weakest point in the current position. Surface hidden assumptions, edge cases, failure modes, and missing evidence. Ground objections in the provided evidence and inspect the repo read-only when needed. If a better alternative exists, propose it concretely. If the options omit a better option or frame the choice falsely, say so and propose the missing option.
+
+Your sandbox is read-only and has no network, so `gh`, `curl`, a heredoc, and a file write fail. When the packet names a file with line ranges, read those ranges first, for example with `sed -n '120,160p' <file>`, and read the whole file only when the ranges do not settle the point. Long command output is cut short.
 
 Avoid repeating prior objections unless the handling was insufficient. If no substantive objection remains, reply with: NO SUBSTANTIVE OBJECTION. Then give one sentence explaining why the position holds.
 CRITIC
@@ -208,8 +213,10 @@ PRIOR ROUNDS:
 
 - Omit OPTIONS when the goal is not a choice.
 - Give each question an ID when the packet holds several questions.
-- The critic can read files and run read-only commands in the repository. Put
-  long command output in a file under `$DIR` and name it in EVIDENCE.
+- The critic can read files and run read-only commands in the repository and
+  in `$DIR`. It has no network, so it cannot run `gh` or `curl`. Save issue
+  text, PR text, and long command output to a file under `$DIR`, and name the
+  file in EVIDENCE. For a long file, name the line ranges to read.
 - If the packet lacks enough evidence for reliable judgment, gather the missing
   evidence before calling the critic, or state the gap in ASSUMPTIONS.
 
