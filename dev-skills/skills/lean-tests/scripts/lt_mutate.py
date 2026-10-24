@@ -51,7 +51,7 @@ SKIP_NAMES = frozenset({
     "node_modules",
 })
 CLASSES = ("unique", "subsumed", "union-only", "empty", "unmeasured", "incomplete")
-# A test of these classes can be deleted, so a demotion does not count on it.
+# A test of these classes can be deleted, so no candidate counts on its kills.
 DELETION_CLASSES = frozenset({"empty", "subsumed"})
 
 # The order of OPERATORS decides which mutants a line keeps when it has more than PER_LINE.
@@ -1003,12 +1003,13 @@ def classify(in_scope: list[str], unmeasured: set, mutants: list[dict], complete
 
 
 def demotions(tests: list[dict]) -> list[str]:
-    """The `union-only` tests that can leave the fast tiers, in test order.
+    """The candidates: the `union-only` tests that could leave the hand-off tier, in test order.
 
-    The tests that stay in the fast tiers are the tests of no deletion class
-    that are not demoted. Each demoted test's kills, unknowns included, stay
-    known kills of these tests. A deletion of a test of a deletion class, or
-    a demotion that is left out, keeps this true.
+    The staying tests are the tests of no deletion class that are not
+    candidates. Each candidate's kills, unknowns included, stay known kills
+    of the staying tests. A deletion of a test of a deletion class, or a
+    candidate that stays, keeps this true. This assumes that each staying
+    test runs and passes, with the same kills, in the hand-off tier.
     """
     stay = {t["nodeid"]: set(t["kills"]) for t in tests if t["class"] not in DELETION_CLASSES}
     demoted = []

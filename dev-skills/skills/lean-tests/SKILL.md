@@ -1,7 +1,7 @@
 ---
 name: lean-tests
-version: 1.3.0
-description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "speed up CI", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
+version: 1.4.0
+description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
 # Lean Tests
@@ -21,9 +21,9 @@ This version has four modes. With no mode, run check.
   first, applies fixes one at a time in a fixed order, defines test tiers
   with time budgets, and writes the tier commands into the agent instruction
   files that exist (`CLAUDE.md`, `AGENTS.md`). Run it only when the user's
-  request asks for speed changes, such as "make the tests faster" or "speed
-  up CI". A question about speed, such as why the tests are slow, runs
-  check. Follow [references/speed.md](references/speed.md).
+  request asks for speed changes, such as "make the tests faster". A
+  question about speed, such as why the tests are slow, runs check. Follow
+  [references/speed.md](references/speed.md).
 - **prune `<path>`**: remove redundant tests under one test file or
   directory. Killed mutants decide, and each deleted test has a written
   rationale. Run it only when the user asks to prune. Follow
@@ -64,6 +64,10 @@ These rules apply to all work on a test suite.
    with the project's own dependency manager.
 6. Report each measurement that you could not take, with the package that
    enables it.
+7. Leave the CI (continuous integration) configuration to the user.
+   lean-tests creates no CI configuration, changes none, and suggests no CI
+   change, also when the request names CI. When the user explicitly asks
+   for a CI change, make it as its own task outside lean-tests.
 
 ## Boundaries
 

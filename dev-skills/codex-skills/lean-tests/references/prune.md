@@ -16,10 +16,9 @@ prune changes files only when the user's request asks for pruning, and
 only under `<path>`. It writes no report file into the project: each
 rationale goes into a commit message.
 
-Done when each in-scope test is kept with a reason, merged, moved,
-demoted, or deleted with a rationale; each committed batch passed the
-killed-set check; the report is complete; and the work directory is
-removed.
+Done when each in-scope test is kept with a reason, merged, moved, or
+deleted with a rationale; each committed batch passed the killed-set
+check; the report is complete; and the work directory is removed.
 
 First complete the [setup](../SKILL.md#setup) except its work directory:
 `<project>`, `<python>`, `<source>`, and `<skill-dir>`. Step 1 makes
@@ -149,7 +148,7 @@ that only this test kills), `subsumed_by`, `demote`, and `class`:
 | `incomplete` | has unknown kills that no other test covers | keep |
 | `empty` | kills no mutant | delete when redundant (step 5) |
 | `subsumed` | kills only mutants that each test in `subsumed_by` also kills | delete when redundant (step 5) |
-| `union-only` | kills only mutants that other tests kill, but no one other test kills them all | demote when `demote` is true, else keep |
+| `union-only` | kills only mutants that other tests kill, but no one other test kills them all | keep |
 
 `equal_groups` lists tests with equal kill sets. Equal kill sets do not
 prove that the tests are the same: step 5 also needs the input class and
@@ -164,8 +163,8 @@ Always keep these tests:
 1. Protected tests ([safety rule 4](../SKILL.md#safety-rules)): a
    `protected` scan finding, or a protection signal in the subject of the
    commit that added the test.
-2. Tests of class `unique`, `unmeasured`, or `incomplete`, and the tests
-   in `excluded`.
+2. Tests of class `unique`, `unmeasured`, `incomplete`, or `union-only`,
+   and the tests in `excluded`.
 3. At least one test per public test seam: a happy-path test for each
    public function, class, or command that the in-scope tests call.
 
@@ -198,22 +197,22 @@ redundant, do the first of these that applies:
    equivalent inputs and setup, then delete the test.
 3. **Keep.** Keep the test, and report why.
 
-Demote each unprotected test whose `demote` is true to the nightly tier,
-the test tier that runs the slow tests: add the marker that the project
-uses for that tier. The test then leaves the fast tiers, the hand-off and
-pull request tiers of the [tier table](speed.md#test-tiers). mutate sets
-`demote` to true only when every mutant that the test kills, or may kill,
-stays killed by a test that stays in the fast tiers: a test that is not
-demoted and is not of class `empty` or `subsumed`. Keep each other test
-of class `union-only`. When the project has no nightly tier, keep the
-test and report that it could move to a nightly tier.
+prune moves no test between [test tiers](speed.md#test-tiers) and adds no
+marker. Each `union-only` test whose `demote` is true is a candidate to
+leave the hand-off tier. A protected test can be a candidate too, because
+a report changes no test. mutate sets `demote` to true only when each
+mutant that the test kills, or may kill, is also killed by the staying
+tests: the tests whose `demote` is false and whose class is not `empty` or
+`subsumed`. For each candidate, find the tests whose kills it needs
+together: the staying tests in `killed_by` of each mutant that the
+candidate kills or may kill. Step 8 reports the candidates.
 
 Report each test with a `change-detector` or `weak-oracle` finding for
 rewriting, so that it checks behavior. Decide on such a test by its class
 and rationale, as for any other test.
 
 Done when each in-scope test has one decision: keep with a reason, delete,
-merge, move, or demote.
+merge, or move, and you have the tests that each candidate needs together.
 
 ## 6. Write the rationale
 
@@ -222,7 +221,6 @@ Write one line for each changed test, in this format:
 ```text
 - remove <nodeid>: kills <none | a subset of <retained nodeid>>; input: <why the scenario is not a distinct input class>; checks: <check> -> <retained nodeid> line <n>[; <check> -> <retained nodeid> line <n>]
 - merge <nodeid>, <nodeid> into <new test name>: equal except for literals; cases: <literal>, <literal>
-- demote <nodeid> to the nightly tier: its kills need <nodeid> and <nodeid> together
 ```
 
 For a moved assertion, write `(moved)` after its target line. For a test
@@ -233,18 +231,18 @@ that makes no real check, write `checks: none, <the reason>`. Examples:
 - remove tests/test_shop.py::test_total_tautology: kills none; input: ordinary positive ints, as in tests/test_shop.py::test_total; checks: none, the test compares total(2, 3) with itself
 ```
 
-Done when each deleted, merged, or demoted test has one rationale line.
+Done when each deleted or merged test has one rationale line.
 
 ## 7. Remove in batches
 
-Group the deletions, merges, moves, and demotions by test module. A batch
-holds the changes of one module and keeps to the batch size of
+Group the deletions, merges, and moves by test module. A batch holds the
+changes of one module and keeps to the batch size of
 [safety rule 3](../SKILL.md#safety-rules). Do the batches one at a time:
 
 1. Change only files under `<path>`. Delete the batch's tests. Delete an
    import or helper only when no remaining test uses it. Change no other
    test, except an unprotected retained test that receives a moved
-   assertion, becomes a merged test, or gets the nightly marker.
+   assertion or becomes a merged test.
 2. Run the scope again, and make sure that every test passes:
 
    ```bash
@@ -302,12 +300,18 @@ reverted and reported.
 
 Report:
 
-- Each committed batch: its commit, and the tests it deleted, merged,
-  moved, or demoted.
+- Each committed batch: its commit, and the tests it deleted, merged, or
+  moved.
 - Each reverted batch, with its `lost` mutants and their
   `killed_before_by` tests.
-- The tests of class `empty` or `subsumed` that you kept, and the tests of
-  class `union-only` that you did not demote, with the reason for each.
+- The tests of class `empty` or `subsumed` that you kept, with the reason
+  for each.
+- Each candidate to leave the hand-off tier (step 5), with the tests whose
+  kills it needs together. State the limit: prune cannot verify that the
+  hand-off tier still detects the faults that the candidate detects,
+  because the settings and the selection of the hand-off command can change
+  what the staying tests detect. Say that each candidate stays in the
+  hand-off tier until the user moves it.
 - The protected, unmeasured, incomplete, and excluded tests, and the
   `skipped_modules` with their reasons.
 - The change-detector and weak-oracle tests, for rewriting.

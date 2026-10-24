@@ -41,15 +41,13 @@ as `inner-loop` or `hand-off`.
 | Tier | When | Command | Default budget |
 | --- | --- | --- | --- |
 | Inner loop | after each edit | `<pytest> <test-file-or-node-id> -x -q`, or `<pytest> --lf -x -q` | seconds |
-| Hand-off | before the agent hands work back | `<pytest> -m "not slow" -n auto -q` | 2 minutes |
-| Pull request | CI, on each push to a pull request | the hand-off command with the project's coverage options | 10 minutes |
-| Main | CI, after each merge to the default branch | `<pytest> -n auto` | none: the full suite |
-| Nightly | CI, once a day | `<pytest> -m slow -n auto` | none: the slow tests |
+| Hand-off | before the agent hands back work in progress | `<pytest> -m "not slow" -n auto -q` | 2 minutes |
+| Full | after the last edit of a finished change: before the agent submits it for review or merge, before the agent merges it; and when the user asks | `<pytest> -n auto` | none: every test |
 
 - A slow test is a test whose setup plus call takes more than the slow
   threshold. The default threshold is 1 second; the project can change it.
-- The fast tiers are the hand-off and pull request tiers. They leave out the
-  slow tests, which fix 8 marks.
+- The hand-off tier leaves out the slow tests, which fix 8 marks. The slow
+  tests run only in the full tier.
 - When `addopts` keeps `-n` (fix 2), add `-n 0` to the inner-loop command.
   `-n 0` turns off the pytest-xdist workers for a run of one test.
 - `--lf` runs the tests that failed in the last run, `-x` stops at the first
@@ -62,9 +60,13 @@ as `inner-loop` or `hand-off`.
   `added` node ID.
 - Change only test-side files: test modules, conftest files, test helpers,
   the pytest configuration, the development dependencies and their lock
-  file, the CI test commands, and the "Tests" section of the agent
-  instruction files. Report a needed product-code change, such as a lazy
-  import, to the user.
+  file, the tox or nox sessions and other local commands that run coverage
+  (fix 3), and the "Tests" section of the agent instruction files. Report a
+  needed product-code change, such as a lazy import, to the user.
+- Read test commands, Python versions, and options only from these local
+  sources: the pytest configuration, the dependency files and their lock
+  file, the agent instruction files, tox or nox sessions, Makefile or
+  task-runner targets, the project's documentation, and the environment.
 - Put `-n auto` and `-m "not slow"` only in the tier commands, outside the
   default options (`addopts`). Then a plain `pytest` runs the full suite,
   and a run of one test starts no worker processes.
@@ -111,12 +113,14 @@ wall times vary between runs.
 5. Time the inner loop: run `suite` with the label `inner-loop-before` and
    `-- "<node-id>" -x -q`. `<node-id>` is the first node ID in `collected`
    of the before run.
-6. Time each test command that the project already runs for a tier, such
-   as a CI job with `-m "not slow"` or a nightly job. For a command without
-   coverage, run `suite` with the label `<tier>-before`, such as
-   `hand-off-before`, and the pytest options of the command after `--`. A
-   plain `pytest` command needs no run: the before run gives its time. For
-   a command that runs coverage, `<coverage-command>`, such as
+6. Time each local test command: each test command that the project
+   defines in one of the local sources that the [Rules](#rules) name.
+   Match each command to the tier that it serves, for
+   example a command with `-m "not slow"` to the hand-off tier. For a
+   command without coverage, run `suite` with the label `<tier>-before`,
+   such as `hand-off-before`, and the pytest options of the command after
+   `--`. A plain `pytest` command needs no run: the before run gives its
+   time. For a command that runs coverage, `<coverage-command>`, such as
    `<python> -m pytest --cov=<source>`, use the shell's `time`, because
    `suite` turns coverage off. `COVERAGE_FILE` keeps the coverage data in
    `<work-dir>`:
@@ -127,8 +131,7 @@ wall times vary between runs.
 
 Done when the before run meets no stop condition of step 2.1, and you have
 the collection time, the reversed comparison, the import cost of each
-`<source>`, the inner-loop time, and the time of each test command that
-the project already runs for a tier.
+`<source>`, the inner-loop time, and the time of each local test command.
 
 ## 3. Choose the fixes
 
@@ -143,8 +146,8 @@ shows the cost that it removes.
 | 4. Narrower collection | collection is a large part of the wall time, or the configuration sets no `testpaths` |
 | 5. Fixture scope and transaction rollback | `slowest.setup` shows slow setup phases |
 | 6. Clock control or polling instead of sleeps | the scan finds a `sleep` call, or a slow test waits for a thread, process, or server |
-| 7. No real network in the fast tiers | tests open network connections |
-| 8. `slow` markers with `--strict-markers` | the before run has slow tests, or the fast tiers exceed their budgets |
+| 7. No real network in the hand-off tier | tests open network connections |
+| 8. `slow` markers with `--strict-markers` | the before run has slow tests, or the hand-off tier exceeds its budget |
 
 Done when each of the eight fixes is marked "apply" with the measurement
 that shows its cost, or "skip" with its reason.
@@ -205,12 +208,8 @@ Risk: medium. Shared state that the reversed run did not show can make
 tests fail only in parallel runs. The order of the output changes.
 
 Add pytest-xdist, and put `-n auto` into the tier commands. When `addopts`
-already has `-n`, each CI command that runs plain `pytest` depends on it.
-When the user's request covers CI (step 5), move `-n` from `addopts` into
-the tier commands and into each such CI command. Otherwise keep `addopts`
-as it is, add `-n 0` to the inner-loop command as the
-[test tiers](#test-tiers) say, and give the move and the changed CI
-commands in the reply.
+already has `-n`, keep `addopts` as it is, and add `-n 0` to the
+inner-loop command, as the [test tiers](#test-tiers) say.
 
 Give each worker its own copy of each shared resource:
 
@@ -251,12 +250,11 @@ the variable only for a coverage run that meets each of these conditions:
   `dynamic_context = test_function`, coverage.py 7.4 to 7.6 lose them, and
   7.7 and newer warn and use the C tracer.
 
-Set the variable in the environment of each such run outside CI, such as
-the tox or nox session or the command that runs coverage. When the user's
-request covers CI (step 5), also set it in each such CI job. Otherwise give
-the CI setting in the reply. When `addopts` turns on coverage, each run
-measures coverage, the inner loop too. Report this cost to the user, and
-suggest that only the pull request tier runs coverage.
+Set the variable in the environment of each such run, in its local test
+command: the tox or nox session, or the command that runs coverage. When
+`addopts` turns on coverage, each run measures coverage, the inner loop
+too. Report this cost to the user, and suggest that only the full tier runs
+coverage.
 
 Verify: time the coverage command with the variable, and compare the totals
 of both coverage runs. They must be equal:
@@ -336,11 +334,11 @@ limit, for example `--timeout=300`.
 
 Verify: the call time of each changed test dropped.
 
-### Fix 7: no real network in the fast tiers
+### Fix 7: no real network in the hand-off tier
 
 Risk: low. A blocked connection fails with a clear error. A fake can differ
-from the real service: keep a test against the real service in the main or
-nightly tier.
+from the real service: keep a test against the real service, and mark it
+`slow` (fix 8), so that the full tier runs it.
 
 pytest-socket blocks sockets in a test run. Get it for the probe below.
 Under uv, use `--python "uv run --no-sync --with pytest-socket python"` in
@@ -358,8 +356,8 @@ shows; a local service is not a real network.
 For each test that needs a real network service, replace the service with a
 local fake or a recorded response, or mark the test `slow` (fix 8). Then add
 pytest-socket as a development dependency, when the probe did not add it,
-and add `--disable-socket --allow-unix-socket` to the fast tiers. When the
-fast tiers use local services, add
+and add `--disable-socket --allow-unix-socket` to the hand-off command.
+When the hand-off tier uses local services, add
 `--allow-hosts=127.0.0.1 --allow-unix-socket` instead. These options allow
 connections only to that address and to Unix sockets.
 
@@ -368,8 +366,8 @@ hand-off tier and the socket options after `--`. No test fails.
 
 ### Fix 8: `slow` markers with `--strict-markers`
 
-Risk: medium. A slow test runs only in the main and nightly tiers, so a bug
-that only this test detects shows later.
+Risk: medium. A slow test runs only in the full tier, so a bug that only
+this test detects shows later.
 
 List the slow tests of the before run. The last argument is the slow
 threshold in seconds; replace `1.0` when the project uses another
@@ -388,7 +386,7 @@ uses:
 ```toml
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
-markers = ["slow: setup plus call takes more than <threshold> seconds; runs only in the main and nightly tiers"]
+markers = ["slow: setup plus call takes more than <threshold> seconds; runs only in the full tier"]
 ```
 
 Mark a slow test with `@pytest.mark.slow`, a whole module with
@@ -404,16 +402,14 @@ threshold or to raise the budget.
 ## 5. Set the tier commands
 
 Fit the [test tiers](#test-tiers) to the project: fill in `<pytest>`, use
-the project's own budgets, and leave out each tier that the project does
-not use. Leave out `-n auto` when the project did not keep pytest-xdist.
-Add the socket options of fix 7 to the fast tiers when the project kept
-pytest-socket.
-
-When the user's request covers CI, for example "speed up CI", put the CI
-tier commands into the CI configuration. Otherwise give them in the reply.
+the project's own budgets, and leave out the inner-loop or hand-off tier
+when the project does not use it. Keep the full tier in every project: it
+is the check of a finished change. Leave out `-n auto` when the project did
+not keep pytest-xdist. Add the socket options of fix 7 to the hand-off
+command when the project kept pytest-socket.
 
 Done when each tier that the project uses has a command and a budget, and
-the CI configuration runs the new commands or the reply gives them.
+the tiers include the full tier.
 
 ## 6. Write the "Tests" section
 
@@ -442,6 +438,9 @@ Run the smallest test tier that covers your change, and keep the output short.
 
 <tier-table>
 
+- A passing run of another tier does not replace the full run of a
+  finished change. A full run does not cover a later edit: run the full
+  tier again after the last edit.
 - Mark a test `@pytest.mark.slow` when its setup plus call takes more than <threshold> seconds.
 <workers-line>
 - When a test passes in one run and fails in another, find the cause: order
@@ -466,7 +465,7 @@ neither file exists, and the commit holds the tier changes and the section.
 
 ## 7. Prove that no test was lost
 
-Run `suite` with the label `final` and `-- -n auto`, the main tier, and
+Run `suite` with the label `final` and `-- -n auto`, the full tier, and
 compare `final`. Leave out `-- -n auto` when the project did not keep
 pytest-xdist. The no-loss invariant holds when:
 
@@ -486,7 +485,7 @@ Measure each tier command after the fixes. For a command without coverage,
 run `suite` with the label `<tier>-after` and the pytest options of the
 command after `--`, for example the label `hand-off-after` and
 `-- -m "not slow" -n auto -q`. For the inner loop, use the node ID of step
-2.5. For the main tier, use the `final` run of step 7. For a command that
+2.5. For the full tier, use the `final` run of step 7. For a command that
 runs coverage, use the shell's `time` as in step 2.6, with
 `<work-dir>/coverage-after.data`.
 
