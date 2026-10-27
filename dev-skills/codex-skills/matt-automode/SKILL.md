@@ -1,391 +1,206 @@
 ---
 name: matt-automode
-description: Run the Matt planning-to-merge workflow with explicit code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints.
+description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
 # Matt Automode
 
-Use for tasks the user trusts the agent to complete autonomously. The user's
-request to use this mode delegates design decisions, issue publication,
-implementation, code review, a navigation retrospective, PR creation, merge,
-issue closure, and repository cleanup within the task scope.
+This mode delegates design decisions, issue publication, implementation, review,
+retro, PR merge, issue closure, and cleanup within the user's task scope.
+Make routine decisions from evidence and continue without human checkpoints.
+Respect tool permissions and repository protections.
 
-## Resolve skills in Codex
+**If grilling is complete, skip it.** Use the agreed decisions in the available
+context. Do not repeat grilling or pressure tests for those decisions.
 
-The user's request to use this mode explicitly invokes every skill this file
-names. Load and follow each one without a separate user invocation. Do not ask
-the user to invoke them.
+## Load skills as needed
 
-- If a skill appears in the available skills list, open its `SKILL.md`.
-- Resolve every other skill this file names with one command. These can be
-  user-invoked skills: their `agents/openai.yaml` sets
-  `policy.allow_implicit_invocation: false`, so Codex omits them from the
-  list. This policy does not restrict an explicit invocation or reading the
-  skill file. `<plugin-root>` is the root of this `dev-skills` plugin, two
-  levels above this skill folder. For example:
+This invocation covers the skills needed for the active phases below. Load them
+when reached, including their referenced instructions. Skip skills for completed
+phases. Pressure testing requires the separate opt-in below.
 
-  ```bash
-  python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
-    mattpocock-skills:grill-with-docs mattpocock-skills:to-spec \
-    mattpocock-skills:to-tickets mattpocock-skills:implement \
-    mattpocock-skills:retro
-  ```
+In Codex, open listed skills' `SKILL.md` files. Explicit-only skills may be
+omitted from the list; resolve their paths and read them directly:
 
-  Each output line gives a skill name and the path of its `SKILL.md`. Read
-  each `SKILL.md` and every file it references, then follow it. Resolve each
-  skill that it names in the same way.
-- If the command reports an error for a skill, its message names the
-  cause: the Codex config is missing, or the plugin is not enabled, is not
-  installed, or does not contain the skill. Report the cause as a blocker
-  and stop.
+```bash
+python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
+  mattpocock-skills:to-spec mattpocock-skills:to-tickets \
+  mattpocock-skills:implement mattpocock-skills:retro
+```
 
-## Organize the work
+`<plugin-root>` is this plugin's root, two levels above the skill folder.
+Pass only the skills needed now. Use the same resolver for nested skills.
+Report a missing required skill or tracker configuration as a blocker.
 
-Before planning, use `dev-skills:step-workflow` to organize the working folder.
-Treat this mode as a request for step-based organization. Apply the skill
-throughout the task to planning files, scripts, outputs, tests, and documentation
-where repository layout and naming conventions permit.
+## Plan and decide
 
-## Replace human checkpoints
+Use `dev-skills:step-workflow` for numbered planning files and the session task
+list, within repository layout rules. Separate facts, decisions, assumptions,
+and unresolved questions. Cite sources for consequential claims.
 
-Autonomy replaces the human decision-maker. It does not remove the
-investigation, questioning, challenge, or phase order of the referenced skills.
-Do not end the turn to wait for input. Treat "check with the user", "quiz the
-user", "confirm the seams", and "ask for the fixed point" as decisions to make.
-Make each decision only after the investigation and challenge below, and record
-it in the numbered planning files. Continue between phases without routine
-approval requests. Use sub-agents where a referenced skill calls for them; keep
-orchestration in this session.
+Inspect the implementation, consumers, tests, canonical docs, glossary, ADRs,
+and relevant issue and PR decisions. Resolve conflicts explicitly; current code
+or recency alone does not establish intent. Mark replaced decisions as
+superseded and link their replacements. Use parallel read-only investigations
+for independent questions. Wait for findings that could change a decision.
 
-### Investigate before deciding
+For unfinished grilling, use `mattpocock-skills:grill-with-docs`. Work all
+questions whose prerequisites are settled in each round. Challenge candidate
+answers against evidence, alternatives, failure cases, compatibility, and
+consumers. Record the decision and rationale, then take the next round.
+If evidence leaves a near tie, choose the answer easiest to reverse and record
+the gap and risk. Resolve routine checkpoints yourself, including testing
+seams, ticket breakdown, review base, and retro fix selection.
 
-Inspect the relevant implementation, public interfaces, tests, canonical docs,
-glossary, and ADRs. Read relevant issues, comments, and merged PRs to recover the
-latest decisions and their rationale. Check for superseding decisions. Resolve
-conflicts between historical documents and current behavior explicitly; neither
-age nor current code alone proves the intended behavior. When the resolution
-replaces a recorded decision, such as an ADR, record the new decision through
-`grill-with-docs`. Mark the old record as superseded and link it to the new
-one; do not delete it.
+### Optional pressure tests
 
-In the numbered planning files, separate verified facts, design decisions,
-assumptions, and unresolved questions. Cite source paths, symbols, tests, or
-issue and PR links for consequential factual claims.
+Pressure testing is **off by default**. Enable it only if the user asks during
+grilling. Keep that choice for the same task, including reopened questions,
+unless the user withdraws it. While off, skip loading, setup, preflight, and
+critic calls. A completed grilling handoff needs no retrospective pressure test.
 
-Use parallel sub-agents for independent read-only investigations. A pending
-finding that can change a design decision is an unsettled prerequisite. Continue
-independent research and planning, but wait for that finding before resolving the
-affected question or passing gate 1.
+When enabled, classify each question with a reason. A design-critical question
+has at least two answers the evidence permits, and its choice changes behavior,
+an interface, a consumer, or a recorded decision, or is hard to reverse.
+For each round with such questions, run one new
+[pressure test](../pressure-test/SKILL.md) before resolving them. Run setup and
+preflight as part of that test. Save its records in the planning folder. Give
+each question an ID, options, evidence, and current answer. Include other
+questions and their classifications so the critic can challenge them. Resolve
+classification disputes from evidence; add conceded questions to the test.
 
-### Grill in rounds
+Apply the first matching rule to each current answer in its coverage table:
 
-Use `mattpocock-skills:grill-with-docs` to build the design tree. Work its
-frontier in rounds: each round takes every question whose prerequisites are
-settled. For each question, investigate the relevant repository context before
-settling the answer. Trace affected behavior and consumers through
-implementation, interfaces, and tests. Resolve factual gaps that could change
-the answer. Record the evidence, alternatives, recommended answer, challenge,
-rationale, and any unresolved items.
+1. **Not assessed:** carry it to the next round; its dependent questions wait.
+   An answer changed after assessment is not assessed. Carried questions alone
+   can form the next round.
+2. **Converged:** resolve it with the assessed answer.
+3. **Objections remain:** choose from the evidence and objections. Keep the
+   assessed answer with its unresolved objections recorded, or carry a changed
+   answer under rule 1.
 
-Treat a recommended answer as a candidate, not a decision. This includes the
-grilling skill's recommendation and any answer in an existing file that this
-run has not tested. Test the candidate against source evidence, constraints,
-alternatives, failure cases, compatibility, and affected consumers. Change it
-when that test changes its basis. For a design-critical question, run the
-pressure test below first, and record the decision when its rules resolve the
-question. Record any other tested answer as the decision. Then recompute the
-frontier, and continue the next round. When evidence changes an
-earlier answer, reopen its dependent questions.
+Override the carry when a test reviewed none of its IDs, or a question ends two
+consecutive tests without assessment of its current answer. Decide it with the
+normal evidence-based challenge and continue. Count after applying rules 1–3;
+revisions do not reset the count. A reopened decision starts a new count and
+needs a fresh assessment even if its answer stays the same. A reviewed answer
+that later became stale still counts as a reviewed ID for the first condition.
+Critic failure does not block automode. Record each test's ending condition and
+why an answer was not assessed. Keep assessed answers' objections instead of
+claiming they were unassessed. Put these decisions, evidence, risks, and critic
+limits directly in the spec and any ticket or ADR that records them; these
+records must stand alone without links to disposable planning files.
 
-If the available evidence cannot settle a design-critical question, choose the
-answer that the evidence supports best. When two or more answers have about
-equal support, choose the one that is easiest to reverse. Record the evidence
-gap, the alternatives, and the risk with the decision. Make this choice
-yourself; do not stop for human input. The pressure test below reviews it
-as the current answer.
+## Phases and completion checks
 
-Grilling is complete when all design-critical questions are resolved and all
-research that could change those decisions has returned and been evaluated.
-Record any remaining nonblocking assumptions and why they are safe. A
-recommended answer does not replace repository investigation or grilling
-rounds. A generic checklist or a brief assumptions list does not satisfy this
-gate.
+Record each phase's completion evidence and next action in the planning files.
+Existing specs and tickets can satisfy a phase after checking their content and
+current validity. An existing recommendation alone does not complete grilling.
+Run phases 4–7 per ticket in dependency order, then phase 8 once.
 
-### Pressure-test each grilling round
+1. **Grilling — `mattpocock-skills:grill-with-docs`.** Skip if complete.
+   Otherwise finish all design-critical questions and evaluate all research
+   that could change them. Record domain terms, decisions, and safe nonblocking
+   assumptions. Apply the optional pressure-test rules only when enabled.
+2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, publish and verify the
+   spec with scope, decisions, and testing seams. Align any glossary entries
+   added by this task with its decisions.
+3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
+   verify tickets with acceptance criteria and blocking dependencies that cover
+   the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
+   the same shared file, including manifests, registries, and changelogs. Choose
+   release versions when a PR is ready, not in tickets. For pytest repositories,
+   use [lean-tests](../lean-tests/SKILL.md), review mode's "Pin the requirement
+   sources", before implementation. Pin the original request, spec, and tickets
+   using Python 3.9 or newer; record the directory and SHA-256 values.
+4. **Implement — `mattpocock-skills:implement`.** Start coding or coding
+   delegation only after phases 1–3 pass and every blocking ticket's PR merges.
+   Follow the testing workflow and commit the changes. Before committing,
+   search new prose for glossary `_Avoid_` terms and report helpers imported
+   from other modules. Complete when the ticket's tests pass and edits are
+   committed for review.
+5. **Review — `mattpocock-skills:code-review`.** Review against the ticket spec
+   and a recorded comparison commit. This fulfills `implement`'s review step.
+   Fix actionable Standards and Spec findings, commit, and pass affected checks.
+6. **Retro — `mattpocock-skills:retro`.** After review, inspect earlier
+   implementation sessions for slow navigation and stale docs, including after
+   successful work. Follow "Navigation retrospective" below. Apply small fixes
+   in this PR; commit and check them, then repeat code review against phase 5's
+   original comparison commit. Verify the diff includes the retro edits. Fix
+   its actionable findings and pass affected checks after the last edit.
+   Complete with the retro record ready for the PR and larger findings filed.
+7. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its retro record
+   and issue references. Use a separate `Closes #N` for each fully resolved
+   ticket; use ordinary references for partial work. Carry closure references
+   to the final integration PR for stacked work. Merge after required checks
+   and reviews pass, under repository rules. Record the merged PR link.
+8. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
+   the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
+   and close the parent only when fully satisfied. Close tickets by hand only
+   after merge if the tracker did not close them. Finish after cleanup reports.
 
-Classify each question of a grilling round before you resolve it. A question
-is **design-critical** when both conditions hold:
+### When work changes or waits
 
-- It has two or more viable answers. An answer is viable when the evidence
-  does not rule it out.
-- The choice is hard to reverse, or it changes behavior, a public interface,
-  a consumer, or a recorded decision.
+If evidence invalidates a decision, stop only dependent work, including active
+coding agents. Reopen the affected planning phase and later phases. Update
+decisions, the spec, and tickets; record completion checks before resuming.
+Run affected tickets through phases 4–7 again. For merged tickets, open a new
+ticket. Record why independent tickets can continue with their prior gates.
 
-Record each question's classification and its reason in the planning files.
-A question that the facts settle with one viable answer needs no pressure
-test.
+If coding started early, report the ordering failure and stop dependent work.
+Complete the missing phases and treat that code as unreviewed. Later artifacts
+do not make the earlier order compliant.
 
-When a grilling round has design-critical questions, run one new pressure
-test over them before you record their decisions. Open the
-[pressure-test skill](../pressure-test/SKILL.md) and follow it. Direct its
-session record and conclusion into the numbered planning folder. In its
-pressure-test packet, give each design-critical question an ID, its OPTIONS
-with their evidence, and the recommended answer as its current answer. Add
-the round's other questions and their classifications to the evidence, so
-that the critic can dispute a classification. Handle a dispute like any
-other objection: concede it and add the question with an ID, or rebut it
-with evidence. A grilling round with no design-critical question runs no
-pressure test.
-
-Resolve each design-critical question from the coverage table of the
-conclusion. Apply the first rule that matches:
-
-1. If the critic did not assess the current answer, the question carries
-   into the pressure test of the next grilling round, and its dependent
-   questions wait. An answer revised after its last assessment counts as
-   not assessed. When only carried questions remain, they form the next
-   grilling round.
-2. If the ID is converged, as the pressure-test session record defines the
-   term, the question resolves with its current answer.
-3. Otherwise, the critic still objects to the assessed answer. Choose the
-   answer that the evidence and the objections support best, and break a
-   near tie as the evidence-gap rule in "Grill in rounds" does. If you keep
-   the assessed answer, the question resolves with it; record the
-   unresolved objections with the decision. If you choose another answer,
-   the question carries under rule 1 with the new answer.
-
-When later evidence changes the basis of a design-critical decision, reopen
-the decision. A reopened decision carries as a revised answer, even when its
-answer stays the same. After gate 1, a reopened decision is invalid under
-"Phase gates" until it resolves again under the rules of this section. The
-reopened gate 1 resumes the grilling rounds.
-
-Two results make a question resolve without the critic. One is a pressure
-test with no usable assessment: none of its IDs is reviewed, as the
-pressure-test session record defines the term. A reviewed ID counts even
-when a later revision made its assessment stale. This result affects every
-ID of that pressure test. The other is a question whose current answer is
-not assessed at the end of two pressure tests in a row that include it.
-Judge the end of a pressure test after rules 1–3 apply. A new answer that you
-choose under rule 3 is not assessed; an assessed answer that you keep is. A
-revision does not reset this count; a reopened decision starts a new one.
-
-These results override the carry in rule 1. They do not stop the run, even
-when the critic fails in every pressure test. Decide each affected question
-with the challenge in "Grill in rounds", and break a near tie as the
-evidence-gap rule does. Record with the decision that the critic did not
-assess its current answer, and why: the ending condition of each pressure
-test that included the question, and whether no reply came, the critic
-skipped its ID, or the answer changed after the last assessment. If you
-decide on an answer that the critic assessed, record its objections as rule 3
-does instead. Then continue: the dependent questions proceed, and each later
-grilling round runs its own pressure test.
-
-At the start of step 1, run only the Setup and Preflight steps of
-pressure-test as an early check. This check is not a pressure test: it
-writes no conclusion, and a failed preflight does not stop step 1. Record the
-result and any diagnosis in the planning files. Each later pressure test runs
-its own preflight. A successful preflight is not a review: only the critic's
-assessment of a question's current answer counts.
-
-The spec states each design-critical decision with its evidence, objection
-dispositions, unresolved risks, and ending condition. The record of a
-decision that the critic did not assess says so and gives the reason. A
-ticket or ADR that records such a decision states the same record. Each
-record stands alone and cites no planning file.
-
-Other decisions that this mode makes in place of a human keep the challenge
-in "Grill in rounds" without a pressure test: the testing seams, the ticket
-breakdown, the code-review fixed point, and the retro fix selection.
-
-## Phases
-
-Run steps 4–7 for each ticket in dependency order. Run cleanup after all tickets
-are merged.
-
-1. `mattpocock-skills:grill-with-docs`: pressure-test the design-critical
-   questions, resolve the design questions, and record the domain terms and
-   decisions.
-2. `mattpocock-skills:to-spec`: choose the testing seams and publish the spec.
-   Then compare each glossary entry that this run added, such as in
-   `CONTEXT.md`, with the spec decisions. Change each entry that contradicts
-   a decision.
-3. `mattpocock-skills:to-tickets`: choose the ticket breakdown and publish it
-   with blocking dependencies. Track the parent spec, all task tickets, and their
-   PRs through completion. Preserve the parent during ticket publication.
-   Make one ticket block another when both edit the same shared file: a
-   `SKILL.md` that routes to the changed parts, a plugin manifest,
-   `CHANGELOG.md`, or a registry such as `package-validation.json`. Write no
-   target version in a ticket; choose the versions when the PR is ready.
-   If the repository has a pytest suite, open the
-   [lean-tests skill](../lean-tests/SKILL.md) before the first
-   implementation change, and run "Pin the requirement sources" in its
-   review mode. Pin the user's original request, the spec, and each ticket,
-   so that a later review can use an acceptance reviewer. The pin needs no
-   other setup step: use any Python 3.9 or newer as `<python>`. Record the
-   pin directory and each `sha256` value in the planning files, and give
-   the values in the final report.
-4. `mattpocock-skills:implement`: complete the next ready ticket. Follow its
-   testing workflow and commit the changes for review. Before the implementer
-   commits, it searches its new prose for the `_Avoid_` terms of the glossary
-   and lists in its report each helper that it imports from another module.
-5. `mattpocock-skills:code-review`: review the changes against a fixed comparison
-   commit and the ticket spec. This phase fulfills `implement`'s code-review
-   requirement. Fix actionable Standards and Spec findings before continuing.
-6. `mattpocock-skills:retro`: run after code review, including successful
-   implementations. Use this prompt:
-
-   > use retro skill read previous implementation sessions and find ways to make my repo easier to navigate. Find where agents take too long to find relevant information, or rely on out-of-date docs.
-   > Improving navigability is such an underrated way to save tokens and update docs.
-
-   Follow "Navigation retrospective" to select the sessions and record the
-   result. Apply in-scope navigation and documentation fixes, run affected
-   checks, and commit those edits. Run `code-review` again against the same
-   comparison commit and verify that its diff includes those edits before
-   the PR phase. Then post the comment on the tracking issue.
-7. `mattpocock-skills:pr`: write the PR body and open the PR for the reviewed
-   changes. Merge after required checks and review pass. Follow repository rules.
-   When a merged ticket makes the branch conflict, give the agent that
-   rebases one resolution rule for each conflicted file and the version that
-   each raised version field must have after the rebase. A rebase drops a
-   version change that both sides made, and reports no conflict for it.
-8. `dev-skills:repo-cleanup`: run after all tickets are merged. Pass the
-   tracked tickets, parent spec, and merged PRs so cleanup can reconcile issue
-   state and verify closure alongside Git cleanup.
-
-## Sub-agent briefs
-
-Give each sub-agent a brief that it can follow without this conversation.
-
-- In the brief of an implementer, a reviewer, or a fix agent, name the
-  planning-file sections that it uses, by file and line.
-- Tell each sub-agent not to call the host's plan, task-list, or wrap-up
-  tools. This session owns them.
-- When agents run at the same time, let one agent at a time run a full test
-  suite. The other agents run single test files until that suite ends.
-- Tell a reviewer to support each finding about the behavior of an
-  external tool with a run that the reviewer measured.
-- When the repository instructions give a search rule, such as the paths
-  that a search skips, state it in each reviewer brief. A sub-agent loads
-  `CLAUDE.md` or `AGENTS.md`, but not the documents that they link.
+Use the host's PR monitoring mechanism for pending checks. Fix failures on the
+PR branch; code changes need review against the same comparison commit before
+merge. For a rebase, give the agent a resolution rule per conflicted file and
+the required final versions; recheck versions that Git merged without conflict.
+If a required human review cannot be supplied, continue independent tickets,
+then report the blocker and keep the work. Respect branch protection.
 
 ## Navigation retrospective
 
-Each retrospective starts where the last one ended, so that it does not read
-the same sessions again. If the repository instructions give a retrospective
-procedure, such as a document that `CLAUDE.md` or `AGENTS.md` links, follow
-that procedure. Otherwise, do these steps:
+Use the repository's session-discovery guidance. Store each completed retro in
+its own PR, rather than a central tracking issue.
 
-1. Find the tracking issue: the open issue in the issue tracker that records
-   earlier navigation retrospectives, usually with "navigation" in its title.
-   If no such issue is open, publish a tracking issue. Add the documentation
-   label if the tracker has that label.
-2. Read the newest retrospective comment on the tracking issue. Read the open
-   issues with the documentation label. Report a known candidate again only
-   with new evidence.
-3. Select this repository's sessions, including its worktrees, by recorded
-   workspace metadata before you search their text. Claude Code sessions are
-   JSONL files under `~/.claude/projects/` with a `cwd` field, and their
-   sub-agents are under `<session>/subagents/`. Codex sessions are JSONL
-   files under `~/.codex/sessions/` with the `cwd` in their `session_meta`
-   line. Select the sessions that have records after the newest
-   retrospective comment, and read only those records. A session that
-   started before the comment, such as the current session, can have later
-   records. Record timestamps have milliseconds: compare each `timestamp`
-   with the comment time written with milliseconds, such as
-   `2026-10-21T20:22:41.000Z`. Use task prompts and actions to judge
-   relevance. If the tracking issue has no retrospective comment, read the
-   earlier implementation sessions. If no earlier session is available,
-   report that limit and review the current session.
-4. Copy the selected transcripts into one `mktemp -d` directory, and process
-   only the copies. Give sub-agents the paths of the copies. Do not write to
-   an original transcript. Remove the directory by its path when the
-   retrospective ends.
-5. Post a new comment on the tracking issue: the sessions read, the sessions
-   skipped and any unavailable history, the findings, the fixes made and
-   their branch, and the candidates that remain as follow-up work.
+1. Find the latest completed "Navigation retrospective" record in merged PRs
+   by its **Reviewed through** UTC timestamp. Read existing documentation issues
+   to reuse relevant follow-ups. Set this run's cutoff before copying sessions.
+2. Select sessions by recorded repository and worktree metadata before searching
+   text. Claude Code stores JSONL under `~/.claude/projects/` with `cwd` fields
+   and subagents under `<session>/subagents/`. Codex stores JSONL under
+   `~/.codex/sessions/` with `cwd` in `session_meta`. Keep this metadata even
+   when it precedes the cutoff. Read records after the previous cutoff through
+   this run's cutoff, including later records in sessions that started earlier.
+   Compare parsed
+   timestamps, or normalize all UTC timestamps to millisecond precision.
+   Without a prior record, use relevant earlier implementation sessions. If
+   unavailable, review the current session and report the limit.
+3. Process transcript copies in one `mktemp -d` directory. Give agents those
+   paths, preserve the originals, and remove the temporary directory by path.
+4. Apply local fixes that need no new design decision or substantial scope
+   increase in this PR. Create or reuse a separate issue for each larger
+   finding. Block the PR only if a finding affects the current change's
+   correctness; otherwise link the follow-up and continue.
+5. Add a short **Navigation retrospective** record to the PR: **Reviewed
+   through** cutoff, sessions read, skipped or unavailable history, findings,
+   fixes, and follow-up issue links. Use the scanned cutoff, not posting time.
+   Prepare it in phase 6 and publish it in phase 7, even if no fix was needed.
 
-## Phase gates
+## Sub-agent briefs
 
-Each step has a start condition and a completion check. Gate N is the
-completion check of step N. Before each transition, record the completion check
-in the numbered planning files. Include the gate status, evidence references,
-remaining work, and the next permitted action. Keep the checks in execution
-order. Existing artifacts can satisfy a gate only after their content and
-current validity have been checked.
-
-| Step | Start only when | Complete when |
-| --- | --- | --- |
-| 1. Investigation and grilling | The working folder is organized. | Evidence supports the resolved decisions. No design-critical question or research result that could change a decision remains open. The grilling record is in the numbered planning files, with each question's classification and its reason. Each design-critical question is resolved under "Pressure-test each grilling round": its current answer converged, the decision records the critic's unresolved objections, or the decision records that the critic did not assess it. `grill-with-docs` has recorded the domain terms and decisions. |
-| 2. Spec | Gate 1 passed. | The spec is published with scope and testing seams derived from the resolved decisions. Its reference is recorded and its content verified. |
-| 3. Tickets | Gate 2 passed. | Tickets are published with blocking dependencies and acceptance criteria. Their references are recorded, and their coverage of the spec is verified. |
-| 4. Implement | Gates 1–3 passed, and the PR of every ticket that blocks this ticket is merged. | The ticket's tests pass under `implement`'s testing workflow, and the changes are committed for review. |
-| 5. Code review | Gate 4 passed for this ticket. | The review ran against a recorded comparison commit and the ticket spec. Fixes for actionable Standards and Spec findings are committed, and the tests pass after the fixes. |
-| 6. Retro | Gate 5 passed for this ticket. | A new comment on the tracking issue records the sessions read, navigation findings, history limits, fixes, and remaining candidates. If retro made in-scope fixes, they are committed, their affected checks pass, a second `code-review` against the first review's comparison commit includes them in its diff, and fixes for its actionable findings are committed. The affected checks pass after the last fix. |
-| 7. PR | Gate 6 passed for this ticket. | The PR is open with its issue references, the required checks and required reviews pass, and the PR is merged. Its link is recorded. |
-| 8. Cleanup | Gate 7 passed for every ticket. | Cleanup reported its results. The tickets and any fully satisfied parent spec are verified closed. |
-
-Steps 4–7 are the implementation of one ticket. Implementation includes
-assigning coding work to a sub-agent and fixing review or retro findings. Keep
-coding and coding delegation for a ticket blocked until the step 4 start
-condition holds for that ticket. Read-only investigation and planning can run in
-parallel before then.
-
-In step 7, wait for running checks and reviews without ending the turn. Use a
-blocking watch command, such as `gh pr checks <number> --watch` on GitHub, or
-check again at intervals. Fix a failed check on the PR branch and commit the
-fix. When the fix changes code, run `code-review` again against the same
-comparison commit before the merge. A required review that the agent cannot
-give, such as a human approval under branch protection, is an enforced
-restriction. Do not wait for it, approve your own PR, or bypass the protection.
-Continue the tickets that do not depend on that PR, then report the blocker
-with the PR link and keep the work.
-
-If later evidence invalidates a decision, stop dependent work, including active
-coding sub-agents. Dependent work is any ticket, code, or decision that relies
-on the invalid decision. Reopen the planning gate where that decision was made
-and the gates after it. Update decisions, the published spec, and tickets as
-needed. Record new completion checks before resuming dependent work, and run
-each affected ticket through steps 4–7 again. For a ticket that is already
-merged, publish a new ticket for the change. A reopened gate blocks only
-dependent work. For a ticket that does not rely on the invalid decision, gates
-1–3 still count as passed, whether or not the ticket has started.
-
-## Report progress accurately
-
-Distinguish completed phases from pending or blocked work. Report each gate's
-status with its supporting evidence. Artifact existence alone does not prove
-completion or correct phase order. If implementation started early, report the
-ordering failure, stop dependent work, including coding sub-agents, and
-complete the missing gates before resuming. Treat code written early as
-unreviewed: check it against the decisions, spec, and ticket, and run its
-ticket through steps 4–7. Later publication cannot make the earlier execution
-compliant.
-
-Distinguish instruction and scenario checks from demonstrated agent behavior.
-Report what was actually observed and any validation limits.
-
-## PR issue references
-
-In each GitHub PR description, use a separate `Closes #123` reference for each
-ticket the PR fully resolves. Use `Closes owner/repo#123` for another repository.
-Use ordinary references for partial work. Closing keywords take effect when the
-PR targets the default branch; carry them to the final integration PR for stacked
-work. Follow the configured tracker's equivalent closure mechanism elsewhere.
-Do not close a ticket by hand before the PR that resolves it merges. Do not
-close the parent spec before the PR of every ticket merges. After a merge,
-close by hand only a ticket that its closing keyword did not close.
+Give each agent a self-contained task, owned files, and relevant planning-file
+sections by path and line. Keep plan and task-list tools in this session.
+Allow only one full test suite at a time; other agents can run focused tests.
+State the repository search rules in reviewer briefs, including excluded paths.
+Require measured evidence for claims about external tool behavior.
 
 ## Finish
 
-Finish when all tickets have completed implementation, code review, retro, and
-PR merge, all tickets and any fully satisfied parent spec are verified
-closed, and cleanup has reported its results. Report review results, retro
-findings and session-history limits, the design-critical decisions that the
-critic did not assess, issue and PR links, the retrospective comment links,
-and any issue left open with its remaining work.
-If progress is blocked by missing access, an enforced restriction, or
-repeated failures with no viable next step, report the blocker and retain the
-work. A critic that cannot assess an answer is not such a blocker:
-"Pressure-test each grilling round" gives the next step. This mode does not
-bypass tool permissions or repository protections.
+Report completed and blocked phases accurately, with evidence, review results,
+retro history limits, issue and PR links, and remaining work. Include requirement
+pin paths and hashes when used. For enabled pressure tests, list decisions whose
+current answers the critic did not assess. Distinguish instruction checks and
+simulated scenarios from demonstrated agent behavior. Stop for missing access,
+enforced restrictions, or repeated failures with no viable next step; retain
+the work and report the blocker.
