@@ -10,8 +10,9 @@ name fails, and 2 on a usage error.
 
 Claude Code (default): read installed_plugins.json in the plugins folder.
 Like Claude Code, use CLAUDE_CODE_PLUGIN_CACHE_DIR as that folder when it is
-set and not empty; a leading "~" or "~/" names the home folder. Otherwise
-use plugins/ under CLAUDE_CONFIG_DIR (default ~/.claude). An install record
+set and not empty. A value of "~", or a value that starts with "~/", starts
+at the home folder; a "~name" value is not expanded. Otherwise use plugins/
+under CLAUDE_CONFIG_DIR (default ~/.claude). An install record
 for a project that contains the current directory comes before the
 user-scope record. A plugin set to false under enabledPlugins in the user
 settings.json under CLAUDE_CONFIG_DIR is disabled.
@@ -72,15 +73,15 @@ def is_within(child: Path, parent: Path) -> bool:
     return True
 
 
-def claude_plugins_dir(home: Path) -> Path:
+def claude_plugins_dir(config_dir: Path) -> Path:
     """Return the folder of the Claude Code plugin registry and cache."""
-    shared = os.environ.get("CLAUDE_CODE_PLUGIN_CACHE_DIR")
-    if not shared:
-        return home / "plugins"
+    cache_dir = os.environ.get("CLAUDE_CODE_PLUGIN_CACHE_DIR")
+    if not cache_dir:
+        return config_dir / "plugins"
     # Claude Code expands only "~" and "~/..."; a "~name" value stays as written.
-    if shared == "~" or shared.startswith("~/"):
-        shared = str(Path.home()) + shared[1:]
-    return Path(shared)
+    if cache_dir == "~" or cache_dir.startswith("~/"):
+        cache_dir = str(Path.home()) + cache_dir[1:]
+    return Path(cache_dir)
 
 
 def claude_plugin_root(plugin: str) -> Path:
