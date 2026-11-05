@@ -1,6 +1,6 @@
 ---
 name: grill-with-research
-version: 1.0.0
+version: 1.1.0
 description: Research the project, then grill the user only on decisions that research cannot settle; records glossary terms and ADRs. Use when the user asks to grill or stress-test a plan, design, or issue in the current project.
 ---
 
@@ -11,17 +11,19 @@ implementation or automode.
 
 ## Load the Matt skills
 
-Invoke `mattpocock-skills:grill-with-docs` with the Skill tool, then each skill
-it names as `mattpocock-skills:<name>`. If the Skill tool lacks or refuses one,
-and the user named this skill or a workflow that uses it, resolve and read its
-`SKILL.md`:
+Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
+the Skill tool, and follow both. Together they run Matt Pocock's
+`grill-with-docs` interview. If the Skill tool lacks one, resolve its path and
+read its `SKILL.md`:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" mattpocock-skills:grill-with-docs
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" \
+  mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
-Without that request, ask the user to name this skill. If a skill cannot load,
-report the blocker; use no other workflow.
+If the Skill tool refuses one, its frontmatter sets
+`disable-model-invocation: true`, or a skill cannot load, report the blocker
+and stop; use no other workflow.
 
 ## Research
 

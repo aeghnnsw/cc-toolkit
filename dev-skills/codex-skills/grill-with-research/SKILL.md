@@ -10,17 +10,19 @@ implementation or automode.
 
 ## Load the Matt skills
 
-Open the `SKILL.md` of `mattpocock-skills:grill-with-docs`, then of each
-`mattpocock-skills:<name>` it names. If the skill list omits one, and the user
-named this skill or a workflow that uses it, resolve and read it:
+Open the `SKILL.md` of `mattpocock-skills:grilling` and
+`mattpocock-skills:domain-modeling`, and follow both. Together they run Matt
+Pocock's `grill-with-docs` interview. If the skill list omits one, resolve its
+path and read it:
 
 ```bash
-python3 "<plugin-root>/scripts/resolve_skill.py" --host codex mattpocock-skills:grill-with-docs
+python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
+  mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
-`<plugin-root>` is two levels above this folder. Without that request, ask the
-user to name this skill. If a skill cannot load, report the blocker; use no
-other workflow.
+`<plugin-root>` is two levels above this folder. If its `agents/openai.yaml`
+sets `allow_implicit_invocation: false`, or a skill cannot load, report the
+blocker and stop; use no other workflow.
 
 ## Research
 

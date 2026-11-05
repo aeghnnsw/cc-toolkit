@@ -1,8 +1,9 @@
 """Contract checks for grill-with-research and its use in matt-automode.
 
 The agreed decisions of issue #358 fix the description, the body limit, the
-invocation policy, and the host-specific loading section. Agent behavior is
-checked by the scenario review in grill-with-research-scenarios.md.
+invocation policy, and the host-specific loading section. Issue #365 sets the
+Matt skills that the wrapper loads. Agent behavior is checked by the scenario
+review in grill-with-research-scenarios.md.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ DESCRIPTION = (
     "grill or stress-test a plan, design, or issue in the current project."
 )
 LOAD_HEADING = "## Load the Matt skills"
+MATT_SKILLS = ("mattpocock-skills:grilling", "mattpocock-skills:domain-modeling")
 BODY_WORD_LIMIT = 400
 
 
@@ -66,12 +68,18 @@ class GrillWithResearchTest(unittest.TestCase):
             if heading != LOAD_HEADING:
                 self.assertEqual(claude[heading], codex[heading], f"{heading!r} differs between hosts")
 
-    def test_each_copy_resolves_user_invoked_matt_skills_for_its_host(self) -> None:
+    def test_each_copy_resolves_missing_matt_skills_for_its_host(self) -> None:
         claude, codex = (sections(wrapper(host)[1])[LOAD_HEADING] for host in HOSTS)
         self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"', claude)
         self.assertIn('"<plugin-root>/scripts/resolve_skill.py" --host codex', codex)
-        for text in (claude, codex):
-            self.assertIn("mattpocock-skills:grill-with-docs", text)
+
+    def test_each_copy_loads_the_model_invocable_matt_skills(self) -> None:
+        for host in HOSTS:
+            load = sections(wrapper(host)[1])[LOAD_HEADING]
+            with self.subTest(host=host):
+                for skill in MATT_SKILLS:
+                    self.assertIn(skill, load)
+                self.assertNotIn("mattpocock-skills:grill-with-docs", load)
 
     def test_each_body_stays_within_the_word_limit(self) -> None:
         for host in HOSTS:

@@ -1,6 +1,12 @@
 # Grill With Research scenario review
 
-These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358).
+> Superseded in part on 2026-11-05 by
+> [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365): the wrapper
+> loads `grilling` and `domain-modeling` directly, not `grill-with-docs`. The
+> #358 review record below describes the earlier loading rule.
+
+These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358)
+and [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365).
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md)
 and the [Codex skill](../codex-skills/grill-with-research/SKILL.md), with the
 Matt skills that the wrapper loads.
@@ -19,8 +25,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/grill-with-res
 
 ## Scenarios
 
-Unless a case says otherwise, the user invoked `grill-with-research` by name to
-grill a plan in a repository, for issue 42, and the Matt skills load.
+Unless a case says otherwise, the user asked to grill a plan in a repository,
+for issue 42, and the Matt skills load.
 
 1. **Answer in project files.** A candidate question asks which test runner
    the project uses. `pyproject.toml` configures pytest.
@@ -53,19 +59,21 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
     exists. The repository documents no planning folder.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
-14. **User-invoked Matt skill.** In Claude Code, the Skill tool refuses
-    `mattpocock-skills:grill-with-docs` because the skill is user-invoked. In
-    Codex, the skill list omits it.
+14. **Omitted Matt skill.** In Codex, the skill list omits
+    `mattpocock-skills:domain-modeling`. The resolver finds it.
 15. **Missing Matt skill.** The resolver reports that the
     `mattpocock-skills` plugin is not installed.
 16. **Done.** Research settles every remaining candidate question. The user's
     original request also said "then build it".
 17. **Started from the description.** The user asked to grill a plan and named
-    no skill. The agent started `grill-with-research` from its description. The
-    Skill tool refuses `mattpocock-skills:grill-with-docs`, or in Codex, the
-    skill list omits it.
+    no skill. The agent started `grill-with-research` from its description.
 18. **No project.** The user asks to grill a career decision. No repository or
     project is open, and the user names no skill.
+19. **User-invoked Matt skill.** A new version makes
+    `mattpocock-skills:grilling` user-invoked. In Claude Code, the Skill tool
+    refuses it, or lacks it and its frontmatter sets
+    `disable-model-invocation: true`. In Codex, its `agents/openai.yaml` sets
+    `allow_implicit_invocation: false`, and the skill list omits it.
 
 ## Expected results
 
@@ -84,11 +92,12 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| User-invoked Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
+| Omitted Matt skill | Run the resolver with `--host codex`, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
-| Started from the description | Stop and report the blocker. Tell the user to invoke `grill-with-research` by name. | Reading the user-invoked skill by path; running `grilling` and `domain-modeling` without it. | The Skill tool's refusal, or the omitted skill-list entry. |
+| Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
+| User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill by path; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
 
 ## Validation limits
 
@@ -98,7 +107,26 @@ static checks, simulated reviews, and live observations separately.
 
 ## Review record
 
-### 2026-11-05
+### 2026-11-05, issue #365
+
+**Static checks.** `test_grill_with_research.py` now requires that both copies
+load `grilling` and `domain-modeling` and do not load `grill-with-docs`. The
+test failed before the skill change and passes after it. The root tests, the
+package and release validator, and the Codex skill-creator validator pass.
+
+**Live observations.** In this Claude Code session, the model invoked
+`mattpocock-skills:grilling` with the Skill tool, and the tool loaded it. Before
+#365, the same tool refused `grill-with-docs`. The resolver found both skills
+for Claude Code and, with `--host codex`, for Codex.
+
+**Simulated review.** One fresh agent read both copies, the two Matt skills,
+and cases 14, 15, 17, and 19. It did not receive the expected results. Both
+copies gave the expected actions in cases 14, 15, and 17. In case 19, the
+Claude Code copy decided only a refusal, and the Codex copy let the resolver
+read a skill with `allow_implicit_invocation: false`. Both copies now stop at
+a user-invoked setting. The fixed text was not simulated again.
+
+### 2026-11-05, issue #358
 
 **Static checks.** `dev-skills/tests/test_grill_with_research.py` checks the
 description, the invocation policy, the host differences, the resolver lines,
