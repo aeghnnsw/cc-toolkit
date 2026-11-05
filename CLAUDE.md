@@ -52,8 +52,9 @@ Before a navigation retrospective of earlier agent sessions, read
    The commands in CONTRIBUTING.md use paths relative to that root.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification). Run the affected test
-   suites for executable changes; validate content, links, and configuration
-   for documentation and metadata changes. When a check needs temporary
+   suites for executable changes. The suites use `unittest`, not `pytest`.
+   Validate content, links, and configuration for documentation and
+   metadata changes. When a check needs temporary
    files or a temporary Git repository, put them in one `mktemp -d`
    directory, stage files there by name, and remove the directory by its
    path. The core-hooks policy scripts block bulk staging and an `rm` with

@@ -5,22 +5,25 @@ description: Research the project, then grill the user only on decisions that re
 
 # Grill With Research
 
-Research first, so that each question needs the user's judgment. Start no
-implementation or automode.
+Research first, so that each interview question needs the user's judgment.
+Start no implementation or automode.
 
 ## Load the Matt skills
 
-Open the `SKILL.md` of `mattpocock-skills:grill-with-docs`, then of each
-`mattpocock-skills:<name>` it names. If the skill list omits one, and the user
-named this skill or a workflow that uses it, resolve and read it:
+Follow the `SKILL.md` of `mattpocock-skills:grilling` and
+`mattpocock-skills:domain-modeling`. If the skill list omits one, resolve its
+path. `<plugin-root>` is two levels above this folder:
 
 ```bash
-python3 "<plugin-root>/scripts/resolve_skill.py" --host codex mattpocock-skills:grill-with-docs
+python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
+  mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
-`<plugin-root>` is two levels above this folder. Without that request, ask the
-user to name this skill. If a skill cannot load, report the blocker; use no
-other workflow.
+Before you open a resolved `SKILL.md`, check its folder. In these cases, stop
+and report the blocker; use no other workflow:
+
+- The folder has `agents/openai.yaml` with `allow_implicit_invocation: false`.
+- A Matt skill cannot load.
 
 ## Research
 
@@ -57,7 +60,7 @@ what research leaves open. Settle routine, reversible details by convention;
 state each material assumption.
 
 Ask the rest as `grilling` does, with evidence, viable options, a reasoned
-recommendation, and why the user's judgment is needed. Missing access does not
-hold a question. After each answer, research what changed and reopen affected
+recommendation, and why the user must decide. Missing access does not hold a
+question. After each answer, research what changed and reopen affected
 decisions. When no meaningful unresolved decision remains, finish as `grilling`
 does.
