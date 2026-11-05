@@ -11,13 +11,13 @@ Make routine decisions from evidence and continue without human checkpoints.
 Respect tool permissions and repository protections.
 
 **If grilling is complete, skip it.** Use the agreed decisions in the available
-context. Do not repeat grilling or pressure tests for those decisions.
+context. Do not repeat grilling for those decisions.
 
 ## Load skills as needed
 
 This invocation covers the skills needed for the active phases below. Load them
 when reached, including their referenced instructions. Skip skills for completed
-phases. Pressure testing requires the separate opt-in below.
+phases.
 
 In Codex, open listed skills' `SKILL.md` files. Explicit-only skills may be
 omitted from the list; resolve their paths and read them directly:
@@ -35,61 +35,17 @@ Report a missing required skill or tracker configuration as a blocker.
 ## Plan and decide
 
 Use `dev-skills:step-workflow` for numbered planning files and the session task
-list, within repository layout rules. Separate facts, decisions, assumptions,
-and unresolved questions. Cite sources for consequential claims.
+list, within repository layout rules. Cite sources for consequential claims.
+Mark replaced decisions as superseded and link their replacements.
 
-Inspect the implementation, consumers, tests, canonical docs, glossary, ADRs,
-and relevant issue and PR decisions. Resolve conflicts explicitly; current code
-or recency alone does not establish intent. Mark replaced decisions as
-superseded and link their replacements. Use parallel read-only investigations
-for independent questions. Wait for findings that could change a decision.
-
-For unfinished grilling, use `mattpocock-skills:grill-with-docs`. Work all
-questions whose prerequisites are settled in each round. Challenge candidate
-answers against evidence, alternatives, failure cases, compatibility, and
-consumers. Record the decision and rationale, then take the next round.
-If evidence leaves a near tie, choose the answer easiest to reverse and record
-the gap and risk. Resolve routine checkpoints yourself, including testing
-seams, ticket breakdown, review base, and retro fix selection.
-
-### Optional pressure tests
-
-Pressure testing is **off by default**. Enable it only if the user asks during
-grilling. Keep that choice for the same task, including reopened questions,
-unless the user withdraws it. While off, skip loading, setup, preflight, and
-critic calls. A completed grilling handoff needs no retrospective pressure test.
-
-When enabled, classify each question with a reason. A design-critical question
-has at least two answers the evidence permits, and its choice changes behavior,
-an interface, a consumer, or a recorded decision, or is hard to reverse.
-For each round with such questions, run one new
-[pressure test](../pressure-test/SKILL.md) before resolving them. Run setup and
-preflight as part of that test. Save its records in the planning folder. Give
-each question an ID, options, evidence, and current answer. Include other
-questions and their classifications so the critic can challenge them. Resolve
-classification disputes from evidence; add conceded questions to the test.
-
-Apply the first matching rule to each current answer in its coverage table:
-
-1. **Not assessed:** carry it to the next round; its dependent questions wait.
-   An answer changed after assessment is not assessed. Carried questions alone
-   can form the next round.
-2. **Converged:** resolve it with the assessed answer.
-3. **Objections remain:** choose from the evidence and objections. Keep the
-   assessed answer with its unresolved objections recorded, or carry a changed
-   answer under rule 1.
-
-Override the carry when a test reviewed none of its IDs, or a question ends two
-consecutive tests without assessment of its current answer. Decide it with the
-normal evidence-based challenge and continue. Count after applying rules 1–3;
-revisions do not reset the count. A reopened decision starts a new count and
-needs a fresh assessment even if its answer stays the same. A reviewed answer
-that later became stale still counts as a reviewed ID for the first condition.
-Critic failure does not block automode. Record each test's ending condition and
-why an answer was not assessed. Keep assessed answers' objections instead of
-claiming they were unassessed. Put these decisions, evidence, risks, and critic
-limits directly in the spec and any ticket or ADR that records them; these
-records must stand alone without links to disposable planning files.
+For unfinished grilling, use [`grill-with-research`](../grill-with-research/SKILL.md)
+and answer its questions and confirmations yourself instead of asking the user.
+Challenge candidate answers against evidence, alternatives, failure cases,
+compatibility, and consumers. Record the decision and rationale, then take the
+next round. If evidence leaves a near tie, or only a preference can decide,
+choose the answer easiest to reverse and record the gap and risk. Resolve
+routine checkpoints yourself, including testing seams, ticket breakdown, review
+base, and retro fix selection.
 
 ## Phases and completion checks
 
@@ -98,10 +54,10 @@ Existing specs and tickets can satisfy a phase after checking their content and
 current validity. An existing recommendation alone does not complete grilling.
 Run phases 4–7 per ticket in dependency order, then phase 8 once.
 
-1. **Grilling — `mattpocock-skills:grill-with-docs`.** Skip if complete.
-   Otherwise finish all design-critical questions and evaluate all research
-   that could change them. Record domain terms, decisions, and safe nonblocking
-   assumptions. Apply the optional pressure-test rules only when enabled.
+1. **Grilling — `dev-skills:grill-with-research`.** Skip if complete.
+   Otherwise continue until no meaningful unresolved decision remains and no
+   pending research could change one. Record domain terms, decisions, and safe
+   nonblocking assumptions.
 2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, publish and verify the
    spec with scope, decisions, and testing seams. Align any glossary entries
    added by this task with its decisions.
@@ -201,8 +157,7 @@ Require measured evidence for claims about external tool behavior.
 
 Report completed and blocked phases accurately, with evidence, review results,
 retro history limits, issue and PR links, and remaining work. Include requirement
-pin paths and hashes when used. For enabled pressure tests, list decisions whose
-current answers the critic did not assess. Distinguish instruction checks and
+pin paths and hashes when used. Distinguish instruction checks and
 simulated scenarios from demonstrated agent behavior. Stop for missing access,
 enforced restrictions, or repeated failures with no viable next step; retain
 the work and report the blocker.

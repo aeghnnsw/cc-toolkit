@@ -8,7 +8,8 @@ designs and decision records in `docs/` from their issue.
 
 - When a skill says to publish to the issue tracker, create a GitHub issue.
 - When a skill says to fetch a ticket, use
-  `gh issue view <number> --json number,title,state,labels,body,comments`.
+  `gh issue view <number> --json number,title,state,stateReason,labels,body,comments`.
+  `stateReason` shows whether a closed issue is completed or not planned.
   Outside a terminal, `--comments` prints only the comments, so the command
   prints nothing for an issue without comments.
 - Pull requests propose changes; they are not a separate request intake queue.

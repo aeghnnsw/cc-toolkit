@@ -285,3 +285,16 @@ _Avoid_: Verifier
 A git command whose own arguments name a new or reset local branch. A command
 that copies the name of an existing remote-tracking branch is not a branch
 creation.
+
+## Grilling language
+
+**Question filter**:
+The checks that a candidate interview question must pass before the agent
+asks it. The answer is not already available, research cannot settle it, the
+answer can change the plan, and its prerequisites are settled.
+_Avoid_: Quality gate, question triage
+
+**Planning folder**:
+The Git-ignored folder in the main checkout that holds one task's disposable
+planning files, research notes, and research scripts.
+_Avoid_: Planning directory, scratch dir

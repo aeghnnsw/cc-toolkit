@@ -228,7 +228,7 @@ a person or an agent wrote it.
 | Accepted architecture decisions | Commit concise records under `docs/adr/`. |
 | Agreed domain terminology | Commit a root `GLOSSARY.md` when a glossary is needed. |
 | Durable designs and review conclusions | Commit under a relevant `docs/` directory and link them from the issue or relevant documentation. |
-| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning directory `.scratch/<issue>-<description>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning directory to the main checkout before the worktree is removed. Promote useful conclusions into shared documentation. |
+| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning folder `.scratch/<issue>-<slug>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning folder to the main checkout before the worktree is removed. `repo-cleanup` deletes the planning folder of an issue that is closed as completed. Promote useful conclusions into shared documentation. |
 | Logs, caches, local worktrees, and generated binaries | Keep out of Git using the shared `.gitignore`. |
 | Personal tool settings and local-only notes | Keep outside the repository or exclude specific paths locally. |
 
