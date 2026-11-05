@@ -16,7 +16,8 @@ Pocock's skills installed.
 
 Before reading, creating, or updating issues and pull requests, read
 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). GitHub Issues
-tracks work; durable design documents can live in the repository.
+tracks work; durable design documents can live in the repository. Fetch an
+issue with `gh issue view <number> --json number,title,state,labels,body,comments`.
 
 ### Triage labels
 
@@ -89,6 +90,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - zsh stops a command when an unquoted glob matches no file. Quote the
   glob, such as `--include='*.md'`, or list tracked files with
   `git ls-files '<pattern>'`.
+- In Claude Code, `grep` is a shell function that runs ugrep. ugrep can
+  reject a variable range of 16 or more on both sides of the match, such as
+  `.{0,20}X.{0,20}`. Use `/usr/bin/grep -E` for such a pattern.
 - Use BSD tool options. GNU `timeout` is absent.
 
 ## Plugin changes

@@ -167,9 +167,11 @@ its own PR, rather than a central tracking issue.
    by its **Reviewed through** UTC timestamp. Read existing documentation issues
    to reuse relevant follow-ups. Set this run's cutoff before copying sessions.
 2. Select sessions by recorded repository and worktree metadata before searching
-   text. Claude Code stores JSONL under `~/.claude/projects/` with `cwd` fields
-   and subagents under `<session>/subagents/`. Codex stores JSONL under
-   `~/.codex/sessions/` with `cwd` in `session_meta`. Keep this metadata even
+   text. Read the default and the active config folders when they differ.
+   Claude Code stores JSONL under `projects/` in `~/.claude` or
+   `$CLAUDE_CONFIG_DIR`, with `cwd` fields and subagents under
+   `<session>/subagents/`. Codex stores JSONL under `sessions/` in `~/.codex`
+   or `$CODEX_HOME`, with `cwd` in `session_meta`. Keep this metadata even
    when it precedes the cutoff. Read records after the previous cutoff through
    this run's cutoff, including later records in sessions that started earlier.
    Compare parsed

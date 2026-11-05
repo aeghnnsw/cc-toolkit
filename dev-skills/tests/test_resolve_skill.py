@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import shutil
@@ -34,8 +35,14 @@ class ResolverCase(unittest.TestCase):
         self.workdir = self.tmp / "work"
         self.workdir.mkdir()
 
-    def run_resolver(self, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-        env = dict(os.environ, CLAUDE_CONFIG_DIR=str(self.claude_home), CODEX_HOME=str(self.codex_home))
+    def run_resolver(
+        self, *args: str, cwd: Path | None = None, extra_env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
+        # A T3 Code session sets CLAUDE_CODE_PLUGIN_CACHE_DIR; never read the real plugin folder.
+        inherited = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_PLUGIN_CACHE_DIR"}
+        env = dict(
+            inherited, CLAUDE_CONFIG_DIR=str(self.claude_home), CODEX_HOME=str(self.codex_home), **(extra_env or {})
+        )
         return subprocess.run(
             [sys.executable, str(SCRIPT), *args],
             capture_output=True,
@@ -47,9 +54,15 @@ class ResolverCase(unittest.TestCase):
     # Claude Code fixtures
 
     def claude_plugin(
-        self, name: str, records: list[dict], *, enabled: bool | None = True, market: str = "market"
+        self,
+        name: str,
+        records: list[dict],
+        *,
+        enabled: bool | None = True,
+        market: str = "market",
+        plugins_dir: Path | None = None,
     ) -> None:
-        registry = self.claude_home / "plugins" / "installed_plugins.json"
+        registry = (plugins_dir or self.claude_home / "plugins") / "installed_plugins.json"
         data = json.loads(registry.read_text()) if registry.exists() else {"version": 2, "plugins": {}}
         data["plugins"][f"{name}@{market}"] = records
         write(registry, json.dumps(data))
@@ -292,6 +305,82 @@ class ClaudeResolveTest(ResolverCase):
 
         self.assertEqual(completed.returncode, 1)
         self.assertIn("registry", completed.stderr)
+
+
+class PluginCacheDirTest(ResolverCase):
+    """CLAUDE_CODE_PLUGIN_CACHE_DIR names the folder of the plugin registry, as in a T3 Code session."""
+
+    def test_registry_in_the_plugin_cache_dir_is_used(self):
+        root = self.install_root("matt")
+        expected = make_skill(root, "skills/retro")
+        shared = self.tmp / "shared-plugins"
+        write(self.claude_home / "plugins" / "installed_plugins.json", json.dumps({"version": 2, "plugins": {}}))
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}], plugins_dir=shared)
+
+        completed = self.run_resolver("matt:retro", extra_env={"CLAUDE_CODE_PLUGIN_CACHE_DIR": str(shared)})
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+
+    def test_config_dir_registry_is_not_a_fallback(self):
+        # Claude Code reads only the folder in the variable, so this session does not load the plugin.
+        root = self.install_root("matt")
+        make_skill(root, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+        shared = self.tmp / "shared-plugins"
+        write(shared / "installed_plugins.json", json.dumps({"version": 2, "plugins": {}}))
+
+        completed = self.run_resolver("matt:retro", extra_env={"CLAUDE_CODE_PLUGIN_CACHE_DIR": str(shared)})
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn(f"not installed (registry {shared / 'installed_plugins.json'})", completed.stderr)
+
+    def test_leading_tilde_names_the_home_folder(self):
+        home = self.tmp / "home"
+        root = self.install_root("matt")
+        expected = make_skill(root, "skills/retro")
+        for value, folder in (("~/shared-plugins", home / "shared-plugins"), ("~", home)):
+            with self.subTest(value=value):
+                self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}], plugins_dir=folder)
+
+                completed = self.run_resolver(
+                    "matt:retro", extra_env={"HOME": str(home), "CLAUDE_CODE_PLUGIN_CACHE_DIR": value}
+                )
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+
+    def test_tilde_with_a_user_name_is_not_expanded(self):
+        # Claude Code loads no plugin for this value, so the resolver must not find one.
+        value = f"~{getpass.getuser()}/shared-plugins"
+
+        completed = self.run_resolver("matt:retro", extra_env={"CLAUDE_CODE_PLUGIN_CACHE_DIR": value})
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn(f"registry {value}/installed_plugins.json", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
+
+    def test_settings_still_come_from_the_config_dir(self):
+        root = self.install_root("matt")
+        make_skill(root, "skills/retro")
+        shared = self.tmp / "shared-plugins"
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}], enabled=False, plugins_dir=shared)
+
+        completed = self.run_resolver("matt:retro", extra_env={"CLAUDE_CODE_PLUGIN_CACHE_DIR": str(shared)})
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn(f"disabled in {self.claude_home / 'settings.json'}", completed.stderr)
+
+    def test_empty_value_uses_the_config_dir(self):
+        root = self.install_root("matt")
+        expected = make_skill(root, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+
+        completed = self.run_resolver("matt:retro", extra_env={"CLAUDE_CODE_PLUGIN_CACHE_DIR": ""})
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
 
 
 class CodexResolveTest(ResolverCase):

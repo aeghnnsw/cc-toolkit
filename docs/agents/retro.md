@@ -12,10 +12,12 @@ Never create or post to a catch-all tracking issue.
 2. Read existing documentation issues before recording findings. Reuse a
    matching issue. Add a known finding only when you have new evidence.
 3. Select sessions by repository and worktree metadata. Include the main
-   checkout, `trees/`, and `.claude/worktrees/`. Claude Code stores JSONL
-   transcripts under `~/.claude/projects/`, with `cwd` fields and subagents
-   under `<session>/subagents/`. Codex stores JSONL transcripts under
-   `~/.codex/sessions/`, with `cwd` in `session_meta`. Keep this metadata
+   checkout, `trees/`, and `.claude/worktrees/`. Read the default and the
+   active config folders when they differ. Claude Code stores JSONL
+   transcripts under `projects/` in `~/.claude` or `$CLAUDE_CONFIG_DIR`,
+   with `cwd` fields and subagents under `<session>/subagents/`. Codex
+   stores JSONL transcripts under `sessions/` in `~/.codex` or
+   `$CODEX_HOME`, with `cwd` in `session_meta`. Keep this metadata
    even when it precedes the previous cutoff. Do not select by session
    start time alone: an older session can contain newer records.
 4. Record the current UTC time as this run's cutoff, then copy selected
