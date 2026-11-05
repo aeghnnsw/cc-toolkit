@@ -1,7 +1,7 @@
 # Domain documentation
 
 Use one domain context for cc-toolkit. Agreed terms live in
-[CONTEXT.md](../../CONTEXT.md). Accepted architecture decisions live in
+[GLOSSARY.md](../../GLOSSARY.md). Accepted architecture decisions live in
 [../adr/](../adr/).
 
 Before changing terminology or architecture, read the glossary if present

@@ -4,7 +4,7 @@ Tracked in [issue #206](https://github.com/aeghnnsw/cc-toolkit/issues/206),
 with delivery in [#207](https://github.com/aeghnnsw/cc-toolkit/issues/207),
 [#208](https://github.com/aeghnnsw/cc-toolkit/issues/208), and
 [#209](https://github.com/aeghnnsw/cc-toolkit/issues/209).
-Terms are defined in [CONTEXT.md](../../CONTEXT.md).
+Terms are defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## Purpose and constraints
 
