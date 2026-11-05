@@ -5,59 +5,59 @@ description: Research the project, then grill the user only on decisions that re
 
 # Grill With Research
 
-Research first, so that every question of Matt Pocock's `grill-with-docs`
-interview needs the user's judgment. Invoking this skill includes the skills it
-names. It starts no implementation or automode.
+Research first, so that each `grill-with-docs` question needs the user's
+judgment. Start no implementation or automode.
 
 ## Load the Matt skills
 
-Open the `SKILL.md` of `mattpocock-skills:grill-with-docs` and follow the
-skills it loads. For an explicit-only skill that the skill list omits, resolve
-its path and read it:
+Open the `SKILL.md` of `mattpocock-skills:grill-with-docs`, then of each skill
+it names as `mattpocock-skills:<name>`. If the skill list omits an explicit-only
+skill and the user named this skill or a workflow that uses it, resolve and
+read it:
 
 ```bash
 python3 "<plugin-root>/scripts/resolve_skill.py" --host codex mattpocock-skills:grill-with-docs
 ```
 
-`<plugin-root>` is two levels above this skill folder. Resolve nested skills
-the same way. Report a skill that cannot load as a blocker; never use another
-workflow.
+`<plugin-root>` is two levels above this skill folder. Otherwise, or if a skill
+cannot load, stop and report the blocker; use no other workflow.
 
 ## Research
 
-Before each round, research every fact it depends on. For local facts,
-read the code, consumers, tests, docs, glossary, ADRs, and issue and PR
-decisions, with one fresh sub-agent per independent question. For external
-facts, only when local evidence cannot answer, use primary sources and trace
-each claim. Current code alone does not prove intent, and research never sets
-the user's preferences. Before the round, summarize the findings,
-missing access, and inconclusive results.
+Before each round, research the facts its questions need. For local facts, read
+the code, consumers, tests, docs, glossary, ADRs, and issue and PR decisions,
+with one fresh sub-agent per independent question. When local evidence cannot
+answer, use external primary sources and trace each claim. Code alone does not
+prove intent, and research never sets preferences. Then summarize findings,
+pending research, missing access, and inconclusive results.
 
-Research may write and run scripts in the planning folder, or in one
-`mktemp -d` folder removed by path. Keep each script that a finding cites. Research never edits tracked files, installs into the project
-environment, or changes shared state (pushes, issues, messages). A
-citable scientific result is an experiment run, not research.
+Research may run scripts in the planning folder, where cited scripts stay, or in
+one `mktemp -d` folder removed by path. Research never edits tracked files,
+installs into the project environment, or changes shared state (pushes, issues,
+messages). A citable scientific result is an experiment run.
 
 ## Planning folder
 
-Use the repository's planning folder rule, or `.scratch/<issue>-<slug>/`
-in the main checkout (`.scratch/<YYYYMMDD>-<slug>/` until an issue exists). If
-Git does not ignore `.scratch/`, add it to `.git/info/exclude` and tell the
-user. Nothing outside the folder links to it. Use `dev-skills:step-workflow`
+Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the main
+checkout. Until an issue exists, use `.scratch/<YYYYMMDD>-<slug>/`, then rename
+it. If Git does not ignore `.scratch/`, add it to `.git/info/exclude` and tell
+the user. Nothing outside the folder links to it. Use `dev-skills:step-workflow`
 prefixes: grilling is the next free step. `<step>_research.md` has one section
-per question ID: finding, source, status (verified, assumed, or unresolved),
-and cited files. Name scripts, outputs, and long notes `<step>_<n>_<name>`.
-Never renumber a cited file.
+per question ID: finding, source, status (verified, assumed, pending, or
+unresolved), and cited files. Name other files `<step>_<n>_<name>`. Never
+renumber a cited file.
 
 ## Question filter
 
-Before each round, drop a question if the project or conversation
-answers it, research can settle it, its answer cannot change the plan, or its
-prerequisites, including pending research, are open. Drop duplicates, generic
-checklists, and requests to approve authorized research. Settle routine,
-reversible details by existing conventions and state each material assumption.
+Before each round, drop a question that the project or conversation answers,
+that research can settle, or that cannot change the plan. Drop duplicates,
+generic checklists, and requests to approve authorized research. Hold a question
+while its prerequisites, including pending research, are open. Narrow a broad
+question to what research leaves open. Settle routine, reversible details by
+convention and state each material assumption.
 
-Ask the rest as `grilling` does, with the evidence, viable options, a
-reasoned recommendation, and why the user's judgment is needed. After
-each answer, research what changed and reopen affected decisions. Stop asking
-when no meaningful unresolved decision remains.
+Ask the rest as `grilling` does, with evidence, viable options, a reasoned
+recommendation, and why the user's judgment is needed. Missing access does not
+hold a question. After each answer, research what changed and reopen affected
+decisions. When no meaningful unresolved decision remains, finish as `grilling`
+does.

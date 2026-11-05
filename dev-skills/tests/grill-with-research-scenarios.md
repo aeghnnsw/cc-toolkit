@@ -19,8 +19,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/grill-with-res
 
 ## Scenarios
 
-Unless a case says otherwise, the user asked to grill a plan in a repository,
-for issue 42, and the Matt skills load.
+Unless a case says otherwise, the user invoked `grill-with-research` by name to
+grill a plan in a repository, for issue 42, and the Matt skills load.
 
 1. **Answer in project files.** A candidate question asks which test runner
    the project uses. `pyproject.toml` configures pytest.
@@ -60,6 +60,10 @@ for issue 42, and the Matt skills load.
     `mattpocock-skills` plugin is not installed.
 16. **Done.** Research settles every remaining candidate question. The user's
     original request also said "then build it".
+17. **Started from the description.** The user asked to grill a plan and named
+    no skill. The agent started `grill-with-research` from its description. The
+    Skill tool refuses `mattpocock-skills:grill-with-docs`, or in Codex, the
+    skill list omits it.
 
 ## Expected results
 
@@ -70,17 +74,18 @@ for issue 42, and the Matt skills load.
 | Conflicting decisions | Research the ADR, PR, issue, comments, and tests. Then ask the user which interface is intended, with the evidence and a recommendation. | Treating the newer code as proof of intent; asking before the research. | The cited ADR, PR, and issue, and the open conflict recorded as unresolved. |
 | Research removes a choice | Drop option 2. If one viable option remains, record it and do not ask. | Offering option 2 to the user. | The cited host documentation. |
 | Preference trade-off | Ask the user to choose, with the evidence, both options, a reasoned recommendation, and why the user's judgment is needed. | Choosing for the user; treating the priority as a researched fact. | The researched delivery and cost estimates and their sources. |
-| Pending research | Ask the naming question now. Hold the deployment question until the finding returns. | Asking the deployment question; guessing the requirement. | The pending research marked in the summary. |
+| Pending research | Ask the naming question now. Hold the deployment question until the finding returns. | Asking the deployment question; guessing the requirement; waiting for the finding before the naming question. | The residency finding with status `pending`, and the pending research named in the summary. |
 | Existing convention | Follow the documented convention and state the assumption. | Asking whether to follow it. | The cited convention. |
 | Broad question | Research the stack and workload first. Ask only about a remaining requirement or trade-off that could change the recommendation. | Asking "Which database should we use?" as written. | The current database, the workload findings, and the remaining gap. |
 | Changed evidence | Research what the answer changed, reopen the first question, and hold the questions that depend on it. | Keeping the first answer unchanged; asking its dependent questions. | The new finding and the reopened decision in `01_research.md`. |
 | Missing access | Report the missing access, mark the finding unresolved, and ask the user only if the hosting decision still depends on it. | Treating the vendor's behavior as a verified fact. | The summary that names the inaccessible source. |
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
-| No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
+| No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to `.git/info/exclude` and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| Hidden Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `grilling` and `domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
+| Hidden Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
+| Started from the description | Stop and report the blocker. Tell the user to invoke `grill-with-research` by name. | Reading the hidden skill by path; running `grilling` and `domain-modeling` without it. | The Skill tool's refusal, or the omitted skill-list entry. |
 
 ## Validation limits
 
