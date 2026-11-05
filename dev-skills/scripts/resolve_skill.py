@@ -8,10 +8,13 @@ For each name that fails, print one stderr line that names the cause, and
 continue with the next name. Exit 0 when every name resolves, 1 when any
 name fails, and 2 on a usage error.
 
-Claude Code (default): read plugins/installed_plugins.json under
-CLAUDE_CONFIG_DIR (default ~/.claude). An install record for a project that
-contains the current directory comes before the user-scope record. A plugin
-set to false under enabledPlugins in the user settings.json is disabled.
+Claude Code (default): read installed_plugins.json in the plugins folder.
+Like Claude Code, use CLAUDE_CODE_PLUGIN_CACHE_DIR as that folder when it is
+set and not empty; a leading "~" or "~/" names the home folder. Otherwise
+use plugins/ under CLAUDE_CONFIG_DIR (default ~/.claude). An install record
+for a project that contains the current directory comes before the
+user-scope record. A plugin set to false under enabledPlugins in the user
+settings.json under CLAUDE_CONFIG_DIR is disabled.
 
 Codex: the [plugins."PLUGIN@MARKETPLACE"] table in config.toml under
 CODEX_HOME (default ~/.codex) must set enabled = true. The highest numeric
@@ -69,10 +72,21 @@ def is_within(child: Path, parent: Path) -> bool:
     return True
 
 
+def claude_plugins_dir(home: Path) -> Path:
+    """Return the folder of the Claude Code plugin registry and cache."""
+    shared = os.environ.get("CLAUDE_CODE_PLUGIN_CACHE_DIR")
+    if not shared:
+        return home / "plugins"
+    # Claude Code expands only "~" and "~/..."; a "~name" value stays as written.
+    if shared == "~" or shared.startswith("~/"):
+        shared = str(Path.home()) + shared[1:]
+    return Path(shared)
+
+
 def claude_plugin_root(plugin: str) -> Path:
     """Return the Claude Code install path of PLUGIN for the current directory."""
     home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-    registry = home / "plugins" / "installed_plugins.json"
+    registry = claude_plugins_dir(home) / "installed_plugins.json"
     settings = home / "settings.json"
     try:
         entries = load_json(registry).get("plugins")
