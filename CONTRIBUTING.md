@@ -226,7 +226,7 @@ a person or an agent wrote it.
 | Installable skills, agents, hooks, scripts, and required resources | Commit inside the owning plugin directory. |
 | Shared contributor instructions and agent configuration | Commit `CLAUDE.md`, its `AGENTS.md` symlink, and `docs/agents/`. |
 | Accepted architecture decisions | Commit concise records under `docs/adr/`. |
-| Agreed domain terminology | Commit a root `CONTEXT.md` when a glossary is needed. |
+| Agreed domain terminology | Commit a root `GLOSSARY.md` when a glossary is needed. |
 | Durable designs and review conclusions | Commit under a relevant `docs/` directory and link them from the issue or relevant documentation. |
 | Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning directory `.scratch/<issue>-<description>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning directory to the main checkout before the worktree is removed. Promote useful conclusions into shared documentation. |
 | Logs, caches, local worktrees, and generated binaries | Keep out of Git using the shared `.gitignore`. |
@@ -368,7 +368,7 @@ identify the relevant path or package and host. Version failures include
 the ownership reason and the version that must be exceeded. Fix the first
 reported error and rerun the command. The result includes elapsed execution
 time. See the [design](docs/design/package-validation.md) for the rule schema
-and ownership precedence. Terms are defined in [CONTEXT.md](CONTEXT.md).
+and ownership precedence. Terms are defined in [GLOSSARY.md](GLOSSARY.md).
 
 The [pull-request workflow](.github/workflows/package-validation.yml) runs
 the same command against the exact pull-request head and target SHA. It

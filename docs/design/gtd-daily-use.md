@@ -2,7 +2,7 @@
 
 The user selects work through `gtd-next`. The complete spec and single
 implementation ticket are [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
-See the [GTD glossary](../../CONTEXT.md#gtd-language) for the agreed terms.
+See the [GTD glossary](../../GLOSSARY.md#gtd-language) for the agreed terms.
 
 ## Decisions
 

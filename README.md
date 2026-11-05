@@ -28,7 +28,7 @@ cc-toolkit/
 ├── CLAUDE.md                         # Shared contributor instructions
 ├── AGENTS.md                         # Symlink to CLAUDE.md
 ├── CONTRIBUTING.md                   # Repository boundaries and verification
-├── CONTEXT.md                        # Glossary of agreed domain terms
+├── GLOSSARY.md                       # Glossary of agreed domain terms
 ├── CHANGELOG.md                      # Plugin and repository changes
 ├── package-validation.json           # Package and release validation rules
 ├── scripts/validate_packages.py      # Package and release validator

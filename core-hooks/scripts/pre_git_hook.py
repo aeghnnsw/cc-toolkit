@@ -329,7 +329,7 @@ def branch_created_by_worktree_add(words):
     branch after its basename. A commit-ish after the path names no branch
     (#281). With one, git makes a local branch only by copying the name of an
     existing remote-tracking branch, as `git checkout <name>` does. That is
-    not a branch creation (see CONTEXT.md).
+    not a branch creation (see GLOSSARY.md).
     """
     positional = []
     detach = False

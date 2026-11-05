@@ -6,7 +6,7 @@ on:
       - 'docs/**'
       - 'AGENTS.md'
       - 'CLAUDE.md'
-      - 'CONTEXT.md'
+      - 'GLOSSARY.md'
       - 'CONTRIBUTING.md'
       - 'README.md'
       - 'CHANGELOG.md'
