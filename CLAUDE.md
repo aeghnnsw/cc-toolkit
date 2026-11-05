@@ -90,9 +90,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - zsh stops a command when an unquoted glob matches no file. Quote the
   glob, such as `--include='*.md'`, or list tracked files with
   `git ls-files '<pattern>'`.
-- In Claude Code, `grep` is a shell function that runs ugrep. ugrep rejects
-  a `{0,N}` range on both sides of a match, such as `.{0,20}X.{0,20}`. Use
-  `/usr/bin/grep -E` for such a pattern.
+- In Claude Code, `grep` is a shell function that runs ugrep. ugrep can
+  reject a variable range of 16 or more on both sides of the match, such as
+  `.{0,20}X.{0,20}`. Use `/usr/bin/grep -E` for such a pattern.
 - Use BSD tool options. GNU `timeout` is absent.
 
 ## Plugin changes

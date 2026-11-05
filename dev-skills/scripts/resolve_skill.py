@@ -8,11 +8,11 @@ For each name that fails, print one stderr line that names the cause, and
 continue with the next name. Exit 0 when every name resolves, 1 when any
 name fails, and 2 on a usage error.
 
-Claude Code (default): read installed_plugins.json in the plugins folder.
-Like Claude Code, use CLAUDE_CODE_PLUGIN_CACHE_DIR as that folder when it is
-set and not empty. A value of "~", or a value that starts with "~/", starts
-at the home folder; a "~name" value is not expanded. Otherwise use plugins/
-under CLAUDE_CONFIG_DIR (default ~/.claude). An install record
+Claude Code (default): read installed_plugins.json in the plugins directory.
+Like Claude Code, use CLAUDE_CODE_PLUGIN_CACHE_DIR as that directory when it
+is set and not empty. A value of "~", or a value that starts with "~/",
+starts at the home directory; a "~name" value is not expanded. Otherwise use
+plugins/ under CLAUDE_CONFIG_DIR (default ~/.claude). An install record
 for a project that contains the current directory comes before the
 user-scope record. A plugin set to false under enabledPlugins in the user
 settings.json under CLAUDE_CONFIG_DIR is disabled.
@@ -74,7 +74,7 @@ def is_within(child: Path, parent: Path) -> bool:
 
 
 def claude_plugins_dir(config_dir: Path) -> Path:
-    """Return the folder of the Claude Code plugin registry and cache."""
+    """Return the directory that holds installed_plugins.json and the plugin cache."""
     cache_dir = os.environ.get("CLAUDE_CODE_PLUGIN_CACHE_DIR")
     if not cache_dir:
         return config_dir / "plugins"
@@ -86,9 +86,9 @@ def claude_plugins_dir(config_dir: Path) -> Path:
 
 def claude_plugin_root(plugin: str) -> Path:
     """Return the Claude Code install path of PLUGIN for the current directory."""
-    home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-    registry = claude_plugins_dir(home) / "installed_plugins.json"
-    settings = home / "settings.json"
+    config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    registry = claude_plugins_dir(config_dir) / "installed_plugins.json"
+    settings = config_dir / "settings.json"
     try:
         entries = load_json(registry).get("plugins")
     except (OSError, ValueError) as error:
