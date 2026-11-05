@@ -53,7 +53,7 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
     exists. The repository documents no planning folder.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
-14. **Hidden Matt skill.** In Claude Code, the Skill tool refuses
+14. **User-invoked Matt skill.** In Claude Code, the Skill tool refuses
     `mattpocock-skills:grill-with-docs` because the skill is user-invoked. In
     Codex, the skill list omits it.
 15. **Missing Matt skill.** The resolver reports that the
@@ -84,10 +84,10 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| Hidden Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
+| User-invoked Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
-| Started from the description | Stop and report the blocker. Tell the user to invoke `grill-with-research` by name. | Reading the hidden skill by path; running `grilling` and `domain-modeling` without it. | The Skill tool's refusal, or the omitted skill-list entry. |
+| Started from the description | Stop and report the blocker. Tell the user to invoke `grill-with-research` by name. | Reading the user-invoked skill by path; running `grilling` and `domain-modeling` without it. | The Skill tool's refusal, or the omitted skill-list entry. |
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
 
 ## Validation limits
@@ -118,13 +118,17 @@ was changed to close these gaps.
 **Live observations.** In a Claude Code session with `dev-skills` 3.33.0, the
 Skill tool refused `mattpocock-skills:grill-with-docs` and said: "Do not
 replicate this skill's workflow by other means — it is reserved for explicit
-user invocation." The skill text now reads a hidden skill by path only when the
+user invocation." The skill text now reads a user-invoked skill by path only when the
 user named this skill or a workflow that uses it. Case 14 states this
 condition, and case 17 covers the other condition. The resolver found
 `grill-with-docs`, `grilling`, and `domain-modeling` for Claude Code, and with
-`--host codex` for Codex, with exit status 0. For a missing skill, it printed
-`skill no-such-skill not found` with exit status 1. For a missing plugin, it
-printed `plugin no-such-plugin is not installed` with exit status 1. No full
+`--host codex` for Codex, with exit status 0. On both hosts, `grilling` and
+`domain-modeling` allow model invocation, and `grill-with-docs` does not. For a
+missing skill, the resolver printed `skill no-such-skill not found` on both
+hosts, with exit status 1. For a missing plugin, it printed
+`plugin no-such-plugin is not installed` for Claude Code and
+`plugin no-such-plugin is not enabled in ~/.codex/config.toml` for Codex, with
+exit status 1. No full
 grilling session ran, because the installed `dev-skills` does not include this
 skill.
 

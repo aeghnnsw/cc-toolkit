@@ -154,7 +154,9 @@ and 24: a choice that only a preference can decide, and the confirmation step
 of `grilling`. Both host copies now treat such a choice like a near tie and
 answer the wrapper's confirmations. Case 23's expected result now names the
 easiest answer to reverse. The other gaps that it reported concern text that
-this issue did not change.
+this issue did not change. The Codex copy differs only in its skill-loading
+lines and has no version line (checked with `diff`), so the result also covers
+its plan and phase text.
 
 This was a simulated instruction review. No full automode workflow ran.
 

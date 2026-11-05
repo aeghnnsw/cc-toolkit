@@ -66,7 +66,7 @@ class GrillWithResearchTest(unittest.TestCase):
             if heading != LOAD_HEADING:
                 self.assertEqual(claude[heading], codex[heading], f"{heading!r} differs between hosts")
 
-    def test_each_copy_resolves_hidden_matt_skills_for_its_host(self) -> None:
+    def test_each_copy_resolves_user_invoked_matt_skills_for_its_host(self) -> None:
         claude, codex = (sections(wrapper(host)[1])[LOAD_HEADING] for host in HOSTS)
         self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"', claude)
         self.assertIn('"<plugin-root>/scripts/resolve_skill.py" --host codex', codex)

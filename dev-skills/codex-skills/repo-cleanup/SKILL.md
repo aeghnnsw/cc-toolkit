@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-description: Clean merged worktrees and branches, reconcile completed issues, and update the Default Branch.
+description: Clean merged worktrees and branches, reconcile completed issues, delete their planning folders, and update the Default Branch.
 ---
 
 # Repository Cleanup
