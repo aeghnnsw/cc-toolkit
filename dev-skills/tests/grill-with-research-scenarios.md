@@ -64,6 +64,8 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
     no skill. The agent started `grill-with-research` from its description. The
     Skill tool refuses `mattpocock-skills:grill-with-docs`, or in Codex, the
     skill list omits it.
+18. **No project.** The user asks to grill a career decision. No repository or
+    project is open, and the user names no skill.
 
 ## Expected results
 
@@ -81,11 +83,12 @@ grill a plan in a repository, for issue 42, and the Matt skills load.
 | Missing access | Report the missing access, mark the finding unresolved, and ask the user only if the hosting decision still depends on it. | Treating the vendor's behavior as a verified fact. | The summary that names the inaccessible source. |
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
-| Untracked folder not ignored | Add `/.scratch/` to `.git/info/exclude` and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
+| Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
 | Hidden Matt skill | Run the resolver for the host, read the resolved `SKILL.md`, and follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. | Asking the user to invoke the skill by hand; using another workflow. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
 | Started from the description | Stop and report the blocker. Tell the user to invoke `grill-with-research` by name. | Reading the hidden skill by path; running `grilling` and `domain-modeling` without it. | The Skill tool's refusal, or the omitted skill-list entry. |
+| No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
 
 ## Validation limits
 
@@ -94,3 +97,47 @@ does not demonstrate a full grilling session in Claude Code or Codex. Record
 static checks, simulated reviews, and live observations separately.
 
 ## Review record
+
+### 2026-11-05
+
+**Static checks.** `dev-skills/tests/test_grill_with_research.py` checks the
+description, the invocation policy, the host differences, the resolver lines,
+and the 400-word body limit. The root tests, the package and release
+validator, and the Codex skill-creator validator pass.
+
+**Simulated review, round 1.** Two fresh agents, one for each host copy, read
+the skill, the Matt skills, and cases 1–16. They did not receive the expected
+results. Both chose the expected actions in 14 cases. In cases 8 and 10, both
+said that the text did not decide the next action. They also reported these
+gaps: no `pending` status, a filter that dropped questions that wait for
+research, nested skill names without the plugin prefix, cited scripts that a
+temporary folder could delete, no rename for a date-keyed folder, and a stop
+rule that conflicted with the confirmation step of `grilling`. The skill text
+was changed to close these gaps.
+
+**Live observations.** In a Claude Code session with `dev-skills` 3.33.0, the
+Skill tool refused `mattpocock-skills:grill-with-docs` and said: "Do not
+replicate this skill's workflow by other means — it is reserved for explicit
+user invocation." The skill text now reads a hidden skill by path only when the
+user named this skill or a workflow that uses it. Case 14 states this
+condition, and case 17 covers the other condition. The resolver found
+`grill-with-docs`, `grilling`, and `domain-modeling` for Claude Code, and with
+`--host codex` for Codex, with exit status 0. For a missing skill, it printed
+`skill no-such-skill not found` with exit status 1. For a missing plugin, it
+printed `plugin no-such-plugin is not installed` with exit status 1. No full
+grilling session ran, because the installed `dev-skills` does not include this
+skill.
+
+**Simulated review, round 2.** One fresh agent read the changed text of both
+copies and cases 6, 8, 10, 12, 14, 16, and 17. Both copies gave the expected
+actions in all seven cases. The agent reported that an "Otherwise" sentence
+could be read as a stop after a successful load, and that the Codex copy could
+not tell an explicit-only skill from a missing one. The text now says "Without
+that request" and "If the skill list omits one".
+
+**Simulated review, round 3.** One fresh agent read the final text and cases
+14, 17, and 18. Both copies gave the expected actions in all three cases. The
+agent reported that the stop in case 17 did not say what to tell the user. The
+text now asks the user to name this skill.
+
+These were simulated instruction reviews and short live checks.

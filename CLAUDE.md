@@ -17,7 +17,8 @@ Pocock's skills installed.
 Before reading, creating, or updating issues and pull requests, read
 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). GitHub Issues
 tracks work; durable design documents can live in the repository. Fetch an
-issue with `gh issue view <number> --json number,title,state,labels,body,comments`.
+issue with
+`gh issue view <number> --json number,title,state,stateReason,labels,body,comments`.
 
 ### Triage labels
 

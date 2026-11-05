@@ -144,6 +144,20 @@ from these expected results.
 
 ## Review record
 
+### 2026-11-05
+
+One fresh agent read the 24 scenario inputs and the Claude Code copy, with
+`grill-with-research` and the Matt skills that it loads. It did not receive the
+expected results. It chose the intended next actions and blocked work in all 24
+cases, and it found no pressure-test text. It reported two gaps for cases 23
+and 24: a choice that only a preference can decide, and the confirmation step
+of `grilling`. Both host copies now treat such a choice like a near tie and
+answer the wrapper's confirmations. Case 23's expected result now names the
+easiest answer to reverse. The other gaps that it reported concern text that
+this issue did not change.
+
+This was a simulated instruction review. No full automode workflow ran.
+
 ### 2026-10-27
 
 Two fresh agents read the 33 scenario inputs and one host copy each. They did

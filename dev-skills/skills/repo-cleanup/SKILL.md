@@ -54,7 +54,8 @@ complete while a required closure is unverified.
 - Inspect each planning folder: the repository's documented location, or
   `.scratch/<issue>-<slug>/` in the main checkout. When its issue is closed as
   completed, delete the folder by exact path. Keep and report the folders of
-  open or not-planned issues and folders with no issue key.
+  open or not-planned issues and folders with no issue key, such as a date
+  key.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
 - Report what was cleaned and retained, with a reason for each retained item.

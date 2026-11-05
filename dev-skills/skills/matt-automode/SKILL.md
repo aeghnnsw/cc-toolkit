@@ -43,8 +43,9 @@ and answer its questions and confirmations yourself instead of asking the user.
 Challenge candidate answers against evidence, alternatives, failure cases,
 compatibility, and consumers. Record the decision and rationale, then take the
 next round. If evidence leaves a near tie, or only a preference can decide,
-choose the answer easiest to reverse and record the gap and risk. Resolve routine checkpoints yourself, including testing
-seams, ticket breakdown, review base, and retro fix selection.
+choose the answer easiest to reverse and record the gap and risk. Resolve
+routine checkpoints yourself, including testing seams, ticket breakdown, review
+base, and retro fix selection.
 
 ## Phases and completion checks
 

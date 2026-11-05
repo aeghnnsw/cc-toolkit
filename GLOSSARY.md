@@ -295,6 +295,6 @@ answer can change the plan, and its prerequisites are settled.
 _Avoid_: Quality gate, question triage
 
 **Planning folder**:
-The untracked folder in the main checkout that holds one task's disposable
+The Git-ignored folder in the main checkout that holds one task's disposable
 planning files, research notes, and research scripts.
 _Avoid_: Planning directory, scratch dir
