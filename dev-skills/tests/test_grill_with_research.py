@@ -79,13 +79,13 @@ class GrillWithResearchTest(unittest.TestCase):
         self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"', claude)
         self.assertIn('"<plugin-root>/scripts/resolve_skill.py" --host codex', codex)
 
-    def test_each_copy_loads_grilling_and_domain_modeling_not_grill_with_docs(self) -> None:
+    def test_each_copy_names_grilling_and_domain_modeling_not_grill_with_docs(self) -> None:
         for host in HOSTS:
-            load = load_section(host)
+            _, body = wrapper(host)
             with self.subTest(host=host):
                 for skill in MATT_SKILLS:
-                    self.assertIn(skill, load)
-                self.assertNotIn("grill-with-docs", wrapper(host)[1])
+                    self.assertIn(skill, sections(body)[LOAD_HEADING])
+                self.assertNotIn("grill-with-docs", body)
 
     def test_each_body_stays_within_the_word_limit(self) -> None:
         for host in HOSTS:

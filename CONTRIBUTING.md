@@ -63,11 +63,7 @@ a change alters the purpose of a skill, update that purpose in
 `longDescription` and in the README **Skills:** line.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
-  `version`. Codex copies carry only `name` and `description`. A user-invoked
-  skill sets `disable-model-invocation: true` in the Claude frontmatter, and
-  `allow_implicit_invocation: false` under `policy:` in the Codex copy's
-  `agents/openai.yaml`. A Codex copy without that file allows implicit
-  invocation. The Codex
+  `version`. Codex copies carry only `name` and `description`. The Codex
   skill-creator validator rejects Claude-only keys, a `description` longer
   than 1024 characters, and a `description` that contains `<` or `>`. Run
   the skill-creator validator on Codex copies only. Codex installs the
@@ -83,6 +79,12 @@ a change alters the purpose of a skill, update that purpose in
 
   A valid copy prints `Skill is valid!`. The repository validator checks
   the headers of both copies.
+- **Invocation policy.** By default, the model can start a skill when the
+  request matches its description. A user-invoked skill starts only when the
+  user names it. To make a skill user-invoked, set
+  `disable-model-invocation: true` in the Claude frontmatter, and
+  `allow_implicit_invocation: false` under `policy:` in the Codex copy's
+  `agents/openai.yaml`. A Codex copy without that file is not user-invoked.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
   can be bash or zsh. Write each block to run in both shells. Store an exit
   code in a name such as `rc`, because `status` is read-only in zsh. Pass a

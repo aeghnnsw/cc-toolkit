@@ -1,10 +1,11 @@
 # Grill With Research scenario review
 
-> Superseded in part on 2026-11-05 by
-> [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365): the wrapper
-> loads `grilling` and `domain-modeling` directly, not `grill-with-docs`. The
-> #358 review record below describes the earlier loading rule, and its case
-> numbers refer to the earlier list.
+> On 2026-11-05,
+> [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365) changed the
+> loading rule: the wrapper loads `grilling` and `domain-modeling` directly,
+> not `grill-with-docs`. The cases and expected results follow #365. The #358
+> review record describes the earlier rule, and its case numbers refer to the
+> earlier list.
 
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358)
 and [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365).
@@ -60,8 +61,9 @@ for issue 42, and the Matt skills load.
     exists. The repository documents no planning folder.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
-14. **Omitted Matt skill.** In Codex, the skill list omits
-    `mattpocock-skills:domain-modeling`. The resolver finds it.
+14. **Omitted Matt skill.** In Claude Code, the Skill tool lacks
+    `mattpocock-skills:domain-modeling`. In Codex, the skill list omits that
+    skill. The resolver finds the skill, which allows model invocation.
 15. **Missing Matt skill.** The resolver reports that the
     `mattpocock-skills` plugin is not installed.
 16. **Done.** Research settles every remaining candidate question. The user's
@@ -72,9 +74,10 @@ for issue 42, and the Matt skills load.
     project is open, and the user names no skill.
 19. **User-invoked Matt skill.** A new version makes
     `mattpocock-skills:grilling` user-invoked. In Claude Code, the Skill tool
-    refuses it, or lacks it and its frontmatter sets
-    `disable-model-invocation: true`. In Codex, its `agents/openai.yaml` sets
-    `allow_implicit_invocation: false`, and the skill list omits it.
+    refuses `grilling`, or lacks `grilling` while the resolved frontmatter sets
+    `disable-model-invocation: true`. In Codex, the `agents/openai.yaml` file
+    of `grilling` sets `allow_implicit_invocation: false`, and the skill list
+    omits `grilling`.
 
 ## Expected results
 
@@ -93,7 +96,7 @@ for issue 42, and the Matt skills load.
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| Omitted Matt skill | Run the resolver with `--host codex`, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
+| Omitted Matt skill | Run the resolver (with `--host codex` in Codex), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
 | Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
@@ -141,6 +144,16 @@ Codex check runs before the file is opened.
 Neither copy reads a user-invoked `SKILL.md` past its frontmatter. The agent
 named small risks that were not changed: any Skill tool refusal stops the
 skill, and "A Matt skill cannot load" does not list its causes.
+
+**Simulated review, round 4.** After a second code review, case 14 also
+covers Claude Code. A fresh agent read both final copies and cases 14 and 19.
+All sub-cases passed. It reported that the Claude Code read limit came after
+the condition that it guards. The limit now comes with the resolver step,
+before the checks.
+
+**Simulated review, round 5.** A fresh agent read the Claude Code load section
+for three sub-cases: an omitted skill that allows model invocation, an omitted
+skill with `disable-model-invocation: true`, and a refusal. All three passed.
 
 ### 2026-11-05, issue #358
 

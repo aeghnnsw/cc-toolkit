@@ -12,7 +12,8 @@ Start no implementation or automode.
 ## Load the Matt skills
 
 Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
-the Skill tool, and follow both. If the Skill tool lacks one, resolve its path:
+the Skill tool, and follow both. If the Skill tool lacks one, resolve its path
+and read only the frontmatter:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" \
@@ -22,8 +23,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" \
 In these cases, stop and report the blocker; use no other workflow:
 
 - The Skill tool refuses a Matt skill.
-- A resolved `SKILL.md` sets `disable-model-invocation: true`. Read only its
-  frontmatter to check.
+- The frontmatter sets `disable-model-invocation: true`.
 - A Matt skill cannot load.
 
 Otherwise, follow the resolved `SKILL.md`.
@@ -62,8 +62,8 @@ prerequisites, including pending research, are open. Narrow a broad question to
 what research leaves open. Settle routine, reversible details by convention;
 state each material assumption.
 
-Ask the rest as `grilling` does, with evidence, viable options, a
+Ask the rest as `grilling` does, with evidence, viable options, a reasoned
 recommendation, and why the user must decide. Missing access does not hold a
 question. After each answer, research what changed and reopen affected
-decisions. When no unresolved decision remains, finish as `grilling`
+decisions. When no meaningful unresolved decision remains, finish as `grilling`
 does.
