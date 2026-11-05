@@ -62,11 +62,12 @@ each plugin and lists its skills.
 Development workflows, repository hygiene, documentation, and review.
 
 **Skills:**
-- **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, reconcile completed issues, and update the Default Branch
+- **repo-cleanup**: Remove merged worktrees and branches, prune the upstream remote, reconcile completed issues, delete the planning folders of completed issues, and update the Default Branch
 - **step-workflow**: Step-based file naming and folder organization using numbered prefixes (01_, 02_, 03_) for clear workflow order
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
 - **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
-- **matt-automode**: Run Matt’s planning-to-merge workflow without human checkpoints; reuse completed grilling, pressure-test only on request, and record retros in each PR with separate issues for larger findings; requires the Matt skills plugin
+- **grill-with-research**: Research the project before each round of Matt’s grill-with-docs interview, drop the questions that research can settle, and ask the rest in dependency order with evidence and a recommendation; research can run scripts in an untracked planning folder; requires the Matt skills plugin
+- **matt-automode**: Run Matt’s planning-to-merge workflow without human checkpoints; grill with grill-with-research and answer its questions itself, reuse completed grilling, and record retros in each PR with separate issues for larger findings; requires the Matt skills plugin
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or task orchestration decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. The user or a calling skill can choose the critic model from the two allowed models of its family. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **sci-project-layout**: Set up or adopt the layout of a scientific Python research project, and find where a file goes in it: one store for data and results that every worktree finds, one folder for each experiment and each run, and read-only cited runs for the results you keep
@@ -77,6 +78,7 @@ Development workflows, repository hygiene, documentation, and review.
 **Codex skills:**
 - **doc-update**
 - **goal-rubric**
+- **grill-with-research**
 - **lean-tests**
 - **matt-automode**
 - **pressure-test**
