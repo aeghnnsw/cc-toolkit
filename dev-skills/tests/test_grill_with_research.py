@@ -43,7 +43,13 @@ def sections(body: str) -> dict[str, str]:
 
 
 def wrapper(host: str) -> tuple[dict[str, str], str]:
+    """Return the frontmatter fields and the body of one host copy."""
     return split_skill(PLUGIN_ROOT / host / "grill-with-research" / "SKILL.md")
+
+
+def load_section(host: str) -> str:
+    _, body = wrapper(host)
+    return sections(body)[LOAD_HEADING]
 
 
 class GrillWithResearchTest(unittest.TestCase):
@@ -68,18 +74,18 @@ class GrillWithResearchTest(unittest.TestCase):
             if heading != LOAD_HEADING:
                 self.assertEqual(claude[heading], codex[heading], f"{heading!r} differs between hosts")
 
-    def test_each_copy_resolves_missing_matt_skills_for_its_host(self) -> None:
-        claude, codex = (sections(wrapper(host)[1])[LOAD_HEADING] for host in HOSTS)
+    def test_each_copy_names_the_resolver_for_its_host(self) -> None:
+        claude, codex = (load_section(host) for host in HOSTS)
         self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"', claude)
         self.assertIn('"<plugin-root>/scripts/resolve_skill.py" --host codex', codex)
 
-    def test_each_copy_loads_the_model_invocable_matt_skills(self) -> None:
+    def test_each_copy_loads_grilling_and_domain_modeling_not_grill_with_docs(self) -> None:
         for host in HOSTS:
-            load = sections(wrapper(host)[1])[LOAD_HEADING]
+            load = load_section(host)
             with self.subTest(host=host):
                 for skill in MATT_SKILLS:
                     self.assertIn(skill, load)
-                self.assertNotIn("mattpocock-skills:grill-with-docs", load)
+                self.assertNotIn("grill-with-docs", wrapper(host)[1])
 
     def test_each_body_stays_within_the_word_limit(self) -> None:
         for host in HOSTS:

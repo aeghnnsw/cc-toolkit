@@ -3,7 +3,8 @@
 > Superseded in part on 2026-11-05 by
 > [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365): the wrapper
 > loads `grilling` and `domain-modeling` directly, not `grill-with-docs`. The
-> #358 review record below describes the earlier loading rule.
+> #358 review record below describes the earlier loading rule, and its case
+> numbers refer to the earlier list.
 
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358)
 and [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365).
@@ -97,7 +98,7 @@ for issue 42, and the Matt skills load.
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
 | Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
-| User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill by path; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
+| User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill past its frontmatter; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
 
 ## Validation limits
 
@@ -110,21 +111,36 @@ static checks, simulated reviews, and live observations separately.
 ### 2026-11-05, issue #365
 
 **Static checks.** `test_grill_with_research.py` now requires that both copies
-load `grilling` and `domain-modeling` and do not load `grill-with-docs`. The
-test failed before the skill change and passes after it. The root tests, the
-package and release validator, and the Codex skill-creator validator pass.
+load `grilling` and `domain-modeling` and that neither body names
+`grill-with-docs`. The test failed before the skill change and passes after
+it. The root tests, the package and release validator, and the Codex
+skill-creator validator pass.
 
 **Live observations.** In this Claude Code session, the model invoked
 `mattpocock-skills:grilling` with the Skill tool, and the tool loaded it. Before
 #365, the same tool refused `grill-with-docs`. The resolver found both skills
 for Claude Code and, with `--host codex`, for Codex.
 
-**Simulated review.** One fresh agent read both copies, the two Matt skills,
-and cases 14, 15, 17, and 19. It did not receive the expected results. Both
-copies gave the expected actions in cases 14, 15, and 17. In case 19, the
+**Simulated review, round 1.** One fresh agent read both copies, the two Matt
+skills, and cases 14, 15, 17, and 19. It did not receive the expected results.
+Both copies gave the expected actions in cases 14, 15, and 17. In case 19, the
 Claude Code copy decided only a refusal, and the Codex copy let the resolver
-read a skill with `allow_implicit_invocation: false`. Both copies now stop at
-a user-invoked setting. The fixed text was not simulated again.
+read a skill with `allow_implicit_invocation: false`. Both copies were changed
+to stop at a user-invoked setting.
+
+**Simulated review, round 2.** A fresh agent read the changed copies and cases
+14, 15, 17, and 19. All cases ended at the expected stop or question. It
+reported three gaps: the intro named `grill-with-docs`, which a reader could
+try to load; the Claude Code check read the whole user-invoked `SKILL.md`; and
+the Codex check came after the file was opened. The intro no longer names
+`grill-with-docs`, the Claude Code check reads only the frontmatter, and the
+Codex check runs before the file is opened.
+
+**Simulated review, round 3.** A fresh agent read the final copies and cases 14,
+17, and 19 before it read the expected results. All cases passed on both hosts.
+Neither copy reads a user-invoked `SKILL.md` past its frontmatter. The agent
+named small risks that were not changed: any Skill tool refusal stops the
+skill, and "A Matt skill cannot load" does not list its causes.
 
 ### 2026-11-05, issue #358
 

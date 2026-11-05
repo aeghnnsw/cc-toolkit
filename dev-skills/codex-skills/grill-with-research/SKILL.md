@@ -5,24 +5,25 @@ description: Research the project, then grill the user only on decisions that re
 
 # Grill With Research
 
-Research first, so that each question needs the user's judgment. Start no
-implementation or automode.
+Research first, so that each interview question needs the user's judgment.
+Start no implementation or automode.
 
 ## Load the Matt skills
 
-Open the `SKILL.md` of `mattpocock-skills:grilling` and
-`mattpocock-skills:domain-modeling`, and follow both. Together they run Matt
-Pocock's `grill-with-docs` interview. If the skill list omits one, resolve its
-path and read it:
+Follow the `SKILL.md` of `mattpocock-skills:grilling` and
+`mattpocock-skills:domain-modeling`. If the skill list omits one, resolve its
+path. `<plugin-root>` is two levels above this folder:
 
 ```bash
 python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
   mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
-`<plugin-root>` is two levels above this folder. If its `agents/openai.yaml`
-sets `allow_implicit_invocation: false`, or a skill cannot load, report the
-blocker and stop; use no other workflow.
+Before you open a resolved `SKILL.md`, check its folder. In these cases, stop
+and report the blocker; use no other workflow:
+
+- The folder has `agents/openai.yaml` with `allow_implicit_invocation: false`.
+- A Matt skill cannot load.
 
 ## Research
 
@@ -58,8 +59,8 @@ prerequisites, including pending research, are open. Narrow a broad question to
 what research leaves open. Settle routine, reversible details by convention;
 state each material assumption.
 
-Ask the rest as `grilling` does, with evidence, viable options, a reasoned
-recommendation, and why the user's judgment is needed. Missing access does not
-hold a question. After each answer, research what changed and reopen affected
-decisions. When no meaningful unresolved decision remains, finish as `grilling`
+Ask the rest as `grilling` does, with evidence, viable options, a
+recommendation, and why the user must decide. Missing access does not hold a
+question. After each answer, research what changed and reopen affected
+decisions. When no unresolved decision remains, finish as `grilling`
 does.
