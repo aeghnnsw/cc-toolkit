@@ -8,7 +8,8 @@
   prompt: objective, relevant facts and decisions, file paths, constraints,
   expected result, and edit ownership when it applies. Do not copy CLAUDE.md or
   git status into the prompt; both load automatically. Preload skills with the
-  agent's `skills` field.
+  agent's `skills` field. A skill with `disable-model-invocation: true` does
+  not preload; name its `SKILL.md` path in the prompt instead.
 - Prefer a fresh subagent. Use `subagent_type: "fork"` only when the task needs
   the full conversation, and explain why. Continue an existing subagent with
   `SendMessage`; a new `Agent` call starts fresh.
