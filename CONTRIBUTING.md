@@ -47,10 +47,9 @@ keeps blocking a command that this checkout allows.
 ### Skills for both hosts
 
 A skill that ships to Claude Code and Codex has one copy per host:
-`skills/<name>/` (`claude-skills/<name>/` in task-loop) and
-`codex-skills/<name>/`. Change both copies in the same pull request. Keep
-differences host-specific, such as tool names, invocation, and plugin-root
-paths.
+`skills/<name>/` and `codex-skills/<name>/`. Change both copies in the same
+pull request. Keep differences host-specific, such as tool names,
+invocation, and plugin-root paths.
 
 For an example pair, see `creator-skills/skills/sci-slides/` and
 `creator-skills/codex-skills/sci-slides/`. The test
@@ -175,16 +174,14 @@ can read those worktrees and match many copies of the same file. To also
 search new files that are not yet added, pass `--untracked`.
 
 Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
-describe replaced behavior. The task-loop plugin is
-[not usable now](task-loop/README.md#status), but its copies of shared
-skills match many terms. To search current text only, exclude all three:
+describe replaced behavior. The `task-loop/` folder is
+[not in the marketplaces](task-loop/README.md#status), but its copies of
+shared skills match many terms. To search current text only, exclude all
+three:
 
 ```bash
 git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'
 ```
-
-Keep task-loop in the search when the change renames a skill or changes a
-model pin.
 
 ## Changelog entries
 

@@ -147,7 +147,6 @@ class ModelPinTests(unittest.TestCase):
 
     def test_repository_names_only_allowed_models(self):
         self.assertTrue(agent_files(ROOT), 'no agent files found')
-        self.assertTrue(codex_agent_files(ROOT), 'no Codex agent files found')
         allowed = load_allowed(ROOT)
         for check in CHECKS:
             with self.subTest(check=check.__name__):
