@@ -136,10 +136,13 @@ its own PR, rather than a central tracking issue.
    unavailable, review the current session and report the limit.
 3. Process transcript copies in one `mktemp -d` directory. Give agents those
    paths, preserve the originals, and remove the temporary directory by path.
-4. Apply local fixes that need no new design decision or substantial scope
-   increase in this PR. Create or reuse a separate issue for each larger
-   finding. Block the PR only if a finding affects the current change's
-   correctness; otherwise link the follow-up and continue.
+4. Before applying a new rule, use `git grep -n --untracked` to find and
+   inspect the code it covers. If valid existing code conflicts with the rule,
+   narrow the rule or record the exception. Apply local fixes that need no new
+   design decision or substantial scope increase in this PR. Create or reuse a
+   separate issue for each larger finding. Block the PR only if a finding
+   affects the current change's correctness; otherwise link the follow-up and
+   continue.
 5. Add a short **Navigation retrospective** record to the PR: **Reviewed
    through** cutoff, sessions read, skipped or unavailable history, findings,
    fixes, and follow-up issue links. Use the scanned cutoff, not posting time.
