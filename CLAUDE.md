@@ -95,6 +95,10 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
 - In Claude Code, `grep` is a shell function that runs ugrep. ugrep can
   reject a variable range of 16 or more on both sides of the match, such as
   `.{0,20}X.{0,20}`. Use `/usr/bin/grep -E` for such a pattern.
+- To search current text from the repository root, run
+  `git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'`.
+  [Repository search](CONTRIBUTING.md#repository-search) explains the
+  exclusions.
 - Use BSD tool options. GNU `timeout` is absent.
 
 ## Plugin changes
