@@ -138,8 +138,8 @@ The model of the first critic call is the starting model.
   block.
 - A request for any other model starts no critic call. Tell the user that the
   critic can use only `gpt-6-astra` or `gpt-6.1-sol`, and ask which one to use.
-  When the calling skill forbids questions, as `matt-automode` does, choose one
-  of the two models yourself and record the choice in the session record.
+  When the calling skill forbids questions, choose one of the two models
+  yourself and record the choice in the session record.
 - The choice applies only at setup. To change the model later, start a new
   pressure test. Inside one pressure test, only a [flag](#flags) changes the
   model.
