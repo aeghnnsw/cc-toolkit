@@ -37,6 +37,8 @@
 
 ### Changed
 
+- dev-skills (Claude Code 3.35.2, Codex 1.25.2): Matt Automode checks the code covered by a new retrospective rule before applying it. When valid existing code conflicts with the rule, narrow the rule or record the exception. See [#357](https://github.com/aeghnnsw/cc-toolkit/issues/357).
+
 - Repository: `CLAUDE.md` gives the search pathspec for current text. "Verification" in CONTRIBUTING starts with a table that maps each change type to its check or command, and it names the `productivity-skills` suite, which the old suite list omitted. See [#370](https://github.com/aeghnnsw/cc-toolkit/issues/370).
 - dev-skills (Claude Code 3.35.1, Codex 1.25.1): `pressure-test` no longer names `matt-automode` as a calling skill that forbids questions, because `matt-automode` no longer calls `pressure-test`. The rule for a calling skill that forbids questions stays. The Codex copy also no longer names task-loop aims or task-loop state as examples, because task-loop is no longer in the marketplaces. See [#366](https://github.com/aeghnnsw/cc-toolkit/issues/366).
 - dev-skills (Claude Code 3.35.0, Codex 1.25.0): `grill-with-research` 1.1.0 loads Matt Pocock's `grilling` and `domain-modeling` directly, not the user-invoked `grill-with-docs`, which only calls these two skills. The model can now start `grill-with-research` from its description without a stop that asks the user to name it. A Matt skill that the current host marks as user-invoked is a blocker: `grill-with-research` checks only that setting, reports the blocker, and stops. See [#365](https://github.com/aeghnnsw/cc-toolkit/issues/365).
