@@ -55,13 +55,9 @@ The rules include these shared and host-specific resources:
 
 | Resource | Affected host |
 | --- | --- |
-| `task-loop/codex-agents/` | Codex |
-| `task-loop/hooks/` | Codex |
-| `task-loop/scripts/sync_codex_agents.py` | Codex |
 | `core-hooks/hooks/hooks.json` | Claude Code |
 | `core-hooks/hooks/hooks.codex.json` | Codex |
 | Core Hooks and Productivity Skills shared scripts | Both |
-| Task-loop CLI, database schema, and shared references | Both |
 
 An ownership rule affects only registered hosts. An unclassified file inside
 a plugin affects all its registered hosts. Release diagnostics include

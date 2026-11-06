@@ -111,8 +111,9 @@ git worktree add trees/doc-<issue>-<description> -b doc-<issue>-<description>
   Claude Code discovers conventional `skills/` and `agents/` directories;
   some plugins use explicitly configured paths. Codex plugin manifests live
   in `.codex-plugin/plugin.json` and declare their component paths. Some
-  resources outside these paths belong to one host, such as task-loop's Codex
-  agents. See [host ownership](docs/design/package-validation.md#host-ownership).
+  resources outside these paths belong to one host, such as
+  `core-hooks/hooks/hooks.codex.json`. See
+  [host ownership](docs/design/package-validation.md#host-ownership).
 - Update the affected host's plugin version when shipping changes to that
   plugin: the `version` field in `<plugin>/.claude-plugin/plugin.json` or
   `<plugin>/.codex-plugin/plugin.json`. The `metadata.version` field in the

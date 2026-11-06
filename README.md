@@ -1,6 +1,6 @@
 # cc-toolkit
 
-Unified Claude Code and Codex plugin marketplace for development workflows, task-loop orchestration, scientific content creation, and document processing.
+Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing.
 
 ## Overview
 
@@ -45,7 +45,7 @@ cc-toolkit/
 ├── doc-skills/                       # Document processing plugin
 ├── productivity-skills/              # Personal productivity plugin
 ├── pymol-skills/                     # PyMOL molecular visualization plugin
-└── task-loop/                        # Supabase-backed task-loop workflow plugin
+└── task-loop/                        # Not in the marketplaces; see its README
 ```
 
 Each plugin directory holds `.claude-plugin/plugin.json`, a
@@ -118,26 +118,6 @@ Safety guards and workflow enforcement hooks.
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
 
-### Task Loop (`task-loop`)
-Supabase-backed task board plus proposal, cycle scaffolding, and worker support.
-
-**Status:** task-loop needs a major update and is not usable now. See the [task-loop README](task-loop/README.md#status).
-
-**Claude Code support:**
-- **setup**: Configure Supabase credentials, register the repo, and check required tools and skills
-- **specify-aims**: Write `docs/task-loop/proposal.md`
-- **create-cycle**: Render `docs/task-loop/task-loop.md`, `directions.md`, and logs scaffolding
-- **run-cycle**: Drive the orchestrator and Claude cycle-worker agent
-
-**Codex support:**
-- **setup**: Check prerequisites and sync the `task_loop_cycle_worker` custom agent
-- **specify-aims**: Write or re-aim the proposal
-- **create-cycle**: Render Codex-compatible cycle scaffolding
-- **run-cycle**: Run a conservative manual controller pass after proving worker dispatch is observable
-- **task_loop_cycle_worker**: Custom agent source synced into `~/.codex/agents/` for controller dispatch
-
-Full unattended Codex scheduling remains pending.
-
 ### Productivity Skills (`productivity-skills`)
 Personal productivity automation using macOS Calendar and Reminders.
 
@@ -198,7 +178,6 @@ Each plugin can be used independently by referencing its directory:
 - `./creator-skills`
 - `./doc-skills`
 - `./core-hooks`
-- `./task-loop`
 - `./productivity-skills`
 - `./pymol-skills`
 - `./cc-customize`
