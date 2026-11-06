@@ -273,20 +273,26 @@ scope of local and shared exclusions.
 
 ## Verification
 
-There is no repository-wide build or lint command. Verification depends on
-what changed:
+There is no repository-wide build or lint command. Run these checks from the
+repository root, and run every row that matches your change:
 
-- **Documentation:** check accuracy, relative links, referenced paths, and
-  whitespace with `git diff --check`.
-- **Skills and metadata:** check skill frontmatter; run the package and
-  release validator and the root tests described below. The root tests
-  include the skill link test.
-- **Executable code:** run the tests for the affected plugin. Core Hooks
-  tests require Python and `uv` on `PATH`; task-loop CLI tests require
-  Python 3.11+ and `httpx>=0.27` as declared by the CLI. The command below
-  supplies that dependency through `uv`.
-- **GitHub Actions:** validate edited workflow YAML and check its triggers
-  and permissions against the intended behavior.
+| Change | Check |
+| --- | --- |
+| Any change | `git diff --check` |
+| Documentation | Check accuracy, relative links, and referenced paths. |
+| A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
+| A skill, an agent, `allowed-models.json`, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
+| A skill | Check its frontmatter and invocation guidance. |
+| A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
+| `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
+| Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, `productivity-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
+| Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
+| A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
+
+Core Hooks tests require Python and `uv` on `PATH`. The `task-loop` command
+supplies Python 3.11 or newer and `httpx>=0.27` through `uv`. `cc-customize`
+and `doc-skills` have no test suite. Before you run a plugin suite, read
+[Plugin runtime tests](#plugin-runtime-tests) for its time limit.
 
 ### Package and release validation
 
@@ -406,15 +412,12 @@ python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
 
 ### Plugin runtime tests
 
-Run the existing Python suites from the repository root:
+The table in [Verification](#verification) gives the command for each suite.
 
-```bash
-python3 -m unittest discover -s creator-skills/tests -p 'test_*.py'
-python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
-python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
-python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
-uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'
-```
+The `productivity-skills` suite needs `swiftc`. It requests no Reminders
+access and saves nothing. On one host, one run took 24 seconds and another
+did not finish in 120 seconds, so give its command a timeout of at least 300
+seconds.
 
 The `dev-skills` suite takes about 2 minutes, most of it in
 `dev-skills/tests/test_codex_critic.py`. When the 1-minute load average is
