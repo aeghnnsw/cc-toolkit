@@ -210,11 +210,11 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             eligible_events += 1
             event = {"line": line, "timestamp": record["timestamp"],
                      "cwd": cwd, "omitted_characters": 0, **event}
-            bounded, _ = bounded_events([event], 1, max_text)
+            bounded = bound_event(event, max_text)
             if len(events) < head_size:
-                events.append(bounded[0])
+                events.append(bounded)
             else:
-                tail.append(bounded[0])
+                tail.append(bounded)
     events.extend(tail)
     counts.update(eligible_events=eligible_events, shown_events=len(events),
                   omitted_events=eligible_events - len(events),
@@ -223,29 +223,20 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             "diagnostics": diagnostics, "ignored_types": ignored_types}
 
 
-def bounded_events(events, max_events, max_text):
-    eligible = len(events)
-    head = (max_events + 1) // 2
-    tail = max_events // 2
-    if eligible > max_events:
-        events = events[:head] + (events[-tail:] if tail else [])
-    clipped = 0
-    for event in events:
-        text = event["text"]
-        if not isinstance(text, str):
-            text = json.dumps(text, ensure_ascii=False)
-        event["text"] = text[:max_text]
-        event["omitted_characters"] = max(0, len(text) - max_text)
-        clipped += event["omitted_characters"]
-        for field in ("cwd", "tool", "call_id", "kind", "timestamp"):
-            value = event.get(field)
-            if value is not None:
-                value = value if isinstance(value, str) else json.dumps(value)
-                event[field] = value[:max_text]
-                if len(value) > max_text:
-                    event.setdefault("metadata_omitted_characters", {})[field] = len(value) - max_text
-    return events, {"eligible_events": eligible, "shown_events": len(events),
-                    "omitted_events": eligible - len(events), "clipped_characters": clipped}
+def bound_event(event, max_text):
+    text = event["text"]
+    if not isinstance(text, str):
+        text = json.dumps(text, ensure_ascii=False)
+    event["text"] = text[:max_text]
+    event["omitted_characters"] = max(0, len(text) - max_text)
+    for field in ("cwd", "tool", "call_id", "kind", "timestamp"):
+        value = event.get(field)
+        if value is not None:
+            value = value if isinstance(value, str) else json.dumps(value)
+            event[field] = value[:max_text]
+            if len(value) > max_text:
+                event.setdefault("metadata_omitted_characters", {})[field] = len(value) - max_text
+    return event
 
 
 def snapshot(path, destination):
@@ -292,15 +283,18 @@ def snapshot(path, destination):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--through")
-    parser.add_argument("--after")
-    parser.add_argument("--max-events", type=int, default=60)
-    parser.add_argument("--max-text", type=int, default=300)
-    parser.add_argument("--claude-root", action="append", type=Path, default=[])
-    parser.add_argument("--codex-root", action="append", type=Path, default=[])
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "Any explicit host root replaces all default discovery. Otherwise read "
+        "default and active host config roots. A partial result retains usable "
+        "evidence; inspect manifest diagnostics. Originals remain unchanged."))
+    parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
+    parser.add_argument("--output", required=True, type=Path, help="new directory outside transcript roots")
+    parser.add_argument("--through", help="inclusive aware ISO cutoff (default: now, before discovery)")
+    parser.add_argument("--after", help="exclusive aware ISO cutoff (default: no lower bound)")
+    parser.add_argument("--max-events", type=int, default=60, help="head/tail events per digest (default: 60)")
+    parser.add_argument("--max-text", type=int, default=300, help="characters per displayed text field (default: 300)")
+    parser.add_argument("--claude-root", action="append", type=Path, default=[], help="Claude projects directory; repeatable")
+    parser.add_argument("--codex-root", action="append", type=Path, default=[], help="Codex sessions directory; repeatable")
     args = parser.parse_args(argv)
     through_text = args.through if args.through is not None else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     try:
