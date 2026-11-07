@@ -22,8 +22,8 @@ the plugin. Test dependencies are separate from runtime dependencies.
 
 ### Python requirements
 
-These are the declared minimum versions, not a version matrix verified by
-CI. Where no minimum is declared, check the affected script and its caller
+These are declared minimum versions, not a tested compatibility matrix.
+Where no minimum is declared, check the affected script and its caller
 before using newer Python features. The root tooling's Python requirement
 does not set the minimum for installed plugins.
 
@@ -359,8 +359,9 @@ scope of local and shared exclusions.
 
 ## Verification
 
-There is no repository-wide build command. Run these checks from the
-repository root, and run every row that matches your change:
+Run these checks locally before opening a pull request. This repository
+does not use CI. There is no repository-wide build command. Run every row
+that matches your change from the repository root:
 
 | Change | Check |
 | --- | --- |
@@ -464,15 +465,6 @@ the ownership reason and the version that must be exceeded. Fix the first
 reported error and rerun the command. The result includes elapsed execution
 time. See the [design](docs/design/package-validation.md) for the rule schema
 and ownership precedence. Terms are defined in [GLOSSARY.md](GLOSSARY.md).
-
-The [pull-request workflow](.github/workflows/package-validation.yml) runs
-the same command against the exact pull-request head and target SHA. It
-fetches the comparison history and runs one job with read-only repository
-permission. Changes limited to root contributor documents or `docs/` skip
-the job. Other paths remain eligible, including new plugin source
-directories. The job uses the runner's Python and runs no plugin runtime
-suites. The speed target is less than 10 seconds of validator execution;
-queue, checkout, and runner startup time are separate.
 
 Run the root tests when you change the validator, a skill, an agent,
 `allowed-models.json`, or `package-validation.json`. The root tests contain

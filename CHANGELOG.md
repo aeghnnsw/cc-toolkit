@@ -29,6 +29,8 @@
 
 ### Removed
 
+- Repository: remove the package-validation CI workflow. Contributors run validation and tests locally. Keep the workflow triggered by `@claude` mentions. The proposal to add CI test suites in #297 is closed as not planned. See [#297](https://github.com/aeghnnsw/cc-toolkit/issues/297).
+
 - Repository: remove task-loop from the Claude Code and Codex marketplace registries, the README catalog, and `package-validation.json`. A new install cannot find it. The `task-loop/` folder stays in the repository so that the plugin can return later. See [#371](https://github.com/aeghnnsw/cc-toolkit/issues/371).
 - dev-skills (Claude Code 3.16.0): remove the `discuss-with-codex` skill name. The skill is now `pressure-test`, the same name as in Codex. The request "discuss with codex" still loads it. See [#284](https://github.com/aeghnnsw/cc-toolkit/issues/284).
 - dev-skills (Claude Code 3.11.0, Codex 1.4.0): retire the borrowed `handoff` skill; use Matt’s original skill instead.
