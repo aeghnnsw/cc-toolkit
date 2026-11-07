@@ -37,6 +37,8 @@
 
 ### Changed
 
+- Repository: CONTRIBUTING.md gives coding standards, declared Python minimums, and dependency exceptions. CLAUDE.md links directly to the section for implementation and review. The 78-character prose rule applies only to CLAUDE.md and CONTRIBUTING.md, with exceptions for headings, tables, links, and code examples. See [#296](https://github.com/aeghnnsw/cc-toolkit/issues/296).
+
 - Repository: README Usage gives verified marketplace and plugin installation commands for Claude Code and Codex. It links to the update, disable, and removal instructions in CONTRIBUTING.md. See [#295](https://github.com/aeghnnsw/cc-toolkit/issues/295).
 
 - dev-skills (Claude Code 3.35.2, Codex 1.25.2): Matt Automode checks the code covered by a new retrospective rule before applying it. When valid existing code conflicts with the rule, narrow the rule or record the exception. See [#357](https://github.com/aeghnnsw/cc-toolkit/issues/357).

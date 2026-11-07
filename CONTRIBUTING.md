@@ -5,6 +5,45 @@ Contributor documentation lives at the root and under `docs/`; installable
 components live inside each plugin directory. Follow
 [CLAUDE.md](CLAUDE.md) for the issue, worktree, and PR workflow.
 
+## Coding standards
+
+No repository-wide linter, formatter, or type checker is configured. Follow
+the surrounding code style. Do not reformat unrelated code.
+
+Wrap ordinary prose in `CLAUDE.md` and `CONTRIBUTING.md` at 78 characters.
+Exempt headings, tables, links, and code examples, including inline commands.
+Other Markdown files follow their surrounding style; this is not a
+repository-wide line-length limit.
+
+Prefer the Python standard library for helpers. Preserve existing
+standard-library-only entry points. The table below names the current
+third-party Python dependencies. Keep runtime dependency declarations with
+the plugin. Test dependencies are separate from runtime dependencies.
+
+### Python requirements
+
+These are the declared minimum versions, not a version matrix verified by
+CI. Where no minimum is declared, check the affected script and its caller
+before using newer Python features. The root tooling's Python requirement
+does not set the minimum for installed plugins.
+
+| Component | Declared minimum | Python dependencies and exceptions |
+| --- | --- | --- |
+| [Root package validator](scripts/validate_packages.py) and root tests | 3.11 | Standard library, including `tomllib`. |
+| [Core Hooks](core-hooks/scripts/safety_guard.py) | 3.8 | Standard library, except [`chime` for sound notifications](core-hooks/scripts/system_notification.py). |
+| [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
+| Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
+| [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
+| [Doc Skills: PDF converter](doc-skills/skills/docling-pdf/scripts/convert_pdf.py) | 3.10 | `docling`, `docling-ibm-models`, `numpy<2`, `pillow`, `pypdfium2`, and `tabulate`. |
+| [PyMOL Skills: MCP bridge](pymol-skills/pymol_mcp_server.py) | 3.10 | `mcp[cli]>=1.0.0,<2`. |
+| [Retained task-loop code](task-loop/cli/task-loop) (retired plugin) | 3.11 | The CLI needs `httpx>=0.27`; hooks and sync helpers use the standard library. |
+
+The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
+minimum; the bridge requirement does not apply to that separate process.
+Productivity Skills uses Swift at runtime. CC Customize uses Bash and
+`jq`, with Git for status information. Neither has a Python runtime.
+See [Verification](#verification) for test commands and test prerequisites.
+
 ## Repository and package boundaries
 
 The Claude Code and Codex marketplace registries select plugin directories
@@ -320,7 +359,7 @@ scope of local and shared exclusions.
 
 ## Verification
 
-There is no repository-wide build or lint command. Run these checks from the
+There is no repository-wide build command. Run these checks from the
 repository root, and run every row that matches your change:
 
 | Change | Check |
