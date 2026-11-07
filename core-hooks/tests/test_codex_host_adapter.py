@@ -91,8 +91,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 check=False,
             )
 
-    def test_codex_adapter_has_the_1_0_22_release_version(self):
-        self.assertEqual(load_manifest()["version"], "1.0.22")
+    def test_codex_adapter_has_the_1_0_23_release_version(self):
+        self.assertEqual(load_manifest()["version"], "1.0.23")
 
     def test_manifest_selects_only_the_codex_hook_configuration(self):
         manifest = load_manifest()
@@ -121,6 +121,45 @@ class CodexHostAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_zsh_hook_uses_each_hosts_rewrite_contract(self):
+        claude_config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+        claude_command = next(
+            hook["command"]
+            for entry in claude_config["hooks"]["PreToolUse"]
+            for hook in entry["hooks"]
+            if "zsh_traps.py" in hook["command"]
+        )
+        cases = (
+            ("claude", claude_command, {
+                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "PLUGIN_ROOT": "/invalid/foreign/plugin/root",
+            }),
+            ("codex", command_for("zsh_traps.py"), {
+                "CLAUDE_PLUGIN_ROOT": "/invalid/foreign/plugin/root",
+            }),
+        )
+        for host, command, env in cases:
+            with self.subTest(host=host):
+                result = self.run_configured_command(
+                    command,
+                    payload={
+                        "hook_event_name": "PreToolUse",
+                        "tool_name": "Bash",
+                        "tool_input": {"command": "echo =====CODEX"},
+                    },
+                    env={**env, "SHELL": "/bin/zsh"},
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                output = json.loads(result.stdout)["hookSpecificOutput"]
+                self.assertEqual(
+                    output.get("updatedInput"),
+                    {"command": "echo '=====CODEX'"},
+                )
+                if host == "claude":
+                    self.assertNotIn("permissionDecision", output)
+                else:
+                    self.assertEqual(output.get("permissionDecision"), "allow")
 
     def test_safety_hooks_block_when_uv_is_unavailable(self):
         for script_name in ("safety_guard.py", "pre_git_hook.py"):

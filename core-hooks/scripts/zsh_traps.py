@@ -15,12 +15,15 @@
    `grep --include=*.md`. It prints "no matches found", and the command
    does not run.
 
-The hook runs when the user's shell is zsh, prints JSON, and exits 0. It
-denies a command when an `=name` word names no command on `PATH`, because
-zsh would stop the command line there. For each other trap, it gives the
-agent a warning. It reads the command as shell words, so quoted text,
-heredoc bodies, comments, `[[ ... ]]` tests, and `(( ... ))` arithmetic
-give no finding. This is a heuristic, not a full zsh parser.
+The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
+`--host claude` or `--host codex`, it quotes missing-command separators in
+a simple `echo` command. Normal host permissions still apply. It denies
+other commands when an `=name` word names no command on `PATH`, because zsh
+would stop the command line there. For each other trap, it gives the agent
+a warning. It reads the command as shell words, so quoted text, heredoc
+bodies, comments, `[[ ... ]]` tests, and `(( ... ))` arithmetic give no
+finding. This is a heuristic, not a full zsh parser. The rewrite uses a
+separate strict recognizer for the complete command.
 """
 
 import glob
@@ -408,6 +411,33 @@ def _names_no_command(word):
     return "/" not in name and shutil.which(name) is None
 
 
+def _quote_echo_separators(command):
+    """Quote missing-command separators in a complete, simple echo command.
+
+    Accept only spaces, tabs, an optional -n, and ASCII label words. A
+    separator starts with at least two equals signs and can hold a label
+    and trailing equals signs. Other syntax keeps the existing decision.
+    """
+    if not re.fullmatch(
+        r"[ \t]*echo(?:[ \t]+-n)?"
+        r"(?:[ \t]+(?:[A-Za-z0-9_]+|={2,}(?:[A-Za-z0-9_]+=*)?))+[ \t]*",
+        command,
+    ):
+        return None
+    # These spans come from the strict command grammar, not the heuristic
+    # trap scanner. Every equals word must qualify before any edit is made.
+    separators = list(re.finditer(r"={2,}[A-Za-z0-9_]*=*", command))
+    if not separators or any(not _names_no_command(word.group()) for word in separators):
+        return None
+    parts = []
+    end = 0
+    for word in separators:
+        parts.extend((command[end:word.start()], "'", word.group(), "'"))
+        end = word.end()
+    parts.append(command[end:])
+    return "".join(parts)
+
+
 def _matches_no_file(word, directory):
     """Report whether the glob `word` matches no file in `directory`.
 
@@ -482,11 +512,32 @@ def main():
         command = get_shell_command(input_data)
         if not command or os.path.basename(os.environ.get("SHELL", "")) != "zsh":
             sys.exit(0)
-        traps = zsh_traps(command, _working_directory(input_data))
+        cwd = _working_directory(input_data)
+        traps = zsh_traps(command, cwd)
+        args = sys.argv[1:]
+        host = args[1] if len(args) == 2 and args[0] == "--host" else None
+        updated_input = None
+        # Both current hosts supply Bash.command. Compatibility payloads
+        # keep their existing decisions and never select a rewrite contract.
+        if (
+            host in ("claude", "codex")
+            and input_data.get("tool_name") == "Bash"
+            and isinstance(input_data.get("tool_input"), dict)
+        ):
+            quoted = _quote_echo_separators(command)
+            if quoted is not None and not zsh_traps(quoted, cwd):
+                updated_input = dict(input_data["tool_input"], command=quoted)
     except Exception:
         # A hook error never stops a command.
         sys.exit(0)
-    if traps:
+    if updated_input is not None:
+        output = {"hookEventName": "PreToolUse", "updatedInput": updated_input}
+        # Codex requires allow to apply the rewrite; its normal execution
+        # approval still runs. Claude must omit it to preserve permissions.
+        if host == "codex":
+            output["permissionDecision"] = "allow"
+        print(json.dumps({"hookSpecificOutput": output}))
+    elif traps:
         message = "\n".join(trap.message for trap in traps)
         if any(trap.stops_line for trap in traps):
             decision = {"permissionDecision": "deny", "permissionDecisionReason": message}
