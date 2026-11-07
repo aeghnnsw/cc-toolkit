@@ -12,6 +12,12 @@ These documents configure agents working on cc-toolkit. They are shared
 project conventions; contributors can follow them with or without Matt
 Pocock's skills installed.
 
+### Coding standards
+
+Before implementing or reviewing a change, read
+[Coding standards](CONTRIBUTING.md#coding-standards) for style, Python
+requirements, and dependency exceptions.
+
 ### Issue tracker
 
 Before reading, creating, or updating issues and pull requests, read
