@@ -1,88 +1,68 @@
 ---
 name: gtd-overview
-version: 1.1.1
-description: This skill should be used when the user asks to "list all projects and actions", "show gtd overview", "show all my projects", "list everything", "what's in my gtd system", "show standalone actions", or wants a complete read-only listing of all GTD projects with their actions plus all individual actions not linked to any project.
+version: 1.2.0
+description: "Use when listing the whole GTD system read-only: every open project with its actions, standalone actions, and unresolved project links."
 ---
 
-Show every open GTD project and action in a compact, read-only report. Use rendered Markdown, with a summary first and one action table per project. Keep all records visible; this is an inventory, not a task recommendation.
+Show every open cloud GTD project and action in a compact, read-only
+inventory. Keep blocked and legacy work visible. This workflow does not
+change records or dispatch work.
+
+Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
+and [shared planning policy](../../references/gtd-planning.md). Use the cloud
+contract for the private route, complete reads, UUID grouping, unique
+counts, and dates. Use the planning policy for every project's status.
+Missing cloud data or access makes the inventory unavailable; it does not
+authorize a native fallback.
 
 ## Gather
 
-Use the installed plugin root provided by Claude Code.
+Read the complete open project and action inventory and its links through
+the cloud contract. Resolve referenced project identities as that contract
+requires. Include actions linked to closed or deleted projects and actions
+with unresolved original references. Exclude inbox captures from this
+report and its totals.
 
-```bash
-swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" reminders incomplete
-swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" reminders overdue
-```
+Use the shared policy to assess readiness, waits, and blockers from the
+available evidence. Keep the status and Overdue flag separate. Show pending
+results beside any status, including Active. Do not derive readiness from
+an open action, duration label, or priority alone.
 
-Keep projects from `Projects` and actions from `@quick`, `@1pomo`, `@2pomo`, `@deep`, and `@agent`. All new actions use the time-based lists, including agent startup and review. Keep existing `@agent` records visible and label that list as legacy. Match overdue results by reminder `id`. Ignore other lists. Missing lists need no setup.
-
-If the incomplete query fails, report that the overview is unavailable. If only the overdue query fails, show the inventory with an explicit “Overdue status unavailable” notice. Show overdue counts as “unavailable”, omit overdue ranking, and use Waiting, No next action, or Active from the available notes and action data in that case. Do not report a failed query as an empty or healthy system.
-
-## Group
-
-- Match the full `#{ProjectName}` reference in action notes to an open project title, case-insensitively. Keep the exact stored names and IDs for later operations.
-- Put actions with no reference under **Standalone actions**.
-- Put references with no matching open project under **Unmatched project links**. Display the reference; it can indicate a renamed, completed, or deleted project. If more than one project matches, show the action here as ambiguous instead of guessing.
-- Extract each goal from `Goal:` in the project notes.
-- Use **Overdue** when the project or a linked action is overdue. Otherwise use **Waiting** when notes or known state show an external result is pending and no human action is ready; **No next action** when no linked actions or waiting evidence exist; and **Active** otherwise. Show the pending result even when the main status is Overdue. “Active” means actions exist, not that progress was verified. Keep blocked and legacy reminders visible without treating them as ready work.
-
-Exclude projects with waiting evidence and no ready human action from the count of projects with no next action, including those whose main status is Overdue. Count unique reminder IDs. Count overdue actions separately from projects with Overdue status. A project enters that count when its own deadline or any linked action is overdue. Include unmatched actions in the action total.
+An incomplete read cannot establish complete totals or an empty system.
+Report the affected inventory or status as unavailable. A partial report
+must identify its missing coverage and omit unsupported totals.
 
 ## Display
 
-1. Start with totals: projects, actions, overdue actions, and projects with no next action. Include the overdue-project count when nonzero. Show unmatched-link count when present.
-2. Show projects with overdue records first, then projects with no next action, then the rest. Each project gets a heading with its full stored name, a short status line, its goal, and a table of all linked actions. If names repeat, append a short unique ID suffix to distinguish those headings.
-3. Use **Action | List | Due | Priority** columns. Show `—` for unset dates and priority. Use `High`, `Medium`, or `Low` for priorities 1, 5, or 9. Show a due time only when stored. Undated work is normal; give it no warning.
-4. Within each project, sort overdue actions first, then dated actions by due date, then undated actions. Break ties by High, Medium, Low, then unset priority, then title. This display order does not select the next action. Mark overdue dates with **Overdue** text. Use the same order within standalone lists.
-5. Show standalone actions in one table, grouped by list. Add unmatched links last with their original references. Omit empty sections.
-6. Escape pipes and line breaks in table cells. Preserve full action titles. Keep lengthy notes out of the report; display project goals as prose above the table. Use compact bullets instead of tables if the user requests a narrow display.
+1. Start with unique counts of open projects and actions, overdue actions,
+   overdue projects, and projects with no next action. Include the count of
+   actions with unresolved or closed-project links when present. Follow
+   cloud counting rules when one action links to several projects.
+2. Show overdue projects first, then projects with no next action, then the
+   rest. Give each project its full stored name, status, deadline flag,
+   goal, and a table of all linked open actions. For repeated names, append
+   a short unique ID suffix. State blockers and uncertain readiness.
+3. Use **Action | Duration label | Human effort | Due | Priority** columns.
+   Preserve full titles. Show “Unknown” for unknown effort, “—” for no
+   deadline, and the shared priority labels. Show a due time only when
+   stored. Undated work needs no warning.
+4. Within each project, show overdue actions first, then dated actions by
+   deadline, then undated actions. Break ties by High, Medium, Low, None,
+   then title. This is display order, not a recommendation to start work.
+   Mark overdue dates with **Overdue** text.
+5. Show standalone actions in one table, grouped by duration label. Show
+   unmatched links and links to closed or deleted projects in a separate
+   section with their known identity or original reference. Use the same
+   action order. Omit empty sections.
+6. Escape pipes and line breaks in table cells. Keep lengthy notes outside
+   tables. Show goals, waits, and blockers as short prose. Use compact
+   bullets when the user requests a narrow display.
 
-Example layout (illustrative records, as of 7 Sep 2026):
+## Report
 
-# GTD overview
+Say “No open GTD projects or actions” only after a complete successful read
+establishes that result. This does not mean the capture inbox is empty.
 
-**3 projects · 4 actions**
-
-Needs attention: 1 overdue action · 1 overdue project · 1 project without a next action.
-
-### ClientInvoice-20260901
-
-**Overdue** · High priority · Project due: 10 Sep 2026
-
-Goal: Invoice paid and project closed.
-
-| Action | List | Due | Priority |
-| --- | --- | --- | --- |
-| Send the approved invoice to the client | @quick | **Overdue · 4 Sep 2026** | High |
-
-### InsuranceRenewal-20260903
-
-**No next action** · Medium priority
-
-Goal: Insurance renewed before the current policy expires.
-
-No open actions linked to this project.
-
-### VacationResearch-20260905
-
-**Active** · Medium priority
-
-Goal: Compare flight options for the trip.
-
-| Action | List | Due | Priority |
-| --- | --- | --- | --- |
-| Compare three flights for the chosen dates | @1pomo | — | Medium |
-| Send the agent the flights and request a cancellation summary | @quick | — | Medium |
-
-### Standalone actions
-
-| Action | List | Due | Priority |
-| --- | --- | --- | --- |
-| Call the dentist to request an appointment | @quick | — | — |
-
-## Finish
-
-If no GTD records exist, say “No open GTD projects or actions.” This does not mean the capture inbox is empty; this report covers Reminders only.
-
-End with one short next step when useful: use `gtd-next` to choose work, or `gtd-project` to inspect a project that needs attention. Keep the report read-only. Do not create lists, change reminders, ask for a selection, or imply that displayed actions were started.
+When useful, end with one short next step: use `gtd-next` to choose work or
+`gtd-project` to inspect a project. Do not ask for a selection or imply that
+the displayed actions have started.

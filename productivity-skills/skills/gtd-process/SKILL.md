@@ -1,100 +1,94 @@
 ---
 name: gtd-process
-version: 3.2.1
-description: This skill should be used when the user asks to "process inbox", "process items", "triage inbox", "clarify inbox", "organize inbox", "categorize tasks", or wants to process GTD inbox items into projects or actions following the GTD clarify/organize workflow.
+version: 3.3.0
+description: "Use when processing, triaging, or clarifying GTD inbox items into projects and human next actions."
 ---
 
-Process GTD inbox items into concrete actions and projects. Present one batch proposal for approval or corrections. Honor existing explicit authorization.
+Process pending cloud captures into concrete human actions and projects.
+Present one batch proposal. Honor existing explicit authorization.
 
-## CLI Tool
+Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
+and [shared planning policy](../../references/gtd-planning.md). Use the cloud
+contract for the private route, complete reads, UUID links, dates, revisions,
+atomic writes, and recovery. Use the planning policy for every action and
+project, including work without agents. Missing cloud data or access makes
+processing unavailable; it does not authorize a native fallback.
 
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
-```
+## Gather
 
-## Step 1: Read the Requested Items
+Read the requested pending captures. Use all current pending captures by
+default, or only the subset the user named. Track each original UUID,
+including occurrences with identical text. Do not revisit skipped items in
+this invocation. Stop when the user asks to stop.
 
-Read `~/.gtd/inbox.md`. If missing, create it with `# Inbox` and a blank line. If empty, report that and exit.
+Read the existing projects and relevant actions needed to reuse an outcome.
+Follow cloud grouping rules. Repeated titles alone do not establish shared
+identity. Keep legacy actions visible within the requested scope. Processing
+captures does not authorize bulk conversion of existing work.
 
-Process all current items by default. If the user requests one item or a subset, use only that scope. Track each original item occurrence, including identical lines. Do not revisit skipped items in the same session. Stop when the user asks to stop.
+## Propose
 
-Read the available lists and existing projects:
+For each capture, propose a standalone action, an action linked to an
+existing project, a new project with its first action, or leaving the
+capture pending.
 
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders lists
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders incomplete "Projects"
-```
+- Preserve the user's intended outcome. Researching flights does not
+  authorize buying tickets or expanding the trip plan.
+- Write a concrete human action with an object and observable stopping
+  point. Use the shared readiness and effort rules. State unknown effort
+  when the available facts do not support an estimate.
+- Reuse a project when it already covers the outcome. For a new project,
+  state the outcome and name it `{CamelCaseSummary}-{YYYYMMDD}`. Propose a
+  first action whose inputs are ready. If no such step is established,
+  retain the capture and state the blocker, uncertainty, or supported wait.
+- For work that needs agent startup and later review, retain the full
+  deliverable in the project goal. Propose only the current human step under
+  the shared lifecycle policy.
+- Use the shared priority defaults and inheritance, including explicit
+  None (0). Keep work undated unless the user supplies a real deadline.
+  Follow cloud date rules. A project deadline does not automatically apply
+  to its first action.
+- Ask one focused question only when a missing fact changes the action,
+  outcome, or deadline. Keep that capture pending while processing clear
+  items. Keep skipped and non-actionable captures pending too.
 
-If `Projects` is absent, there are no existing projects. Create missing lists only when needed for an approved proposal. Create reminders only in `Projects`, `@quick`, `@1pomo`, `@2pomo`, and `@deep`. Read legacy `@agent` reminders only within the requested scope. Do not expand inbox processing into bulk conversion. Propose conversion through the batch approval flow. Update the same reminder ID to a concrete human action and duration list. Preserve its original deliverable, project reference, and other notes.
+Show a numbered batch with each source capture, proposed action, project,
+duration label, human effort or “Unknown”, priority, and deadline or
+“No deadline”. Include the reason for each retained capture. Show short
+unique ID suffixes where identical titles need distinction.
 
-## Step 2: Clarify and Propose a Batch
+Use **AskUserQuestion** once to approve the inferred batch or give numbered
+corrections, skips, or a stop request. An instruction to process the inbox
+alone does not approve an inferred proposal. Use prior explicit approval
+when it covers the concrete changes. Apply clear corrections without
+another approval round. If the user stops, leave unprocessed captures
+pending and finish.
 
-Before proposing actions that involve agent work or converting legacy reminders, read the [shared GTD planning policy](../../references/gtd-planning.md).
+## Apply
 
-For each item, propose a standalone action, an action linked to an existing project, a new project with its first action, or leaving it in the inbox.
+Prepare the approved changes through the cloud contract. Keep each source
+capture and all its dependent changes in one transaction: create or update
+the approved project and action records, create the UUID links, and complete
+the corresponding original inbox UUID. Preserve the source capture and its
+history. Retained captures stay pending. Follow the cloud batch limit; split
+only independent groups and keep receipts for each completed batch. If one
+dependent group exceeds that limit, stop that group and propose a smaller
+change. Do not split its capture completion from the required work.
 
-- Write an action with a concrete verb, an object, and a clear stopping point. Use only facts available from the item and context.
-- Preserve the user's goal. Researching flights does not authorize booking flights. Do not invent a larger project or additional commitments.
-- If agent work requires startup and later support or review, link the current action to an existing project for that outcome, or propose a new project. Keep the full deliverable in the project goal.
-- For a new project, state the intended outcome and name it `{CamelCaseSummary}-{YYYYMMDD}`. Its first action must be something the user can start now.
-- Express agent work as the current concrete human action: start the agent, support its work, or review its output. Use `@quick` (<25 min), `@1pomo` (25 min), `@2pomo` (50 min), or `@deep` (90+ min). Estimate only that action’s human effort. Label uncertain values as estimates; never treat unknown effort as zero. Keep the intended agent deliverable and asynchronous runtime, when known, in notes. Waiting for output is not a ready action.
-- Priority labels are optional Reminders hints. Use priority from explicit urgency cues, or Medium by default. Project actions inherit project priority unless overridden.
-- Leave projects and actions undated by default, including agent tasks. Set a due date only for a real deadline supplied by the user. A preferred work date is not a deadline. Keep date-only deadlines as `YYYY-MM-DD`; add `HH:mm` only when the user supplied a time. Resolve relative deadlines from the current local date, or reuse a capture-time date annotation when available. Do not give a first action the project deadline unless that deadline also applies to the action.
-- Ask one focused question when missing information changes the action, outcome, or deadline and context cannot resolve it. Leave that item in the inbox while processing clear items. Leave skipped and non-actionable items there too, and state why. Do not force them into tasks.
+Use the shared lifecycle policy for any authorized startup completion,
+review creation, or legacy conversion in the batch. Those changes must
+stay within the approved scope. Preserve unrelated fields and notes.
 
-Show a compact numbered batch with the proposed action, project if any, list, priority, and deadline or "No deadline". Show each action’s human effort estimate. Include the reason for each item left in the inbox.
+Use current revisions and stable request and item UUIDs as the cloud
+contract requires. Confirm the receipt and readback before reporting the
+changes complete. A failed transaction leaves its captures pending. For an
+uncertain response, reconcile the original request before retrying; follow
+the exact-replay procedure in the cloud contract.
 
-Example, when the route and dates are already known:
+## Report
 
-```text
-Item: Research vacation flights
-Action: Confirm route and dates, then send the agent the flight comparison request.
-List: @quick
-Human effort (estimate): 5 min.
-Notes: Agent deliverable: shortlist of flight prices and travel times. Async runtime: Unknown.
-Priority: Medium
-Due: No deadline
-```
-
-Use **AskUserQuestion** once to approve the batch or collect numbered corrections, skips, or a stop request.
-
-Apply clear corrections without another approval round. Skip items the user excludes. If the user stops, leave all unprocessed items in the inbox and exit. Do not repeat approval for work already explicitly authorized. An instruction to process the inbox alone does not approve an inferred proposal.
-
-## Step 3: Create the Approved Reminders
-
-Create each missing destination list with:
-
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create-list "<list>"
-```
-
-For a new project, create its outcome reminder first:
-
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
-  --title "ProjectName-YYYYMMDD" \
-  --list "Projects" \
-  --priority 5 \
-  --notes "Goal: [approved outcome]"
-```
-
-Create the standalone action, linked project action, or first action:
-
-```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift reminders create \
-  --title "[approved concrete action]" \
-  --list "[approved context list]" \
-  --priority 5
-```
-
-Use `--notes` for the approved notes, including the current action’s human effort estimate. Include `#{ProjectName-YYYYMMDD}` for a linked action. Preserve the intended agent deliverable, runtime context, and other relevant notes. For an approved legacy conversion, use `reminders update --id "<reminder-id>"` with the human action title, duration list, and full merged notes. Do not create a replacement reminder. Use the approved priority: 1=High, 5=Medium, 9=Low, 0=None. Add `--due "YYYY-MM-DD"` only for an approved deadline, or `--due "YYYY-MM-DD HH:mm"` when its time was supplied.
-
-For later completion and review, follow the shared planning policy. Save a waiting record in the project notes before completing startup. Preserve the goal and unrelated notes. If that write fails, leave startup open. Propose support or review only when it is actionable.
-
-Check each command result. Record reminder IDs from successful creates or conversions. Confirm each conversion update before removing its inbox item. If a create fails or its result is uncertain, retain the inbox item and report the partial result. Inspect the destination list before retrying an uncertain create. Reuse confirmed reminders and create only missing records. If processing must resume later, preserve the confirmed IDs with the retained inbox item so a later run can avoid duplicates.
-
-## Step 4: Remove Completed Items and Report
-
-Remove an inbox item only after every reminder required by its proposal is confirmed created or updated. For a new project, both the project and first action must exist. Re-read the inbox before removal and edit only the processed occurrence. Preserve concurrent additions and identical items. If removal fails, report the successful reminder IDs and retain that information for recovery.
-
-Report what was created and what remains, with reasons for skipped, unclear, non-actionable, or failed items. Finish after the requested batch. Do not ask whether to continue or loop through retained items.
+Report the created or updated projects and actions, the captures completed,
+and the captures still pending. Give reasons for skipped, unclear,
+non-actionable, or failed items. State any unresolved result accurately.
+Finish after this batch. Do not loop through retained items or ask whether
+to continue.

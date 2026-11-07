@@ -1,7 +1,7 @@
 {
   "name": "productivity-skills",
-  "version": "6.3.0",
-  "description": "macOS productivity skills for Codex: Calendar, Reminders, and GTD workflows via EventKit CLI.",
+  "version": "7.0.0",
+  "description": "Cloud GTD workflows for Codex through the connected Supabase tool, plus native macOS Calendar and Reminders.",
   "author": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"
@@ -15,6 +15,7 @@
     "reminders",
     "macos",
     "eventkit",
+    "supabase",
     "tasks",
     "agenda",
     "inbox"
@@ -22,8 +23,8 @@
   "skills": "./codex-skills/",
   "interface": {
     "displayName": "Productivity Skills",
-    "shortDescription": "Codex-ready macOS Calendar, Reminders, and GTD workflows.",
-    "longDescription": "Use Productivity Skills to manage macOS Calendar events and Reminders, capture and process GTD inbox items, review projects, and generate calendar-aware agendas.",
+    "shortDescription": "Cloud GTD plus native macOS Calendar and Reminders.",
+    "longDescription": "Use the connected Supabase tool to capture and process GTD inbox items, review linked projects and actions, and select feasible work with shared status rules. Keep the project and owner in private configuration. Manage native macOS Calendar and general Reminders through their separate skills.",
     "developerName": "Steven",
     "category": "Productivity",
     "capabilities": [

@@ -31,6 +31,7 @@ does not set the minimum for installed plugins.
 | --- | --- | --- |
 | [Root package validator](scripts/validate_packages.py) and root tests | 3.11 | Standard library, including `tomllib`. |
 | [Core Hooks](core-hooks/scripts/safety_guard.py) | 3.8 | Standard library, except [`chime` for sound notifications](core-hooks/scripts/system_notification.py). |
+| [Productivity Skills: GTD SQL renderer](productivity-skills/scripts/gtd_sql.py) | 3.11 | Standard library. The connected Supabase tool executes the prepared SQL. |
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
 | Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
 | [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
@@ -40,8 +41,8 @@ does not set the minimum for installed plugins.
 
 The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
 minimum; the bridge requirement does not apply to that separate process.
-Productivity Skills uses Swift at runtime. CC Customize uses Bash and
-`jq`, with Git for status information. Neither has a Python runtime.
+Productivity Skills also uses Swift for native Calendar and Reminders.
+CC Customize uses Bash and `jq`, with Git for status information.
 See [Verification](#verification) for test commands and test prerequisites.
 
 ## Repository and package boundaries
@@ -492,7 +493,10 @@ python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
 
 The table in [Verification](#verification) gives the command for each suite.
 
-The `productivity-skills` suite needs `swiftc`. It requests no Reminders
+The `productivity-skills` suite needs Python 3.11+, `swiftc`, and PostgreSQL
+tools (`initdb`, `pg_ctl`, and `psql`). GTD tests execute generated SQL in a
+temporary local database with synthetic records and no TCP listener. They
+use no live Supabase data. Native verification requests no Reminders
 access and saves nothing. On one host, one run took 24 seconds and another
 did not finish in 120 seconds, so give its command a timeout of at least 300
 seconds.

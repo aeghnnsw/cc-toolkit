@@ -1,5 +1,5 @@
 {
   "name": "productivity-skills",
-  "description": "macOS productivity skills for managing Calendar events, Reminders, and proactive task management via EventKit CLI",
-  "version": "6.3.0"
+  "description": "Cloud GTD workflows through the connected Supabase tool, plus native macOS Calendar and Reminders",
+  "version": "7.0.0"
 }
