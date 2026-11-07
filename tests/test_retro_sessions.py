@@ -90,6 +90,27 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), before)
         self.assertEqual(source.stat().st_mtime_ns, original_stat.st_mtime_ns)
 
+    def test_claude_auxiliary_state_does_not_create_false_timestamp_gaps(self):
+        self.transcript(self.claude, "old-state.jsonl", [
+            self.claude_message("Old context", timestamp="2026-01-01T00:00:00Z"),
+            {"type": "atis-latch", "atis": {}},
+            {"type": "api-request-blob", "hash": "fixture", "message": {"content": "Cached request"}},
+            {"type": "ai-title", "aiTitle": "Fixture session"},
+            {"type": "permission-mode", "permissionMode": "default"},
+            {"type": "relocated", "relocatedCwd": str(self.repo)},
+            {"type": "worktree-state", "worktreeSession": {}},
+        ])
+        message = self.claude_message("A real message with missing time")
+        del message["timestamp"]
+        self.transcript(self.claude, "missing-message-time.jsonl", [message])
+        summary, manifest, selected, _ = self.artifacts(self.run_cli(
+            "--after", "2026-01-02T00:00:00Z", "--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual(summary["selected_sources"], 1)
+        self.assertEqual(summary["diagnostics"], 1)
+        self.assertEqual(summary["status"], "partial")
+        self.assertEqual(manifest["counts"]["ignored_records"], 6)
+        self.assertEqual(selected[0]["diagnostics"], [{"code": "invalid_timestamp", "line": 1}])
+
     def test_resumed_mixed_repository_sessions_obey_current_cwd_and_time_window(self):
         foreign = str(self.base / "project-extra")
         self.transcript(self.claude, "mixed.jsonl", [

@@ -18,6 +18,8 @@ CLAUDE_AUXILIARY = (
     "file-history-snapshot", "queue-operation", "progress", "system", "summary",
     "custom-title", "last-prompt", "agent-name", "agent-color", "mode",
     "api-request", "cost-state",
+    "atis-latch", "api-request-blob", "ai-title", "permission-mode",
+    "relocated", "worktree-state",
 )
 CODEX_AUXILIARY = (
     "token_count", "task_started", "task_complete", "turn_aborted",
