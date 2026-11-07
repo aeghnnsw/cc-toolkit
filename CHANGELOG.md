@@ -37,6 +37,8 @@
 
 ### Changed
 
+- Repository: README Usage gives verified marketplace and plugin installation commands for Claude Code and Codex. It links to the update, disable, and removal instructions in CONTRIBUTING.md. See [#295](https://github.com/aeghnnsw/cc-toolkit/issues/295).
+
 - dev-skills (Claude Code 3.35.2, Codex 1.25.2): Matt Automode checks the code covered by a new retrospective rule before applying it. When valid existing code conflicts with the rule, narrow the rule or record the exception. See [#357](https://github.com/aeghnnsw/cc-toolkit/issues/357).
 
 - Repository: `CLAUDE.md` gives the search pathspec for current text. "Verification" in CONTRIBUTING starts with a table that maps each change type to its check or command, and it names the `productivity-skills` suite, which the old suite list omitted. See [#370](https://github.com/aeghnnsw/cc-toolkit/issues/370).

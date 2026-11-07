@@ -169,15 +169,42 @@ Both hosts share the local Python bridge and socket plugin. See the
 
 ## Usage
 
-### As a Marketplace
-Install the marketplace by linking to this repository from Claude Code or Codex.
+Run these commands in a terminal with Git and the matching host CLI installed.
+The commands download the marketplace from GitHub; a local checkout is not
+required. Each example installs `creator-skills`. Replace that name with another
+plugin from [Available Plugins](#available-plugins) when needed.
 
-### Individual Plugins
-Each plugin can be used independently by referencing its directory:
-- `./dev-skills`
-- `./creator-skills`
-- `./doc-skills`
-- `./core-hooks`
-- `./productivity-skills`
-- `./pymol-skills`
-- `./cc-customize`
+### Claude Code
+
+Add the marketplace, then install the plugin for your user account:
+
+```bash
+claude plugin marketplace add aeghnnsw/cc-toolkit
+claude plugin install creator-skills@cc-toolkit --scope user
+claude plugin list
+```
+
+Start a new Claude Code session to load the plugin. See the
+[Claude Code plugin guide](https://code.claude.com/docs/en/plugins/install)
+for other installation scopes.
+
+### Codex
+
+Add the marketplace, then install the plugin:
+
+```bash
+codex plugin marketplace add aeghnnsw/cc-toolkit
+codex plugin add creator-skills@cc-toolkit
+codex plugin list --marketplace cc-toolkit
+```
+
+Start a new Codex session to load the plugin. The Codex marketplace includes
+`core-hooks`, `dev-skills`, `creator-skills`, `productivity-skills`, and
+`pymol-skills`. See the [Codex plugin commands](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)
+for command options.
+
+### Updates and removal
+
+See [Update installed plugins](CONTRIBUTING.md#update-installed-plugins) for
+both hosts. See [Disable or remove installed plugins](CONTRIBUTING.md#disable-or-remove-installed-plugins)
+to stop using a plugin.
