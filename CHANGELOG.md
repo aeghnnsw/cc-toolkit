@@ -39,6 +39,8 @@
 
 ### Changed
 
+- Repository: add a reusable local session helper for navigation retrospectives. It filters Claude and Codex evidence by directory metadata and parsed time boundaries, preserves raw copies, and emits bounded digests with source-line references and explicit history limits. The repository guide uses the helper through the existing skill pointer. See [#384](https://github.com/aeghnnsw/cc-toolkit/issues/384).
+
 - productivity-skills (Claude Code and Codex 7.0.0): move all five GTD workflows to the connected Supabase store with a private project/owner binding, a shared SQL renderer and transaction, UUID links, revision checks, exact retries, and recoverable deletion. Project review and overview share human-readiness status rules. Calendar and general Reminders remain native. See [#382](https://github.com/aeghnnsw/cc-toolkit/issues/382).
 
 - Repository: record the connected GTD decision and point contributors to the shipped operating contract. Mark replaced native-storage design guidance as historical and document local PostgreSQL verification. See [#382](https://github.com/aeghnnsw/cc-toolkit/issues/382).

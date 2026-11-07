@@ -29,7 +29,7 @@ does not set the minimum for installed plugins.
 
 | Component | Declared minimum | Python dependencies and exceptions |
 | --- | --- | --- |
-| [Root package validator](scripts/validate_packages.py) and root tests | 3.11 | Standard library, including `tomllib`. |
+| [Root package validator](scripts/validate_packages.py), [retrospective helper](scripts/retro_sessions.py), and root tests | 3.11 | Standard library, including `tomllib`. |
 | [Core Hooks](core-hooks/scripts/safety_guard.py) | 3.8 | Standard library, except [`chime` for sound notifications](core-hooks/scripts/system_notification.py). |
 | [Productivity Skills: GTD SQL renderer](productivity-skills/scripts/gtd_sql.py) | 3.11 | Standard library. The connected Supabase tool executes the prepared SQL. |
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
@@ -369,7 +369,7 @@ that matches your change from the repository root:
 | Any change | `git diff --check` |
 | Documentation | Check accuracy, relative links, and referenced paths. |
 | A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
-| A skill, an agent, `allowed-models.json`, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
+| A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A skill | Check its frontmatter and invocation guidance. |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
