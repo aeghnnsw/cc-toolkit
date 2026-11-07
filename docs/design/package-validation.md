@@ -11,13 +11,13 @@ Terms are defined in [GLOSSARY.md](../../GLOSSARY.md).
 Package validation checks the declared local contract of every registered
 plugin. Release validation checks plugin version increases for affected
 hosts and skill version increases for changed skills.
-Both checks run read-only, locally and on pull requests. Contributors choose
-versions and make corrections. Deterministic errors fail the command.
+Both checks run read-only on contributor machines before a pull request is
+merged. Contributors choose versions and make corrections. Deterministic
+errors fail the command.
 
 Validation uses Python 3.11 or newer and the standard library. It inspects
 repository files and Git changes. It installs no dependencies and runs no
 plugin code. The speed target is less than 10 seconds of validator execution.
-Queue, checkout, and runner startup time are separate.
 
 Plugin packages remain self-contained. Host manifests, versions, and
 independent discovery roots follow
@@ -36,7 +36,6 @@ uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base
 `--base` names the target ref or SHA. The module resolves its merge base
 with `HEAD`. Local checks inspect the resulting working tree, including
 staged edits, unstaged edits, and new files that Git does not ignore.
-CI checks the exact pull-request head against the target SHA.
 
 An unavailable target ref or merge base causes an actionable error. The
 validator does not fetch history or skip release validation. Contributors
@@ -150,20 +149,6 @@ registrations are checked normally.
 Source moves match by plugin identity and host, so they preserve release
 history. Only changes since the selected merge base affect release checks.
 Historical omissions do not create retroactive version requirements.
-
-## Pull-request job
-
-[The workflow](../../.github/workflows/package-validation.yml) runs one job
-on relevant pull-request changes. It excludes root contributor documents
-and `docs/` through `paths-ignore`. Other paths remain eligible, including
-new plugin source directories, registries, rules, tests, and the validator.
-
-Checkout selects the explicit head SHA with full history. A separate fetch
-makes the explicit target SHA available. The same local command resolves
-their merge base. The job has `contents: read`, a five-minute timeout, and
-cancels superseded runs for the same pull request. It uses the runner's
-Python and installs nothing. It runs no plugin runtime suites or live host
-checks. Command output reports validator execution time.
 
 ## Adoption and verification
 
