@@ -21,3 +21,9 @@ Current decisions:
 
 - [Isolate host adapter discovery](../adr/0001-isolate-host-adapter-discovery.md)
 - [Use a cross-family critic for pressure tests](../adr/0002-cross-family-pressure-test-critic.md)
+
+## Host compatibility
+
+Target the current releases of Claude Code and Codex. Avoid adding
+compatibility code or fallbacks for older host releases. Require a host
+update when an installed release lacks a capability needed by the plugin.

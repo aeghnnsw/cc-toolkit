@@ -39,6 +39,8 @@
 
 ### Changed
 
+- Repository: domain guidance targets current Claude Code and Codex releases and avoids compatibility code for older hosts. CLAUDE.md points to this policy before host compatibility changes. See [#361](https://github.com/aeghnnsw/cc-toolkit/issues/361).
+
 - Repository: CONTRIBUTING.md gives coding standards, declared Python minimums, and dependency exceptions. CLAUDE.md links directly to the section for implementation and review. The 78-character prose rule applies only to CLAUDE.md and CONTRIBUTING.md, with exceptions for headings, tables, links, and code examples. See [#296](https://github.com/aeghnnsw/cc-toolkit/issues/296).
 
 - Repository: README Usage gives verified marketplace and plugin installation commands for Claude Code and Codex. It links to the update, disable, and removal instructions in CONTRIBUTING.md. See [#295](https://github.com/aeghnnsw/cc-toolkit/issues/295).
