@@ -147,24 +147,33 @@ def run_zsh(command, cwd):
     )
 
 
-def run_hook(command, shell="/bin/zsh", cwd=None):
-    env = os.environ.copy()
-    env["SHELL"] = shell
+def run_hook_input(input_text, shell="/bin/zsh", args=(), env=None):
+    environment = os.environ.copy()
+    environment["SHELL"] = shell
+    if env:
+        environment.update(env)
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        input=input_text,
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+        timeout=30,
+    )
+
+
+def run_hook(command, shell="/bin/zsh", cwd=None, host=None, tool_input=None, env=None):
     payload = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",
-        "tool_input": {"command": command},
+        "tool_input": {**(tool_input or {}), "command": command},
     }
     if cwd:
         payload["cwd"] = cwd
-    return subprocess.run(
-        [sys.executable, str(SCRIPT)],
-        input=json.dumps(payload),
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-        timeout=30,
+    return run_hook_input(
+        json.dumps(payload), shell=shell,
+        args=("--host", host) if host is not None else (), env=env,
     )
 
 
@@ -249,6 +258,210 @@ class ZshTrapTests(unittest.TestCase):
         self.assertNotIn("additionalContext", output)
         self.assertEqual(response["systemMessage"], output["permissionDecisionReason"])
 
+    def test_current_hosts_quote_a_separator_and_preserve_input(self):
+        extra_input = {
+            "description": "Print the separator",
+            "timeout": 1000,
+            "run_in_background": False,
+            "workdir": "/tmp",
+            "extension": {"keep": ["all", "fields"]},
+        }
+        for host in ("claude", "codex"):
+            with self.subTest(host=host):
+                result = run_hook("echo =====", host=host, tool_input=extra_input)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                output = json.loads(result.stdout)["hookSpecificOutput"]
+                self.assertEqual(output["hookEventName"], "PreToolUse")
+                self.assertEqual(
+                    output.get("updatedInput"),
+                    {**extra_input, "command": "echo '====='"},
+                )
+                self.assertNotIn("permissionDecisionReason", output)
+                if host == "claude":
+                    self.assertNotIn("permissionDecision", output)
+                else:
+                    self.assertEqual(output.get("permissionDecision"), "allow")
+
+    @unittest.skipUnless(ZSH, "zsh is not installed")
+    def test_rewritten_separators_print_literal_text_in_zsh(self):
+        cases = (
+            ("echo =====", "echo '====='", "=====\n"),
+            ("echo =====CODEX", "echo '=====CODEX'", "=====CODEX\n"),
+            ("echo ===step_2===", "echo '===step_2==='", "===step_2===\n"),
+            (
+                "\techo\t-n  ==  SECTION_2\t====CODEX==  \t",
+                "\techo\t-n  '=='  SECTION_2\t'====CODEX=='  \t",
+                "== SECTION_2 ====CODEX==",
+            ),
+            (" echo == ====  === \t", " echo '==' '===='  '===' \t", "== ==== ===\n"),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for command, rewritten, expected_stdout in cases:
+                original = run_zsh(command, temp_dir)
+                self.assertNotEqual(original.returncode, 0, original.stdout)
+                self.assertIn("not found", original.stderr)
+                for host in ("claude", "codex"):
+                    with self.subTest(host=host, command=command):
+                        result = run_hook(command, host=host)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        output = json.loads(result.stdout)["hookSpecificOutput"]
+                        self.assertIn("updatedInput", output)
+                        self.assertEqual(output["updatedInput"]["command"], rewritten)
+                        actual = run_zsh(output["updatedInput"]["command"], temp_dir)
+                        self.assertEqual(actual.returncode, 0, actual.stderr)
+                        self.assertEqual(actual.stderr, "")
+                        self.assertEqual(actual.stdout, expected_stdout)
+                        checked_again = run_hook(rewritten, host=host)
+                        self.assertEqual(checked_again.returncode, 0, checked_again.stderr)
+                        self.assertEqual(checked_again.stdout, "")
+
+    def test_unsupported_commands_keep_their_existing_denial(self):
+        commands = (
+            "echo =====; echo later",
+            "echo first && echo =====",
+            "echo ===== || echo later",
+            "echo ===== | cat",
+            "echo ===== &",
+            "echo =====\n",
+            "\necho =====",
+            "echo ===== # =====",
+            "echo ===== '====='",
+            'echo ===== "====="',
+            "echo ===\\=CODEX",
+            "echo ====\\\nCODEX",
+            "echo ===== $label",
+            "echo ===== ${label}",
+            "echo ===== $(true)",
+            "echo ===== `true`",
+            "echo ===== {a,b}",
+            "echo ===== *.missing",
+            "echo ===== > file",
+            "echo ===== 2>/dev/null",
+            "echo ===== <<< hi",
+            "VALUE=x echo =====",
+            "echo label=x =====",
+            "command echo =====",
+            "builtin echo =====",
+            "/bin/echo =====",
+            "env echo =====",
+            "echo -e =====",
+            "echo -n -n =====",
+            "echo -- =====",
+            "echo ===== -n",
+            "printf ====CODEX",
+            "echo ===== =sh",
+            "echo ===== =/bin/sh",
+            "echo ===== =missing_command_361",
+            "echo ===CO-DEX",
+            "echo ===é",
+            "echo ====COD=EX",
+            "echo ===\r",
+        )
+        for command in commands:
+            original = run_hook(command)
+            self.assertEqual(original.returncode, 0, original.stderr)
+            output = json.loads(original.stdout)["hookSpecificOutput"]
+            self.assertEqual(output["permissionDecision"], "deny", command)
+            for host in ("claude", "codex"):
+                with self.subTest(host=host, command=command):
+                    result = run_hook(command, host=host)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, original.stdout)
+
+    def test_unsupported_commands_preserve_other_warnings(self):
+        cases = (
+            ("echo ===== *.missing", "matches no file"),
+            ('WORDS="a b"; echo ===== $WORDS', "does not split"),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for command, warning in cases:
+                for host in ("claude", "codex"):
+                    with self.subTest(host=host, command=command):
+                        result = run_hook(command, host=host, cwd=temp_dir)
+                        output = json.loads(result.stdout)["hookSpecificOutput"]
+                        self.assertEqual(output["permissionDecision"], "deny")
+                        self.assertIn(warning, output["permissionDecisionReason"])
+                        self.assertNotIn("updatedInput", output)
+
+    def test_valid_equals_expansions_keep_their_existing_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable = Path(temp_dir, "====CODEX")
+            executable.write_text("#!/bin/sh\nexit 0\n")
+            executable.chmod(0o755)
+            env = {"PATH": temp_dir + os.pathsep + os.environ.get("PATH", "")}
+            for command in ("echo =sh", "echo =====CODEX"):
+                for host in ("claude", "codex"):
+                    with self.subTest(host=host, command=command):
+                        result = run_hook(command, host=host, env=env)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        response = json.loads(result.stdout)
+                        output = response["hookSpecificOutput"]
+                        self.assertNotIn("permissionDecision", output)
+                        self.assertNotIn("updatedInput", output)
+                        self.assertIn("Quote the word", output["additionalContext"])
+                        self.assertEqual(response["systemMessage"], output["additionalContext"])
+            for host in ("claude", "codex"):
+                with self.subTest(host=host, mixed=True):
+                    result = run_hook("echo ===== =====CODEX", host=host, env=env)
+                    output = json.loads(result.stdout)["hookSpecificOutput"]
+                    self.assertEqual(output["permissionDecision"], "deny")
+                    self.assertNotIn("updatedInput", output)
+
+    def test_missing_or_unknown_host_markers_keep_the_existing_denial(self):
+        payload = json.dumps({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo ====="},
+            "turn_id": "incidental-host-field",
+        })
+        for args in ((), ("--host",), ("--host", "unknown")):
+            with self.subTest(args=args):
+                result = run_hook_input(payload, args=args, env={
+                    "CLAUDE_PLUGIN_ROOT": "/claude/plugin",
+                    "PLUGIN_ROOT": "/codex/plugin",
+                })
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                output = json.loads(result.stdout)["hookSpecificOutput"]
+                self.assertEqual(output["permissionDecision"], "deny")
+                self.assertNotIn("updatedInput", output)
+
+    def test_compatibility_payloads_keep_the_existing_denial(self):
+        payloads = (
+            {"tool_name": "exec_command", "tool_input": {"cmd": "echo ====="}},
+            {"tool_name": "run_terminal_command", "tool_input": {"command": "echo ====="}},
+            {"toolName": "Bash", "toolInput": {"command": "echo ====="}},
+            {"tool_name": "Bash", "toolInput": {"command": "echo ====="}},
+            {"toolName": "Bash", "tool_input": {"command": "echo ====="}},
+        )
+        for payload in payloads:
+            for host in ("claude", "codex"):
+                with self.subTest(host=host, payload=payload):
+                    result = run_hook_input(json.dumps(payload), args=("--host", host))
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    output = json.loads(result.stdout)["hookSpecificOutput"]
+                    self.assertEqual(output["permissionDecision"], "deny")
+                    self.assertNotIn("updatedInput", output)
+
+    def test_malformed_input_or_unrelated_tools_remain_silent(self):
+        payloads = (
+            "{", "null", "[]", '"text"', "{}",
+            json.dumps({"tool_name": "Bash", "tool_input": None}),
+            json.dumps({"tool_name": "Bash", "tool_input": ["echo ====="]}),
+            json.dumps({"tool_name": "Bash", "tool_input": {"command": 42}}),
+            json.dumps({"tool_name": "Bash", "tool_input": {"cmd": "echo ====="}}),
+            json.dumps({"tool_name": "Read", "tool_input": {"command": "echo ====="}}),
+            json.dumps({"tool_name": [], "tool_input": {"command": "echo ====="}}),
+        )
+        for payload in payloads:
+            for args in ((), ("--host", "claude"), ("--host", "codex")):
+                with self.subTest(args=args, payload=payload):
+                    result = run_hook_input(payload, args=args)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stderr, "")
+                    self.assertEqual(result.stdout, "")
+
     def test_hook_gives_the_agent_a_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             for command, text in ((EQUALS_FOUND, "Quote the word"), ("ls *.md", "matches no file")):
@@ -263,10 +476,11 @@ class ZshTrapTests(unittest.TestCase):
 
     def test_hook_is_silent_for_a_safe_command_or_another_shell(self):
         for command, shell in (("echo '====='", "/bin/zsh"), ("echo =====", "/bin/bash")):
-            with self.subTest(command=command, shell=shell):
-                result = run_hook(command, shell=shell)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, "")
+            for host in (None, "claude", "codex"):
+                with self.subTest(host=host, command=command, shell=shell):
+                    result = run_hook(command, shell=shell, host=host)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

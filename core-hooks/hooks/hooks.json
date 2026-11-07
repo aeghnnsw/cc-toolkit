@@ -19,7 +19,7 @@
           },
           {
             "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/zsh_traps.py"
+            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/zsh_traps.py --host claude"
           }
         ]
       }

@@ -34,7 +34,7 @@ mapping and how to handle labels that are absent from GitHub.
 
 ### Domain docs
 
-Before changing terminology or architecture, read
+Before changing terminology, architecture, or host compatibility, read
 [docs/agents/domain.md](docs/agents/domain.md), then the relevant decision
 records. The repository uses a single-context layout.
 
