@@ -1,5 +1,12 @@
 # GTD daily use
 
+Superseded in part on 2026-11-07 by
+[#382](https://github.com/aeghnnsw/cc-toolkit/issues/382): GTD storage,
+project links and mutation identity now follow the
+[cloud GTD contract](../../productivity-skills/references/gtd-cloud.md).
+The native lists, name references and reminder-ID decisions below describe
+the preserved source workflow. Calendar and general Reminders remain native.
+
 The user selects work through `gtd-next`. The complete spec and single
 implementation ticket are [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
 See the [GTD glossary](../../GLOSSARY.md#gtd-language) for the agreed terms.
@@ -23,6 +30,10 @@ Agent execution tracking, weekly review, new lists, and project-completion
 policy changes remain out of scope.
 
 ## Verification
+
+For current GTD verification, follow the
+[repository checks](../../CONTRIBUTING.md#verification). The native-only
+checks below remain relevant to general Reminders changes.
 
 Use compiled CLI commands for argument rejection and JSON response checks.
 Use unsaved EventKit objects to verify edit preservation and local date behavior

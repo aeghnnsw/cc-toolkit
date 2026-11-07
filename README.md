@@ -119,16 +119,16 @@ Safety guards and workflow enforcement hooks.
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Productivity Skills (`productivity-skills`)
-Personal productivity automation using macOS Calendar and Reminders.
+GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a private project/owner configuration and Python 3.11+. See the [cloud workflow and setup](productivity-skills/references/gtd-cloud.md).
 
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
 - **reminder-manager**: Manage macOS Reminders via EventKit CLI
-- **gtd-inbox**: Capture thoughts and tasks into the GTD inbox
-- **gtd-process**: Process inbox items into projects or actions
-- **gtd-project**: Review and manage GTD projects and their actions
-- **gtd-next**: Calendar-aware task selection and time-blocked agendas
-- **gtd-overview**: Read-only listing of all projects with their actions plus standalone actions
+- **gtd-inbox**: Capture thoughts and tasks into the cloud GTD inbox
+- **gtd-process**: Process cloud inbox items into linked projects or actions
+- **gtd-project**: Review and manage cloud GTD projects and their actions
+- **gtd-next**: Select cloud GTD actions with available native Calendar context
+- **gtd-overview**: Read-only cloud project and action inventory with shared status rules
 
 **Codex skills:**
 - **calendar-manager**

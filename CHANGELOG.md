@@ -39,6 +39,10 @@
 
 ### Changed
 
+- productivity-skills (Claude Code and Codex 7.0.0): move all five GTD workflows to the connected Supabase store with a private project/owner binding, a shared SQL renderer and transaction, UUID links, revision checks, exact retries, and recoverable deletion. Project review and overview share human-readiness status rules. Calendar and general Reminders remain native. See [#382](https://github.com/aeghnnsw/cc-toolkit/issues/382).
+
+- Repository: record the connected GTD decision and point contributors to the shipped operating contract. Mark replaced native-storage design guidance as historical and document local PostgreSQL verification. See [#382](https://github.com/aeghnnsw/cc-toolkit/issues/382).
+
 - core-hooks (Claude Code and Codex 1.0.23): quote plain separators in simple standalone echo commands through each host's input rewrite contract. Explicit host arguments select the response while normal permission checks remain in effect. Complex commands and valid command expansions retain their existing checks. See [#361](https://github.com/aeghnnsw/cc-toolkit/issues/361).
 
 - Repository: domain guidance targets current Claude Code and Codex releases and avoids compatibility code for older hosts. CLAUDE.md points to this policy before host compatibility changes. See [#361](https://github.com/aeghnnsw/cc-toolkit/issues/361).

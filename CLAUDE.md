@@ -38,6 +38,11 @@ Before changing terminology, architecture, or host compatibility, read
 [docs/agents/domain.md](docs/agents/domain.md), then the relevant decision
 records. The repository uses a single-context layout.
 
+Before changing GTD storage or workflows, read the
+[cloud GTD decision](docs/adr/0003-use-connected-supabase-for-gtd.md) and the
+[shipped operating contract](productivity-skills/references/gtd-cloud.md).
+Keep private account bindings and migration records outside this repository.
+
 ### Navigation retrospectives
 
 Before a navigation retrospective of earlier agent sessions, read

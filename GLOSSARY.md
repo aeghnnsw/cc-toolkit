@@ -67,6 +67,15 @@ reviewing agent work. Unattended agent runtime is separate.
 An incomplete outcome that depends on an external result and currently has no
 ready human next action.
 
+**Active project**:
+A GTD project with at least one ready human next action. Stored actions alone
+do not establish readiness.
+
+**Project with no next action**:
+A GTD project with neither an established ready human next action nor a
+supported waiting outcome. Its blocker, uncertainty or deliberate deferral
+remains part of the report.
+
 ## Slide language
 
 **Assertion title**:
