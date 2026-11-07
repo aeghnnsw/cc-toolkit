@@ -21,6 +21,11 @@ Keep development and publishing in this repository. Use branches and
 worktrees for changes and the host-specific manifests for plugin releases.
 A root documentation change does not require changing plugin versions.
 
+### Update installed plugins
+
+For first-time installation, see [Usage](README.md#usage).
+Replace `<plugin>` below with a plugin name, such as `creator-skills`.
+
 Installed copies under `~/.claude/plugins/cache/` and
 `~/.codex/plugins/cache/` are release snapshots. They can lag this checkout,
 and each update replaces them. Read and edit the plugin directory in this
@@ -28,21 +33,63 @@ repository. To update the installed Claude Code copies:
 
 1. Run `claude plugin marketplace update cc-toolkit`.
 2. For each installed plugin, run `claude plugin update <plugin>@cc-toolkit`.
+   Add `--scope user` for the user installation shown in the README, or use
+   the scope where you installed the plugin.
 3. Restart the session.
 
 To update the installed Codex copies:
 
 1. Run `codex plugin marketplace upgrade cc-toolkit`.
-2. Check that `~/.codex/plugins/cache/cc-toolkit/<plugin>/` has the new
-   version of each installed plugin. The upgrade did not always update
-   this cache.
+2. Check that `~/.codex/plugins/cache/cc-toolkit/<plugin>/` contains the
+   intended version of each installed plugin.
 3. For each plugin without the new version, run
    `codex plugin add <plugin>@cc-toolkit`.
+4. Start a new Codex session.
 
 The Core Hooks policy scripts that check your shell commands are the
 installed copy. A denial names its path, such as
 `core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
 keeps blocking a command that this checkout allows.
+
+### Disable or remove installed plugins
+
+The examples use `creator-skills`. Replace its name with the plugin you want
+to manage. Disabling keeps the plugin installed. Uninstalling removes it.
+
+For the Claude Code user installation shown in the README, choose one action:
+
+```bash
+# Disable; use enable to turn it on again.
+claude plugin disable creator-skills@cc-toolkit --scope user
+
+# Uninstall.
+claude plugin uninstall creator-skills@cc-toolkit --scope user
+```
+
+For a project or local installation, use that installation's scope instead.
+
+To disable the Codex plugin, set its entry in your active user configuration
+(`~/.codex/config.toml` by default):
+
+```toml
+[plugins."creator-skills@cc-toolkit"]
+enabled = false
+```
+
+Edit the existing entry if present; do not add a duplicate table. Set
+`enabled = true` to enable it again. A trusted project's `.codex/config.toml`
+can override this user setting. Codex has no `plugin disable` subcommand.
+
+To uninstall it instead:
+
+```bash
+codex plugin remove creator-skills@cc-toolkit
+```
+
+Start a new host session after changing its plugins. See the
+[Claude Code management guide](https://code.claude.com/docs/en/plugins/install#manage-plugins-from-your-shell)
+and [Codex plugin configuration](https://developers.openai.com/plugins/build/plugins#enable-or-disable-a-plugin-for-a-repo)
+for scope and configuration details.
 
 ### Skills for both hosts
 
