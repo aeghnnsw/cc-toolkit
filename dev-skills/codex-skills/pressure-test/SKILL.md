@@ -1,6 +1,6 @@
 ---
 name: pressure-test
-description: Use when a design, plan, rubric, PR, failure diagnosis, or task orchestration decision needs independent adversarial review before conclusion, including when another skill needs its decisions reviewed by an independent critic. A read-only Claude critic, run through the Claude Code CLI, supplies the pressure.
+description: Use when a design, plan, rubric, PR, failure diagnosis, or decision needs independent adversarial review before conclusion, including when another skill needs its decisions reviewed by an independent critic. A read-only Claude critic, run through the Claude Code CLI, supplies the pressure.
 ---
 
 # Pressure Test
@@ -13,7 +13,7 @@ Pressure testing only matters when the critic has enough context and independenc
 
 ## When To Use
 
-Use for design decisions, architecture choices, rubrics, plans, PRs, failure diagnoses, re-attack plans, and aim-fidelity checks.
+Use for design decisions, architecture choices, rubrics, plans, PRs, and failure diagnoses.
 
 Another skill can use it at a decision point and then continue its own work with the conclusion.
 
