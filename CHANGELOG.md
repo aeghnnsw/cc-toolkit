@@ -39,6 +39,8 @@
 
 ### Changed
 
+- Dev Skills (Claude Code 3.35.3, Codex 1.25.3): Simplify pressure-test invocation wording and align the shared use cases across hosts. Remove obsolete task-loop examples; preserve the critic protocol and existing Claude invocation phrases. See [#386](https://github.com/aeghnnsw/cc-toolkit/issues/386).
+
 - Repository: add a reusable local session helper for navigation retrospectives. It filters Claude and Codex evidence by directory metadata and parsed time boundaries, preserves raw copies, and emits bounded digests with source-line references and explicit history limits. The repository guide uses the helper through the existing skill pointer. See [#384](https://github.com/aeghnnsw/cc-toolkit/issues/384).
 
 - productivity-skills (Claude Code and Codex 7.0.0): move all five GTD workflows to the connected Supabase store with a private project/owner binding, a shared SQL renderer and transaction, UUID links, revision checks, exact retries, and recoverable deletion. Project review and overview share human-readiness status rules. Calendar and general Reminders remain native. See [#382](https://github.com/aeghnnsw/cc-toolkit/issues/382).

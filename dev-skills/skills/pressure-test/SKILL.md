@@ -1,6 +1,6 @@
 ---
 name: pressure-test
-description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with codex", "debate this with codex", "get codex's take", "deliberate with codex", or wants an independent adversarial review of a design, plan, rubric, PR, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Claude holds a genuine position while the Codex CLI acts as an always-adversarial read-only critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
+description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with codex", "debate this with codex", "get codex's take", "deliberate with codex", or wants an independent adversarial review of a design, plan, rubric, PR, failure diagnosis, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Claude holds a genuine position while the Codex CLI acts as an always-adversarial read-only critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
 ---
 
 # Pressure Test
@@ -28,8 +28,8 @@ pins the model, enforces the time limits, and prints one status line.
 
 ## When to use / not use
 
-- **Use** for: design decisions, architecture debates, "should we X or Y",
-  pros/cons questions, plans, rubrics, PRs, and failure diagnoses.
+- **Use** for: design decisions, architecture choices, rubrics, plans, PRs,
+  and failure diagnoses.
 - **Use from another skill** at a decision point. The calling skill then
   continues its own work with the conclusion.
 - **Do not use** for a routine edit that has no judgment call. This skill
