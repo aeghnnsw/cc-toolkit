@@ -307,3 +307,23 @@ _Avoid_: Quality gate, question triage
 The Git-ignored folder in the main checkout that holds one task's disposable
 planning files, research notes, and research scripts.
 _Avoid_: Planning directory, scratch dir
+
+## Retrospective language
+
+**Navigation retrospective**:
+A review of earlier agent sessions for problems that cost a run significant
+time or work, such as slow information searches and stale guidance. It
+proposes changes for a human to choose and edits no tracked file.
+_Avoid_: Lessons learned, retro fixes
+
+**Steering file**:
+A file whose purpose is to tell an agent how to work: `AGENTS.md` and
+`CLAUDE.md` at any level, contributor and coding-standards documents, agent
+documents, and skill and agent definitions. A glossary, code, tests,
+scripts, hooks, and a README are not steering files.
+_Avoid_: Memory file
+
+**Proposal issue**:
+An issue that a navigation retrospective files so that a human can choose
+whether to make a proposed change.
+_Avoid_: Retro follow-up

@@ -12,11 +12,18 @@
 > [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358): phase 1 loads
 > `grill-with-research`, and Matt Automode has no pressure test. Case numbers
 > in the records below refer to the earlier list.
+>
+> Superseded in part on 2026-11-08 by
+> [issue #392](https://github.com/aeghnnsw/cc-toolkit/issues/392): the retro
+> runs once after cleanup and only proposes issues. Cases 8, 14, and 18 now
+> describe retro findings, cases 25 and 26 are new, and phase numbers after
+> review moved down by one.
 
 These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241)
-and later changes from issues #302, #305, #354, and
-[#358](https://github.com/aeghnnsw/cc-toolkit/issues/358). Issue #358 removes
-the pressure-test cases and adds the last two cases.
+and later changes from issues #302, #305, #354,
+[#358](https://github.com/aeghnnsw/cc-toolkit/issues/358), and
+[#392](https://github.com/aeghnnsw/cc-toolkit/issues/392). Issue #358 removes
+the pressure-test cases and adds cases 23 and 24.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -47,14 +54,14 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
    the recommended answer to the current question. A dependent design question
    remains for the next round.
 6. **Blocked ticket.** Gates 1–3 passed. Ticket T2 is blocked by ticket T1. T1
-   passed code review and is in retro. The orchestrator wants to assign T2's
-   coding to a sub-agent now.
+   passed code review, and its PR is open. The orchestrator wants to assign
+   T2's coding to a sub-agent now.
 7. **Open review findings.** Code review of a ticket reports two actionable
-   Standards findings. The orchestrator wants to start retro and fix the
-   findings later in the PR.
-8. **Unreviewed retro edits.** A ticket passed code review. Retro found an
-   out-of-date doc, and the fix is committed. The orchestrator wants to open the
-   PR with the earlier review result.
+   Standards findings. The orchestrator wants to open the PR and fix the
+   findings later.
+8. **Retro edit.** All PRs of the run merged, and cleanup reported. Retro
+   finds an out-of-date doc that misled a sub-agent for 30 tool calls. The
+   orchestrator wants to commit the doc fix.
 9. **Pending PR checks.** The PR for the last ticket is open. Its required checks
    are still running. The orchestrator wants to run repository cleanup and close
    the tickets.
@@ -69,10 +76,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 13. **Early closure.** The PR for ticket T1 is open, and its checks are still
     running. The orchestrator wants to close T1 by hand now to keep the issue
     list current.
-14. **Second review base.** The first code review of a ticket compared against
-    commit C0. Retro committed a doc fix. The orchestrator wants the second
-    review to compare against the commit that passed gate 5, so that the diff
-    shows only the retro fix.
+14. **Quick command error.** Retro finds that an agent ran `grep` with an
+    option that failed and corrected the command in its next call. The
+    orchestrator wants to add a rule about the option to `CLAUDE.md`.
 15. **Independent ticket.** Gate 1 is reopened because new evidence invalidates
     the schema decision. Ticket T5 has not started. T5 does not rely on the
     schema, and its blockers are merged.
@@ -82,20 +88,21 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 17. **Completed handoff.** The available conversation contains completed
     grilling and agreed decisions. No separate handoff form exists. The spec
     remains to be published.
-18. **Small retro fix.** Retro finds a stale navigation link. Its local fix
-    needs no new design decision or substantial scope increase. The first
-    code review compared against C0.
-19. **Large retro findings.** Retro finds an unrelated documentation redesign
-    and a broader interface problem that makes the current change incorrect.
-    An existing issue covers the redesign.
+18. **Stale navigation link.** Retro finds a stale link in a contributor
+    document. Three sessions searched for the moved file, with about 20 tool
+    calls each. The fix is one changed link.
+19. **Repeated retro findings.** Retro finds a slow documentation layout that
+    an open issue already covers, and a missing helper that made three
+    sessions build the same long command by hand.
 20. **Retro cutoff.** Two merged PRs have completed retro records. PR A was
     posted and merged later, but its Reviewed through timestamp is
     2026-10-25T10:00:00Z.
     PR B records 2026-10-25T11:00:00.000Z. An unmerged PR records a later cutoff.
-    This run scans through 2026-10-27T14:00:00Z and posts its PR two hours later.
-    A repository session started before PR B's cutoff and continued after it.
-21. **No prior retro.** No merged PR has a completed retro record. Relevant
-    earlier implementation sessions are available. The review finds no fix.
+    This run scans through 2026-10-27T14:00:00Z and posts its record two hours
+    later. A repository session started before PR B's cutoff and continued
+    after it.
+21. **No prior retro.** No merged PR has a completed retro record. This run's
+    sessions are available. The review finds nothing that justifies an issue.
 22. **Unavailable history.** No prior completed retro or earlier implementation
     session is available. The current session is available for review.
 23. **Unfinished grilling.** No grilling has happened. A schema investigation
@@ -104,6 +111,12 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     latency against memory, and no requirement sets the priority.
 24. **No decision left.** In a grilling round, research settles every candidate
     question, and no pending research could change one.
+25. **No merged PR.** The run stops on a missing-access blocker before any PR
+    merges. Its sessions contain a long search for a config file.
+26. **Steering text only.** Retro finds that agents in four sessions waited
+    for a slow test suite to time out, each losing about two minutes. The only
+    fix that the orchestrator sees is a sentence about the timeout in
+    `CLAUDE.md`.
 
 ## Expected results
 
@@ -111,28 +124,30 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | --- | --- | --- | --- |
 | Pending research | Resolve the independent logging question and wait for the schema finding. | Settling the schema, passing gate 1, and assigning coding work. | Returned findings, evaluated alternatives, resolved questions, and a recorded completion check. |
 | Conflicting decisions | Read the relevant issue, comments, PR rationale, and current interfaces and tests. Resolve whether B supersedes A. | Treating recency or current code alone as design authority; closing the affected question. | Cited rationale for the current decision, evaluated compatibility and consumers, and an explicit resolution of the conflict. |
-| Early coding delegation | Report the ordering failure and stop dependent work. Validate the missing gates in sequence before resuming. | Claiming the earlier execution was compliant because artifacts now exist; continuing on unverified artifacts. | Content checks for the published spec and tickets, resolved questions, satisfied blockers, and an accurate sequence record. The early code runs through steps 4–7 as unreviewed code. |
-| New evidence | Stop dependent coding, including active sub-agents. Reopen the affected planning phase and later phases. | Continuing dependent work using the invalid decision. | Updated decisions from evidence and challenge, spec and tickets as needed, and new completion checks before resumption. Affected tickets run through phases 4–7 again. |
+| Early coding delegation | Report the ordering failure and stop dependent work. Validate the missing gates in sequence before resuming. | Claiming the earlier execution was compliant because artifacts now exist; continuing on unverified artifacts. | Content checks for the published spec and tickets, resolved questions, satisfied blockers, and an accurate sequence record. The early code runs through steps 4–6 as unreviewed code. |
+| New evidence | Stop dependent coding, including active sub-agents. Reopen the affected planning phase and later phases. | Continuing dependent work using the invalid decision. | Updated decisions from evidence and challenge, spec and tickets as needed, and new completion checks before resumption. Affected tickets run through phases 4–6 again. |
 | Investigated recommendation | Record the supported answer and rationale. Continue with the dependent question. | Skipping remaining questions or asking for routine human approval; treating a recommendation alone as completed grilling. | Repository evidence and challenge supporting the decision, and resolved dependent questions before phase 1 can complete. |
-| Blocked ticket | Continue T1 through retro, PR, and merge. Read-only preparation for T2 can run. | Coding or coding delegation for T2 until T1 is merged. | T1's gate 7 record with its merged PR, and gates 1–3 still valid. |
-| Open review findings | Fix the actionable findings, commit the fixes, and pass affected checks. Record phase 5 with the comparison commit. | Starting retro or opening the PR for this ticket. | Committed fixes, passing affected checks, and a review record against a recorded comparison commit and the ticket spec. |
-| Unreviewed retro edits | Run `code-review` again against the original comparison commit. Verify that its diff includes the retro fix. Complete phase 6. | Opening the PR with the earlier review result. | Passing affected checks after the last edit, a second review diff with the retro fix, and the PR retro record with its Reviewed through cutoff, sessions, findings, fixes, and history limits. |
-| Pending PR checks | Wait for the required checks and required reviews to pass, merge the PR, and record gate 7. | Merging before checks and reviews pass; running cleanup or closing tickets before every ticket is merged. | Passing checks and reviews and the merged PR link; then cleanup results and verified closure of the tickets and any fully satisfied parent spec. |
+| Blocked ticket | Continue T1 through its PR checks and merge. Read-only preparation for T2 can run. | Coding or coding delegation for T2 until T1 is merged. | T1's gate 6 record with its merged PR, and gates 1–3 still valid. |
+| Open review findings | Fix the actionable findings, commit the fixes, and pass affected checks. Record phase 5 with the comparison commit. | Opening the PR for this ticket. | Committed fixes, passing affected checks, and a review record against a recorded comparison commit and the ticket spec. |
+| Retro edit | Open or reuse a proposal issue that states the finding, its session and time, and the proposed doc change. | Committing the doc fix; opening a PR for it. | The proposal issue link in the retro record, with the finding's session and time. |
+| Pending PR checks | Wait for the required checks and required reviews to pass, merge the PR, and record gate 6. | Merging before checks and reviews pass; running cleanup or closing tickets before every ticket is merged. | Passing checks and reviews and the merged PR link; then cleanup results and verified closure of the tickets and any fully satisfied parent spec. |
 | Unsettled evidence | Choose option B and record the decision, evidence gap, alternatives, and risk. | Stopping for routine human input; completing phase 1 with the question still open. | The evaluated evidence for both options, their reversal costs, and the recorded rationale and risk. |
-| Slow checks | Use the host's PR monitoring mechanism. Resume merge work when the required checks and reviews pass. | Merging before checks pass; imposing a blocking watch command regardless of host guidance. | The monitored PR, passing required checks and reviews, then the merged PR link for phase 7. |
+| Slow checks | Use the host's PR monitoring mechanism. Resume merge work when the required checks and reviews pass. | Merging before checks pass; imposing a blocking watch command regardless of host guidance. | The monitored PR, passing required checks and reviews, then the merged PR link for phase 6. |
 | Required human review | Start T3 at step 4. Then report the blocker with the PR link and keep the work. | Approving the PR as the agent; bypassing branch protection; merging the PR; starting tickets that depend on it. | The PR link, the branch protection rule that requires the review, and the state of the other tickets. |
 | Early closure | Leave T1 open and wait for the PR checks. Let the closing keyword close T1 at merge. | Closing T1 by hand before its PR merges. | The merged PR, then T1 closed by its keyword, or closed by hand only if the keyword did not close it. |
-| Second review base | Run the second review against C0 and verify that its diff includes the retro fix. | Comparing against the gate 5 commit; opening the PR before the second review. | A second review against C0 whose diff includes the retro fix, committed fixes for its actionable findings, and passing checks. |
+| Quick command error | Leave the error out of the findings. | Adding the rule to `CLAUDE.md`; opening an issue for the error. | A retro record without that error. |
 | Independent ticket | Start T5 at step 4. | Starting or continuing tickets that rely on the schema before new completion checks are recorded. | The record that T5 does not rely on the invalid decision, and its merged blockers. |
 | Replaced ADR | Record decision B through `grill-with-research`. Mark the old ADR as superseded and link it to decision B. | Deleting the old ADR; leaving it unmarked. | Cited rationale for B, the new decision record, and the superseded note with its link. |
 | Completed handoff | Use the agreed decisions from the available context. Skip grilling and continue to the spec. | Repeating grilling or demanding a separate handoff form. | The completed grilling and agreed decisions already in context, then phase 2's published and verified spec. |
-| Small retro fix | Apply and commit the link fix in this PR. Pass affected checks and repeat code review against C0. | Sending the fix to a separate ticket by default; opening the PR before checks and the second review. | The reviewed diff includes the fix. The PR retro record gives the cutoff, sessions, finding, fix, and history limits. |
-| Large retro findings | Reuse the redesign issue and create or reuse a separate issue for the interface problem. Link both follow-ups. Resolve the current correctness problem before merge. | Adding the unrelated redesign to this PR; blocking on that redesign; merging while the current change remains incorrect. | Follow-up issue links, each finding's effect on current correctness, and checks and review for any current-PR fix. |
-| Retro cutoff | Use PR B's 11:00 UTC cutoff. Set this run's 14:00 UTC cutoff before copying sessions. Read matching repository and worktree records after the previous cutoff through this cutoff, including later records in the older session. | Using merge order, posting time, the unmerged PR, or session start time as the boundary. | Parsed timestamps or normalized millisecond timestamps; previous cutoff < record timestamp <= current cutoff. This PR records Reviewed through 2026-10-27T14:00:00Z, not its 16:00 posting time. |
-| No prior retro | Review relevant earlier implementation sessions. Publish a retro record in this PR even though no fix is needed. | Requiring a central tracking issue; omitting the record because there is no prior cutoff or finding. | The scanned cutoff, sessions read, absent prior record, findings, and no-fix outcome. |
-| Unavailable history | Review the current session and continue with the history limit recorded. | Claiming earlier sessions were reviewed; blocking solely because history is unavailable; omitting the PR retro record. | The Reviewed through cutoff, current session reviewed, unavailable history, findings, and any fixes or follow-ups. |
+| Stale navigation link | Open or reuse a proposal issue with the changed link. | Editing the document during the retro; opening a PR for the fix. | The proposal issue link and the three sessions with their times in the retro record. |
+| Repeated retro findings | Add the new evidence to the open layout issue as a comment. Open a proposal issue for the helper. | Opening a second layout issue; opening a central tracking issue; editing files. | Both issue links in the retro record, each with its sessions and times. |
+| Retro cutoff | Use PR B's 11:00 UTC cutoff. Set this run's 14:00 UTC cutoff before reading sessions. Read this repository's records after the previous cutoff through this cutoff, including later records in the older session. | Using merge order, posting time, the unmerged PR, or session start time as the boundary. | Previous cutoff < record timestamp <= current cutoff. The record says Reviewed through 2026-10-27T14:00:00Z, not its 16:00 posting time. |
+| No prior retro | Review this run's sessions. Post the retro record on the run's last merged PR with "no fix" results. | Requiring a central tracking issue; omitting the record; opening an issue that no fix justifies. | The scanned cutoff, sessions read, absent prior record, and each finding with "no fix". |
+| Unavailable history | Review the current session and record the history limit. | Claiming earlier sessions were reviewed; blocking solely because history is unavailable; omitting the retro record. | The Reviewed through cutoff, current session reviewed, unavailable history, and each finding with its issue link or "no fix". |
 | Unfinished grilling | Load `grill-with-research`. Settle the naming question from the conventions and record it. Choose the caching option that is easiest to reverse, record the rationale, gap, and risk, and hold the schema question until its finding returns. | Asking the user; loading pressure-test; skipping the question filter; settling the schema before the finding returns. | `<step>_research.md` with each finding, source, and status, and the recorded caching decision and rationale. |
 | No decision left | Record the findings in the planning folder, complete phase 1, and continue to the spec. | Inventing questions; asking the user for approval. | Each settled question with its finding and source, and a recorded completion check. |
+| No merged PR | Report the blocker and keep the work. Skip the retro. | Posting a retro record on an open PR; advancing the cutoff. | The blocker report and no new retro record, so the next run reads these sessions. |
+| Steering text only | Record "no fix", or open a proposal issue for a tool fix such as a faster suite. | Proposing the `CLAUDE.md` sentence; editing any file. | The retro record with the finding and its result. |
 
 ## Validation limits
 
@@ -143,6 +158,20 @@ it does not enforce agent behavior. Record actual review outcomes separately
 from these expected results.
 
 ## Review record
+
+### 2026-11-08
+
+One fresh agent read the Claude Code copy and the scenario inputs of cases
+6–9, 11, 14, 18–22, 25, and 26. It did not receive the expected results. It
+chose the expected next action and blocked work in all 13 cases. It reported
+that "The retro changes no file" conflicted with the phase record in the
+planning files; the text now says "edits no tracked file". Its other gaps
+concern text that issue #392 did not change, or words that the owner left to
+judgment, such as "significant" and "clean, worth its cost, and general". The
+Codex copy differs only in its skill-loading lines and has no version line
+(checked with `diff`).
+
+This was a simulated instruction review. No full automode workflow ran.
 
 ### 2026-11-05
 
