@@ -6,7 +6,8 @@ description: "Use when the user invokes gtd-setup to create a GTD database in a 
 Set up the cloud GTD store for one person on this computer. Create the GTD
 tables in a Supabase project, or find an existing GTD database. Then write
 and verify the GTD binding: the private pair of project reference and owner
-UUID in `~/.config/cc-toolkit/gtd.json`.
+UUID in `~/.config/cc-toolkit/gtd.json`. All database access uses the
+connected route: the host's Supabase connector with the connector's sign-in.
 
 Read the [cloud operating contract](../../references/gtd-cloud.md) before
 the first step. Use it for the renderer, connector calls, receipts, and
@@ -26,6 +27,29 @@ end the run without a later step.
 
 Ask each question concisely and wait for the answer. Tool output never
 confirms a step.
+
+## Read check
+
+Steps 2 and 8 use this check of the file `~/.config/cc-toolkit/gtd.json`.
+
+1. Render the query. `<plugin-root>` is the directory two levels above the
+   directory of this skill:
+
+   ```bash
+   uv run --no-project --python '>=3.11' python "<plugin-root>/scripts/gtd_sql.py" read --limit 1
+   ```
+
+2. If the renderer reports an error, the file is not a valid GTD binding.
+   End the check.
+3. Send the emitted `project_id` and `query` unchanged through the
+   connected SQL tool.
+4. Require status `ok`.
+5. Read `returned_count`: 1 when this owner has an open item, or 0.
+
+Status `ok` proves the connected route, the project, and the GTD tables. It
+does not prove the owner: the renderer copies `owner_id` from the file into
+the result. Only `returned_count` shows whether the database has an open
+item for this owner.
 
 ## 1. Check prerequisites
 
@@ -48,15 +72,23 @@ confirms a step.
 
 1. Check whether `~/.config/cc-toolkit/gtd.json` exists. If it does not
    exist, continue with step 3.
-2. Run the read check command from [Verify](#7-verify). If the renderer
-   reports an error, the file is not a valid GTD binding. Tell the user,
-   leave the file unchanged, and continue with step 3.
-3. Send the query through the connected SQL tool. Require status `ok` and
-   the owner of the GTD binding.
-4. Report the project of the valid GTD binding and the result of the read
-   check. Do not print the owner UUID unless the user asks.
-5. Ask whether to keep the GTD binding. Keep it unless the user confirms a
-   replacement. If the user keeps it, go to [Report](#8-report).
+2. Run the [read check](#read-check). Leave the file unchanged in each of
+   the three cases below.
+3. Renderer error: tell the user that the file is not a valid GTD binding.
+   Continue with step 3.
+4. The query fails, or the status is not `ok`: report the cause, such as a
+   paused project, a missing table, or a project that the connector cannot
+   access. For a paused project, report the pause and the restore step.
+   Ask whether to keep the file and stop, or to continue and replace it.
+5. Status `ok`: the GTD binding is valid. Report its project and the number
+   of items that the read returned for this owner. If it returned no item,
+   say that the database has no open item for this owner. The owner can be
+   wrong, or the connector role cannot bypass row-level security.
+6. Ask whether to keep the valid GTD binding, or to continue and replace
+   it. If the user keeps it, go to [Report](#9-report).
+
+Do not print the owner UUID unless the user asks. Step 7 replaces the file
+only after an explicit confirmation.
 
 ## 3. Select the project
 
@@ -71,12 +103,16 @@ To create a project:
 
 1. Ask for the organization, the region, and the project name.
 2. Get the cost of the new project from the connector.
-3. Show the organization, the region, and the cost. Require an explicit
-   confirmation of all three.
-4. If the cost is not 0 USD, stop unless the user states that a paid
-   project is intended.
-5. Create the project.
-6. Wait until the connector reports that the project is ready, for example
+3. Show the organization, the region, and the cost. Ask for an explicit
+   confirmation of all three. Without it, stop.
+4. If the cost is not 0 USD, ask a second, separate question: is a paid
+   project intended? Stop unless the user states that it is. The answer to
+   the question before never counts as this statement.
+5. Complete the connector's cost-confirmation step: a confirmation form, or
+   its cost tools such as `get_cost` then `confirm_cost`. This step is in
+   addition to the user's confirmation. Creation needs both.
+6. Create the project.
+7. Wait until the connector reports that the project is ready, for example
    status `ACTIVE_HEALTHY`. Check again after a short wait; a new project
    can need some minutes.
 
@@ -85,14 +121,29 @@ for the user:
 
 1. Open `https://supabase.com/dashboard` and sign in.
 2. Select **New project** in the intended organization.
-3. Enter a name and a database password, and select a region.
-4. Check that the plan and the cost are as intended, then create the
-   project.
-5. Wait until the dashboard shows that the project is ready.
+3. Enter a project name.
+4. Enter a database password.
+5. Select a region.
+6. Check that the plan and the cost are as intended.
+7. Create the project.
+8. Wait until the dashboard shows that the project is ready.
 
 Then list the projects again and let the user choose the new project.
 
-## 4. Classify the project
+## 4. Check the connector role
+
+1. Run this query for the selected project through the connected SQL tool:
+
+   ```sql
+   select current_user, (select rolbypassrls from pg_roles where rolname = current_user);
+   ```
+
+2. If the role cannot bypass row-level security, report the role and stop.
+   The GTD tables have row-level security and no policy. Such a role cannot
+   use them, and it reads an empty owner list from a database that has
+   data.
+
+## 5. Classify the project
 
 Run this read-only catalog query through the connected SQL tool:
 
@@ -141,7 +192,7 @@ For **No GTD tables** with a nonempty `other_tables`, show those tables.
 Require an explicit confirmation before adding the GTD tables to this
 project. Without it, return to step 3.
 
-## 5. Apply the schema and establish the owner
+## 6. Apply the schema and establish the owner
 
 New database (**No GTD tables**):
 
@@ -149,7 +200,7 @@ New database (**No GTD tables**):
 2. Apply its content unchanged through the connector's migration tool,
    under the migration name `gtd_schema`. Use the SQL tool only if the
    connector has no migration tool, and tell the user.
-3. Run the catalog query of step 4 again. Require **Complete GTD schema**.
+3. Run the catalog query of step 5 again. Require **Complete GTD schema**.
    If the state differs, report it and stop.
 4. Generate a random UUID (version 4) as the owner:
 
@@ -171,14 +222,13 @@ Existing database (**Complete GTD schema**):
    owner. One listed owner still needs this confirmation.
 3. If the list is empty, the database holds no GTD items. Tell the user.
    After the user confirms, generate an owner as for a new database, and
-   use the new-database check in step 7.
+   use the new-database checks in step 8.
 
-## 6. Write the GTD binding
+## 7. Write the GTD binding
 
-1. If `~/.config/cc-toolkit/gtd.json` exists, replace it only with the
-   user's confirmation: the answer in step 2 for a valid GTD binding, or a
-   new explicit confirmation for a file that is not valid. Without it,
-   stop.
+1. If `~/.config/cc-toolkit/gtd.json` exists, show the project that the
+   new GTD binding selects. Ask for an explicit confirmation of the
+   replacement. Without it, stop and leave the file unchanged.
 2. Write the file with exactly the two fields `project_id` and `owner_id`.
    Replace the two placeholders:
 
@@ -190,32 +240,22 @@ Existing database (**Complete GTD schema**):
 
 3. Do not copy the file into a repository or a plugin cache.
 
-## 7. Verify
+## 8. Verify
 
-1. Check the connector role through the connected SQL tool:
-
-   ```sql
-   select current_user, (select rolbypassrls from pg_roles where rolname = current_user);
-   ```
-
-   The GTD tables have row-level security and no policy. If the role cannot
-   bypass row-level security, it cannot use the tables. Report this state
-   as a failed verification.
-2. Run the read check. `<plugin-root>` is the directory two levels above
-   the directory of this skill. Send the emitted `project_id` and `query`
-   unchanged, and require status `ok` and the owner of the GTD binding:
-
-   ```bash
-   uv run --no-project --python '>=3.11' python "<plugin-root>/scripts/gtd_sql.py" read --limit 1
-   ```
-
-3. Existing database: end verification here. Add no record.
+1. Run the [read check](#read-check) on the new GTD binding. A renderer
+   error or a status other than `ok` is a failed verification.
+2. Existing database: state the number of items that the read returned for
+   this owner. Add no record.
+3. Existing database with no returned item: say that the database has no
+   open item for this owner, and that the owner can be wrong. Ask the user
+   whether the owner is correct. If it is not, report that a new run of
+   `gtd-setup` replaces the GTD binding. End verification here.
 4. New database: prepare a private request file outside repositories, as
    the cloud contract describes. It creates one inbox item with the title
    `gtd-setup verification`, a new request UUID, and a new item UUID.
 5. Render it with `apply <private-request-file.json>` and send the query.
    Follow the cloud contract's receipt procedure: require status
-   `committed` and the expected owner, request UUID, and result.
+   `committed` and the expected request UUID and result.
 6. Render `get <item-uuid>` and send the query. Require the saved title and
    revision 1.
 7. Send a second request with a new request UUID that has one `delete`
@@ -226,7 +266,7 @@ Existing database (**Complete GTD schema**):
 After an uncertain response, use the cloud contract's recovery procedure
 with the same request file. Do not create a second verification item.
 
-## 8. Report
+## 9. Report
 
 Report these results:
 
@@ -236,7 +276,9 @@ Report these results:
 - The path of the GTD binding, `~/.config/cc-toolkit/gtd.json`, and whether
   this run wrote it.
 - The verification result: the connector role check, and each read or write
-  check with pass or fail. State each step that did not run.
+  check with pass or fail. State each step that did not run. For an
+  existing GTD binding or database, state the number of items that the read
+  check returned; do not report the owner as verified.
 
 Add the Supabase Free plan notes:
 

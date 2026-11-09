@@ -144,8 +144,8 @@ class RendererTests(RendererCase):
 
 class DatabaseCase(RendererCase):
     """One disposable PostgreSQL server for the module; one database for each test class."""
-    overlay = None
-    server = None
+    overlays = ()
+    psql_prefix = None
 
     @classmethod
     def start_server(cls):
@@ -166,8 +166,8 @@ class DatabaseCase(RendererCase):
              "-o", f"-h '' -k {socket}", "-w", "start"],
             check=True, capture_output=True, text=True, timeout=30,
         )
-        DatabaseCase.server = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(socket),
-                               "-U", "gtd_test", "-A", "-t", "-q", "-d"]
+        DatabaseCase.psql_prefix = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(socket),
+                                    "-U", "gtd_test", "-A", "-t", "-q", "-d"]
 
     @staticmethod
     def stop_server(data):
@@ -175,29 +175,32 @@ class DatabaseCase(RendererCase):
             subprocess.run(["pg_ctl", "-D", str(data), "-m", "immediate", "-w", "stop"],
                            check=True, capture_output=True, text=True, timeout=30)
 
+    @staticmethod
+    def psql(command, query, check=False):
+        return subprocess.run(command, input=query, text=True, capture_output=True, check=check, timeout=30)
+
     @classmethod
     def create_database(cls, *scripts):
         """Create an empty database, run the SQL scripts in it, and return its psql command."""
         name = f"gtd_{uuid.uuid4().hex}"
-        subprocess.run([*cls.server, "postgres"], input=f"CREATE DATABASE {name};",
-                       text=True, capture_output=True, check=True, timeout=30)
-        command = [*cls.server, name]
+        cls.psql([*cls.psql_prefix, "postgres"], f"CREATE DATABASE {name};", check=True)
+        command = [*cls.psql_prefix, name]
         for script in scripts:
-            subprocess.run(command, input=script.read_text(), text=True, capture_output=True, check=True, timeout=10)
+            cls.psql(command, script.read_text(), check=True)
         return command
 
     @classmethod
     def setUpClass(cls):
-        if DatabaseCase.server is None:
+        if DatabaseCase.psql_prefix is None:
             cls.start_server()
-        cls.psql_command = cls.create_database(SCHEMA, *([cls.overlay] if cls.overlay else []))
+        cls.psql_command = cls.create_database(SCHEMA, *cls.overlays)
 
     def setUp(self):
         super().setUp()
         self.sql("TRUNCATE public.gtd_links, public.gtd_items, public.gtd_requests;")
 
-    def sql(self, query, ok=True):
-        process = subprocess.run(self.psql_command, input=query, text=True, capture_output=True, timeout=15)
+    def sql(self, query, ok=True, command=None):
+        process = self.psql(command or self.psql_command, query)
         if ok:
             self.assertEqual(process.returncode, 0, process.stderr)
             lines = process.stdout.strip().splitlines()
@@ -212,64 +215,10 @@ class DatabaseCase(RendererCase):
         return self.sql(self.cli("get", item_id))
 
 
-class ShippedSchemaTests(DatabaseCase):
-    """The shipped schema alone, without the optional migration records."""
+class ContractTests:
+    """Contract tests that do not depend on the optional migration records. Each database shape runs them."""
 
-    def test_schema_applies_twice_and_revokes_public_api_roles(self):
-        command = self.create_database(SCHEMA)
-        tables = "public.gtd_items, public.gtd_links, public.gtd_requests"
-        setup = f"""DO $roles$ BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF;
-            END $roles$;
-            GRANT ALL ON TABLE {tables} TO anon;
-            INSERT INTO public.gtd_items (id, owner_id, data)
-            VALUES ('{uuid.uuid4()}', '{OWNER}', '{{"kind":"inbox","title":"Kept"}}');"""
-        subprocess.run(command, input=setup, text=True, capture_output=True, check=True, timeout=10)
-        again = subprocess.run(command, input=SCHEMA.read_text(), text=True, capture_output=True, timeout=10)
-        self.assertEqual(again.returncode, 0, again.stderr)
-        state = subprocess.run(command, input="""SELECT jsonb_build_object(
-            'items', (SELECT count(*) FROM public.gtd_items),
-            'anon', (SELECT count(*) FROM information_schema.role_table_grants
-                     WHERE table_schema = 'public' AND grantee = 'anon'));""",
-                               text=True, capture_output=True, check=True, timeout=10)
-        self.assertEqual(json.loads(state.stdout), {"items": 1, "anon": 0})
-
-    def test_tables_have_row_level_security_no_policy_and_no_public_grant(self):
-        state = self.sql("""SELECT jsonb_build_object(
-            'secured', (SELECT jsonb_object_agg(relname, relrowsecurity) FROM pg_class
-                        WHERE relnamespace = 'public'::regnamespace AND relkind = 'r'),
-            'policies', (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'),
-            'public_grants', (SELECT count(*) FROM information_schema.role_table_grants
-                              WHERE table_schema = 'public' AND grantee = 'PUBLIC'));""")
-        self.assertEqual(state, {"secured": {"gtd_items": True, "gtd_links": True, "gtd_requests": True},
-                                 "policies": 0, "public_grants": 0})
-
-    def test_create_read_link_complete_delete_restore(self):
-        action_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
-        receipt = self.apply([
-            {"op": "create", "id": action_id, "data": {"kind": "action", "title": "Step"}},
-            {"op": "create", "id": project_id, "data": {"kind": "project", "title": "Outcome"}},
-        ])
-        self.assertEqual(receipt["status"], "committed")
-        page = self.sql(self.cli("read"))
-        self.assertEqual(page["status"], "ok")
-        self.assertEqual({row["id"] for row in page["rows"]}, {action_id, project_id})
-        self.assertEqual(set(page["rows"][0]),
-                         {"id", "owner_id", "data", "revision", "deleted_at", "created_at", "updated_at"})
-        self.apply([{"op": "link", "id": action_id, "expected_revision": 1, "project_id": project_id}])
-        self.assertEqual(self.get(action_id)["links"][0]["project_id"], project_id)
-        self.apply([{"op": "complete", "id": action_id, "expected_revision": 2}])
-        self.assertTrue(self.get(action_id)["item"]["data"]["is_completed"])
-        self.assertEqual([row["id"] for row in self.sql(self.cli("read"))["rows"]], [project_id])
-        self.apply([{"op": "delete", "id": action_id, "expected_revision": 3}])
-        self.assertIsNotNone(self.get(action_id)["item"]["deleted_at"])
-        self.apply([{"op": "restore", "id": action_id, "expected_revision": 4}])
-        item = self.get(action_id)["item"]
-        self.assertIsNone(item["deleted_at"])
-        self.assertEqual(item["revision"], 5)
-        self.assertEqual(self.get(action_id)["links"][0]["project_title"], "Outcome")
-
-    def test_item_check_rejects_missing_title_and_missing_kind(self):
+    def test_item_check_rejects_missing_or_invalid_title_and_kind(self):
         insert = "INSERT INTO public.gtd_items (id, owner_id, data) VALUES ('{}', '{}', '{}');"
         for data in ({"kind": "inbox"}, {"title": "No kind"}, {"kind": "inbox", "title": " "},
                      {"kind": "other", "title": "Unknown kind"}, []):
@@ -278,15 +227,6 @@ class ShippedSchemaTests(DatabaseCase):
                 self.assertIn("gtd_items_data_check", error)
         self.sql(insert.format(uuid.uuid4(), OWNER, json.dumps({"kind": "inbox", "title": "Valid"})))
         self.assertEqual(self.sql(self.cli("read"))["returned_count"], 1)
-
-
-class DatabaseTests(DatabaseCase):
-    """The contract on the shipped schema with the optional migration records."""
-    overlay = Path(__file__).parent / "gtd_extras_overlay.sql"
-
-    def snapshot(self):
-        return self.sql("""SELECT jsonb_agg(jsonb_build_array(owner_id, snapshot_text,
-            sha256 = encode(sha256(convert_to(snapshot_text, 'UTF8')), 'hex'))) FROM public.gtd_snapshots;""")
 
     def test_create_keeps_hostile_text_and_server_defaults(self):
         item_id = str(uuid.uuid4())
@@ -301,7 +241,6 @@ class DatabaseTests(DatabaseCase):
                                       "completion_date": None, "due": None, "notes": None,
                                       "priority": 5, "duration_label": None})
         self.assertEqual(item["revision"], 1)
-        self.assertIsNone(item["source_record"])
 
     def test_exact_replay_returns_original_receipt_after_later_edits(self):
         item_id, request_id = str(uuid.uuid4()), str(uuid.uuid4())
@@ -321,50 +260,6 @@ class DatabaseTests(DatabaseCase):
         self.assertEqual(item["data"]["title"], "Later title")
         self.assertEqual(item["data"]["priority"], 0)
         self.assertEqual(item["revision"], 2)
-
-    def test_lifecycle_preserves_imported_fields_source_and_snapshot(self):
-        item_id = str(uuid.uuid4())
-        self.sql(f"""INSERT INTO public.gtd_items
-            (id, owner_id, data, source_namespace, source_id, source_record) VALUES
-            ('{item_id}', '{OWNER}',
-             '{{"kind":"action","title":"Imported","notes":"Keep me","priority":0,
-                "duration_label":null,"is_completed":false,"completion_date":null,
-                "due":{{"raw_components":{{"year":2026}}}},"unknown_import":{{"a":1}}}}',
-             'synthetic', 'old-1', '{{"bytes":"original","null_date":null}}');""")
-        original = self.get(item_id)["item"]
-        self.apply([{"op": "complete", "id": item_id, "expected_revision": 1}])
-        complete = self.get(item_id)["item"]
-        self.assertTrue(complete["data"]["is_completed"])
-        self.assertIsNotNone(complete["data"]["completion_date"])
-        self.apply([{"op": "reopen", "id": item_id, "expected_revision": 2},
-                    {"op": "delete", "id": item_id, "expected_revision": 3}])
-        deleted = self.get(item_id)["item"]
-        self.assertFalse(deleted["data"]["is_completed"])
-        self.assertIsNone(deleted["data"]["completion_date"])
-        self.assertIsNotNone(deleted["deleted_at"])
-        self.assertIn("deleted item", self.apply([
-            {"op": "patch", "id": item_id, "expected_revision": 4, "patch": {"notes": "Blocked"}}
-        ], ok=False))
-        self.apply([{"op": "restore", "id": item_id, "expected_revision": 4},
-                    {"op": "patch", "id": item_id, "expected_revision": 5, "patch": {"title": "Renamed"}}])
-        current = self.get(item_id)["item"]
-        self.assertEqual(current["revision"], 6)
-        self.assertIsNone(current["deleted_at"])
-        self.assertEqual(current["data"], {**original["data"], "title": "Renamed"})
-        for key in ("source_namespace", "source_id", "source_record", "created_at"):
-            self.assertEqual(current[key], original[key])
-        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
-
-    def test_source_identity_is_paired_and_immutable(self):
-        item_id = str(uuid.uuid4())
-        insert = """INSERT INTO public.gtd_items (id, owner_id, data, source_namespace, source_id)
-            VALUES ('{}', '{}', '{{"kind":"inbox","title":"Imported"}}', 'synthetic', {});"""
-        self.assertIn("violates check constraint", self.sql(insert.format(uuid.uuid4(), OWNER, "NULL"), ok=False))
-        self.sql(insert.format(item_id, OWNER, "'old-1'"))
-        self.assertIn("duplicate key", self.sql(insert.format(uuid.uuid4(), OWNER, "'old-1'"), ok=False))
-        self.assertIn("immutable source", self.sql(
-            f"UPDATE public.gtd_items SET source_id = 'old-2' WHERE id = '{item_id}';", ok=False))
-        self.assertEqual(self.get(item_id)["item"]["source_id"], "old-1")
 
     def test_inventory_pages_are_complete_owned_and_invalidated_by_new_requests(self):
         ids = [f"10000000-0000-4000-8000-{number:012d}" for number in range(1, 8)]
@@ -406,43 +301,6 @@ class DatabaseTests(DatabaseCase):
         self.assertEqual(changed["status"], "inventory_changed")
         self.assertEqual(changed["request_count"], 3)
         self.assertEqual(changed["rows"], [])
-
-    def test_links_survive_project_completion_and_deletion_without_changing_actions(self):
-        action_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
-        self.sql(f"""INSERT INTO public.gtd_items
-            (id,owner_id,data,source_namespace,source_id,source_record)
-            VALUES ('{action_id}','{OWNER}','{{"kind":"inbox","title":"Step","is_completed":false}}',
-                    'synthetic','link-source','{{"original":"capture"}}');""")
-        imported = self.get(action_id)["item"]
-        receipt = self.apply([
-            {"op": "create", "id": project_id, "data": {"kind": "project", "title": "Outcome"}},
-            {"op": "patch", "id": action_id, "expected_revision": 1, "patch": {"kind": "action"}},
-            {"op": "link", "id": action_id, "expected_revision": 2, "project_id": project_id},
-        ])
-        self.assertEqual(receipt["results"][-1], {"op": "link", "id": action_id, "revision": 3,
-                                                   "project_id": project_id})
-        original_action = self.get(action_id)["item"]
-        links = self.get(action_id)["links"]
-        self.assertEqual(links, [{"action_id": action_id, "project_id": project_id,
-                                  "project_title": "Outcome", "project_is_completed": False,
-                                  "project_deleted_at": None}])
-        self.apply([{"op": "complete", "id": project_id, "expected_revision": 1},
-                    {"op": "delete", "id": project_id, "expected_revision": 2}])
-        self.assertEqual(self.get(action_id)["item"], original_action)
-        page = self.sql(self.cli("read", "--kind", "action"))
-        self.assertEqual(page["links"][0]["project_id"], project_id)
-        self.assertTrue(page["links"][0]["project_is_completed"])
-        self.assertIsNotNone(page["links"][0]["project_deleted_at"])
-        self.apply([{"op": "restore", "id": project_id, "expected_revision": 3},
-                    {"op": "reopen", "id": project_id, "expected_revision": 4},
-                    {"op": "unlink", "id": action_id, "expected_revision": 3, "project_id": project_id}])
-        self.assertEqual(self.get(action_id)["links"], [])
-        self.apply([{"op": "link", "id": action_id, "expected_revision": 4, "project_id": project_id}])
-        self.assertEqual(self.get(action_id)["links"], links)
-        current = self.get(action_id)["item"]
-        for key in ("source_namespace", "source_id", "source_record", "created_at"):
-            self.assertEqual(current[key], imported[key])
-        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
 
     def test_fixed_transaction_rejects_payloads_that_bypass_renderer_validation(self):
         item_id = str(uuid.uuid4())
@@ -609,6 +467,164 @@ class DatabaseTests(DatabaseCase):
             self.assertEqual(data["start"], {"raw_components": {"month": 11}})
             self.assertEqual(data["priority"], 0)
             self.assertIsNone(data["duration_label"])
+
+
+class ShippedSchemaTests(ContractTests, DatabaseCase):
+    """The shipped schema alone, without the optional migration records."""
+    TABLES = ("gtd_items", "gtd_links", "gtd_requests")
+
+    def test_second_apply_succeeds_and_keeps_rows(self):
+        command = self.create_database(SCHEMA)
+        self.sql(f"""INSERT INTO public.gtd_items (id, owner_id, data)
+            VALUES ('{uuid.uuid4()}', '{OWNER}', '{{"kind":"inbox","title":"Kept"}}');""", command=command)
+        self.sql(SCHEMA.read_text(), command=command)
+        self.assertEqual(self.sql("SELECT to_jsonb(count(*)) FROM public.gtd_items;", command=command), 1)
+
+    def test_apply_revokes_table_privileges_of_anon_and_authenticated(self):
+        command = self.create_database(SCHEMA)
+        tables = ", ".join(f"public.{table}" for table in self.TABLES)
+        privileges = """SELECT jsonb_object_agg(r.name || ' ' || t.name, has_table_privilege(
+                r.name, 'public.' || t.name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))
+            FROM unnest(ARRAY['anon', 'authenticated']) AS r (name)
+            CROSS JOIN unnest(ARRAY['gtd_items', 'gtd_links', 'gtd_requests']) AS t (name);"""
+        pairs = [f"{role} {table}" for role in ("anon", "authenticated") for table in self.TABLES]
+        self.sql(f"""DO $roles$ DECLARE v_role text; BEGIN
+                FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+                        EXECUTE format('CREATE ROLE %I', v_role);
+                    END IF;
+                END LOOP;
+            END $roles$;
+            GRANT ALL ON TABLE {tables} TO anon, authenticated;""", command=command)
+        self.assertEqual(self.sql(privileges, command=command), dict.fromkeys(pairs, True))
+        self.sql(SCHEMA.read_text(), command=command)
+        self.assertEqual(self.sql(privileges, command=command), dict.fromkeys(pairs, False))
+
+    def test_each_table_has_row_level_security_and_no_policy(self):
+        state = self.sql("""SELECT jsonb_build_object(
+            'secured', (SELECT jsonb_object_agg(relname, relrowsecurity) FROM pg_class
+                        WHERE relnamespace = 'public'::regnamespace AND relkind = 'r'),
+            'policies', (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'));""")
+        self.assertEqual(state, {"secured": dict.fromkeys(self.TABLES, True), "policies": 0})
+
+    def test_create_read_link_complete_delete_restore_without_source_columns(self):
+        action_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
+        receipt = self.apply([
+            {"op": "create", "id": action_id, "data": {"kind": "action", "title": "Step"}},
+            {"op": "create", "id": project_id, "data": {"kind": "project", "title": "Outcome"}},
+        ])
+        self.assertEqual(receipt["status"], "committed")
+        page = self.sql(self.cli("read"))
+        self.assertEqual(page["status"], "ok")
+        self.assertEqual({row["id"] for row in page["rows"]}, {action_id, project_id})
+        self.assertEqual(set(page["rows"][0]),
+                         {"id", "owner_id", "data", "revision", "deleted_at", "created_at", "updated_at"})
+        self.apply([{"op": "link", "id": action_id, "expected_revision": 1, "project_id": project_id}])
+        self.assertEqual(self.get(action_id)["links"][0]["project_id"], project_id)
+        self.apply([{"op": "complete", "id": action_id, "expected_revision": 2}])
+        self.assertTrue(self.get(action_id)["item"]["data"]["is_completed"])
+        self.assertEqual([row["id"] for row in self.sql(self.cli("read"))["rows"]], [project_id])
+        self.apply([{"op": "delete", "id": action_id, "expected_revision": 3}])
+        self.assertIsNotNone(self.get(action_id)["item"]["deleted_at"])
+        self.apply([{"op": "restore", "id": action_id, "expected_revision": 4}])
+        item = self.get(action_id)["item"]
+        self.assertIsNone(item["deleted_at"])
+        self.assertEqual(item["revision"], 5)
+        self.assertEqual(self.get(action_id)["links"][0]["project_title"], "Outcome")
+
+
+class MigrationRecordTests(ContractTests, DatabaseCase):
+    """The shipped schema with the optional migration records of the overlay."""
+    overlays = (Path(__file__).parent / "gtd_extras_overlay.sql",)
+
+    def snapshot(self):
+        return self.sql("""SELECT jsonb_agg(jsonb_build_array(owner_id, snapshot_text,
+            sha256 = encode(sha256(convert_to(snapshot_text, 'UTF8')), 'hex'))) FROM public.gtd_snapshots;""")
+
+    def test_lifecycle_preserves_imported_fields_source_and_snapshot(self):
+        item_id = str(uuid.uuid4())
+        self.sql(f"""INSERT INTO public.gtd_items
+            (id, owner_id, data, source_namespace, source_id, source_record) VALUES
+            ('{item_id}', '{OWNER}',
+             '{{"kind":"action","title":"Imported","notes":"Keep me","priority":0,
+                "duration_label":null,"is_completed":false,"completion_date":null,
+                "due":{{"raw_components":{{"year":2026}}}},"unknown_import":{{"a":1}}}}',
+             'synthetic', 'old-1', '{{"bytes":"original","null_date":null}}');""")
+        original = self.get(item_id)["item"]
+        self.apply([{"op": "complete", "id": item_id, "expected_revision": 1}])
+        complete = self.get(item_id)["item"]
+        self.assertTrue(complete["data"]["is_completed"])
+        self.assertIsNotNone(complete["data"]["completion_date"])
+        self.apply([{"op": "reopen", "id": item_id, "expected_revision": 2},
+                    {"op": "delete", "id": item_id, "expected_revision": 3}])
+        deleted = self.get(item_id)["item"]
+        self.assertFalse(deleted["data"]["is_completed"])
+        self.assertIsNone(deleted["data"]["completion_date"])
+        self.assertIsNotNone(deleted["deleted_at"])
+        self.assertIn("deleted item", self.apply([
+            {"op": "patch", "id": item_id, "expected_revision": 4, "patch": {"notes": "Blocked"}}
+        ], ok=False))
+        self.apply([{"op": "restore", "id": item_id, "expected_revision": 4},
+                    {"op": "patch", "id": item_id, "expected_revision": 5, "patch": {"title": "Renamed"}}])
+        current = self.get(item_id)["item"]
+        self.assertEqual(current["revision"], 6)
+        self.assertIsNone(current["deleted_at"])
+        self.assertEqual(current["data"], {**original["data"], "title": "Renamed"})
+        for key in ("source_namespace", "source_id", "source_record", "created_at"):
+            self.assertEqual(current[key], original[key])
+        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
+
+    def test_source_identity_is_paired_and_immutable(self):
+        item_id = str(uuid.uuid4())
+        self.apply([{"op": "create", "id": item_id, "data": {"kind": "inbox", "title": "Capture"}}])
+        created = self.get(item_id)["item"]
+        self.assertEqual([created[key] for key in ("source_namespace", "source_id", "source_record")], [None] * 3)
+        item_id = str(uuid.uuid4())
+        insert = """INSERT INTO public.gtd_items (id, owner_id, data, source_namespace, source_id)
+            VALUES ('{}', '{}', '{{"kind":"inbox","title":"Imported"}}', 'synthetic', {});"""
+        self.assertIn("violates check constraint", self.sql(insert.format(uuid.uuid4(), OWNER, "NULL"), ok=False))
+        self.sql(insert.format(item_id, OWNER, "'old-1'"))
+        self.assertIn("duplicate key", self.sql(insert.format(uuid.uuid4(), OWNER, "'old-1'"), ok=False))
+        self.assertIn("immutable source", self.sql(
+            f"UPDATE public.gtd_items SET source_id = 'old-2' WHERE id = '{item_id}';", ok=False))
+        self.assertEqual(self.get(item_id)["item"]["source_id"], "old-1")
+
+    def test_links_survive_project_completion_and_deletion_without_changing_actions(self):
+        action_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
+        self.sql(f"""INSERT INTO public.gtd_items
+            (id,owner_id,data,source_namespace,source_id,source_record)
+            VALUES ('{action_id}','{OWNER}','{{"kind":"inbox","title":"Step","is_completed":false}}',
+                    'synthetic','link-source','{{"original":"capture"}}');""")
+        imported = self.get(action_id)["item"]
+        receipt = self.apply([
+            {"op": "create", "id": project_id, "data": {"kind": "project", "title": "Outcome"}},
+            {"op": "patch", "id": action_id, "expected_revision": 1, "patch": {"kind": "action"}},
+            {"op": "link", "id": action_id, "expected_revision": 2, "project_id": project_id},
+        ])
+        self.assertEqual(receipt["results"][-1], {"op": "link", "id": action_id, "revision": 3,
+                                                   "project_id": project_id})
+        original_action = self.get(action_id)["item"]
+        links = self.get(action_id)["links"]
+        self.assertEqual(links, [{"action_id": action_id, "project_id": project_id,
+                                  "project_title": "Outcome", "project_is_completed": False,
+                                  "project_deleted_at": None}])
+        self.apply([{"op": "complete", "id": project_id, "expected_revision": 1},
+                    {"op": "delete", "id": project_id, "expected_revision": 2}])
+        self.assertEqual(self.get(action_id)["item"], original_action)
+        page = self.sql(self.cli("read", "--kind", "action"))
+        self.assertEqual(page["links"][0]["project_id"], project_id)
+        self.assertTrue(page["links"][0]["project_is_completed"])
+        self.assertIsNotNone(page["links"][0]["project_deleted_at"])
+        self.apply([{"op": "restore", "id": project_id, "expected_revision": 3},
+                    {"op": "reopen", "id": project_id, "expected_revision": 4},
+                    {"op": "unlink", "id": action_id, "expected_revision": 3, "project_id": project_id}])
+        self.assertEqual(self.get(action_id)["links"], [])
+        self.apply([{"op": "link", "id": action_id, "expected_revision": 4, "project_id": project_id}])
+        self.assertEqual(self.get(action_id)["links"], links)
+        current = self.get(action_id)["item"]
+        for key in ("source_namespace", "source_id", "source_record", "created_at"):
+            self.assertEqual(current[key], imported[key])
+        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
 
 
 if __name__ == "__main__":

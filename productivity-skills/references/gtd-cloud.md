@@ -25,11 +25,12 @@ tell the user to run the `gtd-setup` skill. Do not create or repair the GTD
 binding during routine use; an accessible project or the first database row
 does not select an owner.
 
-Read this binding once for an operation. Keep a private copy beside its
+Read the GTD binding once for an operation. Keep a private copy beside its
 request file and pass `--config <private-binding-copy.json>` before the
 renderer command. Use that same copy for all pages, receipts, retries, and
 readback. Require every emitted `project_id` and returned `owner_id` to match
-it. A later configuration change does not move an in-progress operation.
+it. A later change of the GTD binding does not move an in-progress
+operation.
 
 Discover the host's connected Supabase SQL tool. It accepts `project_id` and
 `query`; its qualified name can differ between hosts. If the connector is
@@ -46,8 +47,10 @@ or lost inventory.
 
 This workflow requires three GTD tables: `gtd_items`, `gtd_links`, and
 `gtd_requests`. The [shipped schema](gtd-schema.sql) defines them. If a
-table is missing, stop the operation and tell the user to run `gtd-setup`,
-which applies the shipped schema. A database can also hold optional
+table is missing, stop the operation and name `gtd-setup`. When no GTD table
+exists, `gtd-setup` applies the shipped schema. When only some GTD tables
+exist, `gtd-setup` reports the state and stops, and the repair is manual.
+A database can also hold optional
 migration records: a `gtd_snapshots` table, the `source_namespace`,
 `source_id`, and `source_record` columns of `gtd_items`, and a trigger that
 preserves these columns. Routine use preserves the optional migration
