@@ -3,8 +3,10 @@
 Use the configured Supabase store for all five GTD workflows. The connected
 Supabase tool supplies authentication. The local [SQL renderer](../scripts/gtd_sql.py)
 prepares tool arguments; it makes no network request and reads no credentials.
-Python 3.11 or newer is required. Calendar and explicitly requested general
-Reminders operations remain separate native workflows.
+`uv` on `PATH` is required. `uv` supplies Python 3.11 or newer, so the `python3`
+on `PATH` does not matter. The renderer uses only the standard library. Calendar
+and explicitly requested general Reminders operations remain separate native
+workflows.
 
 ## Bind the route
 
@@ -49,10 +51,10 @@ Claude Code, use `${CLAUDE_PLUGIN_ROOT}`. For Codex, use the directory two
 levels above the loaded skill. Each contains `scripts/` and `references/`.
 
 ```bash
-python3 <plugin-root>/scripts/gtd_sql.py read --limit 50
-python3 <plugin-root>/scripts/gtd_sql.py get <item-uuid>
-python3 <plugin-root>/scripts/gtd_sql.py receipt <request-uuid>
-python3 <plugin-root>/scripts/gtd_sql.py apply <private-request-file.json>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py read --limit 50
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py get <item-uuid>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py receipt <request-uuid>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py apply <private-request-file.json>
 ```
 
 The renderer returns one JSON object with `project_id` and `query`. Pass both
