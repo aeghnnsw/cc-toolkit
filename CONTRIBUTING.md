@@ -192,7 +192,8 @@ that matches your change from the repository root:
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
-| Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, `productivity-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
+| Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
+| Code or a test in `productivity-skills` | `uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'` |
 | Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
 
@@ -223,8 +224,8 @@ and how to run them.
 
 The table in [Verification](#verification) gives the command for each suite.
 
-The `productivity-skills` suite needs Python 3.11+, `swiftc`, and PostgreSQL
-tools (`initdb`, `pg_ctl`, and `psql`).
+The `productivity-skills` suite needs `uv`, which supplies Python 3.11+,
+`swiftc`, and PostgreSQL tools (`initdb`, `pg_ctl`, and `psql`).
 
 The `dev-skills` suite takes about 2 minutes, most of it in
 `dev-skills/tests/test_codex_critic.py`.
