@@ -247,8 +247,8 @@ a hook before a tool runs, for example:
 ```
 
 Then run a policy script on the payload. `pre_git_hook.py` checks git
-policy, and `safety_guard.py` checks `rm` commands. Exit status 2 means the
-policy script blocks the command:
+policy, and `safety_guard.py` checks `rm`, `env`, and `printenv` commands.
+Exit status 2 means the policy script blocks the command:
 
 ```bash
 python3 core-hooks/scripts/pre_git_hook.py < .scratch/payload.json
