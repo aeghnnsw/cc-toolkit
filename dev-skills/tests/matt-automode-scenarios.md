@@ -21,9 +21,10 @@
 
 These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241)
 and later changes from issues #302, #305, #354,
-[#358](https://github.com/aeghnnsw/cc-toolkit/issues/358), and
-[#392](https://github.com/aeghnnsw/cc-toolkit/issues/392). Issue #358 removes
-the pressure-test cases and adds cases 23 and 24.
+[#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
+[#392](https://github.com/aeghnnsw/cc-toolkit/issues/392), and
+[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388). Issue #358 removes
+the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -117,6 +118,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     for a slow test suite to time out, each losing about two minutes. The only
     fix that the orchestrator sees is a sentence about the timeout in
     `CLAUDE.md`.
+27. **Problem statement conflict.** The available conversation contains
+    completed grilling. A decision removes inline Claude reading.
+    The source issue's problem statement says that the operator plans to
+    read with several Claude and Codex logins. The spec is not published.
 
 ## Expected results
 
@@ -138,7 +143,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Quick command error | Leave the error out of the findings. | Adding the rule to `CLAUDE.md`; opening an issue for the error. | A retro record without that error. |
 | Independent ticket | Start T5 at step 4. | Starting or continuing tickets that rely on the schema before new completion checks are recorded. | The record that T5 does not rely on the invalid decision, and its merged blockers. |
 | Replaced ADR | Record decision B through `grill-with-research`. Mark the old ADR as superseded and link it to decision B. | Deleting the old ADR; leaving it unmarked. | Cited rationale for B, the new decision record, and the superseded note with its link. |
-| Completed handoff | Use the agreed decisions from the available context. Skip grilling and continue to the spec. | Repeating grilling or demanding a separate handoff form. | The completed grilling and agreed decisions already in context, then phase 2's published and verified spec. |
+| Completed handoff | Use the agreed decisions from the available context. Skip grilling and continue to the spec. | Repeating grilling or demanding a separate handoff form. | The completed grilling and agreed decisions already in context, then phase 2's problem statement check and its published and verified spec. |
 | Stale navigation link | Open or reuse a proposal issue with the changed link. | Editing the document during the retro; opening a PR for the fix. | The proposal issue link and the three sessions with their times in the retro record. |
 | Repeated retro findings | Add the new evidence to the open layout issue as a comment. Open a proposal issue for the helper. | Opening a second layout issue; opening a central tracking issue; editing files. | Both issue links in the retro record, each with its sessions and times. |
 | Retro cutoff | Use PR B's 11:00 UTC cutoff. Set this run's 14:00 UTC cutoff before reading sessions. Read this repository's records after the previous cutoff through this cutoff, including later records in the older session. | Using merge order, posting time, the unmerged PR, or session start time as the boundary. | Previous cutoff < record timestamp <= current cutoff. The record says Reviewed through 2026-10-27T14:00:00Z, not its 16:00 posting time. |
@@ -148,6 +153,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | No decision left | Record the findings in the planning folder, complete phase 1, and continue to the spec. | Inventing questions; asking the user for approval. | Each settled question with its finding and source, and a recorded completion check. |
 | No merged PR | Report the blocker and keep the work. Skip the retro. | Posting a retro record on an open PR; advancing the cutoff. | The blocker report and no new retro record, so the next run reads these sessions. |
 | Steering text only | Record "no fix", or open a proposal issue for a tool fix such as a faster suite. | Proposing the `CLAUDE.md` sentence; editing any file. | The retro record with the finding and its result. |
+| Problem statement conflict | Record the conflict as an unresolved decision and reopen phase 1. Resolve it through `grill-with-research` from evidence, then publish the spec. | Publishing the spec with the conflicting decision; asking the user; repeating grilling for decisions without a conflict. | The problem statement check in the planning files: each item with its decision, the conflict with its resolution and rationale, and a new check that finds no unresolved conflict. |
 
 ## Validation limits
 
@@ -158,6 +164,38 @@ it does not enforce agent behavior. Record actual review outcomes separately
 from these expected results.
 
 ## Review record
+
+### 2026-11-08, issue #388
+
+**Round 1.** One fresh agent read the Claude Code copy with
+`grill-with-research` and Matt's `grilling`, and cases 17, 24, and 27. It did
+not receive the expected results. It chose the expected actions. It reported
+that "Do not repeat grilling for those decisions" conflicted with reopening
+phase 1, and that a decision kept after the reopen would fail the check
+again. The first paragraph now makes an exception when phase 2 reopens
+phase 1, and only a conflict that no decision resolves reopens phase 1.
+
+**Round 2.** A fresh agent read the changed copy and four inputs: cases 17
+and 27, a decision kept with a reason after the reopen, and a departure that
+the grilling record already explains. All four ended at the expected action,
+with no repeated reopen. It reported that the exception in the first
+paragraph was broader than the phase 2 rule, and that "Then publish" could
+follow the reopen at once. The text now says "unless phase 2 reopens phase 1"
+and gives the order of the steps.
+
+**Round 3.** The code review reported that "a conflict that no decision
+resolves" could let a decision that only restates the choice pass the check,
+as in issue #388. A decision now passes only when it names the conflict and
+gives a reason. A fresh agent read the changed copy and four inputs: a
+decision that is silent on the conflict, the same decision kept with a
+stated reason, a departure that the record already explains, and decisions
+that match every item. Only the silent decision reopened phase 1; the others
+continued to the spec. Its other gaps concern words left to judgment, such
+as "conflict", or text that this issue did not change. The Codex copy
+differs only in its skill-loading lines and has no version line (checked
+with `diff`).
+
+These were simulated instruction reviews. No full automode workflow ran.
 
 ### 2026-11-08
 

@@ -12,7 +12,7 @@ choose.
    output subdirectory must be new.
 
    ```sh
-   retro_tmp=$(mktemp -d)
+   retro_tmp=$(mktemp -d "${TMPDIR:-/tmp}/retro.XXXXXX")
    uv run --no-project --python '>=3.11' python scripts/retro_sessions.py \
      --repo . --after 2026-11-07T21:01:06.000Z --output "$retro_tmp/retro"
    ```

@@ -49,7 +49,8 @@ end.
    tests. Under uv, get pytest-cov as the setup does for analysis tools.
    Otherwise ask the user whether to add pytest-cov for this purpose, as
    [safety rule 5](../SKILL.md#safety-rules) says.
-5. Make `<work-dir>` with `mktemp -d`, as setup step 5 says.
+5. Make `<work-dir>` with `mktemp -d "${TMPDIR:-/tmp}/lean-tests.XXXXXX"`,
+   as setup step 5 says.
 
 Done when you have `<path>`, `<path>` has no uncommitted change, check
 reports no flaky or order-dependent test under `<path>`, `<python>`

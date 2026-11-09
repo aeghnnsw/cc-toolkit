@@ -82,7 +82,7 @@ every later block with `source "<workdir>/env.sh"`, where `<workdir>` is that
 printed path.
 
 ```bash
-DIR="$(mktemp -d)"                      # transcript + working files
+DIR="$(mktemp -d "${TMPDIR:-/tmp}/pressure-test.XXXXXX")"   # transcript + working files
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 RUNNER="${CLAUDE_PLUGIN_ROOT}/skills/pressure-test/scripts/codex_critic.py"
 {

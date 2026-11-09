@@ -74,10 +74,11 @@ breaks a criterion cites it.
 ## Limits
 
 - Do not create, change, or delete files in the project, and do not change
-  Git state. Do experiments in a new temporary directory (`mktemp -d`). When
-  a command would write into the project, such as caches or build output,
-  turn the writing off (for example `python3 -B`) or run the command on a
-  copy in a temporary directory.
+  Git state. Do experiments in a new temporary directory
+  (`mktemp -d "${TMPDIR:-/tmp}/project-evaluator.XXXXXX"`). When a command would
+  write into the project, such as caches or build output, turn the writing
+  off (for example `python3 -B`) or run the command on a copy in a
+  temporary directory.
 - Do not start or stop servers. Use only the app URL that you were given.
 - Take no action with external effects. Do not send messages, make payments,
   publish, or create issues, and do not submit a form that does.

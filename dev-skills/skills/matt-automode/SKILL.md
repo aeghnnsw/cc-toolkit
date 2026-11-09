@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.11.0
+version: 1.12.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -12,7 +12,8 @@ Make routine decisions from evidence and continue without human checkpoints.
 Respect tool permissions and repository protections.
 
 **If grilling is complete, skip it.** Use the agreed decisions in the available
-context. Do not repeat grilling for those decisions.
+context. Do not repeat grilling for those decisions unless phase 2 reopens
+phase 1.
 
 ## Load skills as needed
 
@@ -58,9 +59,12 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    Otherwise continue until no meaningful unresolved decision remains and no
    pending research could change one. Record domain terms, decisions, and safe
    nonblocking assumptions.
-2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, publish and verify the
-   spec with scope, decisions, and testing seams. Align any glossary entries
-   added by this task with its decisions.
+2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, check each item of
+   the source issue's problem statement against the phase 1 decisions. Unless
+   a decision names a conflict and gives a reason, record the conflict as an
+   unresolved decision and reopen phase 1. When no conflict is unresolved,
+   publish and verify the spec with scope, decisions, and testing seams. Align
+   any glossary entries added by this task with its decisions.
 3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
    verify tickets with acceptance criteria and blocking dependencies that cover
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit

@@ -31,7 +31,7 @@ hash.
    does not last that long.
 
    ```bash
-   mktemp -d
+   mktemp -d "${TMPDIR:-/tmp}/lean-tests-pin.XXXXXX"
    ```
 
 2. Write the user's original request, word for word, to
