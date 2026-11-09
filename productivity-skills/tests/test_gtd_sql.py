@@ -161,10 +161,12 @@ class DatabaseCase(RendererCase):
             check=True, capture_output=True, text=True, timeout=30,
         )
         unittest.addModuleCleanup(cls.stop_server, data)
+        # With no locale variable, PostgreSQL 17 on macOS stops at startup.
         subprocess.run(
             ["pg_ctl", "-D", str(data), "-l", str(root / "postgres.log"),
              "-o", f"-h '' -k {socket}", "-w", "start"],
             check=True, capture_output=True, text=True, timeout=30,
+            env={**os.environ, "LC_ALL": "C"},
         )
         DatabaseCase.psql_prefix = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(socket),
                                     "-U", "gtd_test", "-A", "-t", "-q", "-d"]

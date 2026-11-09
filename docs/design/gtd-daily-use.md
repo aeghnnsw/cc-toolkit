@@ -40,7 +40,7 @@ Use unsaved EventKit objects to verify edit preservation and local date behavior
 without personal data access. Run the affected runtime suite with:
 
 ```bash
-python3 -m unittest discover -s productivity-skills/tests -p 'test_*.py'
+uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'
 ```
 
 Use independent synthetic skill scenarios for overlapping calendar events,
