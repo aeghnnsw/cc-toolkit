@@ -685,7 +685,13 @@ class SafetyGuardTests(unittest.TestCase):
             "git status; env",
             "env | sort",
             "env | grep TOKEN",
+            "env | cut -d= -f2-",
+            "printenv | cut -d= -f2",
+            "env | cut -d: -f1",
             "x=$(env)",
+            'echo "$(env)"',
+            'x="$(printenv)"',
+            "echo `env`",
         ):
             for tool_name in ("Bash", "exec_command"):
                 with self.subTest(command=command, tool_name=tool_name):
@@ -699,6 +705,10 @@ class SafetyGuardTests(unittest.TestCase):
             "env | cut -d= -f1",
             "printenv | cut -d= -f1",
             "env -0 |cut -z -d= -f1",
+            "env | cut -d '=' -f 1",
+            "env | cut --delimiter== --fields=1 | sort",
+            "command -v env",
+            "command -V printenv",
             "env FOO=1 python3 -V",
             "env -u HOME ls",
             "env -S 'echo hi'",

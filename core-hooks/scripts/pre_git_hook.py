@@ -396,11 +396,11 @@ def grep_patterns(words):
     """
     pattern_type = None
     patterns = []
-    from_options = False
+    has_pattern_option = False
     for word in words:
         if word == '--' or word == '-' or not word.startswith('-'):
             pattern = next(words, None) if word == '--' else word
-            if not from_options and pattern is not None:
+            if not has_pattern_option and pattern is not None:
                 patterns.append(pattern)
             break
         if word.startswith('--'):
@@ -412,7 +412,7 @@ def grep_patterns(words):
         for index, letter in enumerate(short_option_letters(word), start=2):
             if letter in GREP_VALUE_OPTIONS.letters:
                 value = word[index:] or next(words, None)
-                from_options = from_options or letter in 'ef'
+                has_pattern_option = has_pattern_option or letter in 'ef'
                 if letter == 'e' and value is not None:
                     patterns.append(value)
                 break

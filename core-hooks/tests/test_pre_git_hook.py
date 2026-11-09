@@ -1042,12 +1042,14 @@ class PreGitHookTests(unittest.TestCase):
             "cat <<'EOF'\ngit grep -E '\\bword'\nEOF",
             r"git commit -m 'Deny git grep -E \b'",
         ]:
-            with self.subTest(command=command):
-                result = run_hook_process(
-                    {"tool_name": "Bash", "tool_input": {"command": command}}
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertNotIn("git grep -E", result.stderr)
+            for payload in (
+                {"tool_name": "Bash", "tool_input": {"command": command}},
+                codex_payload(command),
+            ):
+                with self.subTest(command=command, tool=payload["tool_name"]):
+                    result = run_hook_process(payload)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertNotIn("git grep -E", result.stderr)
 
 
 if __name__ == "__main__":
