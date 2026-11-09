@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Block dangerous `rm` commands.
+"""Block dangerous `rm` commands, and `env` or `printenv` with no command.
 
 This module also owns shell-parsing code that other hooks import. For
 example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
@@ -418,17 +418,23 @@ def _mentions_removal(command):
     return bool(RM_MENTION_RE.search(collapsed))
 
 
-def _command_segments(tokens):
+def _bounded_segments(tokens):
+    """Yield each command segment with the boundary token after it, or None."""
     segment = []
     for token in tokens:
         if _is_boundary(token):
             if segment:
-                yield _without_redirections(segment)
+                yield _without_redirections(segment), token
                 segment = []
         else:
             segment.append(token)
     if segment:
-        yield _without_redirections(segment)
+        yield _without_redirections(segment), None
+
+
+def _command_segments(tokens):
+    for segment, _ in _bounded_segments(tokens):
+        yield segment
 
 
 def _program_name(token):
@@ -1056,6 +1062,50 @@ def _dangerous_rm_reason(command, depth):
     return None
 
 
+def _prints_environment(segment):
+    """Report whether `segment` runs `env` or `printenv` with no command.
+
+    `env` with only options and assignments, and `printenv` with no
+    variable name, print every environment variable. `env -S` runs a
+    command.
+    """
+    positions, index = _command_analysis(segment)
+    if index < len(segment):
+        return _program_name(segment[index]) == "printenv" and all(
+            argument.startswith("-") for argument in segment[index + 1:]
+        )
+    return (
+        bool(positions)
+        and _program_name(segment[positions[-1]]) == "env"
+        and next(_env_split_invocations(segment), None) is None
+    )
+
+
+def prints_environment(command):
+    """Report whether `command` prints every environment variable (#391).
+
+    A value can be a token. Output piped straight into `cut`, as in
+    `env | cut -d= -f1`, is allowed, because `cut` can keep the names only.
+    """
+    text = _strip_shell_comments(
+        _remove_line_continuations(strip_heredoc_bodies(command))
+    )
+    try:
+        segments = list(_bounded_segments(_shell_tokens(text)))
+    except ValueError:
+        return False
+    for index, (segment, boundary) in enumerate(segments):
+        if not _prints_environment(segment):
+            continue
+        if boundary in ("|", "|&") and index + 1 < len(segments):
+            following = segments[index + 1][0]
+            position = _command_index(following)
+            if position < len(following) and _program_name(following[position]) == "cut":
+                continue
+        return True
+    return False
+
+
 def dangerous_rm_reason(command):
     try:
         return _dangerous_rm_reason(command, 0)
@@ -1085,6 +1135,16 @@ def main():
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
             sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
+
+        if command and prints_environment(command):
+            print(
+                "BLOCKED: `env` or `printenv` with no command prints every "
+                "environment variable, and a value can be a token. To list "
+                "the names only, run `env | cut -d= -f1`. To read one "
+                "variable, run `printenv NAME`.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
         append_log('pre_tool_use.jsonl', input_data)
 
