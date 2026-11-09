@@ -128,6 +128,55 @@ GLOB_SAFE = [
 ]
 
 
+# The Claude Code Bash safety check cannot read a zsh parameter flag, so it
+# denies each command with a message about `rm` (#391). The value is the flag
+# that the denial names.
+FLAG_TRAPS = {
+    "print -l ${(f)\"$(printf 'a\\nb')\"}": "${(f)...}",
+    'x=a; echo "${(U)x}"': "${(U)...}",
+    "lines=(${(@f)text})": "${(@f)...}",
+    "for l in ${(f)text}; do echo $l; done": "${(f)...}",
+    "echo $(echo ${(j:,:)arr})": "${(j:,:)...}",
+    "[[ -n ${(f)x} ]] && echo y": "${(f)...}",
+}
+
+FLAG_SAFE = [
+    "echo '${(f)x}'",
+    "cat <<'EOF'\n${(f)x}\nEOF",
+    "echo hi # ${(f)x}",
+    "echo \\${(f)x}",
+    'echo "$(echo \'${(f)x}\')"',
+    "echo ${x} ${#x} ${x:-y}",
+    "list='a b'; print -l ${=list}",
+    "files=(a b c); print -l $files",
+    "printf 'a\\nb\\n' | while read -r line; do echo $line; done",
+]
+
+
+# zsh can read a letter after `$NAME:` as a modifier of the variable (#391).
+# The value is the text that the warning names.
+MODIFIER_TRAPS = {
+    "C=abc; echo $C:AGENTS.md": "$C:A",
+    'C=abc; echo "$C:AGENTS.md"': "$C:A",
+    "git show $SHA:README.md": "$SHA:R",
+    "x=$DIR:h": "$DIR:h",
+    "echo $(echo $C:t)": "$C:t",
+    "cat $C:r > out.txt": "$C:r",
+    "[[ -f $C:A ]] && echo y": "$C:A",
+}
+
+MODIFIER_SAFE = [
+    "echo ${C}:AGENTS.md",
+    "echo '$C:A'",
+    "echo \\$C:A",
+    "echo $C:/x $C:1 $C:-x $USER:$GROUP",
+    "cat <<'EOF'\n$C:A\nEOF",
+    "echo hi # $C:A",
+    "echo ${C:A}",
+    "echo $C: done",
+]
+
+
 def glob_directory(temp_dir):
     """Fill `temp_dir` with `a.txt` and `sub/b.md`, and return its path."""
     Path(temp_dir, "a.txt").touch()
@@ -182,21 +231,21 @@ class ZshTrapTests(unittest.TestCase):
         for command, word in EQUALS_TRAPS.items():
             with self.subTest(command=command):
                 traps = zsh_traps.zsh_traps(command)
-                self.assertEqual([trap.stops_line for trap in traps], [True], traps)
+                self.assertEqual([trap.blocks for trap in traps], [True], traps)
                 self.assertIn(f"`{word}` starts with `=`", traps[0].message)
                 self.assertIn(f"`'{word}'`", traps[0].message)
 
     def test_warns_about_an_equals_word_that_names_a_command(self):
         traps = zsh_traps.zsh_traps(EQUALS_FOUND)
 
-        self.assertEqual([trap.stops_line for trap in traps], [False], traps)
+        self.assertEqual([trap.blocks for trap in traps], [False], traps)
         self.assertIn("`=sh` starts with `=`", traps[0].message)
 
     def test_warns_about_an_unsplit_variable(self):
         for command, word in SPLIT_TRAPS.items():
             with self.subTest(command=command):
                 traps = zsh_traps.zsh_traps(command)
-                self.assertEqual([trap.stops_line for trap in traps], [False], traps)
+                self.assertEqual([trap.blocks for trap in traps], [False], traps)
                 self.assertIn(f"variable `{word}`", traps[0].message)
                 self.assertIn("define a function", traps[0].message)
                 self.assertIn("with `bash`", traps[0].message)
@@ -207,7 +256,7 @@ class ZshTrapTests(unittest.TestCase):
             for command, word in GLOB_TRAPS.items():
                 with self.subTest(command=command):
                     traps = zsh_traps.zsh_traps(command, directory)
-                    self.assertEqual([trap.stops_line for trap in traps], [False], traps)
+                    self.assertEqual([trap.blocks for trap in traps], [False], traps)
                     self.assertIn(f"glob `{word}` matches no file", traps[0].message)
 
     def test_gives_no_finding_for_safe_commands(self):
@@ -216,6 +265,66 @@ class ZshTrapTests(unittest.TestCase):
             for command in EQUALS_SAFE + SPLIT_SAFE + GLOB_SAFE:
                 with self.subTest(command=command):
                     self.assertEqual(zsh_traps.zsh_traps(command, directory), [])
+
+    def test_denies_a_zsh_parameter_flag_for_claude_code(self):
+        for command, flag in FLAG_TRAPS.items():
+            with self.subTest(command=command):
+                traps = zsh_traps.zsh_traps(command, host="claude")
+                self.assertEqual([trap.blocks for trap in traps], [True], traps)
+                self.assertIn(f"flag `{flag}`", traps[0].message)
+                for alternative in ("`${=list}`", "array literal", "`while read"):
+                    self.assertIn(alternative, traps[0].message)
+
+    def test_gives_no_flag_finding_for_other_hosts_or_literal_text(self):
+        for command in FLAG_TRAPS:
+            for host in (None, "codex"):
+                with self.subTest(command=command, host=host):
+                    self.assertEqual(zsh_traps.zsh_traps(command, host=host), [])
+        for command in FLAG_SAFE:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command, host="claude"), [])
+
+    def test_hook_denies_a_parameter_flag_before_the_claude_code_check(self):
+        # A PreToolUse deny reaches the agent before the built-in check runs,
+        # so the agent reads this reason, not the message about `rm`.
+        command = "print -l ${(f)\"$(printf 'a\\nb')\"}"
+        result = run_hook(command, host="claude")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(output["permissionDecision"], "deny")
+        self.assertIn("`${=list}`", output["permissionDecisionReason"])
+        self.assertEqual(run_hook(command, host="codex").stdout, "")
+
+    def test_warns_about_a_letter_after_an_unbraced_variable(self):
+        for command, text in MODIFIER_TRAPS.items():
+            with self.subTest(command=command):
+                traps = zsh_traps.zsh_traps(command)
+                self.assertEqual([trap.blocks for trap in traps], [False], traps)
+                name, letter = text[1:].split(":")
+                self.assertIn(f"`{text}`", traps[0].message)
+                self.assertIn(f"`${{{name}}}:{letter}`", traps[0].message)
+
+    def test_gives_no_modifier_finding_for_braced_or_literal_text(self):
+        for command in MODIFIER_SAFE:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command), [])
+
+    @unittest.skipUnless(ZSH, "zsh is not installed")
+    def test_modifier_cases_change_the_value_in_zsh(self):
+        # The braced fix keeps the value; the unbraced form changes it.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for command in (
+                "C=abc; echo $C:AGENTS.md",
+                'C=abc; echo "$C:AGENTS.md"',
+                "C=a/b.c; echo $C:h $C:t $C:r",
+            ):
+                with self.subTest(command=command):
+                    braced = command.replace("$C:", "${C}:")
+                    self.assertNotEqual(
+                        run_zsh(command, temp_dir).stdout,
+                        run_zsh(braced, temp_dir).stdout,
+                    )
 
     def test_checks_only_option_globs_without_a_directory(self):
         self.assertEqual(zsh_traps.zsh_traps("ls *.md"), [])
