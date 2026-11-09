@@ -1,0 +1,7 @@
+interface:
+  display_name: "GTD Setup"
+  short_description: "Create or bind a cloud GTD database"
+  default_prompt: "Use $gtd-setup to create my GTD database in Supabase, or to bind my existing GTD database on this computer."
+
+policy:
+  allow_implicit_invocation: false

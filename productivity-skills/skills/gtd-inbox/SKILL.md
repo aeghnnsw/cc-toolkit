@@ -1,6 +1,6 @@
 ---
 name: gtd-inbox
-version: 1.2.0
+version: 1.2.1
 description: "Use when capturing thoughts or tasks into the GTD inbox, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
@@ -9,7 +9,7 @@ immediately. Keep their wording and scope.
 
 Before any operation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
-contract for the private route, connector calls, UUIDs, revisions, atomic
+contract for the GTD binding, connector calls, UUIDs, revisions, atomic
 writes, receipts, and recovery. Missing access makes the operation
 unavailable. It does not authorize a local or Reminders fallback.
 

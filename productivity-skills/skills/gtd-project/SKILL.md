@@ -1,6 +1,6 @@
 ---
 name: gtd-project
-version: 3.2.0
+version: 3.2.1
 description: "Use when reviewing GTD project status, adding or editing actions, completing or rescheduling actions, or completing, deleting, or restoring projects and actions."
 ---
 
@@ -10,7 +10,7 @@ leaves a decision open.
 
 Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
-contract for the private route, complete reads, UUID grouping, dates,
+contract for the GTD binding, complete reads, UUID grouping, dates,
 revisions, atomic writes, receipts, and recovery. Apply the planning policy
 to every project and action. Missing cloud data or access makes the affected
 review or operation unavailable; it does not authorize a native fallback.

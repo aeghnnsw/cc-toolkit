@@ -8,7 +8,7 @@ Present one batch proposal. Honor existing explicit authorization.
 
 Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
-contract for the private route, complete reads, UUID links, dates, revisions,
+contract for the GTD binding, complete reads, UUID links, dates, revisions,
 atomic writes, and recovery. Use the planning policy for every action and
 project, including work without agents. Missing cloud data or access makes
 processing unavailable; it does not authorize a native fallback.

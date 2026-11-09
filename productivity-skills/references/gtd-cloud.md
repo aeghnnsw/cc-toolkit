@@ -10,7 +10,7 @@ workflows.
 
 ## Bind the route
 
-Before any GTD operation, read the private file
+Before any GTD operation, read the GTD binding in the private file
 `~/.config/cc-toolkit/gtd.json`. It contains exactly these two fields:
 
 ```json
@@ -19,16 +19,18 @@ Before any GTD operation, read the private file
 
 These are synthetic examples. Use the user's established project reference
 and owner UUID. Keep the real file outside repositories and plugin caches.
-It contains no password, API key or token. Preserve an existing valid binding.
-If it is missing, use an already approved private operating route to create
-it. Otherwise resolve the intended existing project and owner with the user;
-an accessible project or the first database row does not select an owner.
+It contains no password, API key or token. Preserve an existing valid GTD
+binding. If the GTD binding is missing or invalid, stop the operation and
+tell the user to run the `gtd-setup` skill. Do not create or repair the GTD
+binding during routine use; an accessible project or the first database row
+does not select an owner.
 
-Read this binding once for an operation. Keep a private copy beside its
+Read the GTD binding once for an operation. Keep a private copy beside its
 request file and pass `--config <private-binding-copy.json>` before the
 renderer command. Use that same copy for all pages, receipts, retries, and
 readback. Require every emitted `project_id` and returned `owner_id` to match
-it. A later configuration change does not move an in-progress operation.
+it. A later change of the GTD binding does not move an in-progress
+operation.
 
 Discover the host's connected Supabase SQL tool. It accepts `project_id` and
 `query`; its qualified name can differ between hosts. If the connector is
@@ -37,8 +39,24 @@ A failure before sending confirms no save. A failure during or after sending
 has an uncertain outcome; use the receipt procedure below. Keep native GTD files and Reminders as
 preserved source copies after cloud cutover; do not fall back to them.
 
-This workflow requires the existing GTD tables: `gtd_items`, `gtd_links`,
-`gtd_requests`, and `gtd_snapshots`. Missing tables require separate setup.
+If the connected route reports that the project is paused, report the pause
+and the restore step: the user restores the project in the Supabase
+dashboard, or asks for a restore through the connector's restore tool. Do
+not restore a project without a request. A paused project is not an empty
+or lost inventory.
+
+This workflow requires three GTD tables: `gtd_items`, `gtd_links`, and
+`gtd_requests`. The [shipped schema](gtd-schema.sql) defines them. If a
+table is missing, stop the operation and name `gtd-setup`. When no GTD table
+exists, `gtd-setup` applies the shipped schema. When only some GTD tables
+exist, `gtd-setup` reports the state and stops, and the repair is manual.
+A database can also hold optional
+migration records: a `gtd_snapshots` table, the `source_namespace`,
+`source_id`, and `source_record` columns of `gtd_items`, and a trigger that
+preserves these columns. Routine use preserves the optional migration
+records when they exist. A database without them returns items without the
+source keys.
+
 Routine use does not deploy schema, migrate records, change Auth or policies,
 set JWT claims, switch database roles, or copy user credentials. Management
 connector access is distinct from a browser user's session and is not a test
@@ -162,8 +180,9 @@ the selected UUIDs, not records captured later.
 The [shared transaction](gtd-connector-transaction.sql) enforces owner scope,
 revisions, exact replay, endpoint checks and atomic rollback. The renderer
 validates the request and encodes task text as data. Use its output unchanged;
-do not construct SQL from titles or notes. Routine operations preserve source
-identities, original source records, snapshot bytes and request history.
+do not construct SQL from titles or notes. Routine operations preserve
+request history and, when the database has them, source identities, original
+source records and snapshot bytes.
 
 ## Verify and recover
 

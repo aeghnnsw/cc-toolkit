@@ -118,7 +118,7 @@ Safety guards and workflow enforcement hooks.
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Productivity Skills (`productivity-skills`)
-GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a private project/owner configuration and `uv` on `PATH`, which supplies Python 3.11+. See the [cloud workflow and setup](productivity-skills/references/gtd-cloud.md).
+GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
 
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
@@ -128,6 +128,7 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar a
 - **gtd-project**: Review and manage cloud GTD projects and their actions
 - **gtd-next**: Select cloud GTD actions with available native Calendar context
 - **gtd-overview**: Read-only cloud project and action inventory with shared status rules
+- **gtd-setup**: Create a cloud GTD database or bind an existing one, then verify it (user-invoked)
 
 **Codex skills:**
 - **calendar-manager**
@@ -137,6 +138,7 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar a
 - **gtd-project**
 - **gtd-next**
 - **gtd-overview**
+- **gtd-setup**
 
 ### PyMOL Skills (`pymol-skills`)
 PyMOL molecular visualization control via MCP server for Claude Code and Codex.
