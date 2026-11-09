@@ -118,14 +118,13 @@ From the repository root, search with `git grep`. It skips untracked files
 and the other worktrees under `trees/` and `.claude/worktrees/`; pass
 `--untracked` to include new files.
 
-Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
-describe replaced behavior. The `task-loop/` folder is
+The entries in `CHANGELOG.md` can describe replaced behavior. The
+`task-loop/` folder is
 [not in the marketplaces](task-loop/README.md#status), but its copies of
-shared skills match many terms. To search current text only, exclude all
-three:
+shared skills match many terms. To search current text only, exclude both:
 
 ```bash
-git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'
+git grep -n <term> -- ':!CHANGELOG.md' ':!task-loop'
 ```
 
 ## Changelog entries

@@ -36,8 +36,7 @@ cc-toolkit/
 ├── docs/
 │   ├── adr/                          # Accepted architecture decisions
 │   ├── agents/                       # Issue tracker, triage, domain, and retrospective conventions
-│   ├── design/                       # Durable designs, such as package validation
-│   └── superpowers/                  # Dated specs, plans, and conclusions; some superseded
+│   └── design/                       # Durable designs, such as package validation
 ├── cc-customize/                     # Claude Code model, statusline, and prompt config skills
 ├── core-hooks/                       # Safety and workflow hooks plugin
 ├── creator-skills/                   # Scientific content creation plugin
