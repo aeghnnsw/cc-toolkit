@@ -118,6 +118,27 @@ static checks, simulated reviews, and live observations separately.
 
 ## Review record
 
+### 2026-11-08, issues #388 and #394
+
+**Static checks.** `test_grill_with_research.py` checks that both copies
+match outside the load section and stay within the body limit, now 440 words
+(Claude Code copy 430, Codex copy 428). `test_pressure_test_models.py` now
+checks that pressure-test Setup creates its work directory under `TMPDIR` and
+prints the stderr of Setup when Setup prints no work directory. Before the
+change, the test failed in a sandboxed Claude Code session on macOS
+(`mkdtemp failed ... Operation not permitted`) and outside the sandbox (work
+directory under `/var/folders`). After the change it passes.
+
+**Simulated review.** One fresh agent read the Claude Code copies of this
+skill and `matt-automode`, Matt's `grilling`, and cases 9, 16, and 20. It did
+not receive the expected results. It chose the expected actions. In case 20,
+it researched the condition first and planned to ask only if research left it
+open; the expected result now says so. It reported that a plain "yes" to a
+conditional recommendation may not address the condition. The rule treats it
+as not addressed, which is the case that issue #388 describes. It also
+reported that no later step opens a promised follow-up issue; issue #388
+decided to open no issue during grilling.
+
 ### 2026-11-05, issue #365
 
 **Static checks.** `test_grill_with_research.py` now requires that both copies

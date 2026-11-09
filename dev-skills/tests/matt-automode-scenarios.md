@@ -165,6 +165,28 @@ from these expected results.
 
 ## Review record
 
+### 2026-11-08, issue #388
+
+**Round 1.** One fresh agent read the Claude Code copy with
+`grill-with-research` and Matt's `grilling`, and cases 17, 24, and 27. It did
+not receive the expected results. It chose the expected actions. It reported
+that "Do not repeat grilling for those decisions" conflicted with reopening
+phase 1, and that a decision kept after the reopen would fail the check
+again. The first paragraph now makes an exception when phase 2 reopens
+phase 1, and only a conflict that no decision resolves reopens phase 1.
+
+**Round 2.** A fresh agent read the changed copy and four inputs: cases 17
+and 27, a decision kept with a reason after the reopen, and a departure that
+the grilling record already explains. All four ended at the expected action,
+with no repeated reopen. It reported that the exception in the first
+paragraph was broader than the phase 2 rule, and that "Then publish" could
+follow the reopen at once. The text now says "unless phase 2 reopens phase 1"
+and "When no conflict is open". Its other gaps concern text that this issue
+did not change. The Codex copy differs only in its skill-loading lines and
+has no version line (checked with `diff`).
+
+These were simulated instruction reviews. No full automode workflow ran.
+
 ### 2026-11-08
 
 One fresh agent read the Claude Code copy and the scenario inputs of cases
