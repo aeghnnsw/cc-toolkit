@@ -30,6 +30,7 @@
 
 ### Removed
 
+- Repository: remove the release-version literals from two tests. The core-hooks Codex adapter test that compared the manifest version with `1.0.24` is gone. The lean-tests host parity test no longer compares the skill `version` with `1.4.1`; it still checks that the two host copies differ only by `version`. A version increase no longer needs a test edit, and release validation still checks each increase. See [#397](https://github.com/aeghnnsw/cc-toolkit/issues/397).
 - Repository: remove `docs/superpowers/`, which held 61 dated specs, plans, and conclusions. The records stay in the Git history. ADR 0001, ADR 0002, and the task-loop README link to permalinks at commit 4be3c4b. `.gitignore` ignores `docs/superpowers/`, so drafts that the superpowers plugin writes there stay local. The CONTRIBUTING search rule no longer excludes the folder. See [#398](https://github.com/aeghnnsw/cc-toolkit/issues/398).
 - Repository: remove the package-validation CI workflow. Contributors run validation and tests locally. Keep the workflow triggered by `@claude` mentions. The proposal to add CI test suites in #297 is closed as not planned. See [#297](https://github.com/aeghnnsw/cc-toolkit/issues/297).
 
