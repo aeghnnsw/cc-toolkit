@@ -1,6 +1,6 @@
 {
   "name": "productivity-skills",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Cloud GTD workflows for Codex through the connected Supabase tool, plus native macOS Calendar and Reminders.",
   "author": {
     "name": "Steven",
