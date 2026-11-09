@@ -138,9 +138,10 @@ The retro edits no tracked file. It proposes changes for a human to choose.
 A proposal issue states the finding, its session and time, and the proposed
 change, with the repository's "Needs triage" label. To reuse an issue, add the
 new evidence as a comment. The retro stores no lesson and adds no record file.
-Root `AGENTS.md` and `CLAUDE.md` hold only rules for every task and navigation
-pointers. A proposal never adds a tool workaround, a host or machine fact, or a
-one-off lesson to a steering file.
+A steering file tells an agent how to work, such as `AGENTS.md`, `CLAUDE.md`, a
+contributor guide, or a skill. A proposal keeps root `AGENTS.md` and `CLAUDE.md`
+to rules for every task and navigation pointers. It never adds a tool
+workaround, a host or machine fact, or a one-off lesson to a steering file.
 
 ## Sub-agent briefs
 

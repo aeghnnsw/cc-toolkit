@@ -313,7 +313,7 @@ _Avoid_: Planning directory, scratch dir
 **Navigation retrospective**:
 A review of earlier agent sessions for problems that cost a run significant
 time or work, such as slow information searches and stale guidance. It
-proposes changes for a human to choose and edits no tracked file.
+proposes changes for a human to choose.
 _Avoid_: Lessons learned, retro fixes
 
 **Steering file**:

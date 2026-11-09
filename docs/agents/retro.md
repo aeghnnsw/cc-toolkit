@@ -30,7 +30,8 @@ choose.
 5. Post a **Navigation retrospective** comment on the run's last merged PR:
    the **Reviewed through** cutoff (`window.through`), the sessions read and
    history limits, and each finding with its session and time and its issue
-   link or "no fix".
+   link or "no fix". A run that merges no PR skips the retrospective; the
+   next one reads its sessions.
 6. Remove the temporary directory by its exact path.
 
 A proposal issue states the finding, its session and time, and the proposed

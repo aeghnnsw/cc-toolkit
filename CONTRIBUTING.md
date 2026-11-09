@@ -188,6 +188,7 @@ that matches your change from the repository root:
 | --- | --- |
 | Any change | `git diff --check` |
 | Documentation | Check accuracy, relative links, and referenced paths. |
+| A skill | Check its frontmatter and invocation guidance. |
 | A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
@@ -231,12 +232,7 @@ The `dev-skills` suite takes about 2 minutes, most of it in
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov. Under a `python3` without them, these
-checks skip. Their skip reason, which `-v` shows, gives this command, which
-supplies both:
-
-```bash
-uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
-```
+checks skip; their skip reason, which `-v` shows, gives the command.
 
 The PyMOL startup suite requires `uv` and access to download missing script
 dependencies. It checks MCP initialization and tool discovery without changing
