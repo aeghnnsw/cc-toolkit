@@ -224,8 +224,8 @@ and how to run them.
 
 The table in [Verification](#verification) gives the command for each suite.
 
-The `productivity-skills` suite needs `uv`, which supplies Python 3.11+,
-`swiftc`, and PostgreSQL tools (`initdb`, `pg_ctl`, and `psql`).
+The `productivity-skills` suite needs `uv`, `swiftc`, and PostgreSQL tools
+(`initdb`, `pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
 
 The `dev-skills` suite takes about 2 minutes, most of it in
 `dev-skills/tests/test_codex_critic.py`.
