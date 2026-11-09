@@ -38,10 +38,10 @@ not prove intent; research never sets preferences. Then summarize findings,
 pending research, missing access, and inconclusive results.
 
 Research may run scripts in the planning folder, where cited scripts stay, or in
-one `mktemp -d "${TMPDIR:-/tmp}/research.XXXXXX"` folder removed by path.
-Research never edits tracked files, installs into the project environment, or
-changes shared state (pushes, issues, PRs, messages). A citable scientific
-result needs a cited run.
+one `mktemp -d "${TMPDIR:-/tmp}/grill-with-research.XXXXXX"` folder removed by
+path. Research never edits tracked files, installs into the project
+environment, or changes shared state (pushes, issues, PRs, messages). A
+citable scientific result needs a cited run.
 
 ## Planning folder
 
@@ -68,5 +68,5 @@ recommendation, and why the user must decide. Missing access does not hold a
 question. After each answer, research what changed and reopen affected
 decisions. If an answer accepts a recommendation without addressing its
 condition, ask about the condition. Record each condition and each promised
-follow-up issue with its decision; open no issue during grilling. When no
+follow-up issue with the decision. Open no issue during grilling. When no
 meaningful unresolved decision remains, finish as `grilling` does.

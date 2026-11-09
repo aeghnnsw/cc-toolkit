@@ -50,8 +50,7 @@ class CriticModelBlockTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.temp = directory.name
-        # Setup runs mktemp -d "${TMPDIR:-/tmp}/pressure-test.XXXXXX", so the work directory is
-        # under self.temp and the cleanup removes it.
+        # Setup creates the work directory under TMPDIR, so the cleanup removes it.
         self.env = dict(os.environ, TMPDIR=self.temp, CLAUDE_PLUGIN_ROOT=str(PLUGIN_ROOT))
 
     def require_shell(self, shell: str) -> None:
@@ -59,7 +58,7 @@ class CriticModelBlockTests(unittest.TestCase):
         if shutil.which(shell) is None:
             self.skipTest(f"{shell} is not installed")
 
-    def run_block(self, shell: str, block: str, workdir: str = "") -> subprocess.CompletedProcess:
+    def run_block(self, shell: str, block: str, workdir: str = "") -> subprocess.CompletedProcess[str]:
         """Run one block in a new shell and return the result; fail on a non-zero exit."""
         result = subprocess.run([*SHELLS[shell], block.replace("<workdir>", workdir)], cwd=self.temp,
                                 env=self.env, capture_output=True, text=True, timeout=30)

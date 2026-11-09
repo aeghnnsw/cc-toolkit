@@ -60,11 +60,11 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    pending research could change one. Record domain terms, decisions, and safe
    nonblocking assumptions.
 2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, check each item of
-   the source issue's problem statement against the accepted decisions. Record
-   each conflict that no decision resolves as an open decision, and reopen
-   phase 1. When no conflict is open, publish and verify the spec with scope,
-   decisions, and testing seams. Align any glossary entries added by this
-   task with its decisions.
+   the source issue's problem statement against the phase 1 decisions. Unless
+   a decision names a conflict and gives a reason, record the conflict as an
+   unresolved decision and reopen phase 1. When no conflict is unresolved,
+   publish and verify the spec with scope, decisions, and testing seams. Align
+   any glossary entries added by this task with its decisions.
 3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
    verify tickets with acceptance criteria and blocking dependencies that cover
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
