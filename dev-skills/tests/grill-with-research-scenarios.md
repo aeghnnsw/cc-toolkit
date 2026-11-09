@@ -7,8 +7,10 @@
 > review record describes the earlier rule, and its case numbers refer to the
 > earlier list.
 
-These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358)
-and [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365).
+These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
+[issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365), and
+[issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388), which adds
+case 20.
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md)
 and the [Codex skill](../codex-skills/grill-with-research/SKILL.md), with the
 Matt skills that the wrapper loads.
@@ -78,6 +80,10 @@ for issue 42, and the Matt skills load.
     `disable-model-invocation: true`. In Codex, the `agents/openai.yaml` file
     of `grilling` sets `allow_implicit_invocation: false`, and the skill list
     omits `grilling`.
+20. **Conditional recommendation.** A round asks how to read papers. The
+    recommendation says: "Choose (a), remove inline Claude reading, if every
+    operator has a Codex login. Then open a separate issue for (c), Claude
+    reading capacity." The user answers "yes to (a)".
 
 ## Expected results
 
@@ -93,7 +99,7 @@ for issue 42, and the Matt skills load.
 | Broad question | Research the stack and workload first. Ask only about a remaining requirement or trade-off that could change the recommendation. | Asking "Which database should we use?" as written. | The current database, the workload findings, and the remaining gap. |
 | Changed evidence | Research what the answer changed, reopen the first question, and hold the questions that depend on it. | Keeping the first answer unchanged; asking its dependent questions. | The new finding and the reopened decision in `01_research.md`. |
 | Missing access | Report the missing access, mark the finding unresolved, and ask the user only if the hosting decision still depends on it. | Treating the vendor's behavior as a verified fact. | The summary that names the inaccessible source. |
-| Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
+| Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d "${TMPDIR:-/tmp}/research.XXXXXX"` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
 | Omitted Matt skill | Run the resolver (with `--host codex` in Codex), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
@@ -102,6 +108,7 @@ for issue 42, and the Matt skills load.
 | Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
 | User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill past its frontmatter; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
+| Conditional recommendation | Research whether every operator has a Codex login, and ask about it if research leaves it open. Record decision (a) with that condition and with the promised issue for (c). | Recording (a) without its condition; opening the issue for (c) during grilling. | The decision record with the condition, its answer, and the promised issue. |
 
 ## Validation limits
 

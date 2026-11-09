@@ -50,7 +50,8 @@ class CriticModelBlockTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.temp = directory.name
-        # mktemp -d in Setup creates the work directory under TMPDIR, so the cleanup removes it.
+        # Setup runs mktemp -d "${TMPDIR:-/tmp}/pressure-test.XXXXXX", so the work directory is
+        # under self.temp and the cleanup removes it.
         self.env = dict(os.environ, TMPDIR=self.temp, CLAUDE_PLUGIN_ROOT=str(PLUGIN_ROOT))
 
     def require_shell(self, shell: str) -> None:
@@ -58,12 +59,12 @@ class CriticModelBlockTests(unittest.TestCase):
         if shutil.which(shell) is None:
             self.skipTest(f"{shell} is not installed")
 
-    def run_block(self, shell: str, block: str, workdir: str = "") -> str:
-        """Run one block in a new shell and return its stdout; fail on a non-zero exit."""
+    def run_block(self, shell: str, block: str, workdir: str = "") -> subprocess.CompletedProcess:
+        """Run one block in a new shell and return the result; fail on a non-zero exit."""
         result = subprocess.run([*SHELLS[shell], block.replace("<workdir>", workdir)], cwd=self.temp,
                                 env=self.env, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout
+        return result
 
     def run_named_block(self, copy: str, text: str, shell: str, title: str, workdir: Path) -> None:
         """Run the first bash block under a heading of the copy; fail when the heading has none."""
@@ -80,9 +81,11 @@ class CriticModelBlockTests(unittest.TestCase):
         text = path.read_text(encoding="utf-8")
         block = first_block(text, "Setup").replace("<skill-dir>", str(path.parent))
         self.assertTrue(block, f"{copy}: no bash block under Setup")
-        match = WORKDIR_LINE.search(self.run_block(shell, block))
-        self.assertIsNotNone(match, f"{copy}: Setup printed no workdir line")
+        result = self.run_block(shell, block)
+        match = WORKDIR_LINE.search(result.stdout)
+        self.assertIsNotNone(match, f"{copy}: Setup printed no workdir line; stderr:\n{result.stderr}")
         workdir = Path(match.group(1))
+        self.assertEqual(workdir.parent, Path(self.temp), f"{copy}: Setup ignored TMPDIR")
         if start == "fallback":
             self.run_named_block(copy, text, shell, "Critic model", workdir)
         return text, workdir

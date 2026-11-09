@@ -2,8 +2,9 @@
 
 The agreed decisions of issue #358 fix the description, the body limit, the
 invocation policy, and the host-specific loading section. Issue #365 sets the
-Matt skills that the wrapper loads. Agent behavior is checked by the scenario
-review in grill-with-research-scenarios.md.
+Matt skills that the wrapper loads. Issue #388 raises the body limit to 440
+words for its condition rule. Agent behavior is checked by the scenario review
+in grill-with-research-scenarios.md.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ DESCRIPTION = (
 )
 LOAD_HEADING = "## Load the Matt skills"
 MATT_SKILLS = ("mattpocock-skills:grilling", "mattpocock-skills:domain-modeling")
-BODY_WORD_LIMIT = 400
+BODY_WORD_LIMIT = 440
 
 
 def split_skill(path: Path) -> tuple[dict[str, str], str]:

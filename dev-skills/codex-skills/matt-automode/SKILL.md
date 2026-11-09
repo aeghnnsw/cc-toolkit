@@ -11,7 +11,8 @@ Make routine decisions from evidence and continue without human checkpoints.
 Respect tool permissions and repository protections.
 
 **If grilling is complete, skip it.** Use the agreed decisions in the available
-context. Do not repeat grilling for those decisions.
+context. Do not repeat grilling for those decisions unless phase 2 finds a
+conflict.
 
 ## Load skills as needed
 
@@ -58,9 +59,12 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    Otherwise continue until no meaningful unresolved decision remains and no
    pending research could change one. Record domain terms, decisions, and safe
    nonblocking assumptions.
-2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, publish and verify the
-   spec with scope, decisions, and testing seams. Align any glossary entries
-   added by this task with its decisions.
+2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, check each item of
+   the source issue's problem statement against the accepted decisions. Record
+   each conflict that no decision resolves as an open decision, and reopen
+   phase 1. Then publish and verify the spec with scope, decisions, and
+   testing seams. Align any glossary entries added by this task with its
+   decisions.
 3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
    verify tickets with acceptance criteria and blocking dependencies that cover
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit

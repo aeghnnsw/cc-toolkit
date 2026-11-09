@@ -47,7 +47,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 Replace `<skill-dir>` with this skill's directory, the folder that holds this `SKILL.md`.
 
 ```bash
-DIR="$(mktemp -d)"
+DIR="$(mktemp -d "${TMPDIR:-/tmp}/pressure-test.XXXXXX")"
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 {
   printf 'DIR="%s"\nREPO="%s"\nSKILL_DIR="%s"\n' "$DIR" "$REPO" "<skill-dir>"

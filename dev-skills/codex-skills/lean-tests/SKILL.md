@@ -99,7 +99,7 @@ These rules apply to all work on a test suite.
    as `<work-dir>` in later commands:
 
    ```bash
-   mktemp -d
+   mktemp -d "${TMPDIR:-/tmp}/lean-tests.XXXXXX"
    ```
 
    Records, logs, coverage data, and reports go there. When the work is
