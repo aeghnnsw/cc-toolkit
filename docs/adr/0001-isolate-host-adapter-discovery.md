@@ -15,6 +15,6 @@ terminating the entire hook. Claude Code retains its own hook configuration.
 A native Grok Build adapter is deferred; shared-script tests cover its
 payload format without guaranteeing host-level hook invocation.
 
-See the [host-isolation design](../superpowers/specs/2026-08-18-core-hooks-codex-host-isolation-design.md)
+See the [host-isolation design](https://github.com/aeghnnsw/cc-toolkit/blob/4be3c4bf74dd07eb08bde12da95f0c26f24980b6/docs/superpowers/specs/2026-08-18-core-hooks-codex-host-isolation-design.md)
 and the [Codex adapter tests](../../core-hooks/tests/test_codex_host_adapter.py)
 for the implementation boundaries and validation.

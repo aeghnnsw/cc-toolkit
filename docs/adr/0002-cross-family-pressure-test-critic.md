@@ -11,7 +11,7 @@ In Claude Code, the skill calls `codex exec`. In Codex, it calls `claude -p`.
 A critic from another model family shares fewer blind spots with the main
 agent than a subagent of the same model. This decision replaces the Codex
 subagent critic from the
-[pressure-test design](../superpowers/specs/2026-06-17-pressure-test-design.md),
+[pressure-test design](https://github.com/aeghnnsw/cc-toolkit/blob/4be3c4bf74dd07eb08bde12da95f0c26f24980b6/docs/superpowers/specs/2026-06-17-pressure-test-design.md),
 which listed nested non-interactive Claude sessions as out of scope. The
 Claude Code skill was named `discuss-with-codex` before both hosts used one
 name.

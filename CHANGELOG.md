@@ -30,6 +30,7 @@
 
 ### Removed
 
+- Repository: remove `docs/superpowers/`, which held 61 dated specs, plans, and conclusions. The records stay in the Git history. ADR 0001, ADR 0002, and the task-loop README link to permalinks at commit 4be3c4b. `.gitignore` ignores `docs/superpowers/`, so drafts that the superpowers plugin writes there stay local. The CONTRIBUTING search rule no longer excludes the folder. See [#398](https://github.com/aeghnnsw/cc-toolkit/issues/398).
 - Repository: remove the package-validation CI workflow. Contributors run validation and tests locally. Keep the workflow triggered by `@claude` mentions. The proposal to add CI test suites in #297 is closed as not planned. See [#297](https://github.com/aeghnnsw/cc-toolkit/issues/297).
 
 - Repository: remove task-loop from the Claude Code and Codex marketplace registries, the README catalog, and `package-validation.json`. A new install cannot find it. The `task-loop/` folder stays in the repository so that the plugin can return later. See [#371](https://github.com/aeghnnsw/cc-toolkit/issues/371).

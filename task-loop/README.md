@@ -128,5 +128,8 @@ task-loop/
 
 ## Design
 
-`docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md` — the authoritative design
-(rationale, data model, the loop), which links its companion deliberations.
+[`2026-06-15-task-loop-supabase-harness-design.md`](https://github.com/aeghnnsw/cc-toolkit/blob/4be3c4bf74dd07eb08bde12da95f0c26f24980b6/docs/superpowers/specs/2026-06-15-task-loop-supabase-harness-design.md)
+— the authoritative design (rationale, data model, the loop), which links its
+companion deliberations. The link points to the last commit that has these
+records; [#398](https://github.com/aeghnnsw/cc-toolkit/issues/398) removed
+them from the tree.
