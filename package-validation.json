@@ -102,6 +102,7 @@
         {"path": "references/gtd-planning.md", "hosts": ["claude", "codex"]},
         {"path": "references/gtd-cloud.md", "hosts": ["claude", "codex"]},
         {"path": "references/gtd-connector-transaction.sql", "hosts": ["claude", "codex"]},
+        {"path": "references/gtd-schema.sql", "hosts": ["claude", "codex"]},
         {"path": "scripts/gtd_sql.py", "hosts": ["claude", "codex"]},
         {"path": "scripts/productivity-cli.swift", "hosts": ["claude", "codex"]}
       ]

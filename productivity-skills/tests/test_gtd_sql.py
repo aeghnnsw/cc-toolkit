@@ -18,6 +18,7 @@ import uuid
 
 PLUGIN = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN / "scripts" / "gtd_sql.py"
+SCHEMA = PLUGIN / "references" / "gtd-schema.sql"
 OWNER = "00000000-0000-4000-8000-000000000001"
 OTHER_OWNER = "00000000-0000-4000-8000-000000000002"
 
@@ -141,37 +142,55 @@ class RendererTests(RendererCase):
         self.cli("apply", str(path), script=script, ok=False)
 
 
-class DatabaseTests(RendererCase):
-    @classmethod
-    def setUpClass(cls):
-        if not all(shutil.which(tool) for tool in ("initdb", "pg_ctl", "psql")):
-            raise unittest.SkipTest("PostgreSQL tools are required for SQL contract tests")
-        cls.cluster = tempfile.TemporaryDirectory(prefix="pg-")
-        cls.addClassCleanup(cls.cluster.cleanup)
-        root = Path(cls.cluster.name)
-        cls.data = root / "db"
-        cls.socket = root / "s"
-        cls.socket.mkdir(mode=0o700)
-        subprocess.run(
-            ["initdb", "-D", str(cls.data), "-A", "trust", "-U", "gtd_test", "--no-locale", "--encoding=UTF8"],
-            check=True, capture_output=True, text=True, timeout=30,
-        )
-        cls.addClassCleanup(cls.stop_cluster)
-        subprocess.run(
-            ["pg_ctl", "-D", str(cls.data), "-l", str(root / "postgres.log"),
-             "-o", f"-h '' -k {cls.socket}", "-w", "start"],
-            check=True, capture_output=True, text=True, timeout=30,
-        )
-        cls.psql_command = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(cls.socket),
-                            "-U", "gtd_test", "-d", "postgres", "-A", "-t", "-q"]
-        fixture = (Path(__file__).parent / "gtd_fixture.sql").read_text()
-        subprocess.run(cls.psql_command, input=fixture, text=True, capture_output=True, check=True, timeout=10)
+class DatabaseCase(RendererCase):
+    """One disposable PostgreSQL server for the module; one database for each test class."""
+    overlay = None
+    server = None
 
     @classmethod
-    def stop_cluster(cls):
-        if (cls.data / "postmaster.pid").exists():
-            subprocess.run(["pg_ctl", "-D", str(cls.data), "-m", "immediate", "-w", "stop"],
+    def start_server(cls):
+        if not all(shutil.which(tool) for tool in ("initdb", "pg_ctl", "psql")):
+            raise unittest.SkipTest("PostgreSQL tools are required for SQL contract tests")
+        cluster = tempfile.TemporaryDirectory(prefix="pg-")
+        unittest.addModuleCleanup(cluster.cleanup)
+        root = Path(cluster.name)
+        data, socket = root / "db", root / "s"
+        socket.mkdir(mode=0o700)
+        subprocess.run(
+            ["initdb", "-D", str(data), "-A", "trust", "-U", "gtd_test", "--no-locale", "--encoding=UTF8"],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        unittest.addModuleCleanup(cls.stop_server, data)
+        subprocess.run(
+            ["pg_ctl", "-D", str(data), "-l", str(root / "postgres.log"),
+             "-o", f"-h '' -k {socket}", "-w", "start"],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        DatabaseCase.server = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(socket),
+                               "-U", "gtd_test", "-A", "-t", "-q", "-d"]
+
+    @staticmethod
+    def stop_server(data):
+        if (data / "postmaster.pid").exists():
+            subprocess.run(["pg_ctl", "-D", str(data), "-m", "immediate", "-w", "stop"],
                            check=True, capture_output=True, text=True, timeout=30)
+
+    @classmethod
+    def create_database(cls, *scripts):
+        """Create an empty database, run the SQL scripts in it, and return its psql command."""
+        name = f"gtd_{uuid.uuid4().hex}"
+        subprocess.run([*cls.server, "postgres"], input=f"CREATE DATABASE {name};",
+                       text=True, capture_output=True, check=True, timeout=30)
+        command = [*cls.server, name]
+        for script in scripts:
+            subprocess.run(command, input=script.read_text(), text=True, capture_output=True, check=True, timeout=10)
+        return command
+
+    @classmethod
+    def setUpClass(cls):
+        if DatabaseCase.server is None:
+            cls.start_server()
+        cls.psql_command = cls.create_database(SCHEMA, *([cls.overlay] if cls.overlay else []))
 
     def setUp(self):
         super().setUp()
@@ -191,6 +210,83 @@ class DatabaseTests(RendererCase):
 
     def get(self, item_id):
         return self.sql(self.cli("get", item_id))
+
+
+class ShippedSchemaTests(DatabaseCase):
+    """The shipped schema alone, without the optional migration records."""
+
+    def test_schema_applies_twice_and_revokes_public_api_roles(self):
+        command = self.create_database(SCHEMA)
+        tables = "public.gtd_items, public.gtd_links, public.gtd_requests"
+        setup = f"""DO $roles$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF;
+            END $roles$;
+            GRANT ALL ON TABLE {tables} TO anon;
+            INSERT INTO public.gtd_items (id, owner_id, data)
+            VALUES ('{uuid.uuid4()}', '{OWNER}', '{{"kind":"inbox","title":"Kept"}}');"""
+        subprocess.run(command, input=setup, text=True, capture_output=True, check=True, timeout=10)
+        again = subprocess.run(command, input=SCHEMA.read_text(), text=True, capture_output=True, timeout=10)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        state = subprocess.run(command, input="""SELECT jsonb_build_object(
+            'items', (SELECT count(*) FROM public.gtd_items),
+            'anon', (SELECT count(*) FROM information_schema.role_table_grants
+                     WHERE table_schema = 'public' AND grantee = 'anon'));""",
+                               text=True, capture_output=True, check=True, timeout=10)
+        self.assertEqual(json.loads(state.stdout), {"items": 1, "anon": 0})
+
+    def test_tables_have_row_level_security_no_policy_and_no_public_grant(self):
+        state = self.sql("""SELECT jsonb_build_object(
+            'secured', (SELECT jsonb_object_agg(relname, relrowsecurity) FROM pg_class
+                        WHERE relnamespace = 'public'::regnamespace AND relkind = 'r'),
+            'policies', (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'),
+            'public_grants', (SELECT count(*) FROM information_schema.role_table_grants
+                              WHERE table_schema = 'public' AND grantee = 'PUBLIC'));""")
+        self.assertEqual(state, {"secured": {"gtd_items": True, "gtd_links": True, "gtd_requests": True},
+                                 "policies": 0, "public_grants": 0})
+
+    def test_create_read_link_complete_delete_restore(self):
+        action_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
+        receipt = self.apply([
+            {"op": "create", "id": action_id, "data": {"kind": "action", "title": "Step"}},
+            {"op": "create", "id": project_id, "data": {"kind": "project", "title": "Outcome"}},
+        ])
+        self.assertEqual(receipt["status"], "committed")
+        page = self.sql(self.cli("read"))
+        self.assertEqual(page["status"], "ok")
+        self.assertEqual({row["id"] for row in page["rows"]}, {action_id, project_id})
+        self.assertEqual(set(page["rows"][0]),
+                         {"id", "owner_id", "data", "revision", "deleted_at", "created_at", "updated_at"})
+        self.apply([{"op": "link", "id": action_id, "expected_revision": 1, "project_id": project_id}])
+        self.assertEqual(self.get(action_id)["links"][0]["project_id"], project_id)
+        self.apply([{"op": "complete", "id": action_id, "expected_revision": 2}])
+        self.assertTrue(self.get(action_id)["item"]["data"]["is_completed"])
+        self.assertEqual([row["id"] for row in self.sql(self.cli("read"))["rows"]], [project_id])
+        self.apply([{"op": "delete", "id": action_id, "expected_revision": 3}])
+        self.assertIsNotNone(self.get(action_id)["item"]["deleted_at"])
+        self.apply([{"op": "restore", "id": action_id, "expected_revision": 4}])
+        item = self.get(action_id)["item"]
+        self.assertIsNone(item["deleted_at"])
+        self.assertEqual(item["revision"], 5)
+        self.assertEqual(self.get(action_id)["links"][0]["project_title"], "Outcome")
+
+    def test_item_check_rejects_missing_title_and_missing_kind(self):
+        insert = "INSERT INTO public.gtd_items (id, owner_id, data) VALUES ('{}', '{}', '{}');"
+        for data in ({"kind": "inbox"}, {"title": "No kind"}, {"kind": "inbox", "title": " "},
+                     {"kind": "other", "title": "Unknown kind"}, []):
+            with self.subTest(data=data):
+                error = self.sql(insert.format(uuid.uuid4(), OWNER, json.dumps(data)), ok=False)
+                self.assertIn("gtd_items_data_check", error)
+        self.sql(insert.format(uuid.uuid4(), OWNER, json.dumps({"kind": "inbox", "title": "Valid"})))
+        self.assertEqual(self.sql(self.cli("read"))["returned_count"], 1)
+
+
+class DatabaseTests(DatabaseCase):
+    """The contract on the shipped schema with the optional migration records."""
+    overlay = Path(__file__).parent / "gtd_extras_overlay.sql"
+
+    def snapshot(self):
+        return self.sql("""SELECT jsonb_agg(jsonb_build_array(owner_id, snapshot_text,
+            sha256 = encode(sha256(convert_to(snapshot_text, 'UTF8')), 'hex'))) FROM public.gtd_snapshots;""")
 
     def test_create_keeps_hostile_text_and_server_defaults(self):
         item_id = str(uuid.uuid4())
@@ -257,8 +353,18 @@ class DatabaseTests(RendererCase):
         self.assertEqual(current["data"], {**original["data"], "title": "Renamed"})
         for key in ("source_namespace", "source_id", "source_record", "created_at"):
             self.assertEqual(current[key], original[key])
-        self.assertEqual(self.sql("SELECT to_jsonb(encode(payload, 'hex')) FROM public.gtd_snapshots WHERE id=1;"),
-                         "000102ff414243")
+        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
+
+    def test_source_identity_is_paired_and_immutable(self):
+        item_id = str(uuid.uuid4())
+        insert = """INSERT INTO public.gtd_items (id, owner_id, data, source_namespace, source_id)
+            VALUES ('{}', '{}', '{{"kind":"inbox","title":"Imported"}}', 'synthetic', {});"""
+        self.assertIn("violates check constraint", self.sql(insert.format(uuid.uuid4(), OWNER, "NULL"), ok=False))
+        self.sql(insert.format(item_id, OWNER, "'old-1'"))
+        self.assertIn("duplicate key", self.sql(insert.format(uuid.uuid4(), OWNER, "'old-1'"), ok=False))
+        self.assertIn("immutable source", self.sql(
+            f"UPDATE public.gtd_items SET source_id = 'old-2' WHERE id = '{item_id}';", ok=False))
+        self.assertEqual(self.get(item_id)["item"]["source_id"], "old-1")
 
     def test_inventory_pages_are_complete_owned_and_invalidated_by_new_requests(self):
         ids = [f"10000000-0000-4000-8000-{number:012d}" for number in range(1, 8)]
@@ -336,8 +442,7 @@ class DatabaseTests(RendererCase):
         current = self.get(action_id)["item"]
         for key in ("source_namespace", "source_id", "source_record", "created_at"):
             self.assertEqual(current[key], imported[key])
-        self.assertEqual(self.sql("SELECT to_jsonb(encode(payload, 'hex')) FROM public.gtd_snapshots WHERE id=1;"),
-                         "000102ff414243")
+        self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
 
     def test_fixed_transaction_rejects_payloads_that_bypass_renderer_validation(self):
         item_id = str(uuid.uuid4())

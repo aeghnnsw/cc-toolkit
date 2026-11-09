@@ -1,6 +1,6 @@
 ---
 name: gtd-overview
-version: 1.2.0
+version: 1.2.1
 description: "Use when listing the whole GTD system read-only: every open project with its actions, standalone actions, and unresolved project links."
 ---
 
@@ -10,7 +10,7 @@ change records or dispatch work.
 
 Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
-contract for the private route, complete reads, UUID grouping, unique
+contract for the GTD binding, complete reads, UUID grouping, unique
 counts, and dates. Use the planning policy for every project's status.
 Missing cloud data or access makes the inventory unavailable; it does not
 authorize a native fallback.

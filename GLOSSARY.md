@@ -76,6 +76,15 @@ A GTD project with neither an established ready human next action nor a
 supported waiting outcome. Its blocker, uncertainty or deliberate deferral
 remains part of the report.
 
+**GTD binding**:
+The private pair of Supabase project reference and owner UUID that selects
+one person's GTD data on one computer.
+_Avoid_: Private route, private configuration
+
+**Connected route**:
+The access path through the host's Supabase connector, with the connector's
+sign-in.
+
 ## Slide language
 
 **Assertion title**:

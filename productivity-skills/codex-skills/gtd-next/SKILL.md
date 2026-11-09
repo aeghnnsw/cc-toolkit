@@ -10,7 +10,7 @@ GTD records, create Calendar blocks, or dispatch agent work.
 
 Before every invocation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
-contract for the private route, complete reads, UUID links, and dates. Use
+contract for the GTD binding, complete reads, UUID links, and dates. Use
 the planning policy for readiness, effort, priority, and the human time
 budget. Missing cloud data or access makes selection unavailable; it does
 not authorize a native GTD fallback.
