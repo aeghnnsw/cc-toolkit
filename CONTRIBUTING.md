@@ -12,8 +12,7 @@ the surrounding code style. Do not reformat unrelated code.
 
 Wrap ordinary prose in `CLAUDE.md` and `CONTRIBUTING.md` at 78 characters.
 Exempt headings, tables, links, and code examples, including inline commands.
-Other Markdown files follow their surrounding style; this is not a
-repository-wide line-length limit.
+Other Markdown files follow their surrounding style.
 
 Prefer the Python standard library for helpers. Preserve existing
 standard-library-only entry points. The table below names the current
@@ -52,84 +51,15 @@ such as `dev-skills/` and `core-hooks/`. Each directory contains that
 plugin's manifests, components, and supporting resources. Keep resources
 needed by an installed plugin inside its directory.
 
-Root documents describe how to maintain this repository. They remain
-public in the source checkout, but are outside the plugin directories
-selected by the registries. Installing a plugin does not require adopting
-cc-toolkit's contributor workflow or installing the tools used to develop it.
-
-Keep development and publishing in this repository. Use branches and
-worktrees for changes and the host-specific manifests for plugin releases.
-A root documentation change does not require changing plugin versions.
-
-### Update installed plugins
-
-For first-time installation, see [Usage](README.md#usage).
-Replace `<plugin>` below with a plugin name, such as `creator-skills`.
-
-Installed copies under `~/.claude/plugins/cache/` and
-`~/.codex/plugins/cache/` are release snapshots. They can lag this checkout,
-and each update replaces them. Read and edit the plugin directory in this
-repository. To update the installed Claude Code copies:
-
-1. Run `claude plugin marketplace update cc-toolkit`.
-2. For each installed plugin, run `claude plugin update <plugin>@cc-toolkit`.
-   Add `--scope user` for the user installation shown in the README, or use
-   the scope where you installed the plugin.
-3. Restart the session.
-
-To update the installed Codex copies:
-
-1. Run `codex plugin marketplace upgrade cc-toolkit`.
-2. Check that `~/.codex/plugins/cache/cc-toolkit/<plugin>/` contains the
-   intended version of each installed plugin.
-3. For each plugin without the new version, run
-   `codex plugin add <plugin>@cc-toolkit`.
-4. Start a new Codex session.
-
-The Core Hooks policy scripts that check your shell commands are the
-installed copy. A denial names its path, such as
-`core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
-keeps blocking a command that this checkout allows.
-
-### Disable or remove installed plugins
-
-The examples use `creator-skills`. Replace its name with the plugin you want
-to manage. Disabling keeps the plugin installed. Uninstalling removes it.
-
-For the Claude Code user installation shown in the README, choose one action:
-
-```bash
-# Disable; use enable to turn it on again.
-claude plugin disable creator-skills@cc-toolkit --scope user
-
-# Uninstall.
-claude plugin uninstall creator-skills@cc-toolkit --scope user
-```
-
-For a project or local installation, use that installation's scope instead.
-
-To disable the Codex plugin, set its entry in your active user configuration
-(`~/.codex/config.toml` by default):
-
-```toml
-[plugins."creator-skills@cc-toolkit"]
-enabled = false
-```
-
-Edit the existing entry if present; do not add a duplicate table. Set
-`enabled = true` to enable it again. A trusted project's `.codex/config.toml`
-can override this user setting. Codex has no `plugin disable` subcommand.
-
-To uninstall it instead:
-
-```bash
-codex plugin remove creator-skills@cc-toolkit
-```
-
-Start a new host session after changing its plugins. See the
-[Claude Code management guide](https://code.claude.com/docs/en/plugins/install#manage-plugins-from-your-shell)
-and [Codex plugin configuration](https://developers.openai.com/plugins/build/plugins#enable-or-disable-a-plugin-for-a-repo)
-for scope and configuration details.
+- Edit the plugin directory in this repository, not an installed copy under
+  `~/.claude/plugins/cache/` or `~/.codex/plugins/cache/`.
+- When you add, remove, or rename a plugin, or change its source path,
+  update the marketplace registries: `.claude-plugin/marketplace.json` for
+  Claude Code and `.agents/plugins/marketplace.json` for Codex.
+- When you add, remove, or rename a plugin or a skill, update its entries in
+  [README.md](README.md).
+- Before you change component paths, read the plugin's host-specific
+  manifests and [host ownership](docs/design/package-validation.md#host-ownership).
 
 ### Skills for both hosts
 
@@ -149,116 +79,44 @@ a change alters the purpose of a skill, update that purpose in
 `longDescription` and in the README **Skills:** line.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
-  `version`. Codex copies carry only `name` and `description`. The Codex
-  skill-creator validator rejects Claude-only keys, a `description` longer
-  than 1024 characters, and a `description` that contains `<` or `>`. Run
-  the skill-creator validator on Codex copies only. Codex installs the
-  skill-creator validator at
-  `$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py`.
-  `CODEX_HOME` defaults to `~/.codex`. The skill-creator validator takes
-  one skill directory as its argument. To supply its PyYAML dependency,
-  run the skill-creator validator through `uv` from the repository root:
-
-  ```bash
-  uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>
-  ```
-
-  A valid copy prints `Skill is valid!`. The repository validator checks
-  the headers of both copies.
-- **Invocation policy.** By default, the model can start a skill when the
-  request matches its description. A user-invoked skill starts only when the
-  user names it. To make a skill user-invoked, set
+  `version`. Codex copies carry only `name` and `description`. Run the
+  skill-creator validator on Codex copies only. Its command is in
+  [Verification](#verification).
+- **Invocation policy.** To make a skill user-invoked, set
   `disable-model-invocation: true` in the Claude frontmatter, and
   `allow_implicit_invocation: false` under `policy:` in the Codex copy's
   `agents/openai.yaml`. A Codex copy without that file is not user-invoked.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
-  can be bash or zsh. Write each block to run in both shells. Store an exit
-  code in a name such as `rc`, because `status` is read-only in zsh. Pass a
-  file list through `xargs` or a loop, because zsh does not split an
-  unquoted variable into words. Compare strings with one `=` in `[ ]`,
-  because zsh expands a word that starts with `=`, such as `==`. Read a file
-  into a variable before a redirection to the same file, because
-  `if ...; fi > file` empties the file before the condition runs. Each tool
-  call can start a new shell, so keep state that later blocks need in a
-  file. In a Claude copy, put code that needs positional parameters in a
-  script under the skill directory. See
-  [Argument placeholders](#argument-placeholders). For a test that runs a
-  skill's blocks in bash and zsh, see
+  can be bash or zsh. Write each block to run in both shells. For a test
+  that runs a skill's blocks in bash and zsh, see
   `dev-skills/tests/test_pressure_test_models.py`.
 - **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
   and `<plugin-root>/...` in the Codex copy. A command that runs a file
   inside the skill directory can write `<skill-dir>/...`, which reads the
-  same in both copies. `${CLAUDE_PLUGIN_ROOT}` names the plugin that the
-  session loaded, usually the installed copy, not your worktree. For a live
-  check of a changed skill, replace it with the worktree's plugin directory,
-  for example `$PWD/dev-skills` from the worktree root.
+  same in both copies.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
   ships it. A link to a `SKILL.md` that the same host discovers needs no
   entry. The validator requires only listed resources; it does not find
   them from links in prose. The skill link test,
-  [tests/test_skill_links.py](tests/test_skill_links.py), checks this rule.
-  It follows relative Markdown links and `${CLAUDE_PLUGIN_ROOT}/`,
-  `<plugin-root>/`, and `<skill-dir>/` paths from each discovered skill and
-  through the Markdown files that the skill reaches. Each target must be a
-  file inside the plugin. A link anchor must match a heading. The target
-  must be listed for the host. In a file that the test reaches through
-  links, `<skill-dir>/` still names the directory of the skill where the
-  test started. A link into another skill's reference file that uses
-  `<skill-dir>/` paths therefore fails; link that skill's `SKILL.md` and
-  name the section instead.
+  [tests/test_skill_links.py](tests/test_skill_links.py), enforces this
+  rule. It also checks that each link target exists in the plugin and each
+  anchor matches a heading.
 
 ### Argument placeholders
 
-When Claude Code loads a skill or command, it replaces argument placeholders
-in the body with the invocation arguments. It replaces them everywhere,
-including code spans and fenced blocks:
-
-- `$N`, where `N` is a number such as `0` or `10`: one argument, counted
-  from 0. `$ARGUMENTS[N]` is the long form.
-- `$ARGUMENTS`: the full argument string. With no arguments, it becomes
-  empty.
-- `$name`: a name that the `arguments` frontmatter declares. With no
-  matching argument, it becomes empty.
-
-When no placeholder takes the arguments, Claude Code appends
-`ARGUMENTS: <value>` to the skill text. Codex does not replace
-placeholders. Claude Code does not replace them in the supporting files
-that a skill reads. In a test, Claude Code did not replace them in an
-agent file; its documentation does not cover agent files.
-
-Write a `$` before a number, `ARGUMENTS`, or a declared name in a Claude
-Code skill or command as follows:
-
-- In prose or an example, write one backslash before the `$`. For example,
-  `\$0.67` loads as `$0.67`. Two or three backslashes do not escape a
-  placeholder.
-- Put shell code that needs positional parameters in a script in the
-  plugin, for example under the skill directory. Do not escape the shell
-  code: an agent can read the file directly instead of through the Skill
-  tool, and then the shell gets the backslash.
-- Do not use `${N}`, a braced positional parameter such as `${1}`. Claude
-  Code does not document this form, and a backslash before it stays in the
-  loaded text. Put the code in a script.
-- For an intended placeholder, add the exact line to `ALLOWED` in
-  [tests/test_skill_placeholders.py](tests/test_skill_placeholders.py),
-  with its line count and a reason.
-
-The argument-placeholder test, `tests/test_skill_placeholders.py`, is one of
-the [root tests](#package-and-release-validation). It checks every Claude
-Code skill and command file. It fails on an unescaped placeholder and on
-`${N}`, unless an `ALLOWED` entry covers the line. It also fails on a
-declared name that it cannot check, such as `my-arg`; use letters, digits,
-and underscores.
+Claude Code replaces `$N`, `$ARGUMENTS`, and the argument names that the
+`arguments` frontmatter declares in a skill or command body, including code
+blocks. Codex does not replace them. `tests/test_skill_placeholders.py`, one
+of the [root tests](#package-and-release-validation), fails on each
+unescaped placeholder and prints the fix.
 
 ## Repository search
 
-From the repository root, search with `git grep`. It reads only the tracked
-files of the current worktree, so it skips the other worktrees under
-`trees/` and `.claude/worktrees/`. A recursive `grep` from the main checkout
-can read those worktrees and match many copies of the same file. To also
-search new files that are not yet added, pass `--untracked`.
+From the repository root, search with `git grep`. It skips untracked files
+and the other worktrees under `trees/` and `.claude/worktrees/`; pass
+`--untracked` to include new files.
 
 Dated records under `docs/superpowers` and the entries in `CHANGELOG.md` can
 describe replaced behavior. The `task-loop/` folder is
@@ -274,15 +132,7 @@ git grep -n <term> -- ':!docs/superpowers' ':!CHANGELOG.md' ':!task-loop'
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog.
 Add each entry under `## [Unreleased]`, in `### Added`, `### Removed`,
-or `### Changed`. Put the newest entry first. Each entry is one long line,
-often longer than 1,000 characters. To find the insertion point, get the
-line number of the target `###` heading with `grep -n '^##' CHANGELOG.md`.
-Then read only the heading and the first entry below it, cut to 200
-characters:
-
-```bash
-awk -v n=<line> 'NR >= n && NR <= n + 2' CHANGELOG.md | cut -c1-200
-```
+or `### Changed`. Put the newest entry first.
 
 Use this form:
 
@@ -303,8 +153,7 @@ entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket.
 
 When a rebase makes `CHANGELOG.md` conflict, keep both entries, and put
-the entry of the rebased branch first. To find the conflict markers, run
-`grep -n -E '^(<<<<<<<|=======|>>>>>>>)' CHANGELOG.md`.
+the entry of the rebased branch first.
 
 ## What belongs in Git
 
@@ -318,45 +167,16 @@ a person or an agent wrote it.
 | Accepted architecture decisions | Commit concise records under `docs/adr/`. |
 | Agreed domain terminology | Commit a root `GLOSSARY.md` when a glossary is needed. |
 | Durable designs and review conclusions | Commit under a relevant `docs/` directory and link them from the issue or relevant documentation. |
-| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning folder `.scratch/<issue>-<slug>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. A desktop session edits only its own worktree: copy its planning folder to the main checkout before the worktree is removed. `repo-cleanup` deletes the planning folder of an issue that is closed as completed. Promote useful conclusions into shared documentation. |
+| Disposable notes, trial output, and intermediate reports | Use `.scratch/`, which is ignored. Name a planning folder `.scratch/<issue>-<slug>/`, and keep it in the main checkout, because worktree cleanup removes the ignored files of a worktree. Promote useful conclusions into shared documentation. |
 | Logs, caches, local worktrees, and generated binaries | Keep out of Git using the shared `.gitignore`. |
-| Personal tool settings and local-only notes | Keep outside the repository or exclude specific paths locally. |
+| Personal tool settings and local-only notes | Keep outside the repository, or list exact paths in the file that `git rev-parse --path-format=absolute --git-path info/exclude` prints; linked worktrees share it. Prefer putting machine-specific agent preferences in the host's user configuration so shared repository instructions remain portable. |
+| Private GTD account bindings and migration records | Keep outside this repository. |
 
-Before committing generated documentation, check its claims against the
-current project, remove unused template assumptions, and add a pointer from
-the relevant instructions. An installed development skill's configuration
-belongs in Git when it expresses conventions shared by this repository.
-
-A design, plan, conclusion, or ADR under `docs/` records decisions as of
-when it was written, and later work can supersede part of it. Before
-relying on one, read any status or superseded note at its top, and confirm
-current behavior in the code it describes.
-When a change supersedes part of such a record, add a superseded note at
-its top. Name the date and the issue, and link the replacement. In an ADR,
-also mark each replaced sentence and record the new rule with its reason in
-a new section; see ADR 0002 for an example. A change that only adds facts
-needs no note.
-
-Do not blanket-ignore `docs/`, `docs/agents/`, or `docs/adr/`. Git ignores
-control tracking; they do not define which files belong in a plugin package.
-
-## Local exclusions
-
-Use `.gitignore` for paths every contributor should exclude. For personal
-files in this checkout, edit the Git common directory's `info/exclude` file;
-it is local and is shared by linked worktrees. Locate it with:
-
-```bash
-git rev-parse --path-format=absolute --git-path info/exclude
-```
-
-Use exact file paths or a dedicated personal directory. Prefer putting
-machine-specific agent preferences in the host's user configuration so
-shared repository instructions remain portable. Ignore rules do not hide
-changes to files already tracked by Git.
-
-See [Git's ignore documentation](https://git-scm.com/docs/gitignore) for the
-scope of local and shared exclusions.
+When a change supersedes part of a design, plan, conclusion, or ADR under
+`docs/`, add a superseded note at its top. Name the date and the issue, and
+link the replacement. In an ADR, also mark each replaced sentence and record
+the new rule with its reason in a new section; see ADR 0002 for an example.
+A change that only adds facts needs no note.
 
 ## Verification
 
@@ -368,186 +188,51 @@ that matches your change from the repository root:
 | --- | --- |
 | Any change | `git diff --check` |
 | Documentation | Check accuracy, relative links, and referenced paths. |
+| A skill | Check its frontmatter and invocation guidance. |
 | A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
-| A skill | Check its frontmatter and invocation guidance. |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
 | Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, `productivity-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
 | Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
 
-Core Hooks tests require Python and `uv` on `PATH`. The `task-loop` command
-supplies Python 3.11 or newer and `httpx>=0.27` through `uv`. `cc-customize`
-and `doc-skills` have no test suite. Before you run a plugin suite, read
-[Plugin runtime tests](#plugin-runtime-tests) for its time limit.
+Core Hooks tests require Python and `uv` on `PATH`. `cc-customize` and
+`doc-skills` have no test suite. Before you run a plugin suite, read
+[Plugin runtime tests](#plugin-runtime-tests).
 
 ### Package and release validation
 
-Run this read-only command from the repository root. The validator needs
-Python 3.11 or newer; `uv` obtains a suitable interpreter. The validator
-uses only the standard library and installs no dependencies:
+Run the package validator for the changes that the
+[Verification](#verification) table lists, and again after a rebase. Run
+`git fetch origin master` first. The command is read-only:
 
 ```bash
 uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
 ```
 
-Use this `uv` form: the `python3` of a contributor machine can be older
-than 3.11. With such a `python3`, the validator stops with exit status 1 and
-prints the `uv` command that repeats the same arguments.
+Shipped changes need a greater plugin `version` in each affected host's
+manifest, and a greater skill `version` when the skill has one. The
+[package validation design](docs/design/package-validation.md) describes
+each check, the rules in [package-validation.json](package-validation.json),
+and the error messages.
 
-`--base` accepts the target branch ref or a commit SHA. The validator finds
-its merge base with `HEAD`. Local validation includes staged edits,
-unstaged edits, and new files that Git does not ignore. It checks the
-resulting working tree. It does not select versions or change files.
-
-The target ref and enough history to find the merge base must exist
-locally. Run `git fetch origin master` to update the usual target. For a
-shallow checkout, fetch the missing history before retrying. An unavailable
-ref or merge base fails validation with a correction message. The validator
-does not fetch history or skip release checks.
-
-Package validation checks all registered plugins, their JSON metadata,
-declared local paths, and explicitly required resources. It resolves
-symlinks to check package containment. Required paths must be tracked or
-new files that Git does not ignore. Ignored local files cannot satisfy the
-package contract. Optional discovery roots remain
-optional. Discovered skills need `---` header delimiters and one nonempty,
-single-line `name` and `description`. Names use lowercase letters, digits,
-and single separating hyphens. An optional `version` uses numeric
-`major.minor.patch` components. This is a narrow skill header contract, not
-full YAML validation. Agent headers do not use this contract. Declared JSON
-hook and MCP files and listed TOML and JSON resources are parsed.
-The validator does not check external links,
-interpret paths in prose or shell examples, infer code dependencies, or
-run plugins and host loaders.
-
-The root agent-field test, `tests/test_agent_fields.py`, checks agent
-headers. It fails when a plugin agent sets `hooks`, `mcpServers`,
-`permissionMode`, or `initialPrompt`, which Claude Code ignores for plugin
-agents.
-
-Release validation compares both package layouts across the merge base.
-Changed shipped content requires a greater numeric `major.minor.patch`
-version for each affected existing host registration. One increase covers
-the whole pull request. New registrations need a valid initial version.
-Removed registrations need no increase for the removed host. A source move
-preserves release history by plugin identity and host.
-
-Release validation also checks skill versions. When changed shipped content
-is in a skill directory, and the skill's `SKILL.md` frontmatter has a
-`version`, that version must be greater than the one at the merge base.
-The ownership rules and exemptions apply as for plugin versions. A new
-skill, or a skill with no `version` at the merge base, needs no skill
-version increase.
-
-Release validation compares only with the merge base, so it does not see
-a version that another pull request released after the merge base. Before
-merging, run `git fetch origin master` and compare each plugin and skill
-version you raised with the one on `origin/master`. If `origin/master` has
-that version or a greater one, raise yours above it. Choose a version when
-the pull request is ready, and write no target version in an issue or a
-ticket. After a rebase, run the validator again: when both sides made the
-same plugin or skill version change, the rebase removes that change from
-the branch, and the validator reports the version that must increase. When
-you raise a skill version, update each test that pins it, such as
-`HostParityTest` in `dev-skills/tests/test_lean_tests.py`.
-
-[package-validation.json](package-validation.json) holds the ownership
-exceptions, required resources, and contributor-only exemptions. Update
-these rules when a package needs an explicit local contract. Edit the file
-as text and keep one entry object per line, so rule diffs stay small.
-Plugin-root tests, `README.md`, and `CHANGELOG.md` are exempt by default.
-Required resources override exemptions. Markdown files are not exempt by
-extension.
-Unclassified plugin files affect all registered hosts. Failure diagnostics
-identify the relevant path or package and host. Version failures include
-the ownership reason and the version that must be exceeded. Fix the first
-reported error and rerun the command. The result includes elapsed execution
-time. See the [design](docs/design/package-validation.md) for the rule schema
-and ownership precedence. Terms are defined in [GLOSSARY.md](GLOSSARY.md).
-
-Run the root tests when you change the validator, a skill, an agent,
-`allowed-models.json`, or `package-validation.json`. The root tests contain
-the validator's command-interface fixtures, the skill link test, the
-model-pin test, the argument-placeholder test, and the agent-field test:
-
-```bash
-uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
-```
-
-With a `python3` older than 3.11, the root tests load no test. They print
-this command and stop with exit status 1.
-
-When you change `allowed-models.json` or a pressure-test `SKILL.md`, also
-run the `dev-skills` tests. `dev-skills/tests/test_critic_status.py`,
-`test_codex_critic.py`, and `test_pressure_test_models.py` read their critic
-model IDs from `allowed-models.json`, and `test_pressure_test_models.py`
-runs the model blocks of both `SKILL.md` copies:
-
-```bash
-python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
-```
+The root tests are under `tests/`; [Verification](#verification) gives when
+and how to run them.
 
 ### Plugin runtime tests
 
 The table in [Verification](#verification) gives the command for each suite.
 
 The `productivity-skills` suite needs Python 3.11+, `swiftc`, and PostgreSQL
-tools (`initdb`, `pg_ctl`, and `psql`). GTD tests execute generated SQL in a
-temporary local database with synthetic records and no TCP listener. They
-use no live Supabase data. Native verification requests no Reminders
-access and saves nothing. On one host, one run took 24 seconds and another
-did not finish in 120 seconds, so give its command a timeout of at least 300
-seconds.
+tools (`initdb`, `pg_ctl`, and `psql`).
 
 The `dev-skills` suite takes about 2 minutes, most of it in
-`dev-skills/tests/test_codex_critic.py`. When the 1-minute load average is
-above the CPU count, the waits in that file grow with the load, and the
-suite takes longer. Give its command a timeout of at least 300 seconds (in
-Claude Code, a Bash tool `timeout` of 300000). On a loaded host, give it 600
-seconds or run it as a background command. Start the full suite last:
-after your last edit, and after the faster checks, such as the root tests
-and the validator, pass. An edit made during the run needs a new run. Test
-runs on one host slow each other. When you run agents in parallel, let one
-agent at a time run a full suite; the other agents run single test files
-until that suite ends. This command runs one file:
-
-```bash
-python3 -m unittest discover -s dev-skills/tests -p 'test_limit_call.py'
-```
+`dev-skills/tests/test_codex_critic.py`.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov. Under a `python3` without them, these
-checks skip. Their skip reason, which `-v` shows, gives this command, which
-supplies both:
-
-```bash
-uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
-```
-
-The lean-tests scripts must run on Python 3.9. On macOS, `/usr/bin/python3`
-is Python 3.9; check it with `/usr/bin/python3 --version`. To run the
-lean-tests checks under Python 3.9, give that interpreter to `uv`:
-
-```bash
-uv run --no-project --python /usr/bin/python3 --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'
-```
-
-`uv run` removes its environment when it exits, so an interpreter path that
-one `uv run` prints does not work in a later command. To run `lean_tests.py`
-by hand on a fixture:
-
-1. Write the commands in a script.
-2. In the script, pass `--python "$(which python)"` to `lean_tests.py`.
-3. Run the script:
-
-   ```bash
-   uv run --no-project --python '>=3.11' --with pytest --with pytest-cov bash <script>
-   ```
-
-When you raise the core-hooks Codex version, also change the version that
-`core-hooks/tests/test_codex_host_adapter.py` pins.
+checks skip; their skip reason, which `-v` shows, gives the command.
 
 The PyMOL startup suite requires `uv` and access to download missing script
 dependencies. It checks MCP initialization and tool discovery without changing
@@ -561,17 +246,10 @@ a hook before a tool runs, for example:
 {"tool_name": "Bash", "tool_input": {"command": "git status"}}
 ```
 
-Write the payload, and any probe script whose text contains git commands or
-attribution lines, with a file-writing tool, not a shell command. The
-installed policy scripts check the text of each shell command, and some
-checks read heredoc bodies and `python -c` code. Then run a policy script on
-the payload. `pre_git_hook.py` checks git policy, and
-`safety_guard.py` checks `rm` commands. Exit status 2 means the policy
-script blocks the command:
+Then run a policy script on the payload. `pre_git_hook.py` checks git
+policy, and `safety_guard.py` checks `rm` commands. Exit status 2 means the
+policy script blocks the command:
 
 ```bash
 python3 core-hooks/scripts/pre_git_hook.py < .scratch/payload.json
 ```
-
-Keep validation proportional to the change. Documentation-only changes
-normally need the documentation and configuration checks above.

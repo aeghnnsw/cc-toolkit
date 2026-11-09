@@ -6,7 +6,7 @@ description: Run the Matt planning-to-merge workflow with code review and a navi
 # Matt Automode
 
 This mode delegates design decisions, issue publication, implementation, review,
-retro, PR merge, issue closure, and cleanup within the user's task scope.
+PR merge, issue closure, cleanup, and retro within the user's task scope.
 Make routine decisions from evidence and continue without human checkpoints.
 Respect tool permissions and repository protections.
 
@@ -45,14 +45,14 @@ compatibility, and consumers. Record the decision and rationale, then take the
 next round. If evidence leaves a near tie, or only a preference can decide,
 choose the answer easiest to reverse and record the gap and risk. Resolve
 routine checkpoints yourself, including testing seams, ticket breakdown, review
-base, and retro fix selection.
+base, and which retro findings justify a proposal issue.
 
 ## Phases and completion checks
 
 Record each phase's completion evidence and next action in the planning files.
 Existing specs and tickets can satisfy a phase after checking their content and
 current validity. An existing recommendation alone does not complete grilling.
-Run phases 4–7 per ticket in dependency order, then phase 8 once.
+Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 
 1. **Grilling — `dev-skills:grill-with-research`.** Skip if complete.
    Otherwise continue until no meaningful unresolved decision remains and no
@@ -78,29 +78,25 @@ Run phases 4–7 per ticket in dependency order, then phase 8 once.
 5. **Review — `mattpocock-skills:code-review`.** Review against the ticket spec
    and a recorded comparison commit. This fulfills `implement`'s review step.
    Fix actionable Standards and Spec findings, commit, and pass affected checks.
-6. **Retro — `mattpocock-skills:retro`.** After review, inspect earlier
-   implementation sessions for slow navigation and stale docs, including after
-   successful work. Follow "Navigation retrospective" below. Apply small fixes
-   in this PR; commit and check them, then repeat code review against phase 5's
-   original comparison commit. Verify the diff includes the retro edits. Fix
-   its actionable findings and pass affected checks after the last edit.
-   Complete with the retro record ready for the PR and larger findings filed.
-7. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its retro record
-   and issue references. Use a separate `Closes #N` for each fully resolved
+6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
+   references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
    to the final integration PR for stacked work. Merge after required checks
    and reviews pass, under repository rules. Record the merged PR link.
-8. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
+7. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
    the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
    and close the parent only when fully satisfied. Close tickets by hand only
-   after merge if the tracker did not close them. Finish after cleanup reports.
+   after merge if the tracker did not close them.
+8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
+   "Navigation retrospective" below once for the run. Complete when its record
+   is posted.
 
 ### When work changes or waits
 
 If evidence invalidates a decision, stop only dependent work, including active
 coding agents. Reopen the affected planning phase and later phases. Update
 decisions, the spec, and tickets; record completion checks before resuming.
-Run affected tickets through phases 4–7 again. For merged tickets, open a new
+Run affected tickets through phases 4–6 again. For merged tickets, open a new
 ticket. Record why independent tickets can continue with their prior gates.
 
 If coding started early, report the ordering failure and stop dependent work.
@@ -116,37 +112,36 @@ then report the blocker and keep the work. Respect branch protection.
 
 ## Navigation retrospective
 
-Use the repository's session-discovery guidance. Store each completed retro in
-its own PR, rather than a central tracking issue.
+The retro edits no tracked file. It proposes changes for a human to choose.
 
-1. Find the latest completed "Navigation retrospective" record in merged PRs
-   by its **Reviewed through** UTC timestamp. Read existing documentation issues
-   to reuse relevant follow-ups. Set this run's cutoff before copying sessions.
-2. Select sessions by recorded repository and worktree metadata before searching
-   text. Read the default and the active config folders when they differ.
-   Claude Code stores JSONL under `projects/` in `~/.claude` or
-   `$CLAUDE_CONFIG_DIR`, with `cwd` fields and subagents under
-   `<session>/subagents/`. Codex stores JSONL under `sessions/` in `~/.codex`
-   or `$CODEX_HOME`, with `cwd` in `session_meta`. Keep this metadata even
-   when it precedes the cutoff. Read records after the previous cutoff through
-   this run's cutoff, including later records in sessions that started earlier.
-   Compare parsed
-   timestamps, or normalize all UTC timestamps to millisecond precision.
-   Without a prior record, use relevant earlier implementation sessions. If
-   unavailable, review the current session and report the limit.
-3. Process transcript copies in one `mktemp -d` directory. Give agents those
-   paths, preserve the originals, and remove the temporary directory by path.
-4. Before applying a new rule, use `git grep -n --untracked` to find and
-   inspect the code it covers. If valid existing code conflicts with the rule,
-   narrow the rule or record the exception. Apply local fixes that need no new
-   design decision or substantial scope increase in this PR. Create or reuse a
-   separate issue for each larger finding. Block the PR only if a finding
-   affects the current change's correctness; otherwise link the follow-up and
-   continue.
-5. Add a short **Navigation retrospective** record to the PR: **Reviewed
-   through** cutoff, sessions read, skipped or unavailable history, findings,
-   fixes, and follow-up issue links. Use the scanned cutoff, not posting time.
-   Prepare it in phase 6 and publish it in phase 7, even if no fix was needed.
+1. Find the greatest **Reviewed through** UTC timestamp in earlier
+   "Navigation retrospective" records on merged PRs. Set this run's cutoff
+   before reading sessions.
+2. Read the sessions of this repository and its worktrees after the previous
+   cutoff, or this run's sessions when no record exists. Use the repository's
+   session-discovery guidance when it has some. Otherwise read the JSONL logs:
+   Claude Code under `projects/` in `~/.claude` or `$CLAUDE_CONFIG_DIR`, and
+   Codex under `sessions/` in `~/.codex` or `$CODEX_HOME`. Select sessions by
+   their recorded `cwd`. Leave the original logs unchanged.
+3. Keep findings that cost the run significant time or work, such as a long
+   search, stale guidance, or a missing tool. Ignore a command error that the
+   agent corrected in seconds.
+4. Open or reuse a proposal issue only when a finding's fix is clean, worth
+   its cost, and general. Prefer a tool fix or an automated check to new text
+   in a steering file. Record each other finding as "no fix"; that result is
+   correct even for every finding.
+5. Post a **Navigation retrospective** comment on the run's last merged PR:
+   the **Reviewed through** cutoff, the sessions read and history limits, and
+   each finding with its session and time and its issue link or "no fix". A
+   run that merges no PR skips the retro; the next run reads its sessions.
+
+A proposal issue states the finding, its session and time, and the proposed
+change, with the repository's "Needs triage" label. To reuse an issue, add the
+new evidence as a comment. The retro stores no lesson and adds no record file.
+A steering file tells an agent how to work, such as `AGENTS.md`, `CLAUDE.md`, a
+contributor guide, or a skill. A proposal keeps root `AGENTS.md` and `CLAUDE.md`
+to rules for every task and navigation pointers. It never adds a tool
+workaround, a host or machine fact, or a one-off lesson to a steering file.
 
 ## Sub-agent briefs
 

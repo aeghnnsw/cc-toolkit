@@ -10,8 +10,8 @@ Unified Claude Code and Codex plugin marketplace for development workflows, scie
 
 This repository contains both plugin source and shared contributor documentation.
 The marketplace registries select individual plugin directories for distribution.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for what belongs in Git, local exclusions,
-and verification, and [CLAUDE.md](CLAUDE.md) for the development workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for what belongs in Git and
+verification, and [CLAUDE.md](CLAUDE.md) for the development workflow.
 `AGENTS.md` links to the same instructions. The documents under `docs/agents/`
 configure work on this repository; using its plugins does not require installing
 Matt Pocock's development skills.
@@ -67,7 +67,7 @@ Development workflows, repository hygiene, documentation, and review.
 - **goal-rubric**: Draft a binary pass/fail rubric and a ready-to-paste `/goal` completion condition for Claude or Codex
 - **doc-update**: Update existing documentation to current project truth and audit it against a documentation quality rubric
 - **grill-with-research**: Research the project before each round of Matt’s grilling interview, drop the questions that research can settle, and ask the rest in dependency order with evidence and a recommendation; research can run scripts in an untracked planning folder; requires the Matt skills plugin
-- **matt-automode**: Run Matt’s planning-to-merge workflow without human checkpoints; grill with grill-with-research and answer its questions itself, reuse completed grilling, and record retros in each PR with separate issues for larger findings; requires the Matt skills plugin
+- **matt-automode**: Run Matt’s planning-to-merge workflow without human checkpoints; grill with grill-with-research and answer its questions itself, reuse completed grilling, and end each run with a retro that only proposes issues; requires the Matt skills plugin
 - **pressure-test**: Run an independent adversarial review of a design, plan, PR, rubric, or decision and save a conclusion. The read-only critic comes from the other host: GPT through the Codex CLI in Claude Code, and Claude through the Claude Code CLI in Codex. The user or a calling skill can choose the critic model from the two allowed models of its family. Another skill can call it with several questions; the conclusion shows the critic's assessment of each question
 - **pr-feedback**: Gather PR feedback and run a structured review-fix-push cycle
 - **sci-project-layout**: Set up or adopt the layout of a scientific Python research project, and find where a file goes in it: one store for data and results that every worktree finds, one folder for each experiment and each run, and read-only cited runs for the results you keep
@@ -205,6 +205,61 @@ for command options.
 
 ### Updates and removal
 
-See [Update installed plugins](CONTRIBUTING.md#update-installed-plugins) for
-both hosts. See [Disable or remove installed plugins](CONTRIBUTING.md#disable-or-remove-installed-plugins)
-to stop using a plugin.
+The examples use `creator-skills`. Replace that name with the plugin you
+want to manage.
+
+To update the installed Claude Code copy:
+
+1. Run `claude plugin marketplace update cc-toolkit`.
+2. Run `claude plugin update creator-skills@cc-toolkit --scope user`. For a
+   project or local installation, use that installation's scope instead.
+3. Start a new Claude Code session.
+
+To update the installed Codex copy:
+
+1. Run `codex plugin marketplace upgrade cc-toolkit`.
+2. Check that `~/.codex/plugins/cache/cc-toolkit/creator-skills/` contains
+   the intended version.
+3. If it does not, run `codex plugin add creator-skills@cc-toolkit`.
+4. Start a new Codex session.
+
+The Core Hooks policy scripts that check your shell commands are the
+installed copy. A denial names its path, such as
+`core-hooks/1.0.13/scripts/pre_git_hook.py`. Until you update that copy, it
+keeps blocking a command that this checkout allows.
+
+Disabling keeps a plugin installed. Uninstalling removes it. For the Claude
+Code user installation above, choose one action:
+
+```bash
+# Disable; use enable to turn it on again.
+claude plugin disable creator-skills@cc-toolkit --scope user
+
+# Uninstall.
+claude plugin uninstall creator-skills@cc-toolkit --scope user
+```
+
+For a project or local installation, use that installation's scope instead.
+
+To disable the Codex plugin, set its entry in your active user configuration
+(`~/.codex/config.toml` by default):
+
+```toml
+[plugins."creator-skills@cc-toolkit"]
+enabled = false
+```
+
+Edit the existing entry if present; do not add a duplicate table. Set
+`enabled = true` to enable it again. A trusted project's `.codex/config.toml`
+can override this user setting. Codex has no `plugin disable` subcommand.
+
+To uninstall it instead:
+
+```bash
+codex plugin remove creator-skills@cc-toolkit
+```
+
+Start a new host session after changing its plugins. See the
+[Claude Code management guide](https://code.claude.com/docs/en/plugins/install#manage-plugins-from-your-shell)
+and [Codex plugin configuration](https://developers.openai.com/plugins/build/plugins#enable-or-disable-a-plugin-for-a-repo)
+for scope and configuration details.
