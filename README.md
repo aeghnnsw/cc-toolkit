@@ -112,9 +112,9 @@ Document processing and AI-accessible content extraction.
 Safety guards and workflow enforcement hooks.
 
 **Hooks:**
-- **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed
-- **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution
-- **zsh_traps.py**: When the shell is zsh, quotes separators with two or more leading equals signs in standalone `echo` commands, with optional `-n`. Labels can use ASCII letters, digits, and underscores, as in `echo =====CODEX`. Current Claude Code and Codex apply the corrected input through their normal permission checks. Complex commands keep the existing checks: the hook blocks unresolved `=name` expansions and warns about valid command expansions, unsplit variables, and unmatched globs. Each message names the fix
+- **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed. Also blocks `env` or `printenv` with no command, which prints every environment variable; `env | cut -d= -f1` lists the names only
+- **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution. Blocks `git grep -E` with an escape such as `\b`, `\s`, or `\d`, which macOS reads as a plain character; the message says to use `-P`
+- **zsh_traps.py**: When the shell is zsh, quotes separators with two or more leading equals signs in standalone `echo` commands, with optional `-n`. Labels can use ASCII letters, digits, and underscores, as in `echo =====CODEX`. Current Claude Code and Codex apply the corrected input through their normal permission checks. Complex commands keep the existing checks: the hook blocks unresolved `=name` expansions and warns about valid command expansions, unsplit variables, unmatched globs, and a letter after `$NAME:`, which zsh can read as a modifier. In Claude Code, it blocks a zsh parameter flag such as `${(f)...}`, which the Claude Code safety check rejects with a message about `rm`. Each message names the fix
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
 

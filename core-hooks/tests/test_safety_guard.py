@@ -669,6 +669,60 @@ class SafetyGuardTests(unittest.TestCase):
             f"safety_guard.py matcher should include exec_command, got {matchers}",
         )
 
+    def test_blocks_env_or_printenv_with_no_command(self):
+        # Each command prints every environment variable, and a value can be
+        # a token (#391).
+        for command in (
+            "env",
+            "printenv",
+            "env -0",
+            "env -u HOME",
+            "env FOO=1",
+            "FOO=1 env",
+            "printenv -0",
+            "sudo env",
+            "command env",
+            "git status; env",
+            "env | sort",
+            "env | grep TOKEN",
+            "env | cut -d= -f2-",
+            "printenv | cut -d= -f2",
+            "env | cut -d: -f1",
+            "x=$(env)",
+            'echo "$(env)"',
+            'x="$(printenv)"',
+            "echo `env`",
+        ):
+            for tool_name in ("Bash", "exec_command"):
+                with self.subTest(command=command, tool_name=tool_name):
+                    result = self.run_command(command, tool_name=tool_name)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("BLOCKED", result.stderr)
+                    self.assertIn("`env | cut -d= -f1`", result.stderr)
+
+    def test_allows_env_with_a_command_or_names_only(self):
+        for command in (
+            "env | cut -d= -f1",
+            "printenv | cut -d= -f1",
+            "env -0 |cut -z -d= -f1",
+            "env | cut -d '=' -f 1",
+            "env | cut --delimiter== --fields=1 | sort",
+            "command -v env",
+            "command -V printenv",
+            "env FOO=1 python3 -V",
+            "env -u HOME ls",
+            "env -S 'echo hi'",
+            "sudo -E env PATH=/bin ls",
+            "printenv HOME",
+            "echo env",
+            "echo 'env'",
+            "ls env/",
+            "cat <<'EOF'\nenv\nEOF",
+            "echo hi # env",
+        ):
+            with self.subTest(command=command):
+                self.assert_allowed(command, tool_name="Bash")
+
 
 if __name__ == "__main__":
     unittest.main()

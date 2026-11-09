@@ -7,6 +7,7 @@
 import json
 import os
 import re
+import shlex
 import sys
 from collections import namedtuple
 
@@ -126,6 +127,23 @@ BRANCH_RENAME_MODES = GitOptions(set('mMcC'), {'--move', '--copy'})
 # `git branch` options in creation mode that can take a separate value.
 BRANCH_VALUE_OPTIONS = GitOptions(set(), {'--sort', '--format'})
 
+# A `git grep` call at the start of one command segment (#389).
+GIT_GREP_RE = re.compile(GIT_COMMAND + r'grep(?=[ \t]|$)')
+# The pattern-type options of git grep; the last one decides the type.
+GREP_PATTERN_TYPES = {
+    '-E': 'E', '--extended-regexp': 'E', '-G': 'G', '--basic-regexp': 'G',
+    '-P': 'P', '--perl-regexp': 'P', '-F': 'F', '--fixed-strings': 'F',
+}
+# git grep options that take a value. `-e` gives a pattern, and `-f` a file
+# of patterns.
+GREP_VALUE_OPTIONS = GitOptions(set('efABCm'), {
+    '--max-depth', '--context', '--before-context', '--after-context',
+    '--threads', '--max-count',
+})
+# On macOS, `git grep -E` reads these escapes as plain characters and gives
+# no error (git 2.52.0). `-P` reads them as escapes, except `\<` and `\>`.
+GREP_PLAIN_ESCAPES = set('bBsSdDwW<>')
+
 
 def block(reason):
     print(f"BLOCKED: {reason}", file=sys.stderr)
@@ -212,14 +230,11 @@ def command_segments(command):
     return split_commands(strip_heredoc_bodies(command))
 
 
-def shell_words(text):
-    """Yield the words of `text` as the command receives them.
+def raw_shell_words(text):
+    """Yield the words of `text` as written, with their quotes.
 
     A redirection operator and its target are skipped, and a word that starts
-    with `#` starts a comment, which ends the words. As in the shell, each
-    quoted part of a word loses one level of quotes, so `"feat-1-x"` and
-    `feat-"1"-x` give `feat-1-x` (#281). Variables and backslash escapes are
-    not expanded.
+    with `#` starts a comment, which ends the words.
     """
     words = iter(WORD_RE.findall(text))
     for word in words:
@@ -228,7 +243,30 @@ def shell_words(text):
         if REDIRECTION_RE.fullmatch(word):
             next(words, None)  # skip the redirection target
         else:
-            yield QUOTED_PART_RE.sub(r'\1\2', word)
+            yield word
+
+
+def shell_words(text):
+    """Yield the words of `text` as the command receives them.
+
+    As in the shell, each quoted part of a word loses one level of quotes, so
+    `"feat-1-x"` and `feat-"1"-x` give `feat-1-x` (#281). Variables and
+    backslash escapes are not expanded.
+    """
+    for word in raw_shell_words(text):
+        yield QUOTED_PART_RE.sub(r'\1\2', word)
+
+
+def received_word(word):
+    """Return the text that a command receives for the shell word `word`.
+
+    Unlike shell_words, this also applies backslash escapes, so an unquoted
+    `\\b` gives `b`. Variables are not expanded.
+    """
+    try:
+        return ''.join(shlex.split(word))
+    except ValueError:
+        return QUOTED_PART_RE.sub(r'\1\2', word)
 
 
 def short_option_letters(word):
@@ -348,6 +386,68 @@ def branch_created_by_worktree_add(words):
     return os.path.basename(positional[0].rstrip('/'))
 
 
+def grep_patterns(words):
+    """Return the pattern type and the patterns of `git grep <words>`.
+
+    The type is the letter of the last pattern-type option, such as 'E', or
+    None. As in git, options end at `--` or at the first other argument. The
+    patterns are the `-e` values. With no `-e` or `-f`, the first argument
+    that is not an option is the pattern, also when it follows `--`.
+    """
+    pattern_type = None
+    patterns = []
+    has_pattern_option = False
+    for word in words:
+        if word == '--' or word == '-' or not word.startswith('-'):
+            pattern = next(words, None) if word == '--' else word
+            if not has_pattern_option and pattern is not None:
+                patterns.append(pattern)
+            break
+        if word.startswith('--'):
+            name, equals, _ = word.partition('=')
+            pattern_type = GREP_PATTERN_TYPES.get(name, pattern_type)
+            if name in GREP_VALUE_OPTIONS.names and not equals:
+                next(words, None)  # skip the option value
+            continue
+        for index, letter in enumerate(short_option_letters(word), start=2):
+            if letter in GREP_VALUE_OPTIONS.letters:
+                value = word[index:] or next(words, None)
+                has_pattern_option = has_pattern_option or letter in 'ef'
+                if letter == 'e' and value is not None:
+                    patterns.append(value)
+                break
+            if letter == 'O':
+                break  # the rest of the word is the pager
+            pattern_type = GREP_PATTERN_TYPES.get('-' + letter, pattern_type)
+    return pattern_type, patterns
+
+
+def plain_grep_escape(segment):
+    """Return the escape that `git grep -E` in `segment` reads as a plain
+    character, such as `\\b`, or None (#389).
+
+    Patterns are read as git receives them, and escapes are read in pairs,
+    so `a\\\\bc` holds an escaped backslash, not `\\b`.
+    """
+    match = GIT_GREP_RE.match(segment)
+    if not match:
+        return None
+    words = (received_word(word) for word in raw_shell_words(segment[match.end():]))
+    pattern_type, patterns = grep_patterns(words)
+    if pattern_type != 'E':
+        return None
+    for pattern in patterns:
+        index = 0
+        while index < len(pattern) - 1:
+            if pattern[index] != '\\':
+                index += 1
+            elif pattern[index + 1] in GREP_PLAIN_ESCAPES:
+                return pattern[index:index + 2]
+            else:
+                index += 2
+    return None
+
+
 def has_bulk_add(command):
     """Report whether a segment of `command` starts with a bulk `git add`."""
     return any(BULK_ADD_RE.match(segment) for segment in command_segments(command))
@@ -410,6 +510,16 @@ def main():
                 f"Branch name '{invalid_branch}' is invalid. "
                 f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
             )
+
+        for segment in command_segments(command):
+            escape = plain_grep_escape(segment)
+            if escape:
+                block(
+                    f"`git grep -E` reads `{escape}` as the plain character "
+                    f"`{escape[1]}` on macOS and gives no error, so the search "
+                    "can miss lines or print nothing. Use `-P` instead of `-E`, "
+                    "and write a word boundary as `\\b`."
+                )
 
         if "gh pr merge" in command and "--squash" not in command:
             remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.")

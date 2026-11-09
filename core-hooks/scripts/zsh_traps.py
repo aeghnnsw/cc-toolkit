@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Check a shell command for three zsh traps before it runs.
+"""Check a shell command for five zsh traps before it runs.
 
 1. zsh replaces an unquoted word `=name` with the path of the command
    `name` (`=ls` gives `/bin/ls`). For `=====` or `==`, no such command
@@ -14,16 +14,24 @@
 3. zsh stops a command when an unquoted glob matches no file, such as
    `grep --include=*.md`. It prints "no matches found", and the command
    does not run.
+4. The Claude Code Bash safety check cannot read a zsh parameter flag,
+   such as `${(f)...}`. It denies the whole command with a message about
+   `rm` operations, also when the command has no `rm`.
+5. zsh can read a letter after `$NAME:` as a modifier of the variable:
+   `$C:AGENTS.md` gives the absolute path of `$C` and then `GENTS.md`.
 
 The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
 `--host claude` or `--host codex`, it quotes missing-command separators in
 a simple `echo` command. Normal host permissions still apply. It denies
 other commands when an `=name` word names no command on `PATH`, because zsh
-would stop the command line there. For each other trap, it gives the agent
-a warning. It reads the command as shell words, so quoted text, heredoc
-bodies, comments, `[[ ... ]]` tests, and `(( ... ))` arithmetic give no
-finding. This is a heuristic, not a full zsh parser. The rewrite uses a
-separate strict recognizer for the complete command.
+would stop the command line there. With `--host claude`, it denies a
+parameter flag, so that the agent reads how to replace it. For each other
+trap, it gives the agent a warning. It reads the command as shell words, so
+single-quoted text, heredoc bodies, and comments give no finding. Traps 1
+to 3 also skip double-quoted text, `[[ ... ]]` tests, and `(( ... ))`
+arithmetic; zsh expands traps 4 and 5 in double quotes and tests too. This
+is a heuristic, not a full zsh parser. The rewrite uses a separate strict
+recognizer for the complete command.
 """
 
 import glob
@@ -93,6 +101,23 @@ GLOB_WARNING = (
     "not run. When the command reads the pattern itself, quote the word, "
     "for example `'{word}'`. Otherwise, name files that exist."
 )
+FLAG_DENIAL = (
+    "zsh trap: the Claude Code Bash safety check cannot read the zsh "
+    "parameter flag `{flag}`. It denies the whole command with a message "
+    "about `rm` operations, also when the command has no `rm`, so the hook "
+    "blocked the command. To split a value into words, use `${{=list}}`, an "
+    "array literal such as `files=(a b c)`, or a `while read -r line` loop."
+)
+# A zsh parameter flag after `$`, such as `{(f)` in `${(f)x}`.
+FLAG_RE = re.compile(r"\{\(([^)]*)\)")
+MODIFIER_WARNING = (
+    "zsh trap: zsh can read `:{letter}` in `${name}:{letter}` as a modifier "
+    "of the variable `${name}`, such as `:A` for an absolute path or `:h` "
+    "for its directory. A modifier changes the value with no error. Brace "
+    "the variable: `${{{name}}}:{letter}`."
+)
+# An unbraced variable followed by `:` and a letter, after `$`.
+MODIFIER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):([A-Za-z])")
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
@@ -100,9 +125,9 @@ GLOB_WARNING = (
 # `"uv run python"`; text inside `$(...)` does not count.
 Word = namedtuple('Word', 'text quoted_space')
 
-# One finding: the message for the agent, and whether zsh would stop the
-# whole command line there, so that the hook blocks the command.
-Trap = namedtuple('Trap', 'message stops_line')
+# One finding: the message for the agent, and whether the hook blocks the
+# command, for example because zsh would stop the whole command line there.
+Trap = namedtuple('Trap', 'message blocks')
 
 
 class Findings:
@@ -121,6 +146,10 @@ class Findings:
         # True when the command changes the directory, so that a glob can
         # expand in another directory.
         self.changes_directory = False
+        # zsh parameter flags, such as `${(f)...}`.
+        self.flags = []
+        # (name, letter) of each `$NAME:` followed by a letter.
+        self.modifiers = []
 
 
 def _double_quote_end(text, index, bodies):
@@ -306,6 +335,45 @@ def _variable_name(word):
     return match and (match.group(1) or match.group(2))
 
 
+def _expansions(text):
+    """Yield the text after each `$` that zsh expands in the word `text`.
+
+    zsh expands a `$` in unquoted and double-quoted text, not in single
+    quotes or after a backslash. The commands of a `$(...)` or backtick
+    substitution are skipped; `_analyze` reads them on their own.
+    """
+    index = 0
+    double = False
+    while index < len(text):
+        character = text[index]
+        if character == "\\":
+            index += 2
+        elif character == "'" and not double:
+            index = _single_quote_end(text, index + 1) + 1
+        elif character == '"':
+            double = not double
+            index += 1
+        elif character == "`" or text.startswith("$(", index):
+            index = _substitution_end(text, index, [], command=False)
+        elif character == "$":
+            index += 1
+            yield text[index:]
+        else:
+            index += 1
+
+
+def _record_expansions(text, findings):
+    """Add the parameter flags and modifiers of the word `text` to
+    `findings`."""
+    for expansion in _expansions(text):
+        flag = FLAG_RE.match(expansion)
+        if flag:
+            findings.flags.append("${(" + flag.group(1) + ")...}")
+        modifier = MODIFIER_RE.match(expansion)
+        if modifier:
+            findings.modifiers.append(modifier.groups())
+
+
 def _record_assignment(word, findings):
     match = ASSIGNMENT_RE.match(word.text)
     value = word.text[match.end():]
@@ -338,6 +406,8 @@ def _analyze(text, findings, depth):
     # True between `case` and `esac`, where words are patterns.
     in_case = False
     for kind, token in _tokens(strip_heredoc_bodies(text), bodies):
+        if kind == "word":
+            _record_expansions(token.text, findings)
         if in_condition:
             in_condition = not (kind == "word" and token.text == "]]")
             continue
@@ -455,14 +525,16 @@ def _matches_no_file(word, directory):
     return next(glob.iglob(pattern), None) is None
 
 
-def zsh_traps(command, cwd=None):
+def zsh_traps(command, cwd=None, host=None):
     """Return one Trap for each zsh trap in `command`.
 
     A variable is a trap when it holds a quoted value with whitespace, such
     as `PY="uv run python"`, or when it is the only word of a `set` command
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
     `cwd` is the directory where the command runs. The glob check uses it
-    unless the command changes the directory.
+    unless the command changes the directory. A parameter flag is a trap
+    only when `host` is "claude", because only the Claude Code safety check
+    rejects it.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -483,6 +555,8 @@ def zsh_traps(command, cwd=None):
         word for word in findings.glob_words if _matches_no_file(word, directory)
     ]
     traps = []
+    if findings.flags and host == "claude":
+        traps.append(Trap(FLAG_DENIAL.format(flag=findings.flags[0]), True))
     if missing:
         traps.append(Trap(EQUALS_DENIAL.format(word=missing[0], name=missing[0][1:]), True))
     elif findings.equals_words:
@@ -491,6 +565,9 @@ def zsh_traps(command, cwd=None):
         traps.append(Trap(SPLIT_WARNING.format(word=unsplit[0]), False))
     if unmatched:
         traps.append(Trap(GLOB_WARNING.format(word=unmatched[0]), False))
+    if findings.modifiers:
+        name, letter = findings.modifiers[0]
+        traps.append(Trap(MODIFIER_WARNING.format(name=name, letter=letter), False))
     return traps
 
 
@@ -513,9 +590,9 @@ def main():
         if not command or os.path.basename(os.environ.get("SHELL", "")) != "zsh":
             sys.exit(0)
         cwd = _working_directory(input_data)
-        traps = zsh_traps(command, cwd)
         args = sys.argv[1:]
         host = args[1] if len(args) == 2 and args[0] == "--host" else None
+        traps = zsh_traps(command, cwd, host)
         updated_input = None
         # Both current hosts supply Bash.command. Compatibility payloads
         # keep their existing decisions and never select a rewrite contract.
@@ -525,7 +602,7 @@ def main():
             and isinstance(input_data.get("tool_input"), dict)
         ):
             quoted = _quote_echo_separators(command)
-            if quoted is not None and not zsh_traps(quoted, cwd):
+            if quoted is not None and not zsh_traps(quoted, cwd, host):
                 updated_input = dict(input_data["tool_input"], command=quoted)
     except Exception:
         # A hook error never stops a command.
@@ -539,7 +616,7 @@ def main():
         print(json.dumps({"hookSpecificOutput": output}))
     elif traps:
         message = "\n".join(trap.message for trap in traps)
-        if any(trap.stops_line for trap in traps):
+        if any(trap.blocks for trap in traps):
             decision = {"permissionDecision": "deny", "permissionDecisionReason": message}
         else:
             decision = {"additionalContext": message}

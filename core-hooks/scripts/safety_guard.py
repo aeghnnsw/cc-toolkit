@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Block dangerous `rm` commands.
+"""Block dangerous `rm` commands, and `env` or `printenv` with no command.
 
 This module also owns shell-parsing code that other hooks import. For
 example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
@@ -418,17 +418,23 @@ def _mentions_removal(command):
     return bool(RM_MENTION_RE.search(collapsed))
 
 
-def _command_segments(tokens):
+def _bounded_segments(tokens):
+    """Yield each command segment with the boundary token after it, or None."""
     segment = []
     for token in tokens:
         if _is_boundary(token):
             if segment:
-                yield _without_redirections(segment)
+                yield _without_redirections(segment), token
                 segment = []
         else:
             segment.append(token)
     if segment:
-        yield _without_redirections(segment)
+        yield _without_redirections(segment), None
+
+
+def _command_segments(tokens):
+    for segment, _ in _bounded_segments(tokens):
+        yield segment
 
 
 def _program_name(token):
@@ -1038,9 +1044,7 @@ def _dangerous_rm_reason(command, depth):
 
     # Heredoc bodies are data. Strip them before tokenizing, and keep the
     # stripped text for the fallback below so prose cannot decide the outcome.
-    executable_text = _strip_shell_comments(
-        _remove_line_continuations(strip_heredoc_bodies(command))
-    )
+    executable_text = _executable_text(command)
     try:
         segments = _command_segments(_shell_tokens(executable_text))
         for segment in segments:
@@ -1054,6 +1058,90 @@ def _dangerous_rm_reason(command, depth):
         if _mentions_removal(executable_text):
             return "unparseable rm command"
     return None
+
+
+def _executable_text(command):
+    """Return `command` without heredoc bodies, line continuations, and
+    comments, ready to tokenize."""
+    return _strip_shell_comments(
+        _remove_line_continuations(strip_heredoc_bodies(command))
+    )
+
+
+def _prints_environment(segment):
+    """Report whether `segment` runs `env` or `printenv` with no command.
+
+    `env` with only options and assignments, and `printenv` with no
+    variable name, print every environment variable. `env -S` runs a
+    command, and `command -v env` only looks the command up.
+    """
+    positions, index = _command_analysis(segment)
+    if any(
+        _program_name(segment[position]) == "command"
+        and re.match(r"-[A-Za-z]*[vV]", segment[position + 1])
+        for position in positions
+        if position + 1 < len(segment)
+    ):
+        return False
+    if index < len(segment):
+        return _program_name(segment[index]) == "printenv" and all(
+            argument.startswith("-") for argument in segment[index + 1:]
+        )
+    return (
+        bool(positions)
+        and _program_name(segment[positions[-1]]) == "env"
+        and next(_env_split_invocations(segment), None) is None
+    )
+
+
+def _keeps_names_only(segment):
+    """Report whether `segment` is `cut -d= -f1`, in any option form, which
+    keeps only the name before the first `=` of each line."""
+    index = _command_index(segment)
+    if index >= len(segment) or _program_name(segment[index]) != "cut":
+        return False
+    options = {}
+    words = iter(segment[index + 1:])
+    for word in words:
+        if word.startswith("--"):
+            name, equals, value = word.partition("=")
+            key = {"--delimiter": "d", "--fields": "f"}.get(name)
+            if key:
+                options[key] = value if equals else next(words, None)
+        elif word[:2] in ("-d", "-f"):
+            options[word[1]] = word[2:] or next(words, None)
+    return options == {"d": "=", "f": "1"}
+
+
+def prints_environment(command, depth=0):
+    """Report whether `command` prints every environment variable (#391).
+
+    A value can be a token. Output piped straight into `cut -d= -f1` is
+    allowed, because it keeps the names only. Command substitutions are
+    checked too, also inside double quotes.
+    """
+    if depth > MAX_NESTED_SHELL_DEPTH:
+        return False
+    substitutions = _command_substitutions(
+        _strip_shell_comments(_remove_line_continuations(command))
+    )
+    if any(prints_environment(nested, depth + 1) for nested in substitutions):
+        return True
+    try:
+        segments = list(_bounded_segments(_shell_tokens(_executable_text(command))))
+    except ValueError:
+        return False
+    for index, (segment, boundary) in enumerate(segments):
+        if not _prints_environment(segment):
+            continue
+        if (
+            boundary in ("|", "|&")
+            and index + 1 < len(segments)
+            and _keeps_names_only(segments[index + 1][0])
+        ):
+            continue
+        return True
+    return False
 
 
 def dangerous_rm_reason(command):
@@ -1085,6 +1173,16 @@ def main():
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
             sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
+
+        if command and prints_environment(command):
+            print(
+                "BLOCKED: `env` or `printenv` with no command prints every "
+                "environment variable, and a value can be a token. To list "
+                "the names only, run `env | cut -d= -f1`. To read one "
+                "variable, run `printenv NAME`.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
         append_log('pre_tool_use.jsonl', input_data)
 

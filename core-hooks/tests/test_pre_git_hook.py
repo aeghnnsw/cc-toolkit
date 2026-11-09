@@ -981,6 +981,76 @@ class PreGitHookTests(unittest.TestCase):
             f"pre_git_hook.py matcher should include exec_command, got {matchers}",
         )
 
+    def test_blocks_git_grep_extended_regexp_with_a_plain_escape(self):
+        # On macOS, `git grep -E` reads `\b` as a plain `b` (#389).
+        result = run_blocked_hook(
+            {"tool_name": "Bash", "tool_input": {"command": r"git grep -n -E '\bmockApi\b'"}}
+        )
+        self.assertIn(r"`\b`", result.stderr)
+        self.assertIn("`-P`", result.stderr)
+
+    def test_blocks_each_git_grep_extended_regexp_form(self):
+        # Each command is denied; the value is the escape that the denial names.
+        cases = {
+            r"git grep -E 'call\sAPI'": r"\s",
+            r"git grep --extended-regexp 'x\Sy'": r"\S",
+            r"git grep -nE 'x\dy'": r"\d",
+            r"git grep -P -E 'x\Dy'": r"\D",
+            r"git grep -G -nE 'x\wy'": r"\w",
+            r"git grep -iEn 'x\Wy'": r"\W",
+            r"git grep -E -e foo -e '\Bx'": r"\B",
+            r"git grep -Ee '\<word\>'": r"\<",
+            r"git grep -E -e'word\>'": r"\>",
+            r'git grep -E "\bword"': r"\b",
+            r"git grep -E \\bword": r"\b",
+            r"git grep -E -- '\bword'": r"\b",
+            r"git grep -E -C 2 -m1 --max-depth 3 '\bword' -- src": r"\b",
+            r"git -C /repo grep -E '\bword'": r"\b",
+            r"git --no-pager grep -E '\bword'": r"\b",
+            r"git status && git grep -E '\bword'": r"\b",
+            r"false || git grep -E '\bword'": r"\b",
+            r"cd /repo; git grep -E '\bword'": r"\b",
+            r"echo x | git grep -E '\bword' | head": r"\b",
+        }
+        for command, escape in cases.items():
+            for payload in (
+                {"tool_name": "Bash", "tool_input": {"command": command}},
+                codex_payload(command),
+            ):
+                with self.subTest(command=command, tool=payload["tool_name"]):
+                    result = run_blocked_hook(payload)
+                    self.assertIn(f"`{escape}`", result.stderr)
+                    self.assertIn(r"word boundary as `\b`", result.stderr)
+
+    def test_allows_git_grep_escapes_that_git_reads(self):
+        for command in [
+            r"git grep '\bmockApi\b'",
+            r"git grep -G 'a\sb'",
+            r"git grep -P '\bmockApi\b'",
+            r"git grep -F '\bmockApi\b'",
+            r"git grep -E -P 'x\dy'",
+            r"git grep -PF -E -G '\bx'",
+            r"git grep -E 'a\.b\(c\)d\+'",
+            r"git grep -E 'a\\bc'",
+            r"git grep -E \bword",
+            r"git grep -E -e foo -- '\bdir'",
+            r"git grep -E foo '\brev'",
+            r"git grep -E -f patterns.txt",
+            r"git grep -E -C 2 'x\.y'",
+            r"grep -E '\bword'",
+            r"echo 'git grep -E \b'",
+            "cat <<'EOF'\ngit grep -E '\\bword'\nEOF",
+            r"git commit -m 'Deny git grep -E \b'",
+        ]:
+            for payload in (
+                {"tool_name": "Bash", "tool_input": {"command": command}},
+                codex_payload(command),
+            ):
+                with self.subTest(command=command, tool=payload["tool_name"]):
+                    result = run_hook_process(payload)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertNotIn("git grep -E", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
