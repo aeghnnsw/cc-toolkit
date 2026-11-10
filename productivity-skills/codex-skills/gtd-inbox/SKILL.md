@@ -1,6 +1,6 @@
 ---
 name: gtd-inbox
-description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask for agent captures, or when listing, counting, removing, clearing, or restoring inbox items."
+description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
 Manage raw GTD captures in the configured Supabase store. Save captures

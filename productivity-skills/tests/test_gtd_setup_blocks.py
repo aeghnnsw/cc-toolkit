@@ -96,6 +96,11 @@ class StepNineBlocks(unittest.TestCase):
         self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
         self.assertEqual(agents.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
 
+        ended = self.root / "ended.md"  # a file that ends with a newline
+        ended.write_text("# Mine\n", encoding="utf-8")
+        self.run_block(shell, append.replace("<file>", str(ended)))
+        self.assertEqual(ended.read_text(encoding="utf-8"), f"# Mine\n\n# GTD agent captures\n\n- {RULE}\n")
+
         self.run_block(shell, append.replace("<file>", str(link)))
         self.assertTrue(link.is_symlink())
         self.assertEqual(real.read_bytes(),
