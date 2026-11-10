@@ -23,6 +23,7 @@ Current decisions:
 - [Use a cross-family critic for pressure tests](../adr/0002-cross-family-pressure-test-critic.md)
 - [Use the connected Supabase route for GTD](../adr/0003-use-connected-supabase-for-gtd.md)
 - [Ship the GTD schema and a setup skill](../adr/0004-ship-the-gtd-schema.md)
+- [Trigger agent captures from global instruction files](../adr/0005-trigger-agent-captures-from-global-instructions.md)
 
 ## Host compatibility
 
