@@ -272,7 +272,7 @@ with the same request file. Do not create a second verification item.
 ## 9. Turn on agent captures
 
 Run this step only when the GTD binding is valid: kept in step 2, or
-verified in step 8. An agent capture is an inbox item that an agent adds
+verified in step 8. Skip it when the user said that the owner is wrong. An agent capture is an inbox item that an agent adds
 when a task that it was given stops and waits on the user. The
 [gtd-inbox skill](../gtd-inbox/SKILL.md#agent-capture) holds its rules. One
 rule in the user's global instruction files turns it on. Codex reads
@@ -290,7 +290,7 @@ one line.
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
      elif [ ! -e "$f" ]; then echo "missing: $f"
-     elif tr -s '[:space:]' ' ' < "$f" | grep -Fq -- "$rule"; then echo "present: $f -> $(realpath "$f")"
+     elif LC_ALL=C tr -s '[:space:]' ' ' < "$f" | LC_ALL=C grep -Fq -- "$rule"; then echo "present: $f -> $(realpath "$f")"
      else echo "absent: $f -> $(realpath "$f")"
      fi
    done
@@ -313,7 +313,7 @@ one line.
    `>>` redirection writes through a symlink and keeps the symlink:
 
    ```bash
-   f="<file>"
+   f='<file>'
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
    if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n' >> "$f"; fi
    printf '\n# GTD agent captures\n\n- %s\n' "$rule" >> "$f"

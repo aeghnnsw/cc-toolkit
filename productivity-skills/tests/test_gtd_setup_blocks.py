@@ -41,7 +41,8 @@ def step9_blocks(path: Path) -> tuple[str, str]:
 
 
 class StepNineBlocks(unittest.TestCase):
-    def setUp(self) -> None:
+    def make_home(self) -> None:
+        """Create a new temporary home with Claude Code and Codex folders."""
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
         self.home = self.root / "home"
@@ -51,7 +52,7 @@ class StepNineBlocks(unittest.TestCase):
             folder.mkdir(parents=True)
 
     def run_block(self, shell: str, block: str, **env: str) -> str:
-        values = {"PATH": os.environ["PATH"], "HOME": str(self.home),
+        values = {"PATH": os.environ["PATH"], "HOME": str(self.home), "LANG": "en_US.UTF-8",
                   "CLAUDE_CONFIG_DIR": str(self.claude), "CODEX_HOME": str(self.codex)}
         values.update(env)
         result = subprocess.run([*SHELLS[shell], block], env=values, capture_output=True,
@@ -80,12 +81,12 @@ class StepNineBlocks(unittest.TestCase):
                 with self.subTest(copy=copy, shell=shell):
                     if shutil.which(SHELLS[shell][0]) is None:
                         self.skipTest(f"{shell} is not installed")
-                    self.setUp()
+                    self.make_home()
                     self.check_flow(shell, check, append)
 
     def check_flow(self, shell: str, check: str, append: str) -> None:
         real = self.home / "real" / "CLAUDE.md"
-        real.write_text("# Mine\n- rule one", encoding="utf-8")  # no final newline
+        real.write_bytes(b"# Mine \xe9\n- rule one")  # Latin-1 byte, no final newline
         link = self.claude / "CLAUDE.md"
         link.symlink_to(real)
         agents = self.codex / "AGENTS.md"
@@ -94,8 +95,8 @@ class StepNineBlocks(unittest.TestCase):
 
         self.run_block(shell, append.replace("<file>", str(link)))
         self.assertTrue(link.is_symlink())
-        self.assertEqual(real.read_text(encoding="utf-8"),
-                         f"# Mine\n- rule one\n\n# GTD agent captures\n\n- {RULE}\n")
+        self.assertEqual(real.read_bytes(),
+                         f"# Mine \xe9\n- rule one\n\n# GTD agent captures\n\n- {RULE}\n".encode("latin-1"))
 
         cut = RULE.index(" ", 55)  # wrap at a space, as a text editor does
         wrapped = "- " + RULE[:cut] + "\r\n  " + RULE[cut + 1:] + "\r\n"

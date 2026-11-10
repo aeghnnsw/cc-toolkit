@@ -79,8 +79,9 @@ Add one agent capture for each of these items:
 
 Add no agent capture for these items:
 
-- A question or a confirmation in a conversation where the user answers
-  turn by turn, such as the batch approval of `gtd-process`.
+- Any item in a conversation where the user answers turn by turn, such as
+  a question, a confirmation, or a result of the current turn. The user
+  sees it in the conversation.
 - A decision that you made and that is easy to reverse. Put it in the notes
   of the review item.
 - An item that GTD already holds: a pending inbox item or an open action
