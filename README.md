@@ -118,17 +118,17 @@ Safety guards and workflow enforcement hooks.
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Productivity Skills (`productivity-skills`)
-GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
+GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
 
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
 - **reminder-manager**: Manage macOS Reminders via EventKit CLI
-- **gtd-inbox**: Capture thoughts and tasks into the cloud GTD inbox
+- **gtd-inbox**: Capture thoughts and tasks into the cloud GTD inbox, including agent captures
 - **gtd-process**: Process cloud inbox items into linked projects or actions
 - **gtd-project**: Review and manage cloud GTD projects and their actions
 - **gtd-next**: Select cloud GTD actions with available native Calendar context
 - **gtd-overview**: Read-only cloud project and action inventory with shared status rules
-- **gtd-setup**: Create a cloud GTD database or bind an existing one, then verify it (user-invoked)
+- **gtd-setup**: Create a cloud GTD database or bind an existing one, verify it, and optionally turn on agent captures (user-invoked)
 
 **Codex skills:**
 - **calendar-manager**

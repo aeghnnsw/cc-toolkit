@@ -76,6 +76,13 @@ A GTD project with neither an established ready human next action nor a
 supported waiting outcome. Its blocker, uncertainty or deliberate deferral
 remains part of the report.
 
+**Agent capture**:
+An inbox item that an agent adds when a task that it was given stops and
+waits on the user: a decision that only the user can make, a finding that
+needs attention, or a result to review. Its notes hold a proposal for
+processing. The user processes and completes it.
+_Avoid_: Agent task, agent inbox item
+
 **GTD binding**:
 The private pair of Supabase project reference and owner UUID that selects
 one person's GTD data on one computer.

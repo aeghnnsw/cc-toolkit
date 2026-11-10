@@ -1,6 +1,6 @@
 ---
 name: gtd-process
-version: 3.3.1
+version: 3.4.0
 description: "Use when processing, triaging, or clarifying GTD inbox items into projects and human next actions."
 ---
 
@@ -48,14 +48,21 @@ capture pending.
   None (0). Keep work undated unless the user supplies a real deadline.
   Follow cloud date rules. A project deadline does not automatically apply
   to its first action.
+- For an agent capture, use the proposal in its notes as the default:
+  the proposed next action, project, priority, deadline, and effort. Keep
+  each proposed value that follows the shared policy and the current data.
+  Mark each value that you change, and give the reason. Show a proposed
+  deadline with its evidence; approval of the batch confirms it. Copy the
+  `Source` and `Waiting` lines into the notes of the new action.
 - Ask one focused question only when a missing fact changes the action,
   outcome, or deadline. Keep that capture pending while processing clear
   items. Keep skipped and non-actionable captures pending too.
 
 Show a numbered batch with each source capture, proposed action, project,
 duration label, human effort or “Unknown”, priority, and deadline or
-“No deadline”. Include the reason for each retained capture. Show short
-unique ID suffixes where identical titles need distinction.
+“No deadline”. Mark each agent capture. Include the reason for each
+retained capture. Show short unique ID suffixes where identical titles need
+distinction.
 
 Use **AskUserQuestion** once to approve the inferred batch or give numbered
 corrections, skips, or a stop request. An instruction to process the inbox

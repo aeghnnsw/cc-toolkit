@@ -1,6 +1,6 @@
 ---
 name: gtd-inbox
-description: "Use when capturing thoughts or tasks into the GTD inbox, or when listing, counting, removing, clearing, or restoring inbox items."
+description: "Use when capturing thoughts or tasks into the GTD inbox, when a task you were given stops and waits on the user, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
 Manage raw GTD captures in the configured Supabase store. Save captures
@@ -15,7 +15,8 @@ unavailable. It does not authorize a local or Reminders fallback.
 ## Gather
 
 Use the request to choose capture, list, count, remove, clear, or restore.
-An empty invocation lists pending captures. Ask only when the intended
+An empty invocation lists pending captures. A task that waits on the user
+needs an [agent capture](#agent-capture). Ask only when the intended
 operation or record is unclear. Keep the question concise.
 
 For a capture, validate the route and write without first organizing the
@@ -57,7 +58,64 @@ List and count requests perform no writes.
 Use the cloud receipt and readback procedure before reporting success.
 Resolve uncertain outcomes through that procedure before another write.
 
+## Agent capture
+
+An agent capture is an inbox item that an agent adds when a task that it
+was given stops and waits on the user. The user's personal instructions
+turn this on, and `gtd-setup` can add that rule. The user processes each
+agent capture with `gtd-process`.
+
+Add one agent capture for each of these items:
+
+- A decision that only the user can make.
+- A finding that needs the user's attention and is outside the task.
+- A finished result that the user must review, with or without a linked
+  GTD project.
+
+Add no agent capture for these items:
+
+- A question in a discussion that the user leads.
+- A decision that you made and that is easy to reverse. Put it in the notes
+  of the review item.
+- An item that you already captured in this session.
+
+A subagent or a delegated child adds no agent capture. It reports the
+items to its parent, and the parent adds them.
+
+Write a one-line title that names the decision or the review and its
+source reference, for example `Decide the access rule for agent captures
+(#406)`. Write the notes in this form, and leave out the `Options` line
+when there is no decision:
+
+```text
+Source: <thread, issue, or pull request link>
+Waiting: <what is blocked, finished, or found>
+Options: <the choices>
+Recommendation: <one choice and its reason>
+
+Proposed next action: <a concrete human action>
+Proposed project: <an existing project, a new project outcome, or none>
+Proposed priority: <High (1), Medium (5), Low (9), or None (0)>
+Proposed deadline: <a date and its evidence, or none>
+Proposed effort: <a duration label, or unknown>
+```
+
+Use the shared planning policy for the proposed values. Propose a deadline
+only from evidence of a real deadline. Set only `kind`, `title`, and
+`notes`. The other fields keep their defaults, because a proposal is not a
+commitment.
+
+Save all agent captures of one turn in one batch, without a confirmation
+step. Make no other GTD change: for an agent capture, an agent never
+changes, completes, deletes, or restores a record, and it never starts
+`gtd-setup`.
+
 ## Report
+
+For agent captures, end the final message of the turn with a
+`## Needs you` list. Give one line for each item: its title and the short
+unique ID suffix of the saved record. For an item that was not saved, give
+its title and the error, such as a missing GTD binding or connector sign-in.
 
 For capture, show the saved wording. Then show the pending count when a
 complete read succeeds. Mention any similar existing item after capture;
