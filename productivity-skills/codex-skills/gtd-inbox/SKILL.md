@@ -1,6 +1,6 @@
 ---
 name: gtd-inbox
-description: "Use when capturing thoughts or tasks into the GTD inbox, when a task you were given stops and waits on the user, or when listing, counting, removing, clearing, or restoring inbox items."
+description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask for agent captures, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
 Manage raw GTD captures in the configured Supabase store. Save captures
@@ -15,8 +15,9 @@ unavailable. It does not authorize a local or Reminders fallback.
 ## Gather
 
 Use the request to choose capture, list, count, remove, clear, or restore.
-An empty invocation lists pending captures. A task that waits on the user
-needs an [agent capture](#agent-capture). Ask only when the intended
+An empty invocation lists pending captures. When the user's instructions
+ask you to add waiting items to the GTD inbox, follow
+[Agent capture](#agent-capture). Ask only when the intended
 operation or record is unclear. Keep the question concise.
 
 For a capture, validate the route and write without first organizing the
@@ -29,7 +30,8 @@ contract.
 
 - **Capture:** Keep each supplied occurrence, including identical text, as
   a distinct record. Do not merge similar thoughts or broaden their scope.
-  Do not clarify or plan the task during capture.
+  Do not clarify or plan the task during capture. An agent capture is
+  the exception: it adds a proposal in its notes.
 - **Remove:** Resolve the requested item to its UUID. If several records
   match, show their full titles and short unique ID suffixes. Ask which
   occurrence the user means.
@@ -61,14 +63,15 @@ Resolve uncertain outcomes through that procedure before another write.
 ## Agent capture
 
 An agent capture is an inbox item that an agent adds when a task that it
-was given stops and waits on the user. The user's personal instructions
-turn this on, and `gtd-setup` can add that rule. The user processes each
-agent capture with `gtd-process`.
+was given stops and waits on the user. Add agent captures only when the
+user's global instruction files (`CLAUDE.md` or `AGENTS.md`) ask for them;
+`gtd-setup` can add that rule. The user processes each agent capture with
+`gtd-process`.
 
 Add one agent capture for each of these items:
 
 - A decision that only the user can make.
-- A finding that needs the user's attention and is outside the task.
+- A finding that needs the user's attention.
 - A finished result that the user must review, with or without a linked
   GTD project.
 
@@ -79,8 +82,8 @@ Add no agent capture for these items:
   of the review item.
 - An item that you already captured in this session.
 
-A subagent or a delegated child adds no agent capture. It reports the
-items to its parent, and the parent adds them.
+A subagent, or a child task that another agent started, adds no agent
+capture. It reports the items to its parent, and the parent adds them.
 
 Write a one-line title that names the decision or the review and its
 source reference, for example `Decide the access rule for agent captures
@@ -89,7 +92,7 @@ when there is no decision:
 
 ```text
 Source: <thread, issue, or pull request link>
-Waiting: <what is blocked, finished, or found>
+Context: <what is blocked, finished, or found>
 Options: <the choices>
 Recommendation: <one choice and its reason>
 
@@ -97,7 +100,7 @@ Proposed next action: <a concrete human action>
 Proposed project: <an existing project, a new project outcome, or none>
 Proposed priority: <High (1), Medium (5), Low (9), or None (0)>
 Proposed deadline: <a date and its evidence, or none>
-Proposed effort: <a duration label, or unknown>
+Proposed effort: <the human effort and its duration label, or unknown>
 ```
 
 Use the shared planning policy for the proposed values. Propose a deadline
@@ -105,8 +108,9 @@ only from evidence of a real deadline. Set only `kind`, `title`, and
 `notes`. The other fields keep their defaults, because a proposal is not a
 commitment.
 
-Save all agent captures of one turn in one batch, without a confirmation
-step. Make no other GTD change: for an agent capture, an agent never
+Save the agent captures of one turn together, without a confirmation
+step. Split them into batches only at the cloud contract's batch limit.
+Make no other GTD change: for an agent capture, an agent never
 changes, completes, deletes, or restores a record, and it never starts
 `gtd-setup`.
 

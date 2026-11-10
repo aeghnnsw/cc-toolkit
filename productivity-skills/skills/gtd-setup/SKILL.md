@@ -280,12 +280,12 @@ rule in the user's global instruction files turns it on.
 1. Check the global instruction file of each host:
 
    ```bash
-   rule='- When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
+   rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
    for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "${CODEX_HOME:-$HOME/.codex}/AGENTS.md"; do
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
      elif [ ! -e "$f" ]; then echo "missing: $f"
-     elif grep -Fxq -- "$rule" "$f"; then echo "present: $f -> $(realpath "$f")"
+     elif grep -Fq -- "$rule" "$f"; then echo "present: $f -> $(realpath "$f")"
      else echo "absent: $f -> $(realpath "$f")"
      fi
    done
@@ -294,14 +294,17 @@ rule in the user's global instruction files turns it on.
 2. When two paths resolve to the same file, treat them as one file. Skip a
    path with `no host`. Report a `broken symlink` and do not write to it.
    If no file is `absent` or `missing`, go to step 10.
-3. Show the rule and each `absent` or `missing` path. Say that a `missing`
-   file will be created. Ask whether to add the rule, to which files, or to
-   skip. If the user skips, agent captures stay off; go to step 10.
-4. Add the rule to each chosen file. Replace the placeholder. The `>>`
-   redirection writes through a symlink and keeps the symlink:
+3. Show each `absent` or `missing` path and the exact text that item 4
+   adds at the end of the file: a blank line, the heading
+   `# GTD agent captures`, a blank line, and the rule as a list item. Say
+   that a `missing` file will be created. Ask whether to add the text, to
+   which files, or to skip. If the user skips, agent captures stay off; go
+   to step 10.
+4. Add the text to each chosen file. Replace `<file>` with its path. The
+   `>>` redirection writes through a symlink and keeps the symlink:
 
    ```bash
-   printf '\n# GTD agent captures\n\n%s\n' '- When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.' >> "<file>"
+   printf '\n# GTD agent captures\n\n- %s\n' 'When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.' >> "<file>"
    ```
 
 5. If a write fails, for example because permission is denied, report the
