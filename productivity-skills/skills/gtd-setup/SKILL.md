@@ -306,10 +306,10 @@ one line.
    default folder. If the user runs that host with another configuration
    folder, ask for it, set `CLAUDE_CONFIG_DIR` or `CODEX_HOME` to it, and
    run the check again.
-3. Show each `absent` or `missing` path and the exact text that item 4
-   adds at the end of the file: a blank line when the file has text, the
-   heading `# GTD agent captures`, a blank line, and the rule as a list
-   item. Say that a `missing` file will be created. Ask whether to add the text, to
+3. Show each `absent` or `missing` path and the exact text that item 4 adds
+   at the end of the file: a blank line when the file has text, the heading
+   `# GTD agent captures`, a blank line, and the rule as a list item. Say
+   that a `missing` file will be created. Ask whether to add the text, to
    which files, or to skip. If the user skips, agent captures stay off; go
    to step 10.
 4. Add the text to each chosen file. Replace `<file>` with its path. The
@@ -344,8 +344,8 @@ Report these results:
   existing GTD binding or database, state the number of items that the read
   check returned; do not report the owner as verified.
 - Agent captures: each file that this run changed, each file that already
-  had the rule, each failed file, or off. A tool that replaces a global instruction file
-  removes the rule. A new run of `gtd-setup` adds it again.
+  had the rule, each failed file, or off. A tool that replaces a global
+  instruction file removes the rule. A new run of `gtd-setup` adds it again.
 
 Add the Supabase Free plan notes:
 

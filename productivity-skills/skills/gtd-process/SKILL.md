@@ -54,8 +54,8 @@ capture pending.
   project, priority, deadline, and effort. Keep each proposed value that
   follows the shared policy and the current data. Mark each value that you
   change, and give the reason. Show a proposed deadline with its evidence.
-  Copy the `Source` line into the notes of each action that the capture
-  creates or changes.
+  Add the `Source` line to the notes of each action that the capture
+  creates or changes, and keep the existing notes.
 - Ask one focused question only when a missing fact changes the action,
   outcome, or deadline. Keep that capture pending while processing clear
   items. Keep skipped and non-actionable captures pending too.

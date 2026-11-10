@@ -108,15 +108,15 @@ Proposed effort: <the human effort and its duration label, or unknown>
 ```
 
 Use the shared planning policy for the proposed values. Propose a deadline
-only from evidence of a real deadline. Set only `kind`, `title`, and
-`notes`. The other fields keep their defaults, because a proposal is not a
-commitment.
+only from evidence of a real deadline. Set only `kind` to `inbox`, `title`,
+and `notes`. The other fields keep their defaults, because a proposal is
+not a commitment.
 
 Before you save, read the complete pending inbox and the open actions.
-Save the agent captures of one turn together, without a confirmation step. Split them into batches only at the cloud contract's batch limit.
-Make no other GTD change: for an agent capture, an agent never
-changes, completes, deletes, or restores a record, and it never starts
-`gtd-setup`.
+Save the agent captures of one turn together, without a confirmation step.
+Split them into batches only at the cloud contract's batch limit. Make no
+other GTD change: for an agent capture, an agent never changes, completes,
+deletes, or restores a record, and it never starts `gtd-setup`.
 
 ## Report
 
