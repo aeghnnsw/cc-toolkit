@@ -275,17 +275,22 @@ Run this step only when the GTD binding is valid: kept in step 2, or
 verified in step 8. An agent capture is an inbox item that an agent adds
 when a task that it was given stops and waits on the user. The
 [gtd-inbox skill](../gtd-inbox/SKILL.md#agent-capture) holds its rules. One
-rule in the user's global instruction files turns it on.
+rule in the user's global instruction files turns it on. Codex reads
+`AGENTS.override.md` instead of `AGENTS.md` when that file exists, so the
+check uses it. The check also finds a rule that is wrapped on more than
+one line.
 
 1. Check the global instruction file of each host:
 
    ```bash
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
-   for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "${CODEX_HOME:-$HOME/.codex}/AGENTS.md"; do
+   codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+   if [ -e "${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md" ]; then codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md"; fi
+   for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "$codex"; do
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
      elif [ ! -e "$f" ]; then echo "missing: $f"
-     elif grep -Fq -- "$rule" "$f"; then echo "present: $f -> $(realpath "$f")"
+     elif tr -s '[:space:]' ' ' < "$f" | grep -Fq -- "$rule"; then echo "present: $f -> $(realpath "$f")"
      else echo "absent: $f -> $(realpath "$f")"
      fi
    done
@@ -304,7 +309,10 @@ rule in the user's global instruction files turns it on.
    `>>` redirection writes through a symlink and keeps the symlink:
 
    ```bash
-   printf '\n# GTD agent captures\n\n- %s\n' 'When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.' >> "<file>"
+   f="<file>"
+   rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
+   if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n' >> "$f"; fi
+   printf '\n# GTD agent captures\n\n- %s\n' "$rule" >> "$f"
    ```
 
 5. If a write fails, for example because permission is denied, report the

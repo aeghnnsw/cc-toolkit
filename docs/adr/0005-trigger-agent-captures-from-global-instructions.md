@@ -12,8 +12,8 @@ One rule in the user's global instruction files, `CLAUDE.md` for Claude
 Code and `AGENTS.md` for Codex, turns this on. The user-invoked `gtd-setup`
 skill adds the rule after the user agrees. The rules for what to capture,
 the item format, and the limits are in the `gtd-inbox` skill, which loads
-only when it is used and adds agent captures only when the global
-instruction files ask for them. A person who installs the plugin and does
+only when it is used and adds agent captures only when the user's
+instructions ask for them. A person who installs the plugin and does
 not turn on agent captures gets no new behavior.
 
 An agent capture holds a proposal in its notes: a next action, a GTD
