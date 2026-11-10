@@ -272,7 +272,9 @@ with the same request file. Do not create a second verification item.
 ## 9. Turn on agent captures
 
 Run this step only when the GTD binding is valid: kept in step 2, or
-verified in step 8. Skip it when the user said that the owner is wrong. An agent capture is an inbox item that an agent adds
+verified in step 8. If the read check returned no item and the user did
+not confirm the owner, ask whether the owner is correct. Skip this step
+when the owner is wrong. An agent capture is an inbox item that an agent adds
 when a task that it was given stops and waits on the user. The
 [gtd-inbox skill](../gtd-inbox/SKILL.md#agent-capture) holds its rules. One
 rule in the user's global instruction files turns it on. Codex reads
@@ -284,8 +286,9 @@ one line.
 
    ```bash
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
-   codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
-   if [ -s "${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md" ]; then codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md"; fi
+   dir="${CODEX_HOME:-$HOME/.codex}"
+   codex="$dir/AGENTS.md"
+   if [ -s "$dir/AGENTS.override.md" ]; then codex="$dir/AGENTS.override.md"; fi
    for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "$codex"; do
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
@@ -304,9 +307,9 @@ one line.
    folder, ask for it, set `CLAUDE_CONFIG_DIR` or `CODEX_HOME` to it, and
    run the check again.
 3. Show each `absent` or `missing` path and the exact text that item 4
-   adds at the end of the file: a blank line, the heading
-   `# GTD agent captures`, a blank line, and the rule as a list item. Say
-   that a `missing` file will be created. Ask whether to add the text, to
+   adds at the end of the file: a blank line when the file has text, the
+   heading `# GTD agent captures`, a blank line, and the rule as a list
+   item. Say that a `missing` file will be created. Ask whether to add the text, to
    which files, or to skip. If the user skips, agent captures stay off; go
    to step 10.
 4. Add the text to each chosen file. Replace `<file>` with its path. The
@@ -315,8 +318,10 @@ one line.
    ```bash
    f='<file>'
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
-   if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n' >> "$f"; fi
-   printf '\n# GTD agent captures\n\n- %s\n' "$rule" >> "$f"
+   if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n\n' >> "$f"
+   elif [ -s "$f" ]; then printf '\n' >> "$f"
+   fi
+   printf '# GTD agent captures\n\n- %s\n' "$rule" >> "$f"
    ```
 
 5. If a write fails, for example because permission is denied, report the

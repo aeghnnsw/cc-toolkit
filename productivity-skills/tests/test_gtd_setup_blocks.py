@@ -93,6 +93,9 @@ class StepNineBlocks(unittest.TestCase):
 
         self.assertEqual(self.states(shell, check), {str(link): "absent", str(agents): "missing"})
 
+        self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
+        self.assertEqual(agents.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
+
         self.run_block(shell, append.replace("<file>", str(link)))
         self.assertTrue(link.is_symlink())
         self.assertEqual(real.read_bytes(),
@@ -108,6 +111,13 @@ class StepNineBlocks(unittest.TestCase):
         self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
         override.write_text("# Override\n", encoding="utf-8")
         self.assertEqual(self.states(shell, check), {str(link): "present", str(override): "absent"})
+
+        shared = self.root / "shared"  # two host paths that are one file
+        shared.mkdir()
+        (shared / "AGENTS.md").symlink_to(real)
+        output = self.run_block(shell, check, CODEX_HOME=str(shared))
+        targets = {line.split(" -> ")[1] for line in output.splitlines()}
+        self.assertEqual(targets, {str(real.resolve())})
 
         broken = self.root / "broken"
         broken.mkdir()
