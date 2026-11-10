@@ -77,9 +77,9 @@ class StepNineBlocks(unittest.TestCase):
         for copy, path in COPIES.items():
             check, append = step9_blocks(path)
             for shell in SHELLS:
-                if shutil.which(SHELLS[shell][0]) is None:
-                    self.skipTest(f"{shell} is not installed")
                 with self.subTest(copy=copy, shell=shell):
+                    if shutil.which(SHELLS[shell][0]) is None:
+                        self.skipTest(f"{shell} is not installed")
                     self.setUp()
                     self.check_flow(shell, check, append)
 
@@ -103,6 +103,8 @@ class StepNineBlocks(unittest.TestCase):
         self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
 
         override = self.codex / "AGENTS.override.md"
+        override.touch()  # Codex skips an empty override file
+        self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
         override.write_text("# Override\n", encoding="utf-8")
         self.assertEqual(self.states(shell, check), {str(link): "present", str(override): "absent"})
 

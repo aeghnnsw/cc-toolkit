@@ -276,8 +276,8 @@ verified in step 8. An agent capture is an inbox item that an agent adds
 when a task that it was given stops and waits on the user. The
 [gtd-inbox skill](../gtd-inbox/SKILL.md#agent-capture) holds its rules. One
 rule in the user's global instruction files turns it on. Codex reads
-`AGENTS.override.md` instead of `AGENTS.md` when that file exists, so the
-check uses it. The check also finds a rule that is wrapped on more than
+`AGENTS.override.md` instead of `AGENTS.md` when that file is not empty,
+so the check uses it. The check also finds a rule that is wrapped on more than
 one line.
 
 1. Check the global instruction file of each host:
@@ -285,7 +285,7 @@ one line.
    ```bash
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
    codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
-   if [ -e "${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md" ]; then codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md"; fi
+   if [ -s "${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md" ]; then codex="${CODEX_HOME:-$HOME/.codex}/AGENTS.override.md"; fi
    for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "$codex"; do
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
@@ -298,7 +298,11 @@ one line.
 
 2. When two paths resolve to the same file, treat them as one file. Skip a
    path with `no host`. Report a `broken symlink` and do not write to it.
-   If no file is `absent` or `missing`, go to step 10.
+   If no file is `absent` or `missing`, go to step 10. When the variable of
+   the other host is not set in this session, the check uses that host's
+   default folder. If the user runs that host with another configuration
+   folder, ask for it, set `CLAUDE_CONFIG_DIR` or `CODEX_HOME` to it, and
+   run the check again.
 3. Show each `absent` or `missing` path and the exact text that item 4
    adds at the end of the file: a blank line, the heading
    `# GTD agent captures`, a blank line, and the rule as a list item. Say
@@ -318,7 +322,8 @@ one line.
 5. If a write fails, for example because permission is denied, report the
    path and the rule so that the user can add the rule.
 6. Run the check of item 1 again. Require `present` for each file that this
-   step changed.
+   step changed. Report a file that is not `present` as failed, with its
+   path and the rule, and do not write to it again.
 
 ## 10. Report
 
@@ -334,7 +339,7 @@ Report these results:
   existing GTD binding or database, state the number of items that the read
   check returned; do not report the owner as verified.
 - Agent captures: each file that this run changed, each file that already
-  had the rule, or off. A tool that replaces a global instruction file
+  had the rule, each failed file, or off. A tool that replaces a global instruction file
   removes the rule. A new run of `gtd-setup` adds it again.
 
 Add the Supabase Free plan notes:

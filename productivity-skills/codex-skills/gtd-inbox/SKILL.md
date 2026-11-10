@@ -31,7 +31,8 @@ contract.
 - **Capture:** Keep each supplied occurrence, including identical text, as
   a distinct record. Do not merge similar thoughts or broaden their scope.
   Do not clarify or plan the task during capture. An agent capture is
-  the exception: it adds a proposal in its notes.
+  the exception: it adds a proposal in its notes, and it skips an item
+  that GTD already holds.
 - **Remove:** Resolve the requested item to its UUID. If several records
   match, show their full titles and short unique ID suffixes. Ask which
   occurrence the user means.
@@ -81,8 +82,8 @@ Add no agent capture for these items:
   turn by turn, such as the batch approval of `gtd-process`.
 - A decision that you made and that is easy to reverse. Put it in the notes
   of the review item.
-- An item that a pending inbox item already holds: the same `Source` link
-  and the same decision, finding, or result.
+- An item that GTD already holds: a pending inbox item or an open action
+  with the same `Source` link and the same decision, finding, or result.
 
 A subagent, or a child task that another agent started, adds no agent
 capture. It reports the items to its parent, and the parent adds them.
@@ -110,8 +111,8 @@ only from evidence of a real deadline. Set only `kind`, `title`, and
 `notes`. The other fields keep their defaults, because a proposal is not a
 commitment.
 
-Before you save, read the complete pending inbox. Save the agent
-captures of one turn together, without a confirmation step. Split them into batches only at the cloud contract's batch limit.
+Before you save, read the complete pending inbox and the open actions.
+Save the agent captures of one turn together, without a confirmation step. Split them into batches only at the cloud contract's batch limit.
 Make no other GTD change: for an agent capture, an agent never
 changes, completes, deletes, or restores a record, and it never starts
 `gtd-setup`.
