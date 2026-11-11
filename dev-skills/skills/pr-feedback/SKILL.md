@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-version: 3.2.0
+version: 3.3.0
 description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 ---
 
@@ -30,6 +30,8 @@ If no review skill is available, fall back to a thorough manual review — but a
 
 Save the full list for consolidation in Step 3.
 
+Do not give the review the skipped issues of earlier cycles. Step 3 compares the new issues with the skipped issues, so that a skipped issue cannot hide a new issue.
+
 ## Step 2: Gather External Reviews
 
 External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically triggered when the PR is pushed and run in parallel with the self-review. They often take longer to complete than the self-review.
@@ -48,26 +50,35 @@ External reviewers (e.g., GitHub Actions bots, Claude Code Review) are typically
 
 Merge all issues from Step 1 (self-review) and Step 2 (external reviews) into a single deduplicated list. Include every issue regardless of its original score or severity — all issues are treated equally from this point forward.
 
+From cycle 2, compare each issue with the skipped issue records of Step 4:
+
+- An issue **matches** a skipped issue when it makes the same claim about the same code.
+- A match has **new evidence** when that code changed after the cycle in its record, when the issue gives a failure scenario that the skip reason does not answer, or when it answers the skip reason.
+- Mark a match without new evidence `skipped before (cycle N)`, with the cycle of its record. Add 1 to the repeat count of the record. Do not investigate the issue again. It is not a new issue.
+- A match with new evidence is a new issue. Investigate it again in Step 4.
+- Mark an external comment that an earlier cycle handled `handled before (cycle N)`. It is not a new issue, unless the comment changed or has a new reply.
+
 Present the consolidated list:
 
 ```
 ## Consolidated PR Issues
 
-| # | Issue | Source | Severity |
-|---|-------|--------|----------|
-| 1 | Description of issue | self-review / reviewer-name | high/medium/low |
-| 2 | ... | ... | ... |
+| # | Issue | Source | Severity | Status |
+|---|-------|--------|----------|--------|
+| 1 | Description of issue | self-review / reviewer-name | high/medium/low | new |
+| 2 | ... | ... | ... | skipped before (cycle 1) |
+| 3 | ... | reviewer-name | ... | handled before (cycle 1) |
 ```
 
-If no issues were found from any source, inform the user the PR looks clean and skip to Step 7.
+If no new issue remains, inform the user the PR looks clean and skip to Step 7.
 
 ## Step 4: Investigate and Fix
 
-For each issue in the consolidated list, investigate one by one:
+For each new issue in the consolidated list, investigate one by one:
 
 1. **Investigate**: Read the relevant code, understand the context, and determine if the issue is valid.
 2. **If valid**: Fix the issue, even if minor. Make the minimal change needed.
-3. **If invalid**: Skip it with a brief explanation (e.g., "false positive — the null check already exists on line 42").
+3. **If invalid**: Skip it with a brief explanation (e.g., "false positive — the null check already exists on line 42"). Keep one skipped issue record for it through all later cycles: the issue, the skip reason, the cycle, and a repeat count that starts at 0. When the issue already has a record, replace its skip reason and cycle, and keep the repeat count. When a later cycle fixes the issue, remove its record.
 
 After processing each issue, report the outcome:
 
@@ -99,14 +110,14 @@ Specifically:
 - Treat cycle N the same as cycle 1 — same tools, same depth, same rigor
 - External reviewer comments will also be re-read for any new feedback (no need to wait on subsequent cycles — external reviewers should have finished by now)
 
-Repeat until no new issues are found in Step 3, then proceed to Step 7.
+Repeat until Step 3 has no new issue, then proceed to Step 7. An issue marked `skipped before` or `handled before` is not new.
 
 ## Step 7: Merge Decision
 
 When no new issues are found, summarize the overall PR state:
 - Total issues found (across all cycles)
 - Issues fixed
-- Issues skipped (with reasons)
+- Skipped issues: list each skipped issue record once, with its skip reason, its cycle, and its repeat count
 
 **If the user requested auto-merge:**
 
