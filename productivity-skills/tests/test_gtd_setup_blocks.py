@@ -93,7 +93,12 @@ class StepNineBlocks(unittest.TestCase):
 
         self.assertEqual(self.states(shell, check), {str(link): "absent", str(agents): "missing"})
 
-        self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
+        output = self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
+        self.assertEqual(output, f"added: {agents}\n")
+        self.assertEqual(agents.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
+
+        output = self.run_block(shell, append.replace("<file>", str(agents)))  # another run added it
+        self.assertEqual(output, f"present: {agents}\n")
         self.assertEqual(agents.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
 
         ended = self.root / "ended.md"  # a file that ends with a newline
@@ -110,6 +115,9 @@ class StepNineBlocks(unittest.TestCase):
         wrapped = "- " + RULE[:cut] + "\r\n  " + RULE[cut + 1:] + "\r\n"
         agents.write_text(wrapped, encoding="utf-8")
         self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
+        output = self.run_block(shell, append.replace("<file>", str(agents)))
+        self.assertEqual(output, f"present: {agents}\n")
+        self.assertEqual(agents.read_bytes(), wrapped.encode("utf-8"))
 
         override = self.codex / "AGENTS.override.md"
         override.touch()  # Codex skips an empty override file
