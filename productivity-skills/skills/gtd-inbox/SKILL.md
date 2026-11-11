@@ -1,7 +1,7 @@
 ---
 name: gtd-inbox
-version: 1.3.0
-description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), or when listing, counting, removing, clearing, or restoring inbox items."
+version: 1.4.0
+description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), when you finished the work of an agent capture, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
 Manage raw GTD captures in the configured Supabase store. Save captures
@@ -18,7 +18,9 @@ unavailable. It does not authorize a local or Reminders fallback.
 Use the request to choose capture, list, count, remove, clear, or restore.
 An empty invocation lists pending captures. When the user's instructions
 ask you to add waiting items to the GTD inbox, follow
-[Agent capture](#agent-capture). Ask only when the intended
+[Agent capture](#agent-capture). When you finished the work of an agent
+capture, follow [Finished agent captures](#finished-agent-captures). Ask
+only when the intended
 operation or record is unclear. Use **AskUserQuestion** when needed.
 
 For a capture, validate the route and write without first organizing the
@@ -68,7 +70,8 @@ An agent capture is an inbox item that an agent adds when a task that it
 was given stops and waits on the user. Add agent captures only when the
 user's instructions ask for them, for example the rule that `gtd-setup`
 adds to the global `CLAUDE.md` or `AGENTS.md`. The user processes each
-agent capture with `gtd-process`.
+agent capture with `gtd-process`, unless its work is finished first; see
+[Finished agent captures](#finished-agent-captures).
 
 Add one agent capture for each of these items:
 
@@ -117,7 +120,34 @@ Before you save, read the complete pending inbox and the open actions.
 Save the agent captures of one turn together, without a confirmation step.
 Split them into batches only at the cloud contract's batch limit. Make no
 other GTD change: for an agent capture, an agent never changes, completes,
-deletes, or restores a record, and it never starts `gtd-setup`.
+or restores a record, it deletes a record only as
+[Finished agent captures](#finished-agent-captures) allows, and it never
+starts `gtd-setup`.
+
+### Finished agent captures
+
+A pending agent capture is not yet a GTD action. The work of an agent
+capture is the user's part, such as the decision or the review, and the
+work that the user's answer asks for. When you finished all of that work
+yourself in the current task, soft-delete the capture. The user's answer
+in the thread is the confirmation; ask for no other.
+
+- Delete each finished agent capture that you saved in this conversation.
+- Delete another finished agent capture only when you see it in an inbox
+  read that you make anyway, such as the read before you save.
+
+Decide only from the work that you did in this conversation. Read no other
+source to decide, such as a pull request or an issue; `gtd-process` checks
+those. Keep the capture pending when some of its work still waits, or when
+you are not sure that all of it is finished. A subagent, or a child task
+that another agent started, deletes no capture. It reports the finished
+work to its parent, and the parent decides.
+
+Delete only agent captures: the captures with a `Source` line and
+`Proposed` lines in their notes. Use a soft delete of the capture's UUID at
+its current revision under the cloud contract, and change no other record.
+Use the cloud receipt and readback procedure before you report the
+deletion.
 
 ## Report
 
@@ -125,6 +155,12 @@ For agent captures, end the final message of the turn with a
 `## Needs you` list. Give one line for each item: its title and the short
 unique ID suffix of the saved record. For an item that was not saved, give
 its title and the error, such as a missing GTD binding or connector sign-in.
+
+For each agent capture that you deleted, give one line in the final message
+of the turn: `Deleted from the inbox: <title> (<full UUID>)`. Put these
+lines after the `## Needs you` list when there is one. The full UUID lets
+the user restore the capture. For a failed or uncertain deletion, give the
+title and the error.
 
 For capture, show the saved wording. Then show the pending count when a
 complete read succeeds. Mention any similar existing item after capture;

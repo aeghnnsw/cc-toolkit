@@ -80,7 +80,8 @@ remains part of the report.
 An inbox item that an agent adds when a task that it was given stops and
 waits on the user: a decision that only the user can make, a finding that
 needs attention, or a result to review. Its notes hold a proposal for
-processing. The user processes and completes it.
+processing. The user processes it with `gtd-process`. When its work is
+already done, the agent that did the work or `gtd-process` soft-deletes it.
 _Avoid_: Agent task, agent inbox item
 
 **GTD binding**:
