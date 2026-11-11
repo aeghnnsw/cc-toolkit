@@ -19,12 +19,12 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = PLUGIN_ROOT / "references" / "gtd-token-connector.md"
-FENCE = re.compile(r"^[ \t]*```(?:sh|bash)[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
+FENCE = re.compile(r"^[ \t]*```sh[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
 SERVICE = "cc-toolkit-supabase-pat"
 
 
 def helper_block() -> str:
-    """Return the one shell block of the reference that starts with a shebang."""
+    """Return the one `sh` block of the reference that starts with a shebang, dedented."""
     blocks = [re.sub(r"^   ", "", block, flags=re.MULTILINE)
               for block in FENCE.findall(REFERENCE.read_text(encoding="utf-8"))]
     helpers = [block for block in blocks if block.startswith("#!/bin/sh\n")]

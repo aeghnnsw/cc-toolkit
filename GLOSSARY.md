@@ -89,13 +89,13 @@ one person's GTD data on one computer.
 _Avoid_: Private route, private configuration
 
 **Connected route**:
-The access path through the host's Supabase connector, with the connector's
-sign-in or a token connector.
+The access path through the host's Supabase connector, which uses the
+connector's sign-in or a personal access token (a token connector).
 
 **Token connector**:
-The host's Supabase connector set up with a personal access token that a
-local helper script supplies, instead of the connector's sign-in.
-_Avoid_: PAT route, token client
+The host's Supabase connector set up with a personal access token instead of
+the connector's sign-in.
+_Avoid_: PAT route
 
 ## Slide language
 
