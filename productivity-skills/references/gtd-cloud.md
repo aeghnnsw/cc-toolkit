@@ -35,6 +35,8 @@ operation.
 Discover the host's connected Supabase SQL tool. It accepts `project_id` and
 `query`; its qualified name can differ between hosts. If the connector is
 missing or needs authentication, report the required connection or sign-in.
+For several Claude Code profiles, or for Codex without a connected Supabase
+app, also name the [token connector](gtd-token-connector.md).
 A failure before sending confirms no save. A failure during or after sending
 has an uncertain outcome; use the receipt procedure below. Keep native GTD files and Reminders as
 preserved source copies after cloud cutover; do not fall back to them.

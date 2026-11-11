@@ -90,7 +90,12 @@ _Avoid_: Private route, private configuration
 
 **Connected route**:
 The access path through the host's Supabase connector, with the connector's
-sign-in.
+sign-in or a token connector.
+
+**Token connector**:
+The host's Supabase connector set up with a personal access token that a
+local helper script supplies, instead of the connector's sign-in.
+_Avoid_: PAT route, token client
 
 ## Slide language
 
