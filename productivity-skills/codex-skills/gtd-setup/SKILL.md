@@ -313,15 +313,22 @@ one line.
    which files, or to skip. If the user skips, agent captures stay off; go
    to step 10.
 4. Add the text to each chosen file. Replace `<file>` with its path. The
-   `>>` redirection writes through a symlink and keeps the symlink:
+   commands below first check the file again, as item 1 does, because
+   another `gtd-setup` run can add the rule after that check. They print
+   `present: <file>` and add nothing when the file already has the rule.
+   Otherwise they add the text and print `added: <file>`. The `>>`
+   redirection writes through a symlink and keeps the symlink:
 
    ```bash
    f='<file>'
    rule='When a task you were given stops and waits on the user, add each waiting item to the GTD inbox with the `gtd-inbox` skill.'
-   if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n\n' >> "$f"
-   elif [ -s "$f" ]; then printf '\n' >> "$f"
+   if [ -e "$f" ] && LC_ALL=C tr -s '[:space:]' ' ' < "$f" | LC_ALL=C grep -Fq -- "$rule"; then echo "present: $f"
+   else
+     if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then printf '\n\n' >> "$f"
+     elif [ -s "$f" ]; then printf '\n' >> "$f"
+     fi
+     printf '# GTD agent captures\n\n- %s\n' "$rule" >> "$f" && echo "added: $f"
    fi
-   printf '# GTD agent captures\n\n- %s\n' "$rule" >> "$f"
    ```
 
 5. If a write fails, for example because permission is denied, report the
@@ -344,7 +351,8 @@ Report these results:
   existing GTD binding or database, state the number of items that the read
   check returned; do not report the owner as verified.
 - Agent captures: each file that this run changed, each file that already
-  had the rule, each failed file, or off. A tool that replaces a global
+  had the rule, including each file for which item 4 of step 9 printed
+  `present`, each failed file, or off. A tool that replaces a global
   instruction file removes the rule. A new run of `gtd-setup` adds it again.
 
 Add the Supabase Free plan notes:
