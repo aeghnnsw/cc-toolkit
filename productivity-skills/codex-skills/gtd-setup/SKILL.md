@@ -7,7 +7,8 @@ Set up the cloud GTD store for one person on this computer. Create the GTD
 tables in a Supabase project, or find an existing GTD database. Then write
 and verify the GTD binding: the private pair of project reference and owner
 UUID in `~/.config/cc-toolkit/gtd.json`. All database access uses the
-connected route: the host's Supabase connector with the connector's sign-in.
+connected route: the host's Supabase connector, which uses the connector's
+sign-in or a personal access token (a token connector).
 If the user agrees, turn on agent captures at the end.
 
 Read the [cloud operating contract](../../references/gtd-cloud.md) before
@@ -64,12 +65,18 @@ item for this owner.
    `execute_sql`, and `list_tables`. A host can add a prefix to each name,
    for example `mcp__codex_apps__supabase_execute_sql`.
 3. If no Supabase tool is connected, or the connector needs
-   authentication, report the required connection or sign-in, and stop.
-4. List the accessible projects to prove the sign-in. If the connection is
+   authentication, report the required connection or sign-in. For several
+   Claude Code profiles, or for Codex without a connected Supabase app,
+   also name the [token connector](../../references/gtd-token-connector.md).
+   Then stop.
+4. List the accessible projects to prove the access. If the connection is
    scoped to one project, it cannot list or create projects. If the
-   connection is read-only, it cannot apply the schema. When a later step
-   needs a capability that the connection does not have, report the
-   required connection, and stop.
+   connection is read-only, it cannot apply the schema. A connector URL
+   with `project_ref` scopes the connection to one project and also
+   removes `project_id` from the SQL tool, so the GTD skills cannot use
+   that connector. A URL with `read_only=true` stops every GTD save. When a
+   later step needs a capability that the connection does not have, report
+   the required connection, and stop.
 
 ## 2. Check the existing GTD binding
 
