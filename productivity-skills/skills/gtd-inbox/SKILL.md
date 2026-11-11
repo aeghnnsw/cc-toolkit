@@ -1,7 +1,7 @@
 ---
 name: gtd-inbox
 version: 1.4.0
-description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), when you finished the work of an agent capture, or when listing, counting, removing, clearing, or restoring inbox items."
+description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), when the work of an agent capture is done, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
 Manage raw GTD captures in the configured Supabase store. Save captures
@@ -18,10 +18,10 @@ unavailable. It does not authorize a local or Reminders fallback.
 Use the request to choose capture, list, count, remove, clear, or restore.
 An empty invocation lists pending captures. When the user's instructions
 ask you to add waiting items to the GTD inbox, follow
-[Agent capture](#agent-capture). When you finished the work of an agent
-capture, follow [Finished agent captures](#finished-agent-captures). Ask
-only when the intended
-operation or record is unclear. Use **AskUserQuestion** when needed.
+[Agent capture](#agent-capture). When the work of an agent capture is
+done, follow [Done agent captures](#done-agent-captures). Ask only when
+the intended operation or record is unclear. Use **AskUserQuestion** when
+needed.
 
 For a capture, validate the route and write without first organizing the
 inbox. For list or count, read the complete pending inbox. For removal or
@@ -70,8 +70,8 @@ An agent capture is an inbox item that an agent adds when a task that it
 was given stops and waits on the user. Add agent captures only when the
 user's instructions ask for them, for example the rule that `gtd-setup`
 adds to the global `CLAUDE.md` or `AGENTS.md`. The user processes each
-agent capture with `gtd-process`, unless its work is finished first; see
-[Finished agent captures](#finished-agent-captures).
+agent capture with `gtd-process`, unless its work is done first; see
+[Done agent captures](#done-agent-captures).
 
 Add one agent capture for each of these items:
 
@@ -121,33 +121,33 @@ Save the agent captures of one turn together, without a confirmation step.
 Split them into batches only at the cloud contract's batch limit. Make no
 other GTD change: for an agent capture, an agent never changes, completes,
 or restores a record, it deletes a record only as
-[Finished agent captures](#finished-agent-captures) allows, and it never
-starts `gtd-setup`.
+[Done agent captures](#done-agent-captures) allows, and it never starts
+`gtd-setup`.
 
-### Finished agent captures
+### Done agent captures
 
-A pending agent capture is not yet a GTD action. The work of an agent
-capture is the user's part, such as the decision or the review, and the
-work that the user's answer asks for. When you finished all of that work
-yourself in the current task, soft-delete the capture. The user's answer
-in the thread is the confirmation; ask for no other.
+A pending agent capture is not yet a GTD action. Its work is done when the
+user gave the answer that it waits on, such as the decision or the review,
+and you then did all the work that the answer asks for. The user's answer
+in this conversation is the confirmation; ask for no other. Then
+soft-delete the capture:
 
-- Delete each finished agent capture that you saved in this conversation.
-- Delete another finished agent capture only when you see it in an inbox
-  read that you make anyway, such as the read before you save.
+- Delete each done agent capture that you saved in this conversation.
+- Delete another done agent capture only when you see it in an inbox read
+  that you make anyway, such as the read before you save.
 
-Decide only from the work that you did in this conversation. Read no other
-source to decide, such as a pull request or an issue; `gtd-process` checks
-those. Keep the capture pending when some of its work still waits, or when
-you are not sure that all of it is finished. A subagent, or a child task
-that another agent started, deletes no capture. It reports the finished
-work to its parent, and the parent decides.
+Decide only from this conversation: the user's answer and the work that
+you or your subagents did after it. Read no other source to decide, such
+as a pull request or an issue; `gtd-process` checks those. Keep the
+capture pending when some of its work still waits, or when you are not
+sure that all of it is done. A subagent, or a child task that another
+agent started, deletes no capture. It reports the work that it did to its
+parent, and the parent decides.
 
-Delete only agent captures: the captures with a `Source` line and
-`Proposed` lines in their notes. Use a soft delete of the capture's UUID at
-its current revision under the cloud contract, and change no other record.
-Use the cloud receipt and readback procedure before you report the
-deletion.
+Delete only a pending inbox item with a `Source` line and `Proposed` lines
+in its notes. Use a soft delete of its UUID at its current revision under
+the cloud contract, and change no other record. Use the cloud receipt and
+readback procedure before you report the deletion.
 
 ## Report
 
