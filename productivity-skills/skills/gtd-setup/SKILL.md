@@ -351,9 +351,9 @@ Report these results:
   existing GTD binding or database, state the number of items that the read
   check returned; do not report the owner as verified.
 - Agent captures: each file that this run changed, each file that already
-  had the rule (also a file for which item 4 of step 9 printed `present`),
-  each failed file, or off. A tool that replaces a global instruction file
-  removes the rule. A new run of `gtd-setup` adds it again.
+  had the rule, including each file for which item 4 of step 9 printed
+  `present`, each failed file, or off. A tool that replaces a global
+  instruction file removes the rule. A new run of `gtd-setup` adds it again.
 
 Add the Supabase Free plan notes:
 

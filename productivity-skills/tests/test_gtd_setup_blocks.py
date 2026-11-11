@@ -103,10 +103,12 @@ class StepNineBlocks(unittest.TestCase):
 
         ended = self.root / "ended.md"  # a file that ends with a newline
         ended.write_text("# Mine\n", encoding="utf-8")
-        self.run_block(shell, append.replace("<file>", str(ended)))
+        output = self.run_block(shell, append.replace("<file>", str(ended)))
+        self.assertEqual(output, f"added: {ended}\n")
         self.assertEqual(ended.read_text(encoding="utf-8"), f"# Mine\n\n# GTD agent captures\n\n- {RULE}\n")
 
-        self.run_block(shell, append.replace("<file>", str(link)))
+        output = self.run_block(shell, append.replace("<file>", str(link)))
+        self.assertEqual(output, f"added: {link}\n")
         self.assertTrue(link.is_symlink())
         self.assertEqual(real.read_bytes(),
                          f"# Mine \xe9\n- rule one\n\n# GTD agent captures\n\n- {RULE}\n".encode("latin-1"))
