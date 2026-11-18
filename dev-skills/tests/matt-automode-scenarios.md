@@ -22,9 +22,11 @@
 These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241)
 and later changes from issues #302, #305, #354,
 [#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
-[#392](https://github.com/aeghnnsw/cc-toolkit/issues/392), and
-[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388). Issue #358 removes
+[#392](https://github.com/aeghnnsw/cc-toolkit/issues/392),
+[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
+[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
+Issue #420 adds cases 28–33.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -122,6 +124,28 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     completed grilling. A decision removes inline Claude reading.
     The source issue's problem statement says that the operator plans to
     read with several Claude and Codex logins. The spec is not published.
+28. **Cutoff script.** The repository has
+    `scripts/find-retrospective-cutoff.py`. It prints
+    `2026-11-18T06:04:17Z PR #512`. A comment on PR #498 mentions
+    "Reviewed through 2026-11-18T06:30:00Z" outside a retro record. The
+    run's PRs merged, and cleanup reported.
+29. **Newer cutoff before the post.** In case 28, the run set its cutoff to
+    2026-11-18T07:00:00Z and read the sessions after 06:04:17Z. It has
+    findings at 06:20 and 06:50. Before it opens proposal issues, the script
+    prints `2026-11-18T06:40:00Z PR #515`.
+30. **Leader runs the retro.** The task says that the leader session runs
+    the navigation retrospective for this run. The run's PR merged, and
+    cleanup reported.
+31. **No cutoff script.** The repository has no
+    `scripts/find-retrospective-cutoff.py`. Two merged PRs have retro
+    records. The run's PRs merged, and cleanup reported.
+32. **Script cannot reach GitHub.** The repository has
+    `scripts/find-retrospective-cutoff.py`. It exits with status 1 and prints
+    `FAIL: gh pr list failed:` with a network error. The run's PRs merged,
+    and cleanup reported.
+33. **Leader retro with no earlier record.** A leader started three runs of
+    this repository. All three finished, and two merged PRs. No merged PR has
+    a retro record. The leader now runs the retrospective for its runs.
 
 ## Expected results
 
@@ -154,6 +178,12 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | No merged PR | Report the blocker and keep the work. Skip the retro. | Posting a retro record on an open PR; advancing the cutoff. | The blocker report and no new retro record, so the next run reads these sessions. |
 | Steering text only | Record "no fix", or open a proposal issue for a tool fix such as a faster suite. | Proposing the `CLAUDE.md` sentence; editing any file. | The retro record with the finding and its result. |
 | Problem statement conflict | Record the conflict as an unresolved decision and reopen phase 1. Resolve it through `grill-with-research` from evidence, then publish the spec. | Publishing the spec with the conflicting decision; asking the user; repeating grilling for decisions without a conflict. | The problem statement check in the planning files: each item with its decision, the conflict with its resolution and rationale, and a new check that finds no unresolved conflict. |
+| Cutoff script | Run `python3 scripts/find-retrospective-cutoff.py` and use 2026-11-18T06:04:17Z as the previous cutoff. Set this run's cutoff before reading sessions. | Searching PR comments by hand; using the PR #498 mention as a cutoff. | The script output. |
+| Newer cutoff before the post | Drop the 06:20 finding, keep the 06:50 finding, and post the record with Reviewed through 07:00:00Z. Name PR #515's cutoff in the record. | Posting the 06:20 finding again; changing this run's cutoff to 06:40. | Both script outputs and the finding times. |
+| Leader runs the retro | Skip phase 8 and give the leader the merged PR link. | Reading sessions or posting a retro record in this run. | The task text and the sent PR link. |
+| No cutoff script | Find the greatest Reviewed through timestamp in the merged PRs' retro records by hand, then post the record as before. | Requiring the script; stopping the retro because it is absent. | The two records and their timestamps. |
+| Script cannot reach GitHub | Post no record and report the retro as blocked with the error. | Treating the failure as "no record" and reading only this run's sessions; posting a cutoff. | The exit status and the `gh` error. |
+| Leader retro with no earlier record | Read the sessions of the leader and of all three runs, and post one record on the later of the two merged PRs. | Reading only the leader's own session; posting one record for each run. | The three runs' sessions and the two merged PR links. |
 
 ## Validation limits
 
@@ -164,6 +194,31 @@ it does not enforce agent behavior. Record actual review outcomes separately
 from these expected results.
 
 ## Review record
+
+### 2026-11-18, issue #420
+
+**Round 1.** One fresh agent read both copies and cases 20, 21, 25, and
+28–31. It did not receive the expected results. Both copies gave the same
+answers, and cases 28–31 ended at the expected actions. The code review and
+the agent found gaps: the second script call came after step 4 had opened
+proposal issues; "later than in step 1" could mean either cutoff of step 1;
+a `gh` failure had no action; the record form could be one that the script
+cannot read; a leader with no earlier record could read only its own session;
+and a first record, which reads only its run's sessions, could make another
+run drop findings from sessions that no retrospective read. The second call
+is now its own step before the proposal issues and compares with the
+script's first output, and it applies only when step 1 found a record. A
+`gh` failure posts no record. With the script, the record uses the form that
+the script reads. The leader reads the sessions of all its runs and its own.
+Cases 32 and 33 are new.
+
+**Round 2.** A fresh agent read the changed copies and cases 25 and 28–33.
+All seven ended at the expected actions. It reported that case 29 still said
+"directly before the post" and that "all its runs" did not name the leader's
+own session; both now match the skill. Its other points concern text that
+this issue did not change.
+
+These were simulated instruction reviews. No full automode workflow ran.
 
 ### 2026-11-08, issue #388
 
