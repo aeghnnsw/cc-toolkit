@@ -63,12 +63,14 @@ complete while a required closure is unverified.
   - the worktree that the current session runs in;
   - each worktree that the command lists;
   - each worktree with no commit of its own: its branch tip or detached HEAD
-    is in the Default Branch, and no merged PR of its branch exists. A session
-    may have just started there.
+    is in the Default Branch, and no merged PR of its branch has that tip as
+    its head commit (`headRefOid`). A session may have just started there.
+    When PR state cannot be read, keep the worktree.
 
-  If the command fails, remove no worktree and report its error.
-- Remove the other clean merged worktrees and local branches, delete every
-  verified-merged branch from the upstream remote, and prune stale
+  If the command fails, keep every worktree with its branches and report the
+  error.
+- Remove the other clean merged worktrees with their local branches. Delete
+  the other verified-merged branches from the upstream remote, and prune stale
   remote-tracking references.
 - Inspect each planning folder: the repository's documented location, or
   `.scratch/<issue>-<slug>/` in the main checkout. When its issue is closed as

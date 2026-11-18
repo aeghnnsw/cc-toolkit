@@ -88,8 +88,8 @@ class LiveWorktreesTests(unittest.TestCase):
         self.addCleanup(proc.kill)
         return proc
 
-    def run_script(self, *args: str, cwd: Path | None = None, shell: bool = False) -> dict[str, str]:
-        command = [sys.executable, str(SCRIPT), "--repo", str(self.repo), *args]
+    def run_script(self, cwd: Path | None = None, shell: bool = False) -> dict[str, str]:
+        command = [sys.executable, str(SCRIPT), "--repo", str(self.repo)]
         if shell:
             # The trailing `:` keeps sh from replacing itself with the script.
             command = ["sh", "-c", '"$@"; :', "sh", *command]
@@ -131,19 +131,21 @@ class LiveWorktreesTests(unittest.TestCase):
         self.assertIn(f"session log {recent_log.resolve()}", listed[self.listed_path(recent)])
         self.assertNotIn(self.listed_path(old), listed)
 
-    def test_lists_a_worktree_from_a_recent_codex_rollout(self):
+    def test_lists_a_worktree_from_a_recent_codex_rollout_and_skips_an_old_one(self):
         worktree = self.add_worktree("codex-run")
-        rollout = write_log(
-            self.codex_dir / "sessions" / "2026" / "11" / "18" / "rollout-2026-11-18T09-00-00-t1.jsonl",
-            [
-                {"type": "session_meta", "payload": {"id": "t1", "cwd": str(self.repo)}},
-                {"type": "turn_context", "payload": {"cwd": str(worktree)}},
-            ],
-        )
+        old = self.add_worktree("codex-old")
+        day = self.codex_dir / "sessions" / "2026" / "11" / "18"
+        rollout = write_log(day / "rollout-2026-11-18T09-00-00-t1.jsonl", [
+            {"type": "session_meta", "payload": {"id": "t1", "cwd": str(self.repo)}},
+            {"type": "turn_context", "payload": {"cwd": str(worktree)}},
+        ])
+        write_log(day / "rollout-2026-11-18T07-00-00-t2.jsonl",
+                  [{"type": "session_meta", "payload": {"id": "t2", "cwd": str(old)}}], age_minutes=90)
 
         listed = self.run_script()
 
         self.assertIn(f"session log {rollout.resolve()}", listed[self.listed_path(worktree)])
+        self.assertNotIn(self.listed_path(old), listed)
 
     def test_reads_the_config_folder_of_another_running_session(self):
         worktree = self.add_worktree("other-config")
@@ -208,6 +210,25 @@ class LiveWorktreesTests(unittest.TestCase):
 
         line = listed[self.listed_path(busy)]
         self.assertRegex(line, rf"^process ({first.pid}|{second.pid}) \(sleep\) and 1 more$")
+
+    def test_fails_when_ps_fails(self):
+        # Without ps, the config folders of other sessions stay unknown, so a
+        # result would miss their logs.
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        fake_ps = bin_dir / "ps"
+        fake_ps.write_text("#!/bin/sh\necho 'ps: broken' >&2\nexit 1\n")
+        fake_ps.chmod(0o755)
+        self.env["PATH"] = f"{bin_dir}{os.pathsep}{self.env['PATH']}"
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--repo", str(self.repo)],
+            env=self.env, capture_output=True, text=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("ps: broken", result.stderr)
+        self.assertEqual(result.stdout, "")
 
     def test_fails_outside_a_repository(self):
         result = subprocess.run(

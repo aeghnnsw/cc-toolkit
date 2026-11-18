@@ -4,13 +4,17 @@
 repo-cleanup runs this script before it removes worktrees. Each output line is
 a worktree path, as `git worktree list` prints it, a tab, and the evidence:
 a Git lock, a running process with its working directory in the worktree, or
-a Claude Code or Codex session log, changed in the last --minutes, that
-records a working directory in the worktree. The main worktree is never
+a Claude Code or Codex session log, changed in the last 60 minutes, that
+records a working directory in the worktree. The main checkout is never
 listed, because cleanup never removes it.
 
 The current session is left out: this process, its ancestors, and the logs
 named by CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID. The exit status is 0 when
-the check ran and 1 when it could not run, for example without lsof.
+the check ran and 1 when it could not run, for example without lsof or ps.
+
+Limit: a session with no process in the worktree and no log change in the
+last 60 minutes is not found, for example a Codex thread, whose app server
+runs in another folder, that waits for an hour.
 """
 
 from __future__ import annotations
@@ -22,17 +26,19 @@ import re
 import subprocess
 import sys
 import time
+from typing import NoReturn
 
+WINDOW_MINUTES = 60
 TAIL = 4 * 1024 * 1024
 CONFIG_VAR = re.compile(r"(?:^|\s)(CLAUDE_CONFIG_DIR|CODEX_HOME)=(\S+)")
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     print(f"live_worktrees: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def worktrees(repo: str) -> dict[str, list[str]]:
+def linked_worktrees(repo: str) -> dict[str, list[str]]:
     """Return each linked worktree path, without the main worktree, with its lock."""
     try:
         result = subprocess.run(
@@ -118,10 +124,11 @@ def config_dirs() -> dict[str, set[str]]:
     }
     try:
         result = subprocess.run(["ps", "axeww", "-o", "command="], capture_output=True, text=True)
-        output = result.stdout
     except FileNotFoundError:
-        output = ""
-    for name, value in CONFIG_VAR.findall(output):
+        fail("ps is not installed, so the config folders of running sessions cannot be found")
+    if result.returncode != 0:
+        fail(result.stderr.strip() or "ps axeww failed")
+    for name, value in CONFIG_VAR.findall(result.stdout):
         found[name].add(value)
     return {name: values - {""} for name, values in found.items()}
 
@@ -193,39 +200,38 @@ def log_dirs(path: str) -> set[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=".", help="repository checkout (default: .)")
-    parser.add_argument("--minutes", type=float, default=60,
-                        help="read session logs changed in the last N minutes (default: 60)")
     args = parser.parse_args()
 
-    locks = worktrees(args.repo)
-    roots = {os.path.realpath(path): path for path in locks}
-    processes: dict[str, list[str]] = {path: [] for path in locks}
-    logs: dict[str, list[str]] = {path: [] for path in locks}
+    # For each linked worktree, the evidence of each kind, in report order.
+    evidence = {
+        path: {"lock": locks, "process": [], "log": []}
+        for path, locks in linked_worktrees(args.repo).items()
+    }
+    roots = {os.path.realpath(path): path for path in evidence}
     for pid, command, cwd in process_dirs(current_session_pids()):
         path = owner(cwd, roots)
         if path is not None:
-            processes[path].append(f"process {pid} ({command})")
-    dirs = config_dirs()
-    log_roots = ([os.path.join(d, "projects") for d in dirs["CLAUDE_CONFIG_DIR"]]
-                 + [os.path.join(d, "sessions") for d in dirs["CODEX_HOME"]])
+            evidence[path]["process"].append(f"process {pid} ({command})")
+    config = config_dirs()
+    log_roots = ([os.path.join(d, "projects") for d in config["CLAUDE_CONFIG_DIR"]]
+                 + [os.path.join(d, "sessions") for d in config["CODEX_HOME"]])
     now = time.time()
     idents = [os.environ.get(name, "") for name in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID")]
     idents = [ident for ident in idents if ident]
-    for log, changed in recent_logs(log_roots, now - args.minutes * 60):
+    for log, changed in recent_logs(log_roots, now - WINDOW_MINUTES * 60):
         if own_log(log, idents):
             continue
         for path in {owner(cwd, roots) for cwd in log_dirs(log)} - {None}:
-            logs[path].append(f"session log {log} ({(now - changed) / 60:.0f} min ago)")
-    for path in locks:
+            evidence[path]["log"].append(f"session log {log} ({(now - changed) / 60:.0f} min ago)")
+    for path, kinds in evidence.items():
         # Name the first item of each kind and count the others; the newest
         # log comes first.
-        evidence = [
+        found = [
             items[0] + (f" and {len(items) - 1} more" if len(items) > 1 else "")
-            for items in (locks[path], processes[path], logs[path]) if items
+            for items in kinds.values() if items
         ]
-        if evidence:
-            print(f"{path}\t{'; '.join(evidence)}")
-
+        if found:
+            print(f"{path}\t{'; '.join(found)}")
 
 if __name__ == "__main__":
     main()
