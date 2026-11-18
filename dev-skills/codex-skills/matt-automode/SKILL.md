@@ -93,9 +93,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    after merge if the tracker did not close them.
 8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
    "Navigation retrospective" below once for the run. Complete when its record
-   is posted. When the task says that another session runs the retrospective,
-   such as a leader of parallel runs, skip it and give that session the
-   merged PR links.
+   is posted. When the task says that a leader runs the retrospective for
+   this run, skip it and report the merged PR links to the leader. Repository
+   instructions alone do not skip it.
 
 ### When work changes or waits
 
@@ -124,8 +124,9 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    "Navigation retrospective" records on merged PRs. When the repository has
    `scripts/find-retrospective-cutoff.py`, run
    `python3 scripts/find-retrospective-cutoff.py` from the checkout root to
-   find it; on exit status 1, its message tells whether no record exists or
-   `gh` failed. Set this run's cutoff before reading sessions.
+   find it. On exit status 1, its message tells whether no record exists or
+   `gh` failed; when `gh` failed, post no record and report the retro as
+   blocked. Set this run's cutoff before reading sessions.
 2. Read the sessions of this repository and its worktrees after the previous
    cutoff, or this run's sessions when no record exists. Use the repository's
    session-discovery guidance when it has some. Otherwise read the JSONL logs:
@@ -135,21 +136,27 @@ The retro edits no tracked file. It proposes changes for a human to choose.
 3. Keep findings that cost the run significant time or work, such as a long
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.
-4. Open or reuse a proposal issue only when a finding's fix is clean, worth
+4. With the script, when step 1 found a record, run the script again. A
+   cutoff later than its first output means that another retrospective read
+   the sessions up to that cutoff: drop the findings at or before it, and name
+   it in the record. Keep this run's cutoff as the record's cutoff.
+5. Open or reuse a proposal issue only when a finding's fix is clean, worth
    its cost, and general. Prefer a tool fix or an automated check to new text
    in a steering file. Record each other finding as "no fix"; that result is
    correct even for every finding.
-5. Post a **Navigation retrospective** comment on the run's last merged PR:
+6. Post a **Navigation retrospective** comment on the run's last merged PR:
    the **Reviewed through** cutoff, the sessions read and history limits, and
    each finding with its session and time and its issue link or "no fix". A
    run that merges no PR skips the retro; the next run reads its sessions.
-   With the script, run it again directly before the post. A later cutoff
-   than in step 1 means another retrospective read the sessions up to it:
-   drop the findings at or before it and name it in the record.
+   With the script, write the cutoff as
+   `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, truncated to whole seconds,
+   because the script reads only that form.
 
-A session that starts parallel runs can run the retrospective once for all of
-them after their PRs merge, and post it on their last merged PR. Two
-retrospectives then do not read the same sessions.
+A leader is a session that starts parallel runs. When a leader runs the
+retrospective for its runs, it runs it once, after the runs finish, and posts
+it on their last merged PR. With no earlier record, it reads the sessions of
+all its runs and its own. Two retrospectives then do not read the same
+sessions.
 
 A proposal issue states the finding, its session and time, and the proposed
 change, with the repository's "Needs triage" label. To reuse an issue, add the
