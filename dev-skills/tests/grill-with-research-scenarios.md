@@ -121,6 +121,15 @@ static checks, simulated reviews, and live observations separately.
 
 ## Review record
 
+### 2026-11-18, issue #421
+
+Two rounds of one fresh agent each read both host copies and cases 12 and 13
+without the expected results. Both rounds gave the expected actions in both
+cases, in both copies. Both reported that `info/exclude` names no base folder,
+so an agent could create the file in the checkout. After round 2, the text
+says "Git's `info/exclude` file"; no round ran on that wording. These were
+simulated instruction reviews.
+
 ### 2026-11-08, issues #388 and #394
 
 **Static checks.** `test_grill_with_research.py` checks that both copies

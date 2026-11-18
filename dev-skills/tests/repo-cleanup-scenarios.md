@@ -134,3 +134,19 @@ counts only a merged PR whose head commit is the branch tip, and keeps the
 worktree when PR state cannot be read. Case 11 covers the reused name.
 
 This was a simulated instruction review. No cleanup ran.
+
+### 2026-11-18, issue #421
+
+Round 1: one fresh agent read both host copies and cases 1–16. It did not
+receive the expected results. Both copies gave the same answers. Case 16 had
+no clear answer, because the list of folders to inspect also covered a
+documented location in the main checkout. The skill now says: "When the
+documented location is in the main checkout, look only there."
+
+Round 2: a new fresh agent gave the expected action in all 16 cases, in both
+copies. It noted that in case 16 `git worktree remove` deletes the ignored
+folder of open issue #50, which it confirmed in a temporary repository. That
+is the behavior before this change for a repository that documents a
+main-checkout location, and the change keeps it.
+
+This was a simulated instruction review. No cleanup ran.

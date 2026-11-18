@@ -207,6 +207,21 @@ from these expected results.
 
 ## Review record
 
+### 2026-11-18, issue #421
+
+Round 1: one fresh agent read both host copies and cases 34–36 without the
+expected results. It reported that the skills named one folder with three
+terms: "the run's worktree", "the session's worktree", and "the current
+worktree". The Spec review reported that a run that starts in the main
+checkout and creates its worktree later could split its notes between two
+folders. `matt-automode` and `grill-with-research` now name
+"the checkout where the session started". A documented location that names
+no checkout is in that checkout too (case 35). Case 36 now covers a run that
+starts in the main checkout.
+
+Round 2: a new fresh agent gave the expected action in cases 34–36, in both
+copies. This was a simulated instruction review.
+
 ### 2026-11-18, issue #420
 
 **Round 1.** One fresh agent read both copies and cases 20, 21, 25, and
