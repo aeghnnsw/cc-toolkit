@@ -1,6 +1,6 @@
 ---
 name: grill-with-research
-version: 1.2.0
+version: 1.3.0
 description: Research the project, then grill the user only on decisions that research cannot settle; records glossary terms and ADRs. Use when the user asks to grill or stress-test a plan, design, or issue in the current project.
 ---
 
@@ -45,10 +45,10 @@ citable scientific result needs a cited run.
 
 ## Planning folder
 
-Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the main
-checkout. Until an issue exists, use `.scratch/<YYYYMMDD>-<slug>/`, then rename
-it. If Git does not ignore `.scratch/`, add `/.scratch/` to `info/exclude` and
-tell the user. Nothing outside the folder links to it. Use
+Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the
+session's worktree or, without one, the main checkout. Until an issue exists,
+use `.scratch/<YYYYMMDD>-<slug>/`, then rename it. If Git does not ignore
+`.scratch/`, add `/.scratch/` to `info/exclude` and tell the user. Nothing outside the folder links to it. Use
 `dev-skills:step-workflow` prefixes: grilling is the next free step.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files

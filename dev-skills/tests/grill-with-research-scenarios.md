@@ -10,7 +10,8 @@
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365), and
 [issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388), which adds
-case 20.
+case 20, and [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
+which moves the planning folder of case 12 into the session's worktree.
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md)
 and the [Codex skill](../codex-skills/grill-with-research/SKILL.md), with the
 Matt skills that the wrapper loads.
@@ -60,7 +61,8 @@ for issue 42, and the Matt skills load.
 11. **Research runs a script.** Reading cannot show whether a CLI accepts a
     flag. A check needs a script and a temporary Git repository.
 12. **No issue yet.** The user asks to grill a cache-layer plan. No issue
-    exists. The repository documents no planning folder.
+    exists. The repository documents no planning folder. The session runs in
+    the worktree `trees/cache`.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
 14. **Omitted Matt skill.** In Claude Code, the Skill tool lacks
@@ -100,7 +102,7 @@ for issue 42, and the Matt skills load.
 | Changed evidence | Research what the answer changed, reopen the first question, and hold the questions that depend on it. | Keeping the first answer unchanged; asking its dependent questions. | The new finding and the reopened decision in `01_research.md`. |
 | Missing access | Report the missing access, mark the finding unresolved, and ask the user only if the hosting decision still depends on it. | Treating the vendor's behavior as a verified fact. | The summary that names the inaccessible source. |
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d "${TMPDIR:-/tmp}/grill-with-research.XXXXXX"` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
-| No issue yet | Use `.scratch/<YYYYMMDD>-cache-layer/` in the main checkout. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder. | The folder path. |
+| No issue yet | Use `trees/cache/.scratch/<YYYYMMDD>-cache-layer/`. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder or in the main checkout. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
 | Omitted Matt skill | Run the resolver (with `--host codex` in Codex), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |

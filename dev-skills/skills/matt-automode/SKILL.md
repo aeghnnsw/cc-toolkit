@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.13.0
+version: 1.14.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -36,8 +36,12 @@ Report a missing required skill or tracker configuration as a blocker.
 ## Plan and decide
 
 Use `dev-skills:step-workflow` for numbered planning files and the session task
-list, within repository layout rules. Cite sources for consequential claims.
-Mark replaced decisions as superseded and link their replacements.
+list, within repository layout rules. Keep the planning files in the planning
+folder: the repository's documented location, or else `.scratch/<issue>-<slug>/`
+in the run's worktree, or in the main checkout when the run has no worktree.
+Apply the other rules of "Planning folder" in `grill-with-research`. Cite
+sources for consequential claims. Mark replaced decisions as superseded and
+link their replacements.
 
 For unfinished grilling, use [`grill-with-research`](../grill-with-research/SKILL.md)
 and answer its questions and confirmations yourself instead of asking the user.
