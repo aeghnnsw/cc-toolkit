@@ -3,7 +3,9 @@
 Cases 1–5 cover the planning folder rule from
 [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358). Cases 6–11
 cover the worktrees that cleanup keeps, from
-[issue #419](https://github.com/aeghnnsw/cc-toolkit/issues/419). Apply each case
+[issue #419](https://github.com/aeghnnsw/cc-toolkit/issues/419). Cases 12–16
+cover planning folders in worktrees, from
+[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Apply each case
 to the [Claude Code skill](../skills/repo-cleanup/SKILL.md) and the
 [Codex skill](../codex-skills/repo-cleanup/SKILL.md).
 
@@ -57,6 +59,25 @@ otherwise.
     whose tip is the tip of the Default Branch. PR #30 of an earlier branch
     `fix-x` was merged last month; its head commit is not that tip.
 
+In cases 12–16, the current session runs in the worktree `trees/feat-e`,
+whose branch `feat-e` was squash-merged in PR #60. Git ignores `.scratch/`.
+Each other named worktree is clean, and its branch was squash-merged.
+`live_worktrees.py` prints nothing unless a case says otherwise.
+
+12. **Current worktree.** `trees/feat-e/.scratch/46-search/` exists. Issue #46
+    is closed as completed.
+13. **Open issue in a merged worktree.** The worktree `trees/feat-f` holds
+    `.scratch/47-export/`. Issue #47 is open: PR #61 of `feat-f` did part of
+    its work.
+14. **Completed issue in a merged worktree.** The worktree `trees/feat-g`
+    holds `.scratch/48-import/`. Issue #48 is closed as completed.
+15. **Live worktree.** The worktree `trees/feat-h` holds `.scratch/49-retry/`.
+    Issue #49 is closed as completed. `live_worktrees.py` prints
+    `/repo/trees/feat-h<TAB>process 4242 (claude)`.
+16. **Documented location.** `CONTRIBUTING.md` says: "Keep planning folders in
+    `.scratch/<issue>-<slug>/` of the main checkout." The worktree
+    `trees/feat-i` holds `.scratch/50-metrics/`. Issue #50 is open.
+
 ## Expected results
 
 | Case | Next permitted action | Blocked action | Evidence needed |
@@ -72,6 +93,11 @@ otherwise.
 | Detached worktree | Keep `trees/scratch`; report that it has no commit of its own. | Removing it because its HEAD is in the Default Branch. | The detached HEAD in the Default Branch, with no branch and so no merged PR. |
 | Script failure | Remove no worktree, keep `trees/feat-d` with its local and remote branches, report the error, and continue the other safe cleanup. | Removing `trees/feat-d` or deleting `feat-d` without the live session check. | The exit status and the error message. |
 | Reused branch name | Keep `trees/fix-x` and its branches; report that it has no commit of its own. | Treating `fix-x` as merged because PR #30 of the same name merged. | The `headRefOid` of PR #30, which differs from the tip of `fix-x`. |
+| Current worktree | Delete `trees/feat-e/.scratch/46-search/` by its exact path and report it. Keep `trees/feat-e`. | Looking only in the main checkout; removing the current worktree. | Issue #46 with state closed and reason completed. |
+| Open issue in a merged worktree | Keep `trees/feat-f` with its local and remote branches; report that it holds the planning folder of open issue #47. | Removing the worktree, which deletes the folder. | Issue #47 with state open. |
+| Completed issue in a merged worktree | Delete `trees/feat-g/.scratch/48-import/`, remove `trees/feat-g`, delete `feat-g` locally and from the upstream remote, and report them. | Keeping the worktree because it holds a folder. | Issue #48 with state closed and reason completed. |
+| Live worktree | Keep `trees/feat-h` with its branches and leave `.scratch/49-retry/` in it unchanged; report the evidence. | Deleting files in a worktree that another live session may use. | The `live_worktrees.py` line for `trees/feat-h`. |
+| Documented location | Remove `trees/feat-i` with its branches, as before this change. Its `.scratch/` is not at the documented location, so it holds no planning folder. | Keeping the worktree for `.scratch/50-metrics/`; inspecting `.scratch/` of worktrees in place of the documented location. | The documented location in `CONTRIBUTING.md`. |
 
 ## Validation limits
 
@@ -106,5 +132,21 @@ what to do when PR state cannot be read. The skill now deletes only the other
 merged branches, keeps each worktree with its branches when the script fails,
 counts only a merged PR whose head commit is the branch tip, and keeps the
 worktree when PR state cannot be read. Case 11 covers the reused name.
+
+This was a simulated instruction review. No cleanup ran.
+
+### 2026-11-18, issue #421
+
+Round 1: one fresh agent read both host copies and cases 1–16. It did not
+receive the expected results. Both copies gave the same answers. Case 16 had
+no clear answer, because the list of folders to inspect also covered a
+documented location in the main checkout. The skill now says: "When the
+documented location is in the main checkout, look only there."
+
+Round 2: a new fresh agent gave the expected action in all 16 cases, in both
+copies. It noted that in case 16 `git worktree remove` deletes the ignored
+folder of open issue #50, which it confirmed in a temporary repository. That
+is the behavior before this change for a repository that documents a
+main-checkout location, and the change keeps it.
 
 This was a simulated instruction review. No cleanup ran.

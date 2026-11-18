@@ -23,10 +23,11 @@ These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241
 and later changes from issues #302, #305, #354,
 [#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [#392](https://github.com/aeghnnsw/cc-toolkit/issues/392),
-[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
-[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420). Issue #358 removes
+[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
+[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420), and
+[#421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
-Issue #420 adds cases 28–33.
+Issue #420 adds cases 28–33. Issue #421 adds cases 34–36.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -146,6 +147,14 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 33. **Leader retro with no earlier record.** A leader started three runs of
     this repository. All three finished, and two merged PRs. No merged PR has
     a retro record. The leader now runs the retrospective for its runs.
+34. **Planning folder in a worktree.** A run for issue #77 started in the
+    worktree `trees/feat-77`. The repository documents no planning folder
+    location. The run is about to write its first planning file.
+35. **Documented planning folder.** As case 34, but `docs/agents/plans.md`
+    says: "Keep planning files in `docs/plans/<issue>/`, which Git ignores."
+36. **Run in the main checkout.** As case 34, but the run started in the
+    main checkout. It creates the worktree `trees/feat-77` for its change in
+    phase 4.
 
 ## Expected results
 
@@ -184,6 +193,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | No cutoff script | Find the greatest Reviewed through timestamp in the merged PRs' retro records by hand, then post the record as before. | Requiring the script; stopping the retro because it is absent. | The two records and their timestamps. |
 | Script cannot reach GitHub | Post no record and report the retro as blocked with the error. | Treating the failure as "no record" and reading only this run's sessions; posting a cutoff. | The exit status and the `gh` error. |
 | Leader retro with no earlier record | Read the sessions of the leader and of all three runs, and post one record on the later of the two merged PRs. | Reading only the leader's own session; posting one record for each run. | The three runs' sessions and the two merged PR links. |
+| Planning folder in a worktree | Write the planning files in `trees/feat-77/.scratch/77-<slug>/`. | Writing them in the main checkout, the session scratchpad, or a tracked folder; searching for another location. | The folder path, and that Git ignores it or the `info/exclude` line that the run added. |
+| Documented planning folder | Write the planning files in `trees/feat-77/docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
+| Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
 
 ## Validation limits
 
@@ -194,6 +206,21 @@ it does not enforce agent behavior. Record actual review outcomes separately
 from these expected results.
 
 ## Review record
+
+### 2026-11-18, issue #421
+
+Round 1: one fresh agent read both host copies and cases 34–36 without the
+expected results. It reported that the skills named one folder with three
+terms: "the run's worktree", "the session's worktree", and "the current
+worktree". The Spec review reported that a run that starts in the main
+checkout and creates its worktree later could split its notes between two
+folders. `matt-automode` and `grill-with-research` now name
+"the checkout where the session started". A documented location that names
+no checkout is in that checkout too (case 35). Case 36 now covers a run that
+starts in the main checkout.
+
+Round 2: a new fresh agent gave the expected action in cases 34–36, in both
+copies. This was a simulated instruction review.
 
 ### 2026-11-18, issue #420
 

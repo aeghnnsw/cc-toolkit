@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.5.0
+version: 1.6.0
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 ---
 
@@ -69,14 +69,17 @@ complete while a required closure is unverified.
 
   If the command fails, keep every worktree with its branches and report the
   error.
+- Inspect each planning folder: the location that the repository documents,
+  or `.scratch/<issue>-<slug>/`. When the documented location is in the main
+  checkout, look only there. Otherwise look in the main checkout, in the
+  worktree that the current session runs in, and in each worktree that cleanup
+  would otherwise remove. When its issue is closed as completed, delete the
+  folder by exact path. Keep and report the folders of open or not-planned
+  issues and folders with no issue key, such as a date key. Keep each worktree
+  that holds a kept folder, with its local and remote branches.
 - Remove the other clean merged worktrees with their local branches. Delete
   the other verified-merged branches from the upstream remote, and prune stale
   remote-tracking references.
-- Inspect each planning folder: the repository's documented location, or
-  `.scratch/<issue>-<slug>/` in the main checkout. When its issue is closed as
-  completed, delete the folder by exact path. Keep and report the folders of
-  open or not-planned issues and folders with no issue key, such as a date
-  key.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
 - Report what was cleaned and retained, with a reason for each retained item.
