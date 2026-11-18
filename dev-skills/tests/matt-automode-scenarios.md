@@ -23,8 +23,10 @@ These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241
 and later changes from issues #302, #305, #354,
 [#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [#392](https://github.com/aeghnnsw/cc-toolkit/issues/392), and
-[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388). Issue #358 removes
+[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
+[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
+Issue #420 adds cases 28–31.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
 and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
 
@@ -122,6 +124,21 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     completed grilling. A decision removes inline Claude reading.
     The source issue's problem statement says that the operator plans to
     read with several Claude and Codex logins. The spec is not published.
+28. **Cutoff script.** The repository has
+    `scripts/find-retrospective-cutoff.py`. It prints
+    `2026-11-18T06:04:17Z PR #512`. A comment on PR #498 mentions
+    "Reviewed through 2026-11-18T06:30:00Z" outside a retro record. The
+    run's PRs merged, and cleanup reported.
+29. **Newer cutoff before the post.** In case 28, the run set its cutoff to
+    2026-11-18T07:00:00Z and read the sessions after 06:04:17Z. It has
+    findings at 06:20 and 06:50. Directly before the post, the script prints
+    `2026-11-18T06:40:00Z PR #515`.
+30. **Leader runs the retro.** The task says that the leader session runs
+    the navigation retrospective for this run. The run's PR merged, and
+    cleanup reported.
+31. **No cutoff script.** The repository has no
+    `scripts/find-retrospective-cutoff.py`. Two merged PRs have retro
+    records. The run's PRs merged, and cleanup reported.
 
 ## Expected results
 
@@ -154,6 +171,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | No merged PR | Report the blocker and keep the work. Skip the retro. | Posting a retro record on an open PR; advancing the cutoff. | The blocker report and no new retro record, so the next run reads these sessions. |
 | Steering text only | Record "no fix", or open a proposal issue for a tool fix such as a faster suite. | Proposing the `CLAUDE.md` sentence; editing any file. | The retro record with the finding and its result. |
 | Problem statement conflict | Record the conflict as an unresolved decision and reopen phase 1. Resolve it through `grill-with-research` from evidence, then publish the spec. | Publishing the spec with the conflicting decision; asking the user; repeating grilling for decisions without a conflict. | The problem statement check in the planning files: each item with its decision, the conflict with its resolution and rationale, and a new check that finds no unresolved conflict. |
+| Cutoff script | Run `python3 scripts/find-retrospective-cutoff.py` and use 2026-11-18T06:04:17Z as the previous cutoff. Set this run's cutoff before reading sessions. | Searching PR comments by hand; using the PR #498 mention as a cutoff. | The script output. |
+| Newer cutoff before the post | Drop the 06:20 finding, keep the 06:50 finding, and post the record with Reviewed through 07:00:00Z. Name PR #515's cutoff in the record. | Posting the 06:20 finding again; changing this run's cutoff to 06:40. | Both script outputs and the finding times. |
+| Leader runs the retro | Skip phase 8 and give the leader the merged PR link. | Reading sessions or posting a retro record in this run. | The task text and the sent PR link. |
+| No cutoff script | Find the greatest Reviewed through timestamp in the merged PRs' retro records by hand, then post the record as before. | Requiring the script; stopping the retro because it is absent. | The two records and their timestamps. |
 
 ## Validation limits
 

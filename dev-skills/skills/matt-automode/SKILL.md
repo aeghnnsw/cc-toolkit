@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.12.0
+version: 1.13.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -93,7 +93,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    after merge if the tracker did not close them.
 8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
    "Navigation retrospective" below once for the run. Complete when its record
-   is posted.
+   is posted. When the task says that another session runs the retrospective,
+   such as a leader of parallel runs, skip it and give that session the
+   merged PR links.
 
 ### When work changes or waits
 
@@ -119,8 +121,11 @@ then report the blocker and keep the work. Respect branch protection.
 The retro edits no tracked file. It proposes changes for a human to choose.
 
 1. Find the greatest **Reviewed through** UTC timestamp in earlier
-   "Navigation retrospective" records on merged PRs. Set this run's cutoff
-   before reading sessions.
+   "Navigation retrospective" records on merged PRs. When the repository has
+   `scripts/find-retrospective-cutoff.py`, run
+   `python3 scripts/find-retrospective-cutoff.py` from the checkout root to
+   find it; on exit status 1, its message tells whether no record exists or
+   `gh` failed. Set this run's cutoff before reading sessions.
 2. Read the sessions of this repository and its worktrees after the previous
    cutoff, or this run's sessions when no record exists. Use the repository's
    session-discovery guidance when it has some. Otherwise read the JSONL logs:
@@ -138,6 +143,13 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    the **Reviewed through** cutoff, the sessions read and history limits, and
    each finding with its session and time and its issue link or "no fix". A
    run that merges no PR skips the retro; the next run reads its sessions.
+   With the script, run it again directly before the post. A later cutoff
+   than in step 1 means another retrospective read the sessions up to it:
+   drop the findings at or before it and name it in the record.
+
+A session that starts parallel runs can run the retrospective once for all of
+them after their PRs merge, and post it on their last merged PR. Two
+retrospectives then do not read the same sessions.
 
 A proposal issue states the finding, its session and time, and the proposed
 change, with the repository's "Needs triage" label. To reuse an issue, add the
