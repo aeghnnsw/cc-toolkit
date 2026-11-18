@@ -23,7 +23,7 @@ These cases cover [issue #241](https://github.com/aeghnnsw/cc-toolkit/issues/241
 and later changes from issues #302, #305, #354,
 [#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [#392](https://github.com/aeghnnsw/cc-toolkit/issues/392),
-[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
+[#388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [#420](https://github.com/aeghnnsw/cc-toolkit/issues/420), and
 [#421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
@@ -147,13 +147,14 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 33. **Leader retro with no earlier record.** A leader started three runs of
     this repository. All three finished, and two merged PRs. No merged PR has
     a retro record. The leader now runs the retrospective for its runs.
-34. **Planning folder in a worktree.** A run for issue #77 works in the
+34. **Planning folder in a worktree.** A run for issue #77 started in the
     worktree `trees/feat-77`. The repository documents no planning folder
     location. The run is about to write its first planning file.
 35. **Documented planning folder.** As case 34, but `docs/agents/plans.md`
     says: "Keep planning files in `docs/plans/<issue>/`, which Git ignores."
-36. **Run without a worktree.** As case 34, but the run works in the main
-    checkout and has no worktree.
+36. **Run in the main checkout.** As case 34, but the run started in the
+    main checkout. It creates the worktree `trees/feat-77` for its change in
+    phase 4.
 
 ## Expected results
 
@@ -193,8 +194,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Script cannot reach GitHub | Post no record and report the retro as blocked with the error. | Treating the failure as "no record" and reading only this run's sessions; posting a cutoff. | The exit status and the `gh` error. |
 | Leader retro with no earlier record | Read the sessions of the leader and of all three runs, and post one record on the later of the two merged PRs. | Reading only the leader's own session; posting one record for each run. | The three runs' sessions and the two merged PR links. |
 | Planning folder in a worktree | Write the planning files in `trees/feat-77/.scratch/77-<slug>/`. | Writing them in the main checkout, the session scratchpad, or a tracked folder; searching for another location. | The folder path, and that Git ignores it or the `info/exclude` line that the run added. |
-| Documented planning folder | Write the planning files in `docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
-| Run without a worktree | Write the planning files in `.scratch/77-<slug>/` of the main checkout. | Creating a worktree only for the planning folder. | The folder path. |
+| Documented planning folder | Write the planning files in `trees/feat-77/docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
+| Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
 
 ## Validation limits
 

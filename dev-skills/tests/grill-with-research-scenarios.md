@@ -8,10 +8,11 @@
 > earlier list.
 
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
-[issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365), and
-[issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388), which adds
-case 20, and [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
-which moves the planning folder of case 12 into the session's worktree.
+[issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365),
+[issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
+[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Issue #388
+adds case 20. Issue #421 moves the planning folder of case 12 into the
+checkout where the session started.
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md)
 and the [Codex skill](../codex-skills/grill-with-research/SKILL.md), with the
 Matt skills that the wrapper loads.
@@ -61,8 +62,8 @@ for issue 42, and the Matt skills load.
 11. **Research runs a script.** Reading cannot show whether a CLI accepts a
     flag. A check needs a script and a temporary Git repository.
 12. **No issue yet.** The user asks to grill a cache-layer plan. No issue
-    exists. The repository documents no planning folder. The session runs in
-    the worktree `trees/cache`.
+    exists. The repository documents no planning folder. The session started
+    in the worktree `trees/cache`.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
 14. **Omitted Matt skill.** In Claude Code, the Skill tool lacks

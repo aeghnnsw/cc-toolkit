@@ -46,10 +46,11 @@ citable scientific result needs a cited run.
 ## Planning folder
 
 Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the
-session's worktree or, without one, the main checkout. Until an issue exists,
-use `.scratch/<YYYYMMDD>-<slug>/`, then rename it. If Git does not ignore
-`.scratch/`, add `/.scratch/` to `info/exclude` and tell the user. Nothing outside the folder links to it. Use
-`dev-skills:step-workflow` prefixes: grilling is the next free step.
+checkout where the session started. Until an issue exists, use
+`.scratch/<YYYYMMDD>-<slug>/`, then rename it. If Git does not ignore
+`.scratch/`, add `/.scratch/` to `info/exclude` and tell the user. Nothing
+outside the folder links to it. Use `dev-skills:step-workflow` prefixes:
+grilling is the next free step.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
 `<step>_<n>_<name>`. Never renumber a cited file.

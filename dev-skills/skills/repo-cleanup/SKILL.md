@@ -69,13 +69,14 @@ complete while a required closure is unverified.
 
   If the command fails, keep every worktree with its branches and report the
   error.
-- Inspect each planning folder: the repository's documented location, or
-  else `.scratch/<issue>-<slug>/`. Look in the main checkout, in the current
-  worktree, and in each other clean merged worktree that the step above does
-  not keep. When its issue is closed as completed, delete the folder by exact
-  path. Keep and report the folders of open or not-planned issues and folders
-  with no issue key, such as a date key. Keep each worktree that holds a kept
-  folder, with its local and remote branches.
+- Inspect each planning folder: the location that the repository documents,
+  or `.scratch/<issue>-<slug>/`. When the documented location is in the main
+  checkout, look only there. Otherwise look in the main checkout, in the
+  worktree that the current session runs in, and in each worktree that cleanup
+  would otherwise remove. When its issue is closed as completed, delete the
+  folder by exact path. Keep and report the folders of open or not-planned
+  issues and folders with no issue key, such as a date key. Keep each worktree
+  that holds a kept folder, with its local and remote branches.
 - Remove the other clean merged worktrees with their local branches. Delete
   the other verified-merged branches from the upstream remote, and prune stale
   remote-tracking references.
