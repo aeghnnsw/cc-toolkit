@@ -42,6 +42,7 @@ The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
 minimum; the bridge requirement does not apply to that separate process.
 Productivity Skills also uses Swift for native Calendar and Reminders.
 CC Customize uses Bash and `jq`, with Git for status information.
+Dev Skills `repo-cleanup` runs `lsof` and `ps` to find live sessions.
 See [Verification](#verification) for test commands and test prerequisites.
 
 ## Repository and package boundaries

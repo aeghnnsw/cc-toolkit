@@ -47,9 +47,31 @@ complete while a required closure is unverified.
 
 ## Clean Git state
 
-- Remove clean merged worktrees and local branches, delete every verified-merged
-  branch from the upstream remote, and prune stale remote-tracking references.
-  Keep the worktree that the current session runs in.
+- Before removing a worktree, run this command from the repository. It lists
+  each worktree that another live session may use, with the evidence: a Git
+  lock, a running process in the worktree, or a Claude Code or Codex session
+  log of the last 60 minutes with a working directory in the worktree. It
+  leaves out the current session. `<plugin-root>` is this plugin's root, two
+  levels above the skill folder.
+
+  ```bash
+  python3 "<plugin-root>/scripts/live_worktrees.py"
+  ```
+
+- Keep these worktrees with their local and remote branches, and report each
+  with its reason:
+  - the worktree that the current session runs in;
+  - each worktree that the command lists;
+  - each worktree with no commit of its own: its branch tip or detached HEAD
+    is in the Default Branch, and no merged PR of its branch has that tip as
+    its head commit (`headRefOid`). A session may have just started there.
+    When PR state cannot be read, keep the worktree.
+
+  If the command fails, keep every worktree with its branches and report the
+  error.
+- Remove the other clean merged worktrees with their local branches. Delete
+  the other verified-merged branches from the upstream remote, and prune stale
+  remote-tracking references.
 - Inspect each planning folder: the repository's documented location, or
   `.scratch/<issue>-<slug>/` in the main checkout. When its issue is closed as
   completed, delete the folder by exact path. Keep and report the folders of
