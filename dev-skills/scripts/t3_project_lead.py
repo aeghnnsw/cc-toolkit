@@ -14,12 +14,14 @@ STEPS = {
     "start": """
 You plan, dispatch, and verify. Workers implement.
 You may fix a small non-scientific finding yourself.
-A message that another agent sends through T3 carries the user's decisions.
+A message from the agent that started this thread carries the user's
+decisions. A worker's message carries none.
 Keep lead.md in the planning folder: tasks, worker links, decisions, and items
-that wait on the user, with links only for scientific items. Write each one
-when it occurs.
-Next: t3_project_lead.py plan for new work. After a wake or a restart, read
-lead.md first, then t3_project_lead.py answer, verify, or flag.
+that wait on the user. For a scientific item, write only its link. Write each
+item when it occurs.
+Next: t3_project_lead.py plan for new work. When a worker's result wakes this
+thread, or after a restart, read lead.md first, then t3_project_lead.py
+answer, verify, or flag.
 """,
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
@@ -27,24 +29,25 @@ check can pass or fail.
 Order tasks that depend on each other or edit the same files. Run only
 independent tasks in parallel.
 Decide reversible points yourself and write them in lead.md.
-Mark scientific tasks (biology, chemistry, medicine) for workers.
+Mark each scientific task (biology, chemistry, medicine). Its worker keeps the
+scientific detail, and you keep only links.
 Next: t3_project_lead.py dispatch.
 """,
     "dispatch": """
 Start no second worker for work that already runs: check t3_thread_list with
 includeSubagents, and pull_request_list (or gh pr list).
 Start each worker with delegate_task and isolation "worktree".
-Write the brief: the lines from t3_project_lead.py brief, copied exactly, then
-the task, its success criteria, the approved outcome, and your decisions. For
-a scientific task, give the issue link, not the content.
+Write the brief as t3_project_lead.py brief says, with its quoted lines copied
+exactly. Then add the task, its success criteria, the approved outcome, and
+your decisions. For a scientific task, give the issue link, not the content.
 Write each worker's thread link in lead.md.
 Next: t3_project_lead.py answer when a worker asks, verify when one finishes,
 flag when one is flagged.
 """,
     "brief": """
-Omit role in delegate_task, so that the brief starts the prompt.
-Line 1 loads the skill, by worker provider:
-  Claude /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.
+Omit role in delegate_task, so the brief starts the prompt.
+Line 1 loads the skill, by the worker's host: Claude Code /dev-skills:<skill>,
+Codex $dev-skills:<skill>, Antigravity /<skill>.
 Use grill-with-research when design is open, or matt-automode for a full
 handoff. After grill-with-research, add, with no / or $:
 "When the user approves the design here, continue in this thread with the
@@ -59,35 +62,45 @@ Next: t3_project_lead.py dispatch.
     "answer": """
 A worker that waits on answers has not finished its job. Do not settle it. Do
 not answer its questions.
-Ask the user to answer them in the worker's thread. Give its link, the number
-of decisions, and a one-line topic for each non-scientific question.
+Ask the user to answer them in the worker's thread. Give its link and the
+number of decisions. For a non-scientific task, also give a one-line topic for
+each decision.
 Write these items in lead.md.
 Next: t3_project_lead.py report.
 """,
     "flag": """
 A flag is a failed worker whose message says its safeguards flagged the
-session (Claude), that content was flagged for a risk (Codex), or that the
-Antigravity quota is reached (a refusal looks like this).
+session (Claude Code), that content was flagged for a risk (Codex), or that
+the Antigravity quota is reached (T3 shows an Antigravity refusal with this
+message).
 Unless the flagged worker ran on claude-sonnet-5-5, run the same brief, with
-line 1 in the Claude form, once more in a new worker on claude-sonnet-5-5. Add
-the flagged worker's branch, PR, issue, and planning-folder paths, and
-"Continue from this state." Do not add its thread link. Then settle the
-flagged thread.
+line 1 in the Claude Code form, once more in a new worker on
+claude-sonnet-5-5. Add the flagged worker's branch, PR, issue, and
+planning-folder paths, and "Continue from this state." Do not add its thread
+link. Then settle the flagged thread.
 After a second flag, or a flag on claude-sonnet-5-5, report the task as
 waiting on the user.
 Next: t3_project_lead.py verify or t3_project_lead.py report.
 """,
     "verify": """
 Check each result against its success criteria on the delivered artifact, such
-as the merged diff and checks. A worker's report is not evidence.
+as the merged diff and checks. The report of the worker that did the task is
+not evidence.
 Verify a scientific task with a new worker, and read only its one-line verdict.
 Fix small non-scientific findings yourself and rerun their checks. Give other
 findings to a new worker for a follow-up PR.
-After a batch of implementation workers finishes with a merged PR, start one
-worker: "Use the dev-skills:matt-automode skill. Run only its Navigation
-retrospective, once, as the leader of these runs:", with this thread's link,
-the worker links, and the merged PRs in merge order.
 Settle each finished worker with t3_thread_organize; never reuse one.
+Next: t3_project_lead.py retro when the implementation workers of a batch have
+finished, with a merged PR, and the batch has no retrospective yet. Otherwise
+t3_project_lead.py dispatch for more work, or report.
+""",
+    "retro": """
+Start one worker for the Navigation retrospective of the batch.
+Line 1 of its brief loads matt-automode, as t3_project_lead.py brief says.
+Then write: "Run only the Navigation retrospective of matt-automode, once, in
+place of the leader of these runs:", with this thread's link, the worker
+links, and the merged PRs in merge order.
+Write the retrospective worker's thread link in lead.md.
 Next: t3_project_lead.py dispatch for more work, or report.
 """,
     "report": """
@@ -98,7 +111,8 @@ End with what waits on the user: approvals, access, worker questions, and
 steps that cannot be undone or that go outside the project. Name each worker
 item by its thread link and its number of decisions. For a scientific item,
 give the link, not its content.
-When you add agent captures, this is gtd-inbox's "## Needs you" list.
+When you add agent captures, make this waiting list the "## Needs you" list of
+gtd-inbox.
 When nothing waits on the user and no worker runs, settle this thread.
 Next: after a wake, t3_project_lead.py start.
 """,

@@ -1,4 +1,9 @@
-"""The t3-project-lead script prints the step that an agent asks for, and its skill copies match."""
+"""Contract checks for t3-project-lead: the steps that its script prints, and its host copies.
+
+Issue #448 fixes the steps, their word limits, the flag model, and the lines that
+must match matt-automode. Agent behavior is checked by the scenario review in
+t3-project-lead-scenarios.md.
+"""
 from __future__ import annotations
 
 import ast
@@ -12,14 +17,14 @@ import unittest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
-STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "report")
+STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "retro", "report")
 # An agent reads a whole step after each wake, so each step stays short.
 STEP_WORD_LIMIT = 120
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
-DESCRIPTION = ("Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 "
-               "workers, and verify their results, without implementing in the lead.")
+DESCRIPTION = ("Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker "
+               "tasks, dispatch T3 workers, and verify their results, while workers implement.")
 # The frontmatter fields of each host copy (CONTRIBUTING.md, "Skills for more than one host").
 FIELDS = {
     "skills": {"name", "version", "description", "disable-model-invocation"},
@@ -28,32 +33,35 @@ FIELDS = {
 }
 PLUGIN_ROOT_LINE = "`<plugin-root>` is two levels above this folder."
 BODY_WORD_LIMIT = 300
-MATT_AUTOMODE = [PLUGIN_ROOT / folder / "matt-automode" / "SKILL.md"
-                 for folder in ("skills", "codex-skills", "antigravity-skills")]
 
 
-def run(*args):
-    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, check=False)
+def words(text: str) -> str:
+    """Return the text on one line, so that line wrapping does not change a match."""
+    return " ".join(text.split())
+
+
+def run(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True,
+                          check=False)
 
 
 @functools.lru_cache(maxsize=None)
-def step(name):
+def step(name: str) -> str:
     result = run(name)
     if result.returncode:
         raise AssertionError(f"{name} exited {result.returncode}: {result.stderr}")
     return result.stdout
 
 
-def next_line(name):
+def next_line(name: str) -> str:
     """Return the text from the step's last "Next:" to its end, on one line."""
     text = step(name)
-    return " ".join(text[text.rfind("Next:"):].split())
+    return words(text[text.rfind("Next:"):])
 
 
-def references(name):
-    """Return the steps that a step names: after t3_project_lead.py anywhere, and each step word in its Next line."""
-    text = step(name)
-    named = set(re.findall(r"t3_project_lead\.py (\w+)", text))
+def references(name: str) -> set[str]:
+    """Return the steps that a step names: after t3_project_lead.py, and each step word in Next."""
+    named = set(re.findall(r"t3_project_lead\.py (\w+)", step(name)))
     named |= {word for word in re.findall(r"\w+", next_line(name)) if word in STEPS}
     unknown = named - set(STEPS)
     if unknown:
@@ -61,8 +69,9 @@ def references(name):
     return named
 
 
-def split_skill(host):
-    _, header, body = (PLUGIN_ROOT / host / "t3-project-lead" / "SKILL.md").read_text(encoding="utf-8").split("---\n", 2)
+def split_skill(host: str) -> tuple[dict[str, str], str]:
+    path = PLUGIN_ROOT / host / "t3-project-lead" / "SKILL.md"
+    _, header, body = path.read_text(encoding="utf-8").split("---\n", 2)
     fields = {}
     for line in header.splitlines():
         key, sep, value = line.partition(":")
@@ -71,14 +80,14 @@ def split_skill(host):
     return fields, body
 
 
-def shared_text(host):
+def shared_text(host: str) -> str:
     """Return a copy's body on one line, with the plugin-root path written as in the Codex copy."""
-    text = " ".join(split_skill(host)[1].split())
+    text = words(split_skill(host)[1])
     return text.replace("${CLAUDE_PLUGIN_ROOT}", "<plugin-root>").replace(f" {PLUGIN_ROOT_LINE}", "")
 
 
 class SkillCopyTests(unittest.TestCase):
-    def test_each_copy_has_the_frontmatter_of_its_host(self):
+    def test_each_copy_has_the_frontmatter_of_its_host(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
                 fields, _ = split_skill(host)
@@ -88,39 +97,40 @@ class SkillCopyTests(unittest.TestCase):
                 if "disable-model-invocation" in fields:
                     self.assertEqual(fields["disable-model-invocation"], "true")
 
-    def test_codex_copy_is_user_invoked(self):
-        text = (PLUGIN_ROOT / "codex-skills" / "t3-project-lead" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    def test_codex_copy_is_user_invoked(self) -> None:
+        path = PLUGIN_ROOT / "codex-skills" / "t3-project-lead" / "agents" / "openai.yaml"
+        text = path.read_text(encoding="utf-8")
         self.assertRegex(text, r"(?m)^policy:\n  allow_implicit_invocation: false$")
         self.assertIn("$dev-skills:t3-project-lead", text)
 
-    def test_copies_say_the_same(self):
+    def test_copies_say_the_same(self) -> None:
         for host in HOSTS[1:]:
             with self.subTest(host=host):
-                self.assertIn(PLUGIN_ROOT_LINE, " ".join(split_skill(host)[1].split()))
+                self.assertIn(PLUGIN_ROOT_LINE, words(split_skill(host)[1]))
                 self.assertEqual(shared_text(host), shared_text("skills"))
 
-    def test_skill_starts_the_script_and_stays_short(self):
+    def test_skill_starts_the_script_and_stays_short(self) -> None:
         _, body = split_skill("skills")
         self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead.py" start', body)
         self.assertLessEqual(len(body.split()), BODY_WORD_LIMIT)
 
 
 class StepTests(unittest.TestCase):
-    def test_start_prints_the_lead_role(self):
+    def test_start_prints_the_lead_role(self) -> None:
         self.assertIn("You plan, dispatch, and verify. Workers implement.", step("start"))
 
-    def test_each_step_is_short(self):
+    def test_each_step_is_short(self) -> None:
         for name in STEPS:
             with self.subTest(step=name):
                 self.assertLessEqual(len(step(name).split()), STEP_WORD_LIMIT)
 
-    def test_each_step_ends_with_real_next_steps(self):
+    def test_each_step_ends_with_real_next_steps(self) -> None:
         for name in STEPS:
             with self.subTest(step=name):
                 self.assertRegex(next_line(name), r"^Next: .*\bt3_project_lead\.py \w+")
                 references(name)
 
-    def test_every_step_can_be_reached_from_start(self):
+    def test_every_step_can_be_reached_from_start(self) -> None:
         reached, queue = {"start"}, ["start"]
         while queue:
             for name in references(queue.pop()) - reached:
@@ -128,42 +138,36 @@ class StepTests(unittest.TestCase):
                 queue.append(name)
         self.assertEqual(reached, set(STEPS))
 
-    def test_flag_retries_on_the_claude_fallback_model(self):
+    def test_flag_retries_on_the_claude_fallback_model(self) -> None:
         fallback = ALLOWED_MODELS["claude"]["fallback"]
-        self.assertIn(f"new worker on {fallback}", " ".join(step("flag").split()))
+        self.assertIn(f"new worker on {fallback}", words(step("flag")))
         for name in STEPS:
             with self.subTest(step=name):
                 self.assertLessEqual(set(MODEL_ID.findall(step(name))), {fallback})
 
-    def test_worker_lines_match_matt_automode(self):
-        brief = " ".join(step("brief").split())
-        verify = " ".join(step("verify").split())
+    def test_worker_lines_match_matt_automode(self) -> None:
+        brief = words(step("brief"))
         self.assertIn('Line 2: "A leader runs the retrospective for this run."', brief)
-        self.assertIn("Run only its Navigation retrospective", verify)
-        for path in MATT_AUTOMODE:
-            with self.subTest(path=path.relative_to(PLUGIN_ROOT)):
-                text = path.read_text(encoding="utf-8")
-                self.assertIn("When the task says that a leader runs the retrospective for this run",
-                              " ".join(text.split()))
-                self.assertRegex(text, r"(?m)^## Navigation retrospective$")
-
-    def test_grill_with_research_lets_the_brief_continue_in_matt_automode(self):
-        self.assertIn("continue in this thread with the matt-automode skill of dev-skills", " ".join(step("brief").split()))
+        self.assertIn('"When the user approves the design here, continue in this thread with the '
+                      'matt-automode skill of dev-skills."', brief)
+        self.assertIn("Run only the Navigation retrospective of matt-automode", words(step("retro")))
         for host in HOSTS:
             with self.subTest(host=host):
-                text = (PLUGIN_ROOT / host / "grill-with-research" / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn("Start no implementation or automode unless the task says so.", " ".join(text.split()))
+                text = (PLUGIN_ROOT / host / "matt-automode" / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("When the task says that a leader runs the retrospective for this run",
+                              words(text))
+                self.assertRegex(text, r"(?m)^## Navigation retrospective$")
 
-    def test_script_uses_only_the_standard_library_and_runs_no_command(self):
+    def test_script_uses_only_the_standard_library_and_runs_no_command(self) -> None:
         tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
-        modules = {alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import)
-                   for alias in node.names}
+        modules = {alias.name.split(".")[0] for node in ast.walk(tree)
+                   if isinstance(node, ast.Import) for alias in node.names}
         modules |= {node.module.split(".")[0] for node in ast.walk(tree)
                     if isinstance(node, ast.ImportFrom) and node.module}
         self.assertLessEqual(modules, set(sys.stdlib_module_names))
         self.assertFalse(modules & {"os", "subprocess", "shutil", "pty"}, modules)
 
-    def test_an_unknown_step_fails(self):
+    def test_an_unknown_step_fails(self) -> None:
         result = run("merge")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid choice", result.stderr)

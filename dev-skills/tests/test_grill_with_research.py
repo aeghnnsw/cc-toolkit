@@ -4,8 +4,9 @@ The agreed decisions of issue #358 fix the description, the body limit, the
 invocation policy, and the host-specific loading section. Issue #365 sets the
 Matt skills that the wrapper loads. Issue #388 raises the body limit to 440
 words for its condition rule. Issue #432 adds the Antigravity copies and the
-Antigravity sessions of the matt-automode retrospective. Agent behavior is
-checked by the scenario review in grill-with-research-scenarios.md.
+Antigravity sessions of the matt-automode retrospective. Issue #448 lets a
+task, such as a t3-project-lead brief, start automode after grilling. Agent
+behavior is checked by the scenario review in grill-with-research-scenarios.md.
 """
 
 from __future__ import annotations
@@ -127,6 +128,12 @@ class GrillWithResearchTest(unittest.TestCase):
                 for skill in MATT_SKILLS:
                     self.assertIn(skill, sections(body)[LOAD_HEADING])
                 self.assertNotIn("grill-with-docs", body)
+
+    def test_a_task_can_start_automode_after_grilling(self) -> None:
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn("Start no implementation or automode unless the task says so.",
+                              " ".join(wrapper(host)[1].split()))
 
     def test_each_body_stays_within_the_word_limit(self) -> None:
         for host in HOSTS:

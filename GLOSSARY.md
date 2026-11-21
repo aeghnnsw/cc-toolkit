@@ -249,14 +249,13 @@ _Avoid_: Orchestrator, director, coordinator
 
 **Worker**:
 A T3 Code child thread that a project lead starts for one task, in its own
-worktree. The user can write to it. A finished worker is settled and never
-reused.
-_Avoid_: Subagent, which can also name a host's own child agent
+worktree. The user can write to it. When a worker finishes, the lead settles
+its thread in T3 and never reuses it.
+_Avoid_: Subagent
 
 **Brief**:
-The prompt that starts a worker: a line that loads a skill, the fixed lines
-of the t3-project-lead script, the task, its success criteria, and the lead's
-decisions.
+The prompt that starts a worker: a line that loads a skill, the task, its
+success criteria, the lead's decisions, and the form of the worker's report.
 _Avoid_: Handoff, worker prompt
 
 ## Lean-tests language

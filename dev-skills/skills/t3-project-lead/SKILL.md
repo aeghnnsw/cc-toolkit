@@ -1,7 +1,7 @@
 ---
 name: t3-project-lead
 version: 1.0.0
-description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and verify their results, without implementing in the lead."
+description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and verify their results, while workers implement."
 disable-model-invocation: true
 ---
 
