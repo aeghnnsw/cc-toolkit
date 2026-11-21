@@ -95,8 +95,7 @@
     "doc-skills": {
       "ownership": [],
       "resources": [
-        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]},
-        {"path": "antigravity-skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["antigravity"]}
+        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]}
       ]
     },
     "productivity-skills": {

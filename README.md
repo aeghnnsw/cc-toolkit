@@ -117,11 +117,7 @@ Document processing and AI-accessible content extraction.
 - **docling-pdf**: PDF to markdown conversion using IBM's Docling library
 - **paper-rename**: Intelligent PDF renaming based on extracted titles and metadata
 
-**Antigravity skills:**
-- **docling-pdf**
-- **paper-rename**
-
-**Claude Code agents (deprecated; retained for compatibility):**
+**Agents (deprecated; retained for compatibility):**
 - **paper-reader**: Analyzes research papers and answers questions about content
 - **paper-consolidator**: Consolidates multiple paper analysis outputs into unified reports
 
