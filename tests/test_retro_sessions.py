@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import runpy
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -46,6 +47,28 @@ class RetroSessionsTests(unittest.TestCase):
             "cwd": str(self.repo), "message": {"role": "user", "content": text},
             **values,
         }
+
+    def antigravity_conversation(self, root, conversation, workspaces, records):
+        """Write the transcript of CONVERSATION and return its conversation_summaries row."""
+        self.transcript(root, f"brain/{conversation}/.system_generated/logs/transcript_full.jsonl", records)
+        return conversation, json.dumps([Path(path).as_uri() for path in workspaces]), "2026-01-02T12:00:00Z"
+
+    def antigravity_database(self, root, rows):
+        """Keep the rows in the write-ahead log, as in a live database that is open."""
+        root.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(root / "conversation_summaries.db")
+        self.addCleanup(connection.close)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+        connection.execute("CREATE TABLE conversation_summaries "
+                           "(conversation_id TEXT PRIMARY KEY, workspace_uris TEXT, last_modified_time TEXT)")
+        connection.executemany("INSERT INTO conversation_summaries VALUES (?, ?, ?)", rows)
+        connection.commit()
+
+    def antigravity_step(self, step, step_type, content, created_at="2026-01-02T12:00:00Z", **values):
+        source = "USER_EXPLICIT" if step_type == "USER_INPUT" else "MODEL"
+        return {"step_index": step, "source": source, "type": step_type, "status": "DONE",
+                "created_at": created_at, "content": content, **values}
 
     def run_cli(self, *extra, roots=True, output=None):
         args = [sys.executable, str(SCRIPT), "--repo", str(self.repo),
@@ -271,6 +294,10 @@ class RetroSessionsTests(unittest.TestCase):
                 {"type": "session_meta", "payload": {"cwd": str(self.repo)}},
                 {"type": "response_item", "timestamp": "2026-01-02T12:00:00Z", "payload": {
                     "type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}}])
+        antigravity_cli = fixture_home / ".gemini" / "antigravity-cli"
+        self.antigravity_database(antigravity_cli, [self.antigravity_conversation(
+            antigravity_cli, "conv-default", [str(self.repo)],
+            [self.antigravity_step(0, "USER_INPUT", "default Antigravity")])])
         class FixedClock(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -279,7 +306,12 @@ class RetroSessionsTests(unittest.TestCase):
         with patch.object(Path, "home", return_value=fixture_home), patch.dict(os.environ, {
                 "CLAUDE_CONFIG_DIR": str(active_claude), "CODEX_HOME": str(active_codex)}), patch("datetime.datetime", FixedClock):
             _, manifest, _, digests = self.artifacts(self.run_in_process())
-            self.assertEqual(len(digests), 4)
+            self.assertEqual(len(digests), 5)
+            self.assertEqual([(entry["path"], entry["status"]) for entry in manifest["roots"]
+                              if entry["host"] == "antigravity"],
+                             [(str(antigravity_cli), "ok")])
+            self.assertNotIn("antigravity", [entry["host"] for entry in manifest["diagnostics"]
+                                             if entry["code"] == "root_unavailable"])
             self.assertEqual(manifest["window"]["through"], "2026-01-03T00:00:00.123+00:00")
             self.output = self.base / "explicit"
             alias = self.base / "alias"
@@ -316,6 +348,10 @@ class RetroSessionsTests(unittest.TestCase):
                 self.assertFalse(self.output.exists())
         self.assertEqual(sentinel.read_text(), "keep")
         self.assertFalse((self.claude / "output").exists())
+        antigravity = self.base / "antigravity"
+        result = self.run_cli("--antigravity-root", str(antigravity), output=antigravity / "output")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("outside all transcript roots", result.stderr)
 
     def test_snapshot_excludes_appends_and_reports_truncation_or_replacement(self):
         original_open = Path.open
@@ -448,6 +484,99 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(diagnostic["omitted_line_references"], 80)
         self.assertEqual(len(manifest["diagnostics"]), 1)
         self.assertEqual(manifest["diagnostics"][0]["count"], 200)
+
+    def test_antigravity_worktree_conversation_is_selected_from_a_database_copy(self):
+        root = self.base / "antigravity"
+        worktree = self.repo / "trees" / "my feature"
+        foreign = self.base / "project-extra"
+        worktree.mkdir(parents=True)
+        foreign.mkdir()
+        self.antigravity_database(root, [
+            self.antigravity_conversation(root, "conv-repo", [str(worktree)], [
+                self.antigravity_step(0, "USER_INPUT", "Fix the guide."),
+                self.antigravity_step(1, "PLANNER_RESPONSE", "Reading it.", tool_calls=[
+                    {"id": "call-1", "name": "view_file", "args": {"Path": "guide.md"}}]),
+                self.antigravity_step(2, "GENERIC", "guide contents"),
+                self.antigravity_step(3, "CHECKPOINT", None),
+            ]),
+            self.antigravity_conversation(root, "conv-other", [str(foreign)], [
+                self.antigravity_step(0, "USER_INPUT", "foreign text")]),
+        ])
+        database_files = {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in root.iterdir() if path.is_file()}
+        self.assertIn("conversation_summaries.db-wal", database_files)
+
+        summary, manifest, selected, digests = self.artifacts(self.run_cli(
+            "--antigravity-root", str(root), "--through", "2026-01-03T00:00:00Z"))
+
+        self.assertEqual(summary["status"], "ok")
+        self.assertEqual(summary["selected_sources"], 1)
+        self.assertEqual(selected[0]["host"], "antigravity")
+        self.assertEqual(selected[0]["path"], str(
+            root / "brain" / "conv-repo" / ".system_generated" / "logs" / "transcript_full.jsonl"))
+        self.assertEqual(digests[0]["host"], "antigravity")
+        events = digests[0]["events"]
+        self.assertEqual([(event["line"], event["kind"], event["text"]) for event in events], [
+            (1, "user", "Fix the guide."), (2, "assistant", "Reading it."),
+            (2, "tool_call", '{"Path": "guide.md"}'), (3, "generic", "guide contents")])
+        self.assertEqual((events[2]["tool"], events[2]["call_id"]), ("view_file", "call-1"))
+        self.assertEqual({event["cwd"] for event in events}, {str(worktree)})
+        self.assertEqual({event["timestamp"] for event in events}, {"2026-01-02T12:00:00Z"})
+        self.assertEqual(digests[0]["ignored_types"], {"CHECKPOINT": 1})
+        self.assertNotIn("foreign text", json.dumps(digests))
+        self.assertIn({"host": "antigravity", "path": str(root), "status": "ok", "candidates": 1}, manifest["roots"])
+        self.assertEqual({path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in root.iterdir() if path.is_file()},
+                         database_files)
+
+    def test_antigravity_time_window_uses_created_at(self):
+        root = self.base / "antigravity"
+        self.antigravity_database(root, [
+            self.antigravity_conversation(root, "conv-window", [str(self.repo)], [
+                self.antigravity_step(0, "USER_INPUT", "old", "2026-01-01T00:00:00Z", timestamp="2026-01-02T12:00:00Z"),
+                self.antigravity_step(1, "USER_INPUT", "inside", "2026-01-02T12:00:00Z"),
+                self.antigravity_step(2, "USER_INPUT", "later", "2026-01-02T12:00:02Z"),
+            ]),
+            self.antigravity_conversation(root, "conv-old", [str(self.repo)], [
+                self.antigravity_step(0, "USER_INPUT", "older session", "2025-12-01T00:00:00Z")]),
+        ])
+
+        summary, manifest, _, digests = self.artifacts(self.run_cli(
+            "--antigravity-root", str(root), "--after", "2026-01-02T00:00:00Z",
+            "--through", "2026-01-02T12:00:01Z"))
+
+        self.assertEqual(summary["status"], "ok")
+        self.assertEqual([event["text"] for digest in digests for event in digest["events"]], ["inside"])
+        self.assertEqual(manifest["counts"]["outside_window_records"], 3)
+        self.assertEqual(manifest["counts"]["candidate_sources"], 2)
+        self.assertEqual(manifest["counts"]["skipped_sources"], 1)
+
+    def test_missing_or_unreadable_antigravity_database_is_partial(self):
+        self.transcript(self.claude, "session.jsonl", [self.claude_message("still read")])
+        missing_root = self.base / "agy-missing"
+        no_database = self.base / "agy-empty"
+        no_database.mkdir()
+        garbage = self.base / "agy-garbage"
+        garbage.mkdir()
+        (garbage / "conversation_summaries.db").write_bytes(b"not a database")
+        no_table = self.base / "agy-no-table"
+        no_table.mkdir()
+        sqlite3.connect(no_table / "conversation_summaries.db").close()
+        roots = [missing_root, no_database, garbage, no_table]
+        arguments = [value for root in roots for value in ("--antigravity-root", str(root))]
+
+        result = self.run_cli(*arguments, "--through", "2026-01-03T00:00:00Z")
+
+        self.assertNotIn("Traceback", result.stderr)
+        summary, manifest, _, digests = self.artifacts(result)
+        self.assertEqual(summary["status"], "partial")
+        self.assertEqual([event["text"] for digest in digests for event in digest["events"]], ["still read"])
+        self.assertEqual([(item["code"], item.get("host"), item["path"]) for item in manifest["diagnostics"]], [
+            ("root_unavailable", "antigravity", str(missing_root)),
+            ("database_unavailable", "antigravity", str(no_database / "conversation_summaries.db")),
+            ("database_unreadable", "antigravity", str(garbage / "conversation_summaries.db")),
+            ("database_unreadable", "antigravity", str(no_table / "conversation_summaries.db"))])
+        self.assertEqual([entry["status"] for entry in manifest["roots"] if entry["host"] == "antigravity"],
+                         ["unavailable", "partial", "partial", "partial"])
+        self.assertEqual((garbage / "conversation_summaries.db").read_bytes(), b"not a database")
 
 
 if __name__ == "__main__":

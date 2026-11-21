@@ -3,15 +3,20 @@
 
 import argparse
 from collections import deque
+from contextlib import closing
 from datetime import datetime, timezone
 from fractions import Fraction
 import json
 import os
 from pathlib import Path
 import re
+import shutil
+import sqlite3
 import subprocess
 import stat
 import sys
+import tempfile
+from urllib.parse import unquote, urlsplit
 
 
 CLAUDE_AUXILIARY = (
@@ -25,6 +30,9 @@ CODEX_AUXILIARY = (
     "token_count", "task_started", "task_complete", "turn_aborted",
     "user_message", "agent_message", "agent_reasoning", "item_started",
 )
+# Antigravity step types with a fixed event kind. Other step types become
+# their lowercase name, for example "generic".
+ANTIGRAVITY_KINDS = {"USER_INPUT": "user", "PLANNER_RESPONSE": "assistant"}
 
 
 def timestamp(value):
@@ -76,8 +84,38 @@ def content_events(content, kind, unknown, ignored):
     return events
 
 
+def antigravity_events(record, unknown, ignored):
+    """Return the events of one transcript_full.jsonl step.
+
+    The content becomes one event of the step's kind. Each tool_calls entry
+    becomes a tool_call event. A step with neither is an ignored record.
+    """
+    step_type = record.get("type")
+    if not isinstance(step_type, str):
+        unknown.append("record:" + type(step_type).__name__)
+        return []
+    content = record.get("content")
+    kind = ANTIGRAVITY_KINDS.get(step_type, step_type.lower()[:100])
+    events = [] if content in (None, "") else content_events(content, kind, unknown, ignored)
+    calls = record.get("tool_calls") or []
+    if not isinstance(calls, list):
+        unknown.append("tool_calls:" + type(calls).__name__)
+        calls = []
+    for call in calls:
+        if isinstance(call, dict):
+            events.append({"kind": "tool_call", "tool": call.get("name"),
+                           "call_id": call.get("id"), "text": call.get("args")})
+        else:
+            unknown.append("tool_call:" + type(call).__name__)
+    if not events and not unknown:
+        ignored.append(step_type[:100])
+    return events
+
+
 def record_events(record, host, unknown, ignored):
     kind = record.get("type")
+    if host == "antigravity":
+        return antigravity_events(record, unknown, ignored)
     if host == "claude":
         if kind in ("user", "assistant"):
             message = record.get("message")
@@ -129,7 +167,12 @@ def record_events(record, host, unknown, ignored):
     return []
 
 
-def extract(stream, host, repository_roots, after, through, max_events, max_text):
+def extract(stream, host, repository_roots, after, through, max_events, max_text, cwd=None):
+    """Return the bounded digest of one transcript.
+
+    CWD is the starting working folder. Antigravity records carry no cwd, so
+    the caller gives the matched workspace folder.
+    """
     events = []
     tail = deque(maxlen=max_events // 2)
     head_size = (max_events + 1) // 2
@@ -155,7 +198,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
     counts = {"records": 0, "foreign_records": 0, "outside_window_records": 0,
               "unattributed_records": 0, "ignored_records": 0, "unsupported_items": 0}
     selected = False
-    cwd = None
+    time_field = "created_at" if host == "antigravity" else "timestamp"
     for line, raw in enumerate(stream, 1):
         counts["records"] += 1
         try:
@@ -170,7 +213,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
         if host == "claude":
             if "cwd" in record:
                 cwd = record["cwd"]
-        else:
+        elif host == "codex":
             payload = record.get("payload", {})
             if kind in ("session_meta", "turn_context") and isinstance(payload, dict):
                 cwd = payload.get("cwd", cwd)
@@ -196,7 +239,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             counts["foreign_records"] += 1
             continue
         try:
-            instant = timestamp(record["timestamp"])
+            instant = timestamp(record[time_field])
         except (ValueError, TypeError, KeyError, AttributeError):
             selected = True
             diagnose("invalid_timestamp", line)
@@ -210,7 +253,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             diagnose("unsupported_content", line, type=shape)
         for event in rendered:
             eligible_events += 1
-            event = {"line": line, "timestamp": record["timestamp"],
+            event = {"line": line, "timestamp": record[time_field],
                      "cwd": cwd, "omitted_characters": 0, **event}
             bounded = bound_event(event, max_text)
             if len(events) < head_size:
@@ -239,6 +282,64 @@ def bound_event(event, max_text):
             if len(value) > max_text:
                 event.setdefault("metadata_omitted_characters", {})[field] = len(value) - max_text
     return event
+
+
+def repository_workspace(uris, repository_roots):
+    """Return the first file:// workspace path in URIS inside a repository root, or None."""
+    workspaces = json.loads(uris)
+    if not isinstance(workspaces, list):
+        raise ValueError("workspace_uris is not a list")
+    for uri in workspaces:
+        parts = urlsplit(uri) if isinstance(uri, str) else None
+        if parts is None or parts.scheme != "file" or parts.netloc not in ("", "localhost"):
+            continue
+        path = unquote(parts.path)
+        if Path(path).is_absolute() and any(Path(path).resolve().is_relative_to(root) for root in repository_roots):
+            return path
+    return None
+
+
+def antigravity_sources(root, repository_roots):
+    """Return ([(transcript, workspace)], diagnostics) for the repository's conversations.
+
+    Read a temporary copy of conversation_summaries.db and its -wal and -shm
+    files, so a live or locked database stays unchanged. A conversation
+    belongs to the repository when one of its workspace_uris, resolved, is a
+    repository root or is inside one.
+    """
+    database = root / "conversation_summaries.db"
+    with tempfile.TemporaryDirectory() as folder:
+        for suffix in ("", "-wal", "-shm"):
+            source = database.with_name(database.name + suffix)
+            try:
+                shutil.copyfile(source, Path(folder) / source.name)
+            except OSError as error:
+                if suffix and isinstance(error, FileNotFoundError):
+                    continue  # A database without a write-ahead log is complete.
+                return [], [{"code": "database_unavailable", "host": "antigravity", "path": str(source)}]
+        try:
+            with closing(sqlite3.connect(Path(folder) / database.name)) as connection:
+                rows = connection.execute("SELECT conversation_id, workspace_uris FROM conversation_summaries "
+                                          "ORDER BY conversation_id").fetchall()
+        except sqlite3.Error:
+            return [], [{"code": "database_unreadable", "host": "antigravity", "path": str(database)}]
+    sources, diagnostics = [], []
+    for conversation, uris in rows:
+        try:
+            workspace = repository_workspace(uris, repository_roots)
+        except (ValueError, TypeError, OSError, RuntimeError):
+            diagnostics.append({"code": "invalid_workspace", "host": "antigravity", "path": str(database),
+                                "conversation_id": str(conversation)[:100]})
+            continue
+        if workspace is None:
+            continue
+        if not isinstance(conversation, str) or conversation in ("", ".", "..") or Path(conversation).name != conversation:
+            diagnostics.append({"code": "invalid_conversation_id", "host": "antigravity", "path": str(database),
+                                "conversation_id": str(conversation)[:100]})
+            continue
+        transcript = root / "brain" / conversation / ".system_generated" / "logs" / "transcript_full.jsonl"
+        sources.append((transcript, workspace))
+    return sources, diagnostics
 
 
 def snapshot(path, destination):
@@ -297,6 +398,8 @@ def main(argv=None):
     parser.add_argument("--max-text", type=int, default=300, help="characters per displayed text field (default: 300)")
     parser.add_argument("--claude-root", action="append", type=Path, default=[], help="Claude projects directory; repeatable")
     parser.add_argument("--codex-root", action="append", type=Path, default=[], help="Codex sessions directory; repeatable")
+    parser.add_argument("--antigravity-root", action="append", type=Path, default=[],
+                        help="Antigravity directory with conversation_summaries.db and brain/; repeatable")
     args = parser.parse_args(argv)
     through_text = args.through if args.through is not None else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     try:
@@ -308,15 +411,20 @@ def main(argv=None):
         parser.error("--after must be earlier than --through")
     if args.max_events < 1 or args.max_text < 1:
         parser.error("--max-events and --max-text must be positive")
-    if not args.claude_root and not args.codex_root:
+    if not args.claude_root and not args.codex_root and not args.antigravity_root:
         args.claude_root = [Path.home() / ".claude" / "projects"]
         args.codex_root = [Path.home() / ".codex" / "sessions"]
+        # Antigravity has a CLI folder and an app folder; a user often has one
+        # of them. A missing default folder is left out instead of reported.
+        args.antigravity_root = [path for path in (Path.home() / ".gemini" / "antigravity-cli",
+                                                   Path.home() / ".gemini" / "antigravity") if path.is_dir()]
         if os.environ.get("CLAUDE_CONFIG_DIR"):
             args.claude_root.append(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser() / "projects")
         if os.environ.get("CODEX_HOME"):
             args.codex_root.append(Path(os.environ["CODEX_HOME"]).expanduser() / "sessions")
     args.claude_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.claude_root))
     args.codex_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.codex_root))
+    args.antigravity_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.antigravity_root))
     try:
         worktrees = subprocess.check_output(
             ["git", "-C", str(args.repo), "worktree", "list", "--porcelain", "-z"],
@@ -331,7 +439,7 @@ def main(argv=None):
     output = args.output.expanduser().resolve()
     if args.output.exists() or args.output.is_symlink():
         parser.error("--output must be a new path")
-    if any(output.is_relative_to(root) for root in args.claude_root + args.codex_root):
+    if any(output.is_relative_to(root) for root in args.claude_root + args.codex_root + args.antigravity_root):
         parser.error("--output must be outside all transcript roots")
     output.mkdir(mode=0o700)
     (output / "raw").mkdir()
@@ -345,7 +453,8 @@ def main(argv=None):
     candidates = 0
     diagnostics = []
     seen_paths = set()
-    for host, paths in (("claude", args.claude_root), ("codex", args.codex_root)):
+    for host, paths in (("claude", args.claude_root), ("codex", args.codex_root),
+                        ("antigravity", args.antigravity_root)):
         for root in paths:
             if not root.is_dir():
                 roots.append({"host": host, "path": str(root.resolve()), "status": "unavailable", "candidates": 0})
@@ -358,10 +467,16 @@ def main(argv=None):
                 diagnostics.append({"code": "directory_unavailable", "host": host, "path": error.filename})
 
             files = []
-            for directory, folders, names in os.walk(root, onerror=walk_error):
-                folders.sort()
-                files.extend(Path(directory) / name for name in sorted(names) if name.endswith(".jsonl"))
-            for path in files:
+            if host == "antigravity":
+                files, database_diagnostics = antigravity_sources(root, repository_roots)
+                if database_diagnostics:
+                    root_entry["status"] = "partial"
+                    diagnostics.extend(database_diagnostics)
+            else:
+                for directory, folders, names in os.walk(root, onerror=walk_error):
+                    folders.sort()
+                    files.extend((Path(directory) / name, None) for name in sorted(names) if name.endswith(".jsonl"))
+            for path, workspace in files:
                 path = path.resolve()
                 if path in seen_paths:
                     continue
@@ -377,7 +492,7 @@ def main(argv=None):
                     continue
                 with (output / copy).open("rb") as stream:
                     extracted = extract(stream, host, repository_roots, after, through,
-                                        args.max_events, args.max_text)
+                                        args.max_events, args.max_text, workspace)
                 extracted["diagnostics"] = copy_diagnostics + extracted["diagnostics"]
                 for key in totals:
                     totals[key] += extracted["counts"][key]
@@ -407,6 +522,7 @@ def main(argv=None):
                 "limitations": ["Removed external worktrees cannot be attributed without current Git registration.",
                                 "Copies are measured byte prefixes, not atomic filesystem snapshots.",
                                 "Raw copies can include records outside the repository and time window.",
+                                "Antigravity records carry no cwd; their events show the matched workspace folder as cwd.",
                                 "Digests are evidence indexes, not complete semantic reviews."],
                 "counts": {"candidate_sources": candidates, "selected_sources": len(sources),
                            "skipped_sources": candidates - len(sources), **totals, "diagnostics": diagnostic_count}}

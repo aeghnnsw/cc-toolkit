@@ -3,8 +3,9 @@
 The agreed decisions of issue #358 fix the description, the body limit, the
 invocation policy, and the host-specific loading section. Issue #365 sets the
 Matt skills that the wrapper loads. Issue #388 raises the body limit to 440
-words for its condition rule. Agent behavior is checked by the scenario review
-in grill-with-research-scenarios.md.
+words for its condition rule. Issue #432 adds the Antigravity copies and the
+Antigravity sessions of the matt-automode retrospective. Agent behavior is
+checked by the scenario review in grill-with-research-scenarios.md.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import unittest
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-HOSTS = ("skills", "codex-skills")
+HOSTS = ("skills", "codex-skills", "antigravity-skills")
 DESCRIPTION = (
     "Research the project, then grill the user only on decisions that research "
     "cannot settle; records glossary terms and ADRs. Use when the user asks to "
@@ -23,6 +24,30 @@ DESCRIPTION = (
 LOAD_HEADING = "## Load the Matt skills"
 MATT_SKILLS = ("mattpocock-skills:grilling", "mattpocock-skills:domain-modeling")
 BODY_WORD_LIMIT = 440
+RESOLVER = {
+    "skills": '"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"',
+    "codex-skills": '"<plugin-root>/scripts/resolve_skill.py" --host codex',
+    "antigravity-skills": '"<plugin-root>/scripts/resolve_skill.py" --host antigravity',
+}
+# Each copy stops at the setting that makes a Matt skill user-invoked on its host.
+USER_INVOKED_SETTING = {
+    "skills": "`disable-model-invocation: true`",
+    "codex-skills": "`allow_implicit_invocation: false`",
+    "antigravity-skills": "`disable-model-invocation: true`",
+}
+# Tools and wording of another host that an Antigravity copy must not name.
+OTHER_HOST_TERMS = (
+    "Skill tool", "CLAUDE_PLUGIN_ROOT", "--host codex", "In Codex", "In Claude Code",
+    "update_plan", "TodoWrite", "run_in_background", "PR monitoring mechanism",
+)
+RETRO_HEADING = "## Navigation retrospective"
+ANTIGRAVITY_SESSION_FACTS = (
+    "`~/.gemini/antigravity-cli`",
+    "`~/.gemini/antigravity`",
+    "`conversation_summaries.db`",
+    "`workspace_uris`",
+    "`brain/<conversation_id>/.system_generated/logs/transcript_full.jsonl`",
+)
 
 
 def split_skill(path: Path) -> tuple[dict[str, str], str]:
@@ -53,32 +78,47 @@ def load_section(host: str) -> str:
     return sections(body)[LOAD_HEADING]
 
 
+def automode(host: str) -> str:
+    """Return the text of one host copy of matt-automode."""
+    return (PLUGIN_ROOT / host / "matt-automode" / "SKILL.md").read_text(encoding="utf-8")
+
+
 class GrillWithResearchTest(unittest.TestCase):
-    def test_both_copies_carry_the_agreed_description(self) -> None:
+    def test_every_copy_carries_the_agreed_description(self) -> None:
         for host in HOSTS:
             fields, _ = wrapper(host)
             with self.subTest(host=host):
                 self.assertEqual(fields["name"], "grill-with-research")
                 self.assertEqual(fields["description"], DESCRIPTION)
 
-    def test_the_model_can_start_the_skill_on_both_hosts(self) -> None:
-        self.assertNotIn("disable-model-invocation", wrapper("skills")[0])
+    def test_the_model_can_start_the_skill_on_every_host(self) -> None:
+        for host in ("skills", "antigravity-skills"):
+            with self.subTest(host=host):
+                self.assertNotIn("disable-model-invocation", wrapper(host)[0])
         policy = PLUGIN_ROOT / "codex-skills" / "grill-with-research" / "agents" / "openai.yaml"
         if policy.exists():
             self.assertNotIn("allow_implicit_invocation: false", policy.read_text(encoding="utf-8"))
 
     def test_copies_differ_only_in_how_they_load_skills(self) -> None:
-        claude, codex = (sections(wrapper(host)[1]) for host in HOSTS)
+        claude = sections(wrapper("skills")[1])
         self.assertIn(LOAD_HEADING, claude)
-        self.assertEqual(sorted(claude), sorted(codex))
-        for heading in claude:
-            if heading != LOAD_HEADING:
-                self.assertEqual(claude[heading], codex[heading], f"{heading!r} differs between hosts")
+        for host in HOSTS[1:]:
+            other = sections(wrapper(host)[1])
+            with self.subTest(host=host):
+                self.assertEqual(sorted(claude), sorted(other))
+                for heading in claude:
+                    if heading != LOAD_HEADING:
+                        self.assertEqual(claude[heading], other[heading], f"{heading!r} differs from {host}")
 
     def test_each_copy_names_the_resolver_for_its_host(self) -> None:
-        claude, codex = (load_section(host) for host in HOSTS)
-        self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py"', claude)
-        self.assertIn('"<plugin-root>/scripts/resolve_skill.py" --host codex', codex)
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn(RESOLVER[host], load_section(host))
+
+    def test_each_copy_stops_at_a_user_invoked_matt_skill(self) -> None:
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn(USER_INVOKED_SETTING[host], load_section(host))
 
     def test_each_copy_names_grilling_and_domain_modeling_not_grill_with_docs(self) -> None:
         for host in HOSTS:
@@ -98,11 +138,44 @@ class GrillWithResearchTest(unittest.TestCase):
 class MattAutomodeUsesTheWrapperTest(unittest.TestCase):
     def test_phase_one_loads_the_wrapper_and_no_pressure_test_remains(self) -> None:
         for host in HOSTS:
-            text = (PLUGIN_ROOT / host / "matt-automode" / "SKILL.md").read_text(encoding="utf-8")
+            text = automode(host)
             with self.subTest(host=host):
                 self.assertIn("(../grill-with-research/SKILL.md)", text)
                 self.assertNotRegex(text, r"(?i)pressure[- ]test")
                 self.assertNotIn("design-critical", text)
+
+    def test_each_copy_names_the_resolver_for_its_host(self) -> None:
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn(RESOLVER[host], automode(host))
+
+
+class AntigravityCopiesTest(unittest.TestCase):
+    """Issue #432: the Antigravity copies use Antigravity terms and sessions."""
+
+    def test_antigravity_copies_name_no_tool_of_another_host(self) -> None:
+        texts = {
+            "grill-with-research": wrapper("antigravity-skills")[1],
+            "matt-automode": automode("antigravity-skills"),
+            "pr-feedback": (PLUGIN_ROOT / "antigravity-skills" / "pr-feedback" / "SKILL.md").read_text(),
+        }
+        for skill, text in texts.items():
+            for term in OTHER_HOST_TERMS:
+                with self.subTest(skill=skill, term=term):
+                    self.assertNotIn(term, text)
+
+    def test_antigravity_automode_keeps_its_task_list_in_a_task_artifact(self) -> None:
+        text = automode("antigravity-skills")
+        self.assertIn("Markdown task list", text)
+        self.assertIn("task artifact, never in a tracked file", text)
+
+    def test_every_retrospective_reads_antigravity_sessions_with_one_text(self) -> None:
+        retros = {host: sections(automode(host))[RETRO_HEADING] for host in HOSTS}
+        for host in HOSTS:
+            with self.subTest(host=host):
+                for fact in ANTIGRAVITY_SESSION_FACTS:
+                    self.assertIn(fact, retros[host])
+                self.assertEqual(retros[host], retros["skills"])
 
 
 if __name__ == "__main__":
