@@ -129,15 +129,15 @@ table shows:
 | Subagent | `invoke_subagent` with `TypeName: "self"`, a `Role`, and a `Prompt` |
 | Fan-out workflow | `run_workflow` |
 | Load another skill | Read its `SKILL.md`. The user runs a skill as `/<name>` |
-| Shell | `run_command`, which runs in the user's shell |
-| Web search | `search_web` |
+| Shell | A plain verb, such as "run the command"; it runs in the user's shell |
+| Web search | A plain verb, such as "search the web" |
 | Arguments | No argument placeholders; write "the user's request" |
 | Instruction files | `GEMINI.md` and `AGENTS.md`; the global root is `~/.gemini/config/` |
 
 The Antigravity agent reported its tool names itself (`agy` 1.5.13).
-Antigravity's builtin skills confirm `ask_question`, `invoke_subagent`, and
-`run_workflow`. For another tool, a copy can use a plain verb, such as "run
-the command" or "search the web".
+Antigravity's builtin skills confirm only `ask_question`,
+`invoke_subagent`, and `run_workflow`. A copy names only these tools. For
+another action, write a plain verb.
 
 The Antigravity manifest declares `"skills": "./antigravity-skills/"` when
 the plugin has skills.
@@ -298,9 +298,11 @@ The validator checks an Antigravity registration as follows:
 
 - The Antigravity manifest `name` equals the registered name of the plugin,
   and its `version` has numeric `major.minor.patch` parts. The manifest
-  uses only the keys of the Antigravity manifest schema.
+  uses only the keys of the Antigravity manifest schema. When the Claude Code
+  and Codex registries give the plugin directory different names, the
+  validator fails.
 - Each `skills/<name>` has a same-named skill in a declared `skills` path
-  (see [Shadowing](#shadowing)).
+  (see [Shadowing](#shadowing)). A declared `skills` path is not `skills/`.
 - Antigravity owns the `.antigravity-plugin/` folder and its discovery
   paths: the declared `skills` paths, a root `hooks.json`, a root
   `mcp_config.json`, `agents/`, and `rules/`. `skills/` affects Antigravity
@@ -311,6 +313,8 @@ The validator checks an Antigravity registration as follows:
   `version`. An Antigravity-owned file and a shared file both affect it.
 - A Claude manifest `agents` field can list `.md` files (see
   [Claude agents in an Antigravity plugin](#claude-agents-in-an-antigravity-plugin)).
+  Claude Code owns them, and it also owns `agents/`, because it loads that
+  folder too.
 
 The root tests are under `tests/`; [Verification](#verification) gives when
 and how to run them.

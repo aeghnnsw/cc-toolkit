@@ -101,41 +101,28 @@ The Core Hooks policy for Antigravity:
 - A PreToolUse hook cannot show a warning without denying the tool call.
   Antigravity has no Notification, SessionEnd, or SubagentStop event.
 
-## Registration without a catalog
+## Registration without a marketplace registry
 
-An Antigravity catalog entry needs an `https` source URL and a `sha256` for
-each plugin, and Antigravity documents no way to register a third-party
-catalog. So the repository has no Antigravity catalog. A plugin directory
-that the Claude Code or Codex registry lists, and that holds an Antigravity
-manifest, is registered for Antigravity under the registered name. Users
+An entry in an Antigravity marketplace registry needs an `https` source URL
+and a `sha256` for each plugin, and Antigravity documents no way to add a
+third-party marketplace registry. So the repository has no Antigravity
+marketplace registry. A plugin directory that the Claude Code or Codex
+registry lists, and that holds an Antigravity manifest, is registered for
+Antigravity under the registered name. Users
 install one plugin directory from its GitHub URL with `agy plugin install`.
 A new Antigravity registration needs no version increase. After that, a
 change that affects Antigravity needs a greater Antigravity manifest
 version.
-
-## Pressure-test critic in Antigravity
-
-The Antigravity copy of `pressure-test` uses only the GPT critic through
-`codex exec`. It starts from the Claude copy and its critic runner. GPT
-comes from a model family other than Gemini and Claude, so the critic is
-cross-family for a Gemini or Claude main agent. The runner starts each
-critic call in a detached process and polls it. So it works within the time
-limit of any shell tool: Antigravity moves a long command to the
-background. The Claude critic path needs one foreground command of more
-than 1800 seconds. When the main agent runs a GPT model, the skill stops
-and reports that no cross-family critic is available.
-[ADR 0002](0002-cross-family-pressure-test-critic.md) allows no
-same-family critic.
 
 ## Consequences
 
 - A skill that ships to all three hosts has three copies, and a change
   updates all of them in one pull request.
 - The Antigravity agent reported its tool names itself. Antigravity's
-  builtin skills confirm `ask_question`, `invoke_subagent`, and
-  `run_workflow`. A copy can use a plain verb for another tool. A change to
-  an Antigravity tool name needs a change to every Antigravity copy that
-  names it.
+  builtin skills confirm only `ask_question`, `invoke_subagent`, and
+  `run_workflow`, so a copy names only these tools and writes a plain verb
+  for another action. A change to an Antigravity tool name needs a change
+  to every Antigravity copy that names it.
 - `agy` 1.0.0 read only a root `plugin.json`; `agy` 1.5.13 reads
   `.antigravity-plugin/`. A user with an older release updates it, as the
   host-compatibility rule in the domain documentation requires.

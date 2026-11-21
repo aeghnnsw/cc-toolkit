@@ -173,12 +173,12 @@ FIXTURE = {
             'Show `\\$1` and a price of \\$0.67.\n'),
 }
 
-AG_SKILL = 'demo/antigravity-skills/clean/SKILL.md'
+ANTIGRAVITY_SKILL = 'demo/antigravity-skills/clean/SKILL.md'
 ANTIGRAVITY = {
     **FIXTURE,
     'demo/.antigravity-plugin/plugin.json': json.dumps({'name': 'demo', 'version': '1.0.0',
                                                         'skills': './antigravity-skills/'}),
-    AG_SKILL: '---\nname: clean\ndescription: Antigravity copy.\n---\n\nRun `local s="$1"` in $HOME.\n',
+    ANTIGRAVITY_SKILL: '---\nname: clean\ndescription: Antigravity copy.\n---\n\nRun `local s="$1"` in $HOME.\n',
 }
 
 
@@ -308,13 +308,14 @@ class SkillPlaceholderTests(unittest.TestCase):
                  ('Keep \\$ARGUMENTS.\n', '$ARGUMENTS'), ('Pay \\$0.67.\n', '\\$0'), ('Use `\\${1}`.\n', '\\${1}')]
         for body, token in cases:
             with self.subTest(body=body):
-                problems = check_placeholders(self.fixture({**ANTIGRAVITY, AG_SKILL: ANTIGRAVITY[AG_SKILL] + body}))
+                text = ANTIGRAVITY[ANTIGRAVITY_SKILL] + body
+                problems = check_placeholders(self.fixture({**ANTIGRAVITY, ANTIGRAVITY_SKILL: text}))
                 self.assertEqual(len(problems), 1, problems)
-                self.assertTrue(problems[0].startswith(f'{AG_SKILL}:7: {token} '), problems)
+                self.assertTrue(problems[0].startswith(f'{ANTIGRAVITY_SKILL}:7: {token} '), problems)
                 self.assertIn('Antigravity does not replace', problems[0])
         text = '---\nname: clean\ndescription: Named.\narguments: target\n---\n'
-        problems = check_placeholders(self.fixture({**ANTIGRAVITY, AG_SKILL: text}))
-        self.assertEqual([problem.split(': ', 1)[0] for problem in problems], [AG_SKILL])
+        problems = check_placeholders(self.fixture({**ANTIGRAVITY, ANTIGRAVITY_SKILL: text}))
+        self.assertEqual([problem.split(': ', 1)[0] for problem in problems], [ANTIGRAVITY_SKILL])
         self.assertIn('`arguments`', problems[0])
 
     def test_repository_has_no_unreviewed_placeholders(self):

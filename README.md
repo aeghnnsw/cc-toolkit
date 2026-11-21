@@ -58,7 +58,7 @@ describes each plugin and lists its skills.
 A plugin that ships to Antigravity also holds these files:
 
 - `.antigravity-plugin/plugin.json`, the Antigravity manifest. It registers
-  the plugin for Antigravity; no Antigravity catalog file exists.
+  the plugin for Antigravity; no Antigravity marketplace registry exists.
 - `antigravity-skills/`, the Antigravity copies of its skills.
 - A root `hooks.json` for its hooks and a root `mcp_config.json` for its MCP
   servers, when the plugin has them.
@@ -216,9 +216,9 @@ for command options.
 
 ### Antigravity
 
-This repository has no Antigravity catalog. Install one plugin directory from
-its GitHub URL with the Antigravity CLI, `agy`. Replace `<plugin>` with the
-directory name of the plugin:
+This repository has no Antigravity marketplace registry. Install one plugin
+directory from its GitHub URL with the Antigravity CLI, `agy`. Replace
+`<plugin>` with the directory name of the plugin:
 
 ```bash
 agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/<plugin>

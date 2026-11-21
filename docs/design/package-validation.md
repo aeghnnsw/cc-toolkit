@@ -51,12 +51,14 @@ and failed runs report elapsed execution time.
 
 ## Antigravity registration
 
-Antigravity has no catalog in this repository. An Antigravity catalog entry
-needs an `https` source URL and a `sha256` for each plugin, and Antigravity
-documents no way to register a third-party catalog. A plugin directory that
-the Claude Code or Codex registry lists is an Antigravity registration when
-it holds `.antigravity-plugin/plugin.json`. The registration uses the
-registered name of the plugin.
+This repository has no Antigravity marketplace registry. An entry in an
+Antigravity marketplace registry needs an `https` source URL and a `sha256`
+for each plugin, and Antigravity documents no way to add a third-party
+marketplace registry. A plugin directory that the Claude Code or Codex
+registry lists is an Antigravity registration when it holds
+`.antigravity-plugin/plugin.json`. The registration uses the registered
+name of the plugin. When the two registries give the directory different
+names, the validator fails, because Antigravity needs one name.
 
 The validator checks the Antigravity manifest:
 
@@ -78,7 +80,9 @@ paths. A same-named skill in a declared path replaces the skill in
 `skills/`; this is shadowing. A skill that is only in `skills/` still loads.
 So each skill folder in `skills/` of an Antigravity registration needs a
 same-named skill in a declared `skills` path. Otherwise, the validator fails
-with a message that names the skill and the expected folder.
+with a message that names the skill and the expected folder. A declared
+`skills` path that is `skills/` also fails, because then the Claude copies
+load in Antigravity.
 
 ## Host ownership
 
@@ -138,7 +142,8 @@ registries, and the Antigravity registrations in their plugin directories.
 It parses registry and manifest JSON and checks names, duplicate
 registrations, source directories, and numeric three-part versions.
 A Claude Code manifest `agents` field can declare a list of `.md` files.
-Each declared path must exist.
+Each declared path must exist. Claude Code also loads `agents/`, so
+`agents/` stays a Claude Code discovery path.
 
 It checks declared paths and explicitly listed resources. Symlink resolution
 must keep paths inside the plugin package. Required paths must be tracked or
@@ -172,17 +177,17 @@ its base version. Versions use numeric `major.minor.patch` components.
 An unchanged or lower version fails. A valid version-only increase is
 allowed. One increase covers all changed content across the pull request.
 
-A skill can also carry a `version` in its `SKILL.md` frontmatter. Claude
-Code copies usually do; Codex and Antigravity copies do not. A skill
-changes when an affected path of its existing registration is in the skill
-directory, so the same ownership rules and exemptions apply. Each changed skill needs a
-frontmatter version greater than its base version. A new skill, a skill
-with no base version, and a skill with no current version need no
-increase. Skills match by plugin identity, host, and skill directory name
-across the base and proposed layouts. A source move changes every path in
-the skill, so a versioned skill needs an increase. This check finds a skill
-version that a rebase removed: when both branches made the same version
-change, the rebase drops it from the branch without a conflict.
+A skill can also carry a `version` in its `SKILL.md` frontmatter. Claude Code
+copies usually do; Codex and Antigravity copies do not. A skill changes when
+an affected path of its existing registration is in the skill directory, so
+the same ownership rules and exemptions apply. Each changed skill needs a
+frontmatter version greater than its base version. A new skill, a skill with
+no base version, and a skill with no current version need no increase. Skills
+match by plugin identity, host, and skill directory name across the base and
+proposed layouts. A source move changes every path in the skill, so a
+versioned skill needs an increase. This check finds a skill version that a
+rebase removed: when both branches made the same version change, the rebase
+drops it from the branch without a conflict.
 
 A new plugin or host registration needs valid current packaging and a valid
 initial version. It has no previous registered version to exceed. A removed
