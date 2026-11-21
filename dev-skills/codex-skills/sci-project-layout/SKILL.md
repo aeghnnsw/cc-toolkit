@@ -48,9 +48,9 @@ In every mode, leave the files that other workflows own where they are:
    the package, and the steps cannot import `paths`.
 5. In the copied files, replace `myproj` with the package name, and
    `MYPROJ` with the package name in capitals.
-6. Add one line to the project's agent instructions file, `CLAUDE.md` or
-   `AGENTS.md` (when one links to the other, edit the target): "Before you
-   add a file, read `docs/agents/layout.md`."
+6. Add one line to the project's agent instructions file, `CLAUDE.md`,
+   `AGENTS.md`, or `GEMINI.md` (when one links to another, edit the
+   target): "Before you add a file, read `docs/agents/layout.md`."
 7. Print the store path with
    `uv run python -c "from <package> import paths; print(paths.STORE)"`.
    Make `<store>/data` and `<store>/results`. Then ask the user before you

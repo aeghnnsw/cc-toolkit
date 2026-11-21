@@ -45,7 +45,9 @@
       ]
     },
     "dev-skills": {
-      "ownership": [],
+      "ownership": [
+        {"path": "antigravity-skills/", "hosts": ["antigravity"]}
+      ],
       "resources": [
         {"path": "agents/finding-verifier.md", "hosts": ["claude"]},
         {"path": "agents/project-evaluator.md", "hosts": ["claude"]},
@@ -90,8 +92,26 @@
         {"path": "codex-skills/sci-project-layout/templates/layout-notes.md", "hosts": ["codex"]},
         {"path": "codex-skills/sci-project-layout/templates/layout.md", "hosts": ["codex"]},
         {"path": "codex-skills/sci-project-layout/templates/paths.py", "hosts": ["codex"]},
+        {"path": "antigravity-skills/lean-tests/references/check.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/references/speed.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/references/prune.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/references/review.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lean_tests.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_common.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_coverage.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_gate.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_mutate.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_pin.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_scan.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/lt_suite.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/lean-tests/scripts/pytest_plugin/lean_tests_report.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-project-layout/templates/experiment-README.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-project-layout/templates/gitignore", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-project-layout/templates/layout-notes.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-project-layout/templates/layout.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-project-layout/templates/paths.py", "hosts": ["antigravity"]},
         {"path": "scripts/resolve_skill.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/live_worktrees.py", "hosts": ["claude", "codex"]}
+        {"path": "scripts/live_worktrees.py", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },
     "productivity-skills": {
