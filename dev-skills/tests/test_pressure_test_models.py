@@ -1,9 +1,10 @@
-"""Run the critic-model shell blocks of both pressure-test copies in bash and zsh.
+"""Run the critic-model shell blocks of the pressure-test copies in bash and zsh.
 
 Each check runs the Setup block of a copy, then its Critic model block, its
 Flags block, or both, each in a new shell as the agent runs them, and reads the critic model
 file in the work directory. The blocks come from SKILL.md, so the checks cover the text
-that an agent runs. The expected models come from allowed-models.json.
+that an agent runs. The expected models come from allowed-models.json. The Antigravity
+main agent can run a GPT-family model, so its copy must stop before setup (issue #433).
 """
 
 from __future__ import annotations
@@ -19,11 +20,13 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
-# Each copy calls a critic from the model family of the other host.
+# Each copy calls a critic from a model family other than the main agent's.
 COPIES = {
     "claude-code": (PLUGIN_ROOT / "skills" / "pressure-test" / "SKILL.md", "gpt"),
     "codex": (PLUGIN_ROOT / "codex-skills" / "pressure-test" / "SKILL.md", "claude"),
+    "antigravity": (PLUGIN_ROOT / "antigravity-skills" / "pressure-test" / "SKILL.md", "gpt"),
 }
+NO_CRITIC = "no cross-family critic"  # the ending condition of a GPT-family Antigravity main agent
 SHELLS = {"bash": ["bash", "-c"], "zsh": ["zsh", "-f", "-c"]}  # -f: no user startup files
 CASES = [(copy, shell, ALLOWED_MODELS[family]) for copy, (_, family) in COPIES.items() for shell in SHELLS]
 BASH_FENCE = re.compile(r"^[ \t]*```bash[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
@@ -83,6 +86,7 @@ class CriticModelBlockTests(unittest.TestCase):
         result = self.run_block(shell, block)
         match = WORKDIR_LINE.search(result.stdout)
         self.assertIsNotNone(match, f"{copy}: Setup printed no workdir line; stderr:\n{result.stderr}")
+        self.assertNotIn("runner not found", result.stdout, f"{copy}: Setup found no runner")
         workdir = Path(match.group(1))
         self.assertEqual(workdir.parent, Path(self.temp), f"{copy}: Setup ignored TMPDIR")
         if start == "fallback":
@@ -109,6 +113,17 @@ class CriticModelBlockTests(unittest.TestCase):
                     text, workdir = self.start_pressure_test(copy, shell, start)
                     self.run_named_block(copy, text, shell, "Flags", workdir)
                     self.assertEqual(self.critic_model(workdir), models[other])
+
+
+class CrossFamilyStopTests(unittest.TestCase):
+    def test_antigravity_copy_stops_on_a_gpt_family_main_agent_before_setup(self):
+        text = COPIES["antigravity"][0].read_text(encoding="utf-8")
+        check = section(text, "Cross-family check")
+        self.assertIn("GPT-family", check)
+        self.assertIn(f'"{NO_CRITIC}"', check)
+        self.assertLess(text.index("## Cross-family check"), text.index("## Setup"))
+        self.assertIn(NO_CRITIC, section(text, "Stop conditions").lower())
+        self.assertIn(NO_CRITIC, section(text, "Step 3").lower())
 
 
 if __name__ == "__main__":

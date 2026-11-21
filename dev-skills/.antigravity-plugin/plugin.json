@@ -1,0 +1,34 @@
+{
+  "name": "dev-skills",
+  "displayName": "Dev Skills",
+  "version": "1.0.0",
+  "description": "Development workflow skills for repository hygiene, documentation, review, and structured execution.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "development",
+    "documentation",
+    "goal",
+    "rubric",
+    "pressure-test",
+    "critic",
+    "review",
+    "evaluation",
+    "git",
+    "cleanup",
+    "workflow",
+    "project-layout",
+    "pytest",
+    "testing"
+  ],
+  "suggestedPrompts": [
+    "Pressure-test this plan before implementation.",
+    "Evaluate this project and verify each finding.",
+    "Clean merged worktrees and branches."
+  ],
+  "skills": "./antigravity-skills/"
+}

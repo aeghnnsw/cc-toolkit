@@ -182,7 +182,7 @@ _Avoid_: Discussion with Codex, critic review
 
 **Critic**:
 The read-only model that attacks the position in a pressure test. It comes
-from the model family of the other host.
+from a model family other than the main agent's.
 _Avoid_: Reviewer, skeptic
 
 **Flag**:

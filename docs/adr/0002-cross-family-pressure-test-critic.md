@@ -8,6 +8,7 @@
 Each host ships a `pressure-test` skill whose critic comes from the other
 host's model family, called through that host's CLI in non-interactive mode.
 In Claude Code, the skill calls `codex exec`. In Codex, it calls `claude -p`.
+The [Antigravity critic](#antigravity-critic) is GPT, through `codex exec`.
 A critic from another model family shares fewer blind spots with the main
 agent than a subagent of the same model. This decision replaces the Codex
 subagent critic from the
@@ -93,3 +94,47 @@ critic decision, [issue #289](https://github.com/aeghnnsw/cc-toolkit/issues/289)
 for the allowed-model list and its test, and
 [issue #327](https://github.com/aeghnnsw/cc-toolkit/issues/327) for the
 critic model choice.
+
+## Antigravity critic
+
+Added on 2026-11-21 for
+[#433](https://github.com/aeghnnsw/cc-toolkit/issues/433).
+
+Antigravity is the third host. Its main agent usually runs a Gemini model,
+and it can also run a Claude or GPT-family model. The Antigravity
+`pressure-test` copy uses the GPT critic through the same detached runner as
+the Claude Code copy: a byte-identical copy of `codex_critic.py`, which calls
+`codex exec`. It uses the same critic models, `gpt-6-astra` and
+`gpt-6.1-sol`, and the same critic model choice and flag rules.
+
+GPT is from another model family when the main agent runs a Gemini or Claude
+model. When the main agent runs a GPT-family model, the skill stops before
+setup and starts no critic call. Its ending condition is "no cross-family
+critic". As on the other hosts, it has no same-family fallback and no
+self-critique.
+
+The runner starts each critic call in a detached process, and the agent reads
+the result with `wait`. Antigravity moves a command that runs longer than
+10 seconds to the background. When the command finishes, Antigravity sends
+the agent a message with the exit code and the output. So a critic call
+continues after its runner command moves to the background, and the agent
+acts on the status line in that message. This was measured with `agy`
+1.5.13 on 2026-11-21.
+
+Rejected: the Claude critic through `claude -p`, as in the Codex copy, with
+the GPT critic only for a Claude main agent. Each Claude critic call needs
+one foreground command that can run for more than 1,800 seconds. Antigravity
+moves that command to the background, and the longest time that a
+background command can run is not measured. Two critic paths in one copy
+would also need two sets of scripts and tests.
+
+Consequences:
+
+- A change to the allowed models also updates the Antigravity copy.
+- `tests/test_model_pins.py` checks the critic models of the Antigravity
+  copy. It also checks that the copy names the "no cross-family critic" stop
+  for a GPT-family main agent before its model settings.
+- `dev-skills/tests/test_pressure_test_models.py` runs the critic model
+  blocks of the Antigravity copy in bash and zsh, and checks the place of
+  the stop. `dev-skills/tests/test_codex_critic.py` checks that the
+  Antigravity runner is byte-identical to the Claude Code runner.
