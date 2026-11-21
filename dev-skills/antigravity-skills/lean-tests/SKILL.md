@@ -19,7 +19,7 @@ This version has four modes. With no mode, run check.
 - **speed**: make the suite faster without deleting a test. It measures
   first, applies fixes one at a time in a fixed order, defines test tiers
   with time budgets, and writes the tier commands into the agent instruction
-  files that exist (`CLAUDE.md`, `AGENTS.md`). Run it only when the user's
+  files (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`). Run it only when the user's
   request asks for speed changes, such as "make the tests faster". A
   question about speed, such as why the tests are slow, runs check. Follow
   [references/speed.md](references/speed.md).

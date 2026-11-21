@@ -414,15 +414,18 @@ the tiers include the full tier.
 ## 6. Write the "Tests" section
 
 Find the agent instruction files with
-`ls -l <project>/CLAUDE.md <project>/AGENTS.md`.
+`ls -l <project>/CLAUDE.md <project>/AGENTS.md <project>/GEMINI.md`.
 
-- Write the section into each file that exists. When one file is a symbolic
-  link to the other, `ls -l` shows `->`: write the section once, into the
-  file that the link points to.
-- When only one file exists, tell the user that agents that read only the
-  other file, such as Codex for `AGENTS.md` and Claude Code for
-  `CLAUDE.md`, do not see the tiers. Offer to create the other file.
-- When neither file exists, create none, and give the section in the reply.
+- Write the section into `CLAUDE.md` and `AGENTS.md` when they exist. When
+  one file is a symbolic link to another, `ls -l` shows `->`: write the
+  section once, into the file that the link points to.
+- Write the section into `GEMINI.md` only when `AGENTS.md` does not exist.
+  Antigravity reads both files, so it would see the section twice.
+- When only one of `CLAUDE.md` and `AGENTS.md` exists, tell the user that
+  agents that read only the other file, such as Codex for `AGENTS.md` and
+  Claude Code for `CLAUDE.md`, do not see the tiers. Offer to create the
+  other file.
+- When no file exists, create none, and give the section in the reply.
 - When a file already has a "Tests" section, show the user the old and the
   new text, and replace the section only when the user agrees.
 - Keep each other agent instruction as it is.

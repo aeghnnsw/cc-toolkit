@@ -1,6 +1,6 @@
 ---
 name: lean-tests
-version: 1.4.1
+version: 1.5.0
 description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 
@@ -20,7 +20,7 @@ This version has four modes. With no mode, run check.
 - **speed**: make the suite faster without deleting a test. It measures
   first, applies fixes one at a time in a fixed order, defines test tiers
   with time budgets, and writes the tier commands into the agent instruction
-  files that exist (`CLAUDE.md`, `AGENTS.md`). Run it only when the user's
+  files (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`). Run it only when the user's
   request asks for speed changes, such as "make the tests faster". A
   question about speed, such as why the tests are slow, runs check. Follow
   [references/speed.md](references/speed.md).

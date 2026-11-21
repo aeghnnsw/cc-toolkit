@@ -27,7 +27,7 @@ Use this skill to refresh, correct, or clean up documentation that already exist
 ### 1. Locate target docs
 
 - Use the path(s) the user specifies.
-- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` (only if the request mentions skills, agents, or Claude, Antigravity, or Gemini configuration). List what was found and confirm scope before editing.
+- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` (only if the request mentions skills, agents, or Claude Code or Antigravity configuration). List what was found and confirm scope before editing.
 - If nothing is found and nothing was specified, ask the user where the docs are.
 
 ### 2. Read and classify

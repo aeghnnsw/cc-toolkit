@@ -58,7 +58,9 @@ In every mode, leave the files that other workflows own where they are:
    untracked file: `sandbox.filesystem.allowWrite` in
    `.claude/settings.local.json` for Claude Code, and
    `sandbox_workspace_write.writable_roots` in `~/.codex/config.toml` for
-   Codex. Never add the store root: by default it is the main checkout.
+   Codex. For another host, such as Antigravity, give the user the two
+   paths, and say that this skill knows no allow-list setting for that
+   host. Never add the store root: by default it is the main checkout.
 
 Report the files that you added, the files that you skipped, and the store
 path.
