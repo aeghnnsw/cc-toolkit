@@ -1,7 +1,8 @@
 # PyMOL MCP Plugin
 
-Control a local PyMOL session from Claude Code or Codex through MCP.
-Both hosts use the same Python bridge and PyMOL socket plugin.
+Control a local PyMOL session from Claude Code, Codex, or Antigravity
+through MCP. All three hosts use the same Python bridge and PyMOL socket
+plugin.
 
 ## Prerequisites
 
@@ -36,6 +37,21 @@ plugin, then use `pymol-mcp` to control PyMOL. The Codex manifest declares
 relative to the installed package root. The bridge runs from that directory;
 it does not need a Claude Code installation or a source checkout.
 
+## Antigravity installation
+
+Install the plugin from its GitHub folder:
+
+```bash
+agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/pymol-skills
+```
+
+Start a new conversation. Ask to use `pymol-setup` to configure the socket
+plugin, then use `pymol-mcp` to control PyMOL. The Antigravity manifest
+declares `antigravity-skills/`. Antigravity reads the root `mcp_config.json`
+and replaces `${PLUGIN_ROOT}` in its `args` and `cwd` with the installed
+package root. The bridge runs from that directory; it does not need a source
+checkout.
+
 ## Claude Code installation
 
 Install `pymol-skills@cc-toolkit` from the Claude Code marketplace. Ask to
@@ -53,8 +69,8 @@ own manifest, skills, and MCP configuration.
 
 Use the existing socket plugin if it is already installed. The bridge always
 connects to `localhost:9876`. Start the listener again after restarting PyMOL.
-The listener serves one client at a time. Disconnect another Codex or Claude
-Code MCP client before connecting a new one.
+The listener serves one client at a time. Disconnect another Claude Code,
+Codex, or Antigravity MCP client before connecting a new one.
 
 ## Tools
 
@@ -71,6 +87,9 @@ For a check that preserves the scene, use `pymol_python_api` with
 - `pymol-mcp-socket-plugin/`: shared PyMOL socket plugin and Qt interface.
 - `skills/`: Claude Code guidance.
 - `codex-skills/`: Codex guidance.
+- `antigravity-skills/`: Antigravity guidance.
+- `mcp-config.json`, `mcp-config.codex.json`, and `mcp_config.json`: the MCP
+  configurations for Claude Code, Codex, and Antigravity.
 
 ## Attribution
 

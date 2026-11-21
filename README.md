@@ -140,8 +140,9 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar. 
 - **gtd-setup**
 
 ### PyMOL Skills (`pymol-skills`)
-PyMOL molecular visualization control via MCP server for Claude Code and Codex.
-Both hosts share the local Python bridge and socket plugin. See the
+PyMOL molecular visualization control via MCP server for Claude Code, Codex,
+and Antigravity. The three hosts share the local Python bridge and socket
+plugin. See the
 [installation guide](pymol-skills/README.md).
 
 **Skills:**
@@ -149,6 +150,10 @@ Both hosts share the local Python bridge and socket plugin. See the
 - **pymol-setup**: Installation instructions for the PyMOL socket plugin
 
 **Codex skills:**
+- **pymol-mcp**
+- **pymol-setup**
+
+**Antigravity skills:**
 - **pymol-mcp**
 - **pymol-setup**
 
@@ -215,8 +220,8 @@ agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/<plugin>
 
 Install only a plugin whose directory holds `.antigravity-plugin/plugin.json`.
 For a plugin without that manifest, `agy plugin install` converts the Claude
-Code plugin, and the result can lose parts of it: converted Core Hooks apply no
-policy, and converted PyMOL Skills has no MCP server. See the
+Code plugin, and the result can lose parts of it: for example, converted Core
+Hooks apply no policy. See the
 [Antigravity plugin guide](https://antigravity.google/docs/plugins) for other
 commands.
 
