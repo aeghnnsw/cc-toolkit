@@ -253,7 +253,6 @@ class AntigravityHostAdapterTests(unittest.TestCase):
             ("pre_git_hook.py", "git checkout -b wip", "Branch name 'wip' is invalid"),
             ("zsh_traps.py", "echo =====CODEX", "echo '=====CODEX'"),
             ("zsh_traps.py", "echo ok; echo =====", "Quote the word"),
-            ("zsh_traps.py", "ls *.md", "matches no file"),
         )
         for script_name, command, reason in cases:
             with self.subTest(command=command):
@@ -261,6 +260,13 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertEqual(result.stdout, "")
                 self.assertIn(reason, result.stderr)
+
+    def test_unmatched_glob_is_allowed_because_files_can_appear_first(self):
+        result = self.run_shell_hook("zsh_traps.py", "touch a.md && ls *.md")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
 
     def test_zsh_rewrite_names_the_corrected_command_as_the_fix(self):
         result = self.run_shell_hook("zsh_traps.py", "echo -n =====CODEX done")

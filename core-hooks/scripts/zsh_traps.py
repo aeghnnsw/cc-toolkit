@@ -38,7 +38,9 @@ and no measured Antigravity contract changes the command. So with
 `--host antigravity`, the hook writes nothing to stdout. It blocks a
 command that the rewrite fixes, with a reason on stderr that names the
 corrected command, and it blocks a command with any other trap, with the
-trap messages on stderr.
+trap messages on stderr. It skips the glob check: the check reads the
+files before the command runs, so it can block a command that first
+creates the files, and no warning can replace the block.
 """
 
 import glob
@@ -550,9 +552,9 @@ def zsh_traps(command, cwd=None, host=None):
     as `PY="uv run python"`, or when it is the only word of a `set` command
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
     `cwd` is the directory where the command runs. The glob check uses it
-    unless the command changes the directory. A parameter flag is a trap
-    only when `host` is "claude", because only the Claude Code safety check
-    rejects it.
+    unless the command changes the directory, and it does not run when
+    `host` is "antigravity". A parameter flag is a trap only when `host` is
+    "claude", because only the Claude Code safety check rejects it.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -569,9 +571,8 @@ def zsh_traps(command, cwd=None, host=None):
     ]
     missing = [word for word in findings.equals_words if _names_no_command(word)]
     directory = None if findings.changes_directory else cwd
-    unmatched = [
-        word for word in findings.glob_words if _matches_no_file(word, directory)
-    ]
+    glob_words = [] if host == ANTIGRAVITY else findings.glob_words
+    unmatched = [word for word in glob_words if _matches_no_file(word, directory)]
     traps = []
     if findings.flags and host == "claude":
         traps.append(Trap(FLAG_DENIAL.format(flag=findings.flags[0]), True))

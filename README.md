@@ -122,7 +122,8 @@ In Antigravity, a root `hooks.json` runs the same scripts, and a block
 shows its reason. An Antigravity hook cannot warn without blocking the
 command. So each zsh trap blocks the command, the `echo` quoting becomes a
 block that names the corrected command, and the Git reminders and the
-branch-prefix message are dropped. Antigravity has no Notification,
+branch-prefix message are dropped. The unmatched-glob check does not run,
+because a command can create the files before its glob. Antigravity has no Notification,
 SessionEnd, or SubagentStop event; the sound plays when the agent stops.
 
 ### Productivity Skills (`productivity-skills`)

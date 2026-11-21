@@ -44,7 +44,9 @@ reserves `status` as a read-only variable.
 
 Antigravity has no Notification, SessionEnd, or SubagentStop event, and a
 PreToolUse hook cannot warn without blocking. So the git policy reminders
-and the branch-prefix message are dropped, and each zsh trap blocks. No
+and the branch-prefix message are dropped, and each zsh trap blocks,
+except an unmatched glob: that check reads the files before the command
+runs, so it can block a command that creates them first. No
 measured Antigravity contract changes the command, so the zsh rewrite
 becomes a block that names the corrected command. See
 [ADR 0006](0006-antigravity-plugin-layout.md#hook-failure-policy) and the
