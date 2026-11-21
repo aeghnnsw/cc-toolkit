@@ -28,7 +28,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOST_SKILLS = {
     "claude": PLUGIN_ROOT / "skills" / "lean-tests",
     "codex": PLUGIN_ROOT / "codex-skills" / "lean-tests",
+    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "lean-tests",
 }
+OTHER_HOSTS = [host for host in HOST_SKILLS if host != "claude"]
 SCRIPT = HOST_SKILLS["claude"] / "scripts" / "lean_tests.py"
 UV_COMMAND = (
     "uv run --no-project --python '>=3.11' --with pytest --with pytest-cov "
@@ -2098,26 +2100,29 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
 class HostParityTest(unittest.TestCase):
     def test_bodies_match(self) -> None:
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(bodies["claude"], bodies["codex"])
+        for host in OTHER_HOSTS:
+            self.assertEqual(bodies["claude"], bodies[host], f"the {host} body differs")
 
     def test_frontmatter_differs_only_by_version(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(fields["codex"]["name"], "lean-tests")
-        self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
+        for host in OTHER_HOSTS:
+            self.assertEqual(fields[host]["name"], "lean-tests", host)
+            self.assertEqual(set(fields[host]), {"name", "description"}, host)
+            self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields[host], host)
 
     def test_references_and_scripts_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
-        codex = supporting_files(HOST_SKILLS["codex"])
         self.assertIn("references/check.md", sorted(claude))
         self.assertIn("references/speed.md", sorted(claude))
         self.assertIn("references/review.md", sorted(claude))
         self.assertIn("scripts/lt_gate.py", sorted(claude))
         self.assertIn("scripts/lt_pin.py", sorted(claude))
         self.assertIn("scripts/lean_tests.py", sorted(claude))
-        self.assertEqual(sorted(claude), sorted(codex))
-        for name in claude:
-            self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
+        for host in OTHER_HOSTS:
+            copy = supporting_files(HOST_SKILLS[host])
+            self.assertEqual(sorted(claude), sorted(copy), f"the {host} file list differs")
+            for name in claude:
+                self.assertEqual(claude[name], copy[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":

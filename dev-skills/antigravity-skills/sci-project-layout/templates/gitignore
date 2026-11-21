@@ -1,0 +1,15 @@
+# Store
+/data
+/results
+# Work folders and logs
+/.scratch
+/trees
+/.claude/worktrees
+/logs
+# Environments, secrets, and local settings
+/.venv
+/.env
+/.claude/settings.local.json
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/

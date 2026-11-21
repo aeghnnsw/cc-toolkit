@@ -48,9 +48,9 @@ In every mode, leave the files that other workflows own where they are:
    the package, and the steps cannot import `paths`.
 5. In the copied files, replace `myproj` with the package name, and
    `MYPROJ` with the package name in capitals.
-6. Add one line to the project's agent instructions file, `CLAUDE.md` or
-   `AGENTS.md` (when one links to the other, edit the target): "Before you
-   add a file, read `docs/agents/layout.md`."
+6. Add one line to the project's agent instructions file, `CLAUDE.md`,
+   `AGENTS.md`, or `GEMINI.md` (when one links to another, edit the
+   target): "Before you add a file, read `docs/agents/layout.md`."
 7. Print the store path with
    `uv run python -c "from <package> import paths; print(paths.STORE)"`.
    Make `<store>/data` and `<store>/results`. Then ask the user before you
@@ -58,7 +58,9 @@ In every mode, leave the files that other workflows own where they are:
    untracked file: `sandbox.filesystem.allowWrite` in
    `.claude/settings.local.json` for Claude Code, and
    `sandbox_workspace_write.writable_roots` in `~/.codex/config.toml` for
-   Codex. Never add the store root: by default it is the main checkout.
+   Codex. For another host, such as Antigravity, give the user the two
+   paths, and say that this skill knows no allow-list setting for that
+   host. Never add the store root: by default it is the main checkout.
 
 Report the files that you added, the files that you skipped, and the store
 path.

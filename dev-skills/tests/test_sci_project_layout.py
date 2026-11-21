@@ -23,7 +23,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOST_SKILLS = {
     "claude": PLUGIN_ROOT / "skills" / "sci-project-layout",
     "codex": PLUGIN_ROOT / "codex-skills" / "sci-project-layout",
+    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "sci-project-layout",
 }
+OTHER_HOSTS = [host for host in HOST_SKILLS if host != "claude"]
 TEMPLATES = HOST_SKILLS["claude"] / "templates"
 KEY = "042-docking-baseline"
 VERSION = "processed/kinase-actives/v2"
@@ -347,20 +349,29 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
 class HostParityTest(unittest.TestCase):
     def test_bodies_match(self) -> None:
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(bodies["claude"], bodies["codex"])
+        for host in OTHER_HOSTS:
+            self.assertEqual(bodies["claude"], bodies[host], f"the {host} body differs")
+
+    def test_body_names_each_host_instruction_file(self) -> None:
+        body = split_skill(HOST_SKILLS["claude"] / "SKILL.md")[1]
+        for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            self.assertIn(f"`{name}`", body)
 
     def test_frontmatter_differs_only_by_version(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(fields["codex"]["name"], "sci-project-layout")
-        self.assertEqual(set(fields["codex"]), {"name", "description"})
-        self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields["codex"])
+        for host in OTHER_HOSTS:
+            self.assertEqual(fields[host]["name"], "sci-project-layout", host)
+            self.assertEqual(set(fields[host]), {"name", "description"}, host)
+            self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields[host], host)
 
     def test_templates_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
-        codex = supporting_files(HOST_SKILLS["codex"])
-        self.assertEqual(sorted(claude), sorted(codex))
-        for name in claude:
-            self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
+        self.assertIn("templates/layout.md", sorted(claude))
+        for host in OTHER_HOSTS:
+            copy = supporting_files(HOST_SKILLS[host])
+            self.assertEqual(sorted(claude), sorted(copy), f"the {host} file list differs")
+            for name in claude:
+                self.assertEqual(claude[name], copy[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":
