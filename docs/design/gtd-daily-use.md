@@ -5,7 +5,9 @@ Superseded in part on 2026-11-07 by
 project links and mutation identity now follow the
 [cloud GTD contract](../../productivity-skills/references/gtd-cloud.md).
 The native lists, name references and reminder-ID decisions below describe
-the preserved source workflow. Calendar and general Reminders remain native.
+the preserved source workflow. Calendar remains native. The general
+Reminders skill and its CLI commands were removed in
+[#435](https://github.com/aeghnnsw/cc-toolkit/issues/435).
 
 The user selects work through `gtd-next`. The complete spec and single
 implementation ticket are [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).
@@ -32,12 +34,8 @@ policy changes remain out of scope.
 ## Verification
 
 For current GTD verification, follow the
-[repository checks](../../CONTRIBUTING.md#verification). The native-only
-checks below remain relevant to general Reminders changes.
-
-Use compiled CLI commands for argument rejection and JSON response checks.
-Use unsaved EventKit objects to verify edit preservation and local date behavior
-without personal data access. Run the affected runtime suite with:
+[repository checks](../../CONTRIBUTING.md#verification). Run the affected
+runtime suite with:
 
 ```bash
 uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'

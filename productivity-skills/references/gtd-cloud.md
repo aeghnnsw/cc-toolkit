@@ -5,8 +5,7 @@ Supabase tool supplies authentication. The local [SQL renderer](../scripts/gtd_s
 prepares tool arguments; it makes no network request and reads no credentials.
 `uv` on `PATH` is required. `uv` supplies Python 3.11 or newer, so the `python3`
 on `PATH` does not matter. The renderer uses only the standard library. Calendar
-and explicitly requested general Reminders operations remain separate native
-workflows.
+operations remain a separate native workflow.
 
 ## Bind the route
 

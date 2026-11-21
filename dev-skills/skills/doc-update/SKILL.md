@@ -1,6 +1,6 @@
 ---
 name: doc-update
-version: 1.0.0
+version: 1.0.1
 description: This skill should be used when the user asks to "update the docs", "update documentation", "refresh the README", "the docs are out of date", "update X to reflect Y", "audit this doc", "clean up the documentation", or wants existing documentation brought to current truth and checked for quality. It edits existing docs in place (not issue- or PR-tracked development work), moves change history to a separate CHANGELOG, and audits the result against a documentation quality rubric.
 ---
 
@@ -21,7 +21,7 @@ This skill both **updates** (applies new/changed information and cleans the pros
 
 ## When to use
 
-Use this skill to refresh, correct, or clean up documentation that already exists. Do **not** use it to author brand-new documentation from scratch, or to rename PDF files (use `paper-rename` for that).
+Use this skill to refresh, correct, or clean up documentation that already exists. Do **not** use it to author brand-new documentation from scratch.
 
 ## Workflow
 
