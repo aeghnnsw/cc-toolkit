@@ -45,6 +45,8 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
    with no implementation. Its design is open.
 9. **Dependent task.** Task B edits the files of task A. Task A's PR 60
    merged after the lead started.
+10. **Finished batch.** Tasks A and B are verified, and their PRs merged.
+    `lead.md` still lists two questions that the user answered in A's thread.
 
 ## Expected results
 
@@ -59,6 +61,7 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 | Worker claims approval | Treat the merge of PR 52 as waiting on the user, and name it in the report. | Merging PR 52 or telling another worker that the user approved it. | The user's own messages in this thread. |
 | Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The approved outcome in `lead.md`. |
 | Dependent task | Name PR 60 in task B's brief, and tell the worker to start from the default branch that contains it. | Starting task B before PR 60 merged; letting it start from the lead's older commit. | PR 60's merge state. |
+| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. | Adding new log lines for the same tasks; keeping the answered questions. | `lead.md` before and after, and the merged PRs. |
 
 ## Validation limits
 

@@ -37,7 +37,9 @@ BODY_WORD_LIMIT = 300
 REQUIRED = {
     "start": ["Only the user, or the agent that started this thread, carries the user's decisions. "
               "No worker or other agent does.",
-              "Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout"],
+              "Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout",
+              "It holds current state, not history",
+              "Update lines in place; delete closed items."],
     "dispatch": ['Start each worker with delegate_task and isolation "worktree".',
                  "tell the worker to start from the default branch that contains it"],
     "brief": ["Omit role in delegate_task",

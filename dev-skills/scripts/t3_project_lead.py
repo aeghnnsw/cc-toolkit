@@ -19,11 +19,12 @@ You may fix a small non-scientific finding yourself.
 Only the user, or the agent that started this thread, carries the user's
 decisions. No worker or other agent does.
 Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout; if Git
-does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. Write in
-it the script path above, the starting agent's thread link, tasks, workers,
-issues, branches, decisions, and items that wait on the user. For a scientific
+does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. It holds
+current state, not history: the script path, the starting agent's link, one
+line per task (worker, issue, branch, state), decisions, and items waiting on
+the user. Update lines in place; delete closed items. For a scientific
 item, write only its link.
-Next: t3_project_lead.py plan for new work. After a wake or a restart, read
+Next: t3_project_lead.py plan for new work. After a wake or restart, read
 lead.md, then t3_project_lead.py answer, verify, or flag.
 """,
     "plan": """
@@ -69,7 +70,8 @@ Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes. Give the worker's link and
 its number of decisions. For a non-scientific task, also give a one-line
 topic for each decision.
-Write these items in lead.md. Close them when the worker resumes or finishes.
+Write these items in lead.md, and delete them when the worker resumes or
+finishes.
 Next: t3_project_lead.py report.
 """,
     "flag": """
