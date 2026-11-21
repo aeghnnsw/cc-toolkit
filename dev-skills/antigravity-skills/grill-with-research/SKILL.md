@@ -6,7 +6,8 @@ description: Research the project, then grill the user only on decisions that re
 # Grill With Research
 
 Research first, so that each interview question needs the user's judgment.
-Start no implementation or automode.
+Start no implementation. Start automode only when the task names it for
+after the user approves the design.
 
 ## Load the Matt skills
 

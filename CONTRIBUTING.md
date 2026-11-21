@@ -137,7 +137,9 @@ table shows:
 The Antigravity agent reported its tool names itself (`agy` 1.5.13).
 Antigravity's builtin skills confirm only `ask_question`,
 `invoke_subagent`, and `run_workflow`. A copy names only these tools. For
-another action, write a plain verb.
+another action, write a plain verb. T3 Code tools, such as `delegate_task`,
+keep the same names in every copy, because T3 gives each host the same tool
+instructions.
 
 The Antigravity manifest declares `"skills": "./antigravity-skills/"` when
 the plugin has skills.

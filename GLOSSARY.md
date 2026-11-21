@@ -186,8 +186,8 @@ from a model family other than the main agent's.
 _Avoid_: Reviewer, skeptic
 
 **Flag**:
-A safeguard action by a model provider on one critic call, such as a policy
-error or a refusal.
+A safeguard action by a model provider on one critic call or one worker, such
+as a policy error or a refusal.
 _Avoid_: Safety stop, block
 
 **Starting model**:
@@ -238,6 +238,25 @@ _Avoid_: Reviewer, judge
 One of the eight areas that an evaluator covers, such as Security or User
 Experience. An angle is a topic inside one dimension.
 _Avoid_: Cluster, direction
+
+## Project-lead language
+
+**Project lead**:
+A T3 Code session that runs the t3-project-lead skill. It plans the project's
+work, starts each task in a worker, and verifies the delivered results. It
+implements only small fixes to non-scientific findings.
+_Avoid_: Orchestrator, director, coordinator
+
+**Worker**:
+A T3 Code child thread that a project lead starts for one task, in its own
+worktree. The user can write to it. When a worker finishes, the lead settles
+its thread in T3 and never reuses it.
+_Avoid_: Subagent
+
+**Brief**:
+The prompt that starts a worker: a line that loads a skill, the task, its
+success criteria, the lead's decisions, and the form of the worker's report.
+_Avoid_: Handoff, worker prompt
 
 ## Lean-tests language
 
