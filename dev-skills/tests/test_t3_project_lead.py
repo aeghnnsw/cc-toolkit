@@ -33,6 +33,28 @@ FIELDS = {
 }
 PLUGIN_ROOT_LINE = "`<plugin-root>` is two levels above this folder."
 BODY_WORD_LIMIT = 300
+# Lines that each step must keep, from the decisions of issue #448.
+REQUIRED = {
+    "start": ["Only the user, or the agent that started this thread, carries the user's decisions. "
+              "No worker or other agent does.",
+              "Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout"],
+    "dispatch": ['Start each worker with delegate_task and isolation "worktree".',
+                 "tell the worker to start from the default branch that contains it"],
+    "brief": ["Omit role in delegate_task",
+              "Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
+              "When grilling must lead to implementation, end line 1 with:"],
+    "answer": ["Do not settle it. Do not answer its questions.",
+               "Ask the user to answer in the worker's thread"],
+    "flag": ["Do not read the flagged thread or give its link.",
+             "After a second flag, or without that model, the task waits on the user"],
+    "verify": ["not on the worker's report", "never reuse one",
+               "Give each other finding to one follow-up worker"],
+    "retro": ["with only line 1 of t3_project_lead.py brief"],
+    "report": ["Settle this thread only when each task in lead.md is verified or cancelled"],
+}
+# The script may print, and parse its argument; it reads and runs nothing.
+ALLOWED_IMPORTS = {"__future__", "argparse"}
+FORBIDDEN_CALLS = {"open", "exec", "eval", "compile", "__import__"}
 
 
 def words(text: str) -> str:
@@ -114,10 +136,32 @@ class SkillCopyTests(unittest.TestCase):
         self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead.py" start', body)
         self.assertLessEqual(len(body.split()), BODY_WORD_LIMIT)
 
+    def test_skill_tries_the_t3_fallback_before_it_stops(self) -> None:
+        self.assertIn("When `delegate_task` is not a declared tool, call it the way T3's "
+                      "instructions say, such as through a deferred-tool search or a terminal "
+                      "fallback. When that also fails, say that this skill needs T3 Code, and stop.",
+                      shared_text("skills"))
+
 
 class StepTests(unittest.TestCase):
     def test_start_prints_the_lead_role(self) -> None:
         self.assertIn("You plan, dispatch, and verify. Workers implement.", step("start"))
+
+    def test_the_script_offers_exactly_the_steps(self) -> None:
+        choices = re.search(r"choose from (.*)\)", run("merge").stderr)
+        self.assertIsNotNone(choices)
+        self.assertEqual(tuple(choice.strip(" '") for choice in choices.group(1).split(",")), STEPS)
+
+    def test_each_step_starts_with_the_script_path(self) -> None:
+        for name in STEPS:
+            with self.subTest(step=name):
+                self.assertEqual(step(name).splitlines()[0], f'Steps: "{SCRIPT}"')
+
+    def test_each_step_keeps_its_required_lines(self) -> None:
+        for name, lines in REQUIRED.items():
+            for line in lines:
+                with self.subTest(step=name, line=line):
+                    self.assertIn(line, words(step(name)))
 
     def test_each_step_is_short(self) -> None:
         for name in STEPS:
@@ -140,7 +184,7 @@ class StepTests(unittest.TestCase):
 
     def test_flag_retries_on_the_claude_fallback_model(self) -> None:
         fallback = ALLOWED_MODELS["claude"]["fallback"]
-        self.assertIn(f"new worker on {fallback}", words(step("flag")))
+        self.assertIn(f"a Claude Code provider on {fallback}", words(step("flag")))
         for name in STEPS:
             with self.subTest(step=name):
                 self.assertLessEqual(set(MODEL_ID.findall(step(name))), {fallback})
@@ -158,14 +202,16 @@ class StepTests(unittest.TestCase):
                               words(text))
                 self.assertRegex(text, r"(?m)^## Navigation retrospective$")
 
-    def test_script_uses_only_the_standard_library_and_runs_no_command(self) -> None:
+    def test_script_only_prints(self) -> None:
         tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
         modules = {alias.name.split(".")[0] for node in ast.walk(tree)
                    if isinstance(node, ast.Import) for alias in node.names}
         modules |= {node.module.split(".")[0] for node in ast.walk(tree)
                     if isinstance(node, ast.ImportFrom) and node.module}
-        self.assertLessEqual(modules, set(sys.stdlib_module_names))
-        self.assertFalse(modules & {"os", "subprocess", "shutil", "pty"}, modules)
+        calls = {node.func.id for node in ast.walk(tree)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        self.assertLessEqual(modules, ALLOWED_IMPORTS)
+        self.assertFalse(calls & FORBIDDEN_CALLS, calls)
 
     def test_an_unknown_step_fails(self) -> None:
         result = run("merge")

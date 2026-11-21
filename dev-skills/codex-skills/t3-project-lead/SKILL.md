@@ -14,5 +14,6 @@ You lead this project in T3 Code. A script prints each step.
 Run a step again whenever you need its text, for example after a context
 summary.
 
-When you cannot call `delegate_task`, say that this skill needs T3 Code, and
-stop.
+When `delegate_task` is not a declared tool, call it the way T3's instructions
+say, such as through a deferred-tool search or a terminal fallback. When that
+also fails, say that this skill needs T3 Code, and stop.

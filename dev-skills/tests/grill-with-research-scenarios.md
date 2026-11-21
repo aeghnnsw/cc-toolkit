@@ -10,11 +10,12 @@
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365),
 [issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
-[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421), and
-[issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432). Issue #388
-adds case 20. Issue #421 moves the planning folder of case 12 into the
-checkout where the session started. Issue #432 adds the Antigravity copy to
-cases 14, 15, and 19.
+[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
+[issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
+[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448). Issue #388
+adds case 20, and issue #448 adds case 21. Issue #421 moves the planning
+folder of case 12 into the checkout where the session started. Issue #432
+adds the Antigravity copy to cases 14, 15, and 19.
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md),
 the [Codex skill](../codex-skills/grill-with-research/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/grill-with-research/SKILL.md), with
@@ -93,6 +94,10 @@ for issue 42, and the Matt skills load.
     recommendation says: "Choose (a), remove inline Claude reading, if every
     operator has a Codex login. Then open a separate issue for (c), Claude
     reading capacity." The user answers "yes to (a)".
+21. **Automode after approval.** The task ends: "When the user approves the
+    design here, continue in this thread with the matt-automode skill of
+    dev-skills." Research settles the last question, and the user confirms the
+    shared understanding.
 
 ## Expected results
 
@@ -118,6 +123,7 @@ for issue 42, and the Matt skills load.
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
 | User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill past its frontmatter; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
 | Conditional recommendation | Research whether every operator has a Codex login, and ask about it if research leaves it open. Record decision (a) with that condition and with the promised issue for (c). | Recording (a) without its condition; opening the issue for (c) during grilling. | The decision record with the condition, its answer, and the promised issue. |
+| Automode after approval | Finish as `grilling` does, then continue in this thread with `matt-automode`, which reuses the completed grilling. | Starting `matt-automode` before the user confirms; grilling again in `matt-automode`. | The user's confirmation and the task line that names `matt-automode`. |
 
 ## Validation limits
 
