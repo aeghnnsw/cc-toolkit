@@ -9,6 +9,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOST_SKILLS = {
     "claude": PLUGIN_ROOT / "skills" / "sci-slides",
     "codex": PLUGIN_ROOT / "codex-skills" / "sci-slides",
+    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "sci-slides",
 }
 
 
@@ -36,20 +37,22 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
 class SciSlidesParityTest(unittest.TestCase):
     def test_bodies_match(self) -> None:
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(bodies["claude"], bodies["codex"])
+        for host, body in bodies.items():
+            self.assertEqual(bodies["claude"], body, f"the {host} body differs")
 
     def test_name_and_description_match(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(fields["claude"]["name"], "sci-slides")
-        self.assertEqual(fields["codex"]["name"], "sci-slides")
-        self.assertEqual(fields["claude"]["description"], fields["codex"]["description"])
+        for host, host_fields in fields.items():
+            self.assertEqual(host_fields["name"], "sci-slides", host)
+            self.assertEqual(fields["claude"]["description"], host_fields["description"], host)
 
     def test_supporting_files_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
-        codex = supporting_files(HOST_SKILLS["codex"])
-        self.assertEqual(sorted(claude), sorted(codex))
-        for name in claude:
-            self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
+        for host, skill_dir in HOST_SKILLS.items():
+            other = supporting_files(skill_dir)
+            self.assertEqual(sorted(claude), sorted(other), host)
+            for name in claude:
+                self.assertEqual(claude[name], other[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":

@@ -73,9 +73,10 @@ Claude Code, `codex-skills/<name>/` for Codex, and
 pull request. Keep differences host-specific, such as tool names,
 invocation, and plugin-root paths.
 
-For an example pair, see `creator-skills/skills/sci-slides/` and
-`creator-skills/codex-skills/sci-slides/`. The test
-`creator-skills/tests/test_sci_slides.py` compares the two copies. A new
+For an example, see `creator-skills/skills/sci-slides/`,
+`creator-skills/codex-skills/sci-slides/`, and
+`creator-skills/antigravity-skills/sci-slides/`. The test
+`creator-skills/tests/test_sci_slides.py` compares the three copies. A new
 skill also needs an entry in each [README.md](README.md) list of its
 plugin: **Skills:** with a one-line description, and **Codex skills:** and
 **Antigravity skills:** with its name for each host that ships it. When the

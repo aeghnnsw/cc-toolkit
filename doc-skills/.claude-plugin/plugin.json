@@ -1,5 +1,9 @@
 {
   "name": "doc-skills",
   "description": "Document processing skills for AI agent accessibility, including PDF to markdown conversion split by page for efficient AI processing without context limitations",
-  "version": "1.0.2"
+  "version": "1.0.3",
+  "agents": [
+    "./claude-agents/paper-consolidator.md",
+    "./claude-agents/paper-reader.md"
+  ]
 }

@@ -1,10 +1,10 @@
 # cc-toolkit
 
-Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing.
+Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing, with Antigravity support for some plugins.
 
 ## Overview
 
-**cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex-specific manifests.
+**cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex and Antigravity plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex and Antigravity manifests.
 
 ## Development
 
@@ -106,6 +106,10 @@ Scientific content creation for figures and presentations.
 - **sci-figure-format**
 - **sci-slides**
 
+**Antigravity skills:**
+- **sci-figure-format**
+- **sci-slides**
+
 ### Document Skills (`doc-skills`)
 Document processing and AI-accessible content extraction.
 
@@ -113,7 +117,11 @@ Document processing and AI-accessible content extraction.
 - **docling-pdf**: PDF to markdown conversion using IBM's Docling library
 - **paper-rename**: Intelligent PDF renaming based on extracted titles and metadata
 
-**Agents (deprecated; retained for compatibility):**
+**Antigravity skills:**
+- **docling-pdf**
+- **paper-rename**
+
+**Claude Code agents (deprecated; retained for compatibility):**
 - **paper-reader**: Analyzes research papers and answers questions about content
 - **paper-consolidator**: Consolidates multiple paper analysis outputs into unified reports
 

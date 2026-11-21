@@ -36,7 +36,10 @@
         {"path": "skills/sci-slides/scripts/lint_slides.py", "hosts": ["claude"]},
         {"path": "codex-skills/sci-slides/references/design.md", "hosts": ["codex"]},
         {"path": "codex-skills/sci-slides/references/slide-text.md", "hosts": ["codex"]},
-        {"path": "codex-skills/sci-slides/scripts/lint_slides.py", "hosts": ["codex"]}
+        {"path": "codex-skills/sci-slides/scripts/lint_slides.py", "hosts": ["codex"]},
+        {"path": "antigravity-skills/sci-slides/references/design.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-slides/references/slide-text.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/sci-slides/scripts/lint_slides.py", "hosts": ["antigravity"]}
       ]
     },
     "dev-skills": {
@@ -92,7 +95,8 @@
     "doc-skills": {
       "ownership": [],
       "resources": [
-        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]}
+        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]},
+        {"path": "antigravity-skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["antigravity"]}
       ]
     },
     "productivity-skills": {
