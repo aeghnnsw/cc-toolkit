@@ -1,13 +1,13 @@
 ---
 name: grill-with-research
-version: 1.3.0
+version: 1.4.0
 description: Research the project, then grill the user only on decisions that research cannot settle; records glossary terms and ADRs. Use when the user asks to grill or stress-test a plan, design, or issue in the current project.
 ---
 
 # Grill With Research
 
 Research first, so that each interview question needs the user's judgment.
-Start no implementation or automode.
+Start no implementation or automode unless the task says so.
 
 ## Load the Matt skills
 
