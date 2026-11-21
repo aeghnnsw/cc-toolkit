@@ -1,9 +1,10 @@
-"""Run the gtd-setup step 9 shell blocks of both copies in bash and zsh.
+"""Run the gtd-setup step 9 shell blocks of every copy in bash and zsh.
 
 Step 9 has two blocks: a check of the global instruction files, and an append
 of the agent-capture rule to one file. The blocks come from SKILL.md, so the
 checks cover the text that an agent runs. Each block runs in a new shell with
-a temporary HOME, CLAUDE_CONFIG_DIR, and CODEX_HOME.
+a temporary HOME, CLAUDE_CONFIG_DIR, and CODEX_HOME. Antigravity's file is
+$HOME/.gemini/GEMINI.md.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 COPIES = {
     "claude-code": PLUGIN_ROOT / "skills" / "gtd-setup" / "SKILL.md",
     "codex": PLUGIN_ROOT / "codex-skills" / "gtd-setup" / "SKILL.md",
+    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "gtd-setup" / "SKILL.md",
 }
 SHELLS = {"bash": ["bash", "-c"], "zsh": ["zsh", "-f", "-c"]}  # -f: no user startup files
 BASH_FENCE = re.compile(r"^[ \t]*```bash[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
@@ -42,13 +44,14 @@ def step9_blocks(path: Path) -> tuple[str, str]:
 
 class StepNineBlocks(unittest.TestCase):
     def make_home(self) -> None:
-        """Create a new temporary home with Claude Code and Codex folders."""
+        """Create a new temporary home with Claude Code, Codex, and Antigravity folders."""
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
         self.home = self.root / "home"
         self.claude = self.home / ".claude"
         self.codex = self.home / ".codex"
-        for folder in (self.claude, self.codex, self.home / "real"):
+        self.antigravity = self.home / ".gemini"
+        for folder in (self.claude, self.codex, self.antigravity, self.home / "real"):
             folder.mkdir(parents=True)
 
     def run_block(self, shell: str, block: str, **env: str) -> str:
@@ -90,8 +93,14 @@ class StepNineBlocks(unittest.TestCase):
         link = self.claude / "CLAUDE.md"
         link.symlink_to(real)
         agents = self.codex / "AGENTS.md"
+        antigravity_md = self.antigravity / "GEMINI.md"
 
-        self.assertEqual(self.states(shell, check), {str(link): "absent", str(agents): "missing"})
+        self.assertEqual(self.states(shell, check),
+                         {str(link): "absent", str(agents): "missing", str(antigravity_md): "missing"})
+
+        output = self.run_block(shell, append.replace("<file>", str(antigravity_md)))  # Antigravity's file
+        self.assertEqual(output, f"added: {antigravity_md}\n")
+        self.assertEqual(antigravity_md.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
 
         output = self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
         self.assertEqual(output, f"added: {agents}\n")
@@ -116,23 +125,33 @@ class StepNineBlocks(unittest.TestCase):
         cut = RULE.index(" ", 55)  # wrap at a space, as a text editor does
         wrapped = "- " + RULE[:cut] + "\r\n  " + RULE[cut + 1:] + "\r\n"
         agents.write_text(wrapped, encoding="utf-8")
-        self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
+        self.assertEqual(self.states(shell, check),
+                         {str(link): "present", str(agents): "present", str(antigravity_md): "present"})
         output = self.run_block(shell, append.replace("<file>", str(agents)))
         self.assertEqual(output, f"present: {agents}\n")
         self.assertEqual(agents.read_bytes(), wrapped.encode("utf-8"))
 
         override = self.codex / "AGENTS.override.md"
         override.touch()  # Codex skips an empty override file
-        self.assertEqual(self.states(shell, check), {str(link): "present", str(agents): "present"})
+        self.assertEqual(self.states(shell, check),
+                         {str(link): "present", str(agents): "present", str(antigravity_md): "present"})
         override.write_text("# Override\n", encoding="utf-8")
-        self.assertEqual(self.states(shell, check), {str(link): "present", str(override): "absent"})
+        self.assertEqual(self.states(shell, check),
+                         {str(link): "present", str(override): "absent", str(antigravity_md): "present"})
 
-        shared = self.root / "shared"  # two host paths that are one file
-        shared.mkdir()
+        no_antigravity = self.root / "no-antigravity"  # a machine without Antigravity
+        no_antigravity.mkdir()
+        self.assertEqual(self.states(shell, check, HOME=str(no_antigravity)),
+                         {str(link): "present", str(override): "absent",
+                          str(no_antigravity / ".gemini" / "GEMINI.md"): "no host"})
+
+        shared = self.root / "shared"  # three host paths that are one file
+        (shared / ".gemini").mkdir(parents=True)
         (shared / "AGENTS.md").symlink_to(real)
-        output = self.run_block(shell, check, CODEX_HOME=str(shared))
-        targets = {line.split(" -> ")[1] for line in output.splitlines()}
-        self.assertEqual(targets, {str(real.resolve())})
+        (shared / ".gemini" / "GEMINI.md").symlink_to(real)
+        output = self.run_block(shell, check, CODEX_HOME=str(shared), HOME=str(shared))
+        targets = [line.split(" -> ")[1] for line in output.splitlines()]
+        self.assertEqual(targets, [str(real.resolve())] * 3)
 
         broken = self.root / "broken"
         broken.mkdir()
@@ -140,7 +159,8 @@ class StepNineBlocks(unittest.TestCase):
         found = self.states(shell, check, CLAUDE_CONFIG_DIR=str(broken),
                             CODEX_HOME=str(self.root / "no-codex"))
         self.assertEqual(found, {str(broken / "CLAUDE.md"): "broken symlink",
-                                 str(self.root / "no-codex" / "AGENTS.md"): "no host"})
+                                 str(self.root / "no-codex" / "AGENTS.md"): "no host",
+                                 str(antigravity_md): "present"})
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ---
 name: calendar-manager
-version: 1.0.0
+version: 1.0.1
 description: This skill should be used when the user asks to "create calendar event", "add meeting", "schedule appointment", "check calendar", "list upcoming events", "search events", "update event", "delete event", or wants to manage macOS Calendar app events via EventKit CLI. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
 ---
 
@@ -13,7 +13,7 @@ Manage macOS Calendar events using the productivity-cli tool (EventKit-based).
 Run the Swift source directly (no build step required):
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift <command>
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" <command>
 ```
 
 Requires: macOS 13+ with Xcode command line tools installed.
@@ -23,7 +23,7 @@ Requires: macOS 13+ with Xcode command line tools installed.
 Before any create/delete operation, list calendars and ask the user which one to use:
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars list
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars list
 ```
 
 ## Operations
@@ -31,7 +31,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars list
 ### List All Calendars
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars list
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars list
 ```
 
 Returns JSON:
@@ -49,33 +49,33 @@ Returns JSON:
 ### Get Today's Events
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars today
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars today
 ```
 
 ### Get This Week's Events
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars week
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars week
 ```
 
 ### Get Events on a Specific Date
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars date 2025-01-15
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars date 2025-01-15 --calendar Work
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars date 2025-01-15
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars date 2025-01-15 --calendar Work
 ```
 
 ### Get Events in a Date Range
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31 --calendar Work
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars range 2025-01-01 2025-01-31
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars range 2025-01-01 2025-01-31 --calendar Work
 ```
 
 ### Search Events by Title
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars search "meeting"
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars search "meeting"
 ```
 
 Searches events in the next 365 days matching the term.
@@ -84,7 +84,7 @@ Searches events in the next 365 days matching the term.
 
 **Basic event (1 hour duration):**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00"
@@ -92,7 +92,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Event with end time:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -101,7 +101,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Event with location and notes:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -112,7 +112,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **All-day event:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Company Holiday" \
   --calendar "Work" \
   --start "2025-01-20" \
@@ -123,7 +123,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Daily standup:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Daily Standup" \
   --calendar "Work" \
   --start "2026-01-20 09:00" \
@@ -133,7 +133,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Weekly team meeting on Mondays:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2026-01-20 14:00" \
@@ -144,7 +144,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Monthly review (12 occurrences):**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Monthly Review" \
   --calendar "Work" \
   --start "2026-02-01 10:00" \
@@ -154,7 +154,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 
 **Bi-weekly meeting:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars create \
   --title "Bi-weekly Sync" \
   --calendar "Work" \
   --start "2026-01-20 15:00" \
@@ -165,14 +165,14 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars create \
 ### Delete an Event
 
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15"
 ```
 
 With specific calendar:
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15" \
   --calendar "Work"
@@ -180,7 +180,7 @@ swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
 
 **Delete recurring event and all future occurrences:**
 ```bash
-swift ${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift calendars delete \
+swift "${CLAUDE_PLUGIN_ROOT}/scripts/productivity-cli.swift" calendars delete \
   --title "Daily Standup" \
   --date "2026-01-25" \
   --all-future

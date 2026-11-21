@@ -1,0 +1,29 @@
+{
+  "name": "productivity-skills",
+  "displayName": "Productivity Skills",
+  "version": "1.0.0",
+  "description": "Cloud GTD workflows through the connected Supabase tool, plus native macOS Calendar.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "productivity",
+    "gtd",
+    "calendar",
+    "macos",
+    "eventkit",
+    "supabase",
+    "tasks",
+    "agenda",
+    "inbox"
+  ],
+  "suggestedPrompts": [
+    "What's on my calendar today?",
+    "Process my GTD inbox.",
+    "What should I work on next?"
+  ],
+  "skills": "./antigravity-skills/"
+}

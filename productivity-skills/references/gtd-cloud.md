@@ -36,6 +36,11 @@ Discover the host's connected Supabase SQL tool. It accepts `project_id` and
 missing or needs authentication, report the required connection or sign-in.
 For several Claude Code profiles, or for Codex without a connected Supabase
 app, also name the [token connector](gtd-token-connector.md).
+In Antigravity, also give the connection steps. The user runs
+`agy mcp add supabase https://mcp.supabase.com/mcp`, which adds the Supabase
+MCP server to the user's global MCP configuration,
+`~/.gemini/config/mcp_config.json`. Then the user starts a new conversation and
+signs in when Antigravity asks. The token connector has no Antigravity setup.
 A failure before sending confirms no save. A failure during or after sending
 has an uncertain outcome; use the receipt procedure below. Keep native GTD files and Reminders as
 preserved source copies after cloud cutover; do not fall back to them.
@@ -66,8 +71,9 @@ of end-user row-level security.
 ## Prepare and send a query
 
 Resolve `<plugin-root>` to the installed Productivity Skills directory. For
-Claude Code, use `${CLAUDE_PLUGIN_ROOT}`. For Codex, use the directory two
-levels above the loaded skill. Each contains `scripts/` and `references/`.
+Claude Code, use `${CLAUDE_PLUGIN_ROOT}`. For Codex and Antigravity, use the
+directory two levels above the loaded skill. Each contains `scripts/` and
+`references/`.
 
 ```bash
 uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py read --limit 50

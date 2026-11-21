@@ -132,7 +132,7 @@ table shows:
 | Shell | A plain verb, such as "run the command"; it runs in the user's shell |
 | Web search | A plain verb, such as "search the web" |
 | Arguments | No argument placeholders; write "the user's request" |
-| Instruction files | `GEMINI.md` and `AGENTS.md`; the global root is `~/.gemini/config/` |
+| Instruction files | `GEMINI.md` and `AGENTS.md`. Global copies load from `~/.gemini/` and `~/.gemini/config/`; write to `~/.gemini/GEMINI.md`, which the Antigravity docs list for every surface |
 
 The Antigravity agent reported its tool names itself (`agy` 1.5.13).
 Antigravity's builtin skills confirm only `ask_question`,
