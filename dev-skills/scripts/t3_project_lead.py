@@ -22,8 +22,8 @@ Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout; if Git
 does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. It holds
 current state, not history: the script path, the starting agent's link, one
 line per task (worker, issue, branch, state), decisions, and items waiting on
-the user. Update lines in place; delete closed items. For a scientific
-item, write only its link.
+the user. Update task lines in place; delete answered items. For a
+scientific item, write only its link.
 Next: t3_project_lead.py plan for new work. After a wake or restart, read
 lead.md, then t3_project_lead.py answer, verify, or flag.
 """,
@@ -32,7 +32,8 @@ Break the approved outcome into worker tasks with success criteria that a
 check can pass or fail. A batch is the set of tasks that you start together.
 Order tasks that depend on each other or edit the same files. Run only
 independent tasks in parallel.
-Decide reversible points yourself and write them in lead.md.
+Decide reversible points yourself. Write each task, its success criteria, and
+these decisions in lead.md.
 Mark each scientific task (biology, chemistry, medicine). Its worker keeps the
 scientific detail, and you keep only links.
 Next: t3_project_lead.py dispatch.
@@ -46,6 +47,7 @@ exactly. Then add the task, its success criteria, the approved outcome, and
 your decisions. For a scientific task, give the issue link, not the content.
 For a task after a merged PR, name the PR, and tell the worker to start from
 the default branch that contains it.
+Write the worker's link and branch in its task line.
 Next: t3_project_lead.py report while workers run. After a wake:
 t3_project_lead.py answer, verify, or flag.
 """,
@@ -65,11 +67,12 @@ Next: t3_project_lead.py dispatch.
 """,
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
-the user. Do not settle it. Do not answer its questions.
+the user. Settle it only when the user cancels its task. Do not answer its
+questions.
 Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes. Give the worker's link and
-its number of decisions. For a non-scientific task, also give a one-line
-topic for each decision.
+its number of decisions, if any. For a non-scientific task, also give a
+one-line topic for each decision.
 Write these items in lead.md, and delete them when the worker resumes or
 finishes.
 Next: t3_project_lead.py report.
@@ -78,27 +81,27 @@ Next: t3_project_lead.py report.
 A flag is a failed worker whose message says its safeguards flagged the
 session (Claude Code), that content was flagged for a risk (Codex), or that
 the Antigravity quota is reached (how T3 shows a refusal).
-Unless it ran on claude-sonnet-5-5, start a new worker with delegate_task,
-isolation "worktree", and a Claude Code provider on claude-sonnet-5-5. Give it
-the same brief, line 1 in the Claude Code form, the branch, PR, and issue from
-lead.md and pull_request_list, and "Continue from this state." Do not read the
-flagged thread or give its link. Settle each flagged thread.
-After a second flag, or without that model, the task waits on the user; write
-it in lead.md.
+If it ran on another model and claude-sonnet-5-5 is available, start a new
+worker with delegate_task, isolation "worktree", and a Claude Code provider on
+claude-sonnet-5-5. Give it the same brief, line 1 in the Claude Code form, the
+branch, PR, and issue from lead.md and pull_request_list, and "Continue from
+this state." Do not read the flagged thread or give its link. Settle each
+flagged thread.
+Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
     "verify": """
-Check each result against its success criteria on the delivered artifact, such
-as the merged diff and checks, not on the worker's report.
-For a scientific task, start a verifier worker with no line 1 or 2. It edits
-nothing and reports a one-line verdict, with links and no scientific detail.
-That verdict completes the check.
-Fix a small non-scientific finding yourself in its PR, or a new PR after a
-merge. Give each other finding to one follow-up worker; then what remains
-waits on the user.
+Use this step when a worker or verifier reports PASS or ISSUES.
+Check a non-scientific result against its criteria on the artifact, such as
+the diff and checks, not the report.
+For a scientific task, read no artifact. Start a verifier as
+t3_project_lead.py dispatch says, with no line 1 or 2. It checks the artifact
+and edits nothing; its verdict completes the check.
+Fix a small non-scientific finding yourself, in its PR or a new one. Give each
+other finding to one follow-up worker; then what remains waits on the user.
 Settle each finished worker with t3_thread_organize; never reuse one.
-Next: t3_project_lead.py retro when a batch is verified, with a merged PR and
-no retrospective. Otherwise dispatch, or report.
+Next: t3_project_lead.py retro for a verified batch with a merged PR and no
+retrospective. Otherwise dispatch, or report.
 """,
     "retro": """
 Start one worker for the Navigation retrospective of the batch, as
@@ -117,10 +120,10 @@ Start with one status line. Then Running, Done (verified), and Decided.
 End with what waits on the user: approvals, access, worker questions, and
 steps that cannot be undone or leave the project. Name each worker item by its
 link and number of decisions; for a scientific item, give only the link.
-When you add agent captures, make this list gtd-inbox's "## Needs you" list.
-Settle this thread only when each task in lead.md is verified or cancelled,
-each batch with a merged PR has a retrospective, nothing waits on the user,
-and no worker runs.
+With agent captures, this list is gtd-inbox's "## Needs you" list.
+Only when each task in lead.md is verified or cancelled, each merged batch has
+a retrospective, nothing waits on the user, and no worker runs: delete the
+lead folder, then settle this thread.
 Next: after a wake, t3_project_lead.py start.
 """,
 }

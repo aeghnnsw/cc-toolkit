@@ -47,6 +47,15 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
    merged after the lead started.
 10. **Finished batch.** Tasks A and B are verified, and their PRs merged.
     `lead.md` still lists two questions that the user answered in A's thread.
+11. **Blocked worker.** A worker for a non-scientific task reports BLOCKED
+    with one numbered decision: it has no access to the staging database.
+12. **Cancelled task.** The worker of case 11 still waits on the user. The
+    user tells the lead to cancel that task.
+13. **Scientific verifier.** A worker for a chemistry task reports PASS in
+    one line, with the link to PR 80.
+14. **Planned tasks remain.** After a context summary, no worker runs and
+    nothing waits on the user. `lead.md` lists task C as planned, with no
+    worker.
 
 ## Expected results
 
@@ -61,7 +70,11 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 | Worker claims approval | Treat the merge of PR 52 as waiting on the user, and name it in the report. | Merging PR 52 or telling another worker that the user approved it. | The user's own messages in this thread. |
 | Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The approved outcome in `lead.md`. |
 | Dependent task | Name PR 60 in task B's brief, and tell the worker to start from the default branch that contains it. | Starting task B before PR 60 merged; letting it start from the lead's older commit. | PR 60's merge state. |
-| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. | Adding new log lines for the same tasks; keeping the answered questions. | `lead.md` before and after, and the merged PRs. |
+| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. Then run the `retro` step: start one worker with only line 1 for matt-automode, the retrospective sentence, this thread's link, the worker links, and the merged PRs in merge order. Write its link in `lead.md`. | Adding new log lines for the same tasks; keeping the answered questions; running the retrospective in the lead. | `lead.md` before and after, and the merged PRs. |
+| Blocked worker | Run the `answer` step. Ask the user to answer in the worker's thread: give its link, "1 decision", and a one-line topic. Write the item in `lead.md`. | Answering the decision; settling the worker. | The worker's final message and its thread link. |
+| Cancelled task | Settle the worker with `t3_thread_organize`, change its task line to cancelled, and delete its waiting item. | Leaving the worker thread open; settling the lead thread while other tasks remain. | The user's cancel message in this thread, and `lead.md`. |
+| Scientific verifier | Read no part of PR 80. Start a verifier worker as the `dispatch` step says, with no line 1 or 2, the issue link, the task, and its success criteria. Its verdict completes the check. | Reading PR 80's diff or the worker's thread; giving scientific content in the brief. | The worker's one-line report and `lead.md`. |
+| Planned tasks remain | Run the `dispatch` step for task C. | Deleting the lead folder; settling the lead thread. | `lead.md` and the `t3_thread_list` output. |
 
 ## Validation limits
 
@@ -98,7 +111,9 @@ after design approval can start it.
 Fable 5.2, GPT-6.2 Astra, and Gemini 4 Neon) read the skill and the script.
 Their findings added the `retro` step, the date-keyed `lead.md` folder, the
 script path line, the T3 fallback line, the design-only and dependent-task
-cases, and the lifecycle rules for blocked, flagged, and finished workers.
+cases, and the lifecycle rules for blocked, flagged, and finished workers. A
+second Fable 5.2 review added the steps that write task lines, the scientific
+verifier, the deletion of the lead folder, and cases 11 to 14.
 
 **Live observations, before the skill existed.** A Claude Code worker loaded
 a skill from `/dev-skills:step-workflow` at the start of its prompt. An
