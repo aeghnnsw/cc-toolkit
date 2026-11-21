@@ -142,8 +142,7 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar. 
 ### PyMOL Skills (`pymol-skills`)
 PyMOL molecular visualization control via MCP server for Claude Code, Codex,
 and Antigravity. The three hosts share the local Python bridge and socket
-plugin. See the
-[installation guide](pymol-skills/README.md).
+plugin. See the [installation guide](pymol-skills/README.md).
 
 **Skills:**
 - **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis

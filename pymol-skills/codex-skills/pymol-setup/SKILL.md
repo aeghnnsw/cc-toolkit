@@ -18,13 +18,13 @@ Start a new Codex task after installing the package to load its tools.
 
 ## Install the socket plugin
 
-Resolve the installed package root from this skill's location: it is two
-levels above the directory containing this `SKILL.md`. Use that installed
-copy, independent of any Claude Code installation or source checkout.
+The plugin root, `<plugin-root>`, is two levels above the directory that
+holds this `SKILL.md`. Use that installed copy, independent of any Claude
+Code installation or source checkout.
 
 1. Open PyMOL.
 2. Select **Plugin > Plugin Manager > Install New Plugin**.
-3. Choose `pymol-mcp-socket-plugin/__init__.py` under the package root.
+3. Choose `<plugin-root>/pymol-mcp-socket-plugin/__init__.py`.
 4. Complete installation. The PyMOL installer copies the containing package
    directory. Verify that `pymol_mcp_plugin.ui` remains beside `__init__.py`.
 5. Open **Plugin > PyMol MCP Socket Plugin** and click **Start Listening**.

@@ -41,7 +41,7 @@ class McpStartupTests(unittest.TestCase):
         self.root = Path(tmp.name) / "pymol-skills"
         shutil.copytree(source, self.root, ignore=shutil.ignore_patterns("__pycache__"))
 
-    def assert_lists_both_tools(self, result):
+    def assert_initializes_and_lists_both_tools(self, result):
         self.assertEqual(result.returncode, 0, result.stderr)
         responses = {
             message["id"]: message
@@ -61,7 +61,7 @@ class McpStartupTests(unittest.TestCase):
         config = json.loads((self.root / manifest["mcpServers"]).read_text())
         server = config["mcpServers"]["pymol-mcp"]
         result = run_server(server["command"], server["args"], self.root / server["cwd"])
-        self.assert_lists_both_tools(result)
+        self.assert_initializes_and_lists_both_tools(result)
 
     def test_relocated_antigravity_package_initializes_and_lists_both_tools(self):
         # Antigravity reads the root mcp_config.json and expands ${PLUGIN_ROOT}
@@ -75,8 +75,10 @@ class McpStartupTests(unittest.TestCase):
 
         args = [expand(arg) for arg in server["args"]]
         self.assertIn(str(self.root / "pymol_mcp_server.py"), args)
-        result = run_server(server["command"], args, expand(server["cwd"]))
-        self.assert_lists_both_tools(result)
+        cwd = expand(server["cwd"])
+        self.assertEqual(Path(cwd), self.root)
+        result = run_server(server["command"], args, cwd)
+        self.assert_initializes_and_lists_both_tools(result)
 
 
 if __name__ == "__main__":
