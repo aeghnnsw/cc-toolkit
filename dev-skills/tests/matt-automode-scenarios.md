@@ -24,12 +24,15 @@ and later changes from issues #302, #305, #354,
 [#358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [#392](https://github.com/aeghnnsw/cc-toolkit/issues/392),
 [#388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
-[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420), and
-[#421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Issue #358 removes
+[#420](https://github.com/aeghnnsw/cc-toolkit/issues/420),
+[#421](https://github.com/aeghnnsw/cc-toolkit/issues/421), and
+[#432](https://github.com/aeghnnsw/cc-toolkit/issues/432). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
-Issue #420 adds cases 28–33. Issue #421 adds cases 34–36.
-Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md)
-and the [Codex skill](../codex-skills/matt-automode/SKILL.md).
+Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
+case 37.
+Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
+the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
+[Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
 
 For each case, identify the next permitted action, blocked work, and evidence
 needed to pass the gate. Use a fresh review context with the skill and scenario
@@ -155,6 +158,15 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 36. **Run in the main checkout.** As case 34, but the run started in the
     main checkout. It creates the worktree `trees/feat-77` for its change in
     phase 4.
+37. **Antigravity sessions.** The previous record's cutoff is
+    2026-11-20T09:00:00Z, and the run set its cutoff to
+    2026-11-21T04:00:00Z. The repository gives no session-discovery
+    guidance. In `~/.gemini/antigravity-cli`, `conversation_summaries.db`
+    lists four sessions. The `workspace_uris` of three sessions name the
+    worktree `trees/feat-77` of this repository, the folder that contains
+    the repository, and another repository; all three were modified after
+    the previous cutoff. The fourth names the repository root and was last
+    modified at 2026-11-19T15:00:00Z.
 
 ## Expected results
 
@@ -170,7 +182,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Retro edit | Open or reuse a proposal issue that states the finding, its session and time, and the proposed doc change. | Committing the doc fix; opening a PR for it. | The proposal issue link in the retro record, with the finding's session and time. |
 | Pending PR checks | Wait for the required checks and required reviews to pass, merge the PR, and record gate 6. | Merging before checks and reviews pass; running cleanup or closing tickets before every ticket is merged. | Passing checks and reviews and the merged PR link; then cleanup results and verified closure of the tickets and any fully satisfied parent spec. |
 | Unsettled evidence | Choose option B and record the decision, evidence gap, alternatives, and risk. | Stopping for routine human input; completing phase 1 with the question still open. | The evaluated evidence for both options, their reversal costs, and the recorded rationale and risk. |
-| Slow checks | Use the host's PR monitoring mechanism. Resume merge work when the required checks and reviews pass. | Merging before checks pass; imposing a blocking watch command regardless of host guidance. | The monitored PR, passing required checks and reviews, then the merged PR link for phase 6. |
+| Slow checks | Use the host's PR monitoring mechanism; in Antigravity, run `gh pr checks` and check again later. Resume merge work when the required checks and reviews pass. | Merging before checks pass; imposing a blocking watch command regardless of host guidance. | The monitored PR, passing required checks and reviews, then the merged PR link for phase 6. |
 | Required human review | Start T3 at step 4. Then report the blocker with the PR link and keep the work. | Approving the PR as the agent; bypassing branch protection; merging the PR; starting tickets that depend on it. | The PR link, the branch protection rule that requires the review, and the state of the other tickets. |
 | Early closure | Leave T1 open and wait for the PR checks. Let the closing keyword close T1 at merge. | Closing T1 by hand before its PR merges. | The merged PR, then T1 closed by its keyword, or closed by hand only if the keyword did not close it. |
 | Quick command error | Leave the error out of the findings. | Adding the rule to `CLAUDE.md`; opening an issue for the error. | A retro record without that error. |
@@ -196,16 +208,28 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Planning folder in a worktree | Write the planning files in `trees/feat-77/.scratch/77-<slug>/`. | Writing them in the main checkout, the session scratchpad, or a tracked folder; searching for another location. | The folder path, and that Git ignores it or the `info/exclude` line that the run added. |
 | Documented planning folder | Write the planning files in `trees/feat-77/docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
 | Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
+| Antigravity sessions | Open the database read-only. Read the transcript of the `trees/feat-77` session only, and keep its records whose `created_at` is after 2026-11-20T09:00:00Z and at or before 2026-11-21T04:00:00Z. | Selecting Antigravity sessions by `cwd`; reading the sessions of the containing folder, the other repository, or the 2026-11-19 session; changing the database or a transcript. | The `workspace_uris` and `last_modified_time` of each session, and the sessions read in the retro record. |
 
 ## Validation limits
 
 Reading the instructions checks coverage. A simulated next-action review checks
 how an agent interprets these cases. Neither demonstrates a full workflow in
-Claude Code or Codex. Package validation checks metadata and release contracts;
+Claude Code, Codex, or Antigravity. Package validation checks metadata and release contracts;
 it does not enforce agent behavior. Record actual review outcomes separately
 from these expected results.
 
 ## Review record
+
+### 2026-11-21, issue #432
+
+**Static checks.** `test_grill_with_research.py` now checks that the
+"Navigation retrospective" section is the same in all three copies and names
+the Antigravity session folders, `conversation_summaries.db`,
+`workspace_uris`, and the transcript path. It failed on the Claude Code and
+Codex copies before their retrospective changed, and passes after. It also
+checks that the Antigravity copy loads skills with `--host antigravity`,
+keeps its task list in a task artifact, and names no Claude Code or Codex
+tool. No simulated review of case 37 and no live Antigravity session ran.
 
 ### 2026-11-18, issue #421
 

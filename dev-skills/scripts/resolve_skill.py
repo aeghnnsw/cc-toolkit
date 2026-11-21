@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print the SKILL.md path of each named plugin skill.
 
-Usage: resolve_skill.py [--host claude|codex] PLUGIN:SKILL...
+Usage: resolve_skill.py [--host claude|codex|antigravity] PLUGIN:SKILL...
 
 For each name that resolves, print "PLUGIN:SKILL /absolute/path/SKILL.md".
 For each name that fails, print one stderr line that names the cause, and
@@ -21,10 +21,22 @@ Codex: the [plugins."PLUGIN@MARKETPLACE"] table in config.toml under
 CODEX_HOME (default ~/.codex) must set enabled = true. The highest numeric
 version under plugins/cache/MARKETPLACE/PLUGIN/ is used.
 
+Antigravity: search each .agents/plugins/ folder from the current directory
+upward, nearest first. Stop after the directory that holds .git (the Git top
+level) or at /. Then search ~/.gemini/config/plugins/. In these folders, a
+plugin folder matches by the name in .antigravity-plugin/plugin.json, else
+by the name in .claude-plugin/plugin.json, else by the folder name. The
+first enabled match is used, so a disabled workspace plugin does not hide a
+global plugin of the same name. In ~/.gemini/config/config.json,
+plugins.FOLDER.enabled decides first, then plugins.PLUGIN.enabled. With
+neither, "disabled": true in .antigravity-plugin/plugin.json disables the
+plugin.
+
 In the plugin root, search the skills paths of the host manifest and the
 skills/ directory. In Codex, manifest skills paths replace skills/. Without
 manifest skills paths, also search the whole root without the other host's
-skill copies.
+skill copies (codex-skills/ for Claude Code and Antigravity, claude-skills/
+for Codex).
 """
 
 from __future__ import annotations
@@ -36,7 +48,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Iterable, NamedTuple
 
-USAGE = "usage: resolve_skill.py [--host claude|codex] PLUGIN:SKILL..."
+USAGE = "usage: resolve_skill.py [--host claude|codex|antigravity] PLUGIN:SKILL..."
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
 
 
@@ -175,6 +187,74 @@ def codex_plugin_root(plugin: str) -> Path:
     return max(versions, key=lambda p: version_key(p.name))
 
 
+def antigravity_plugin_dirs() -> list[Path]:
+    """Return the Antigravity plugin folders in search order.
+
+    Walk upward from the current directory to the Git top level (or to /),
+    nearest .agents/plugins first. The global folder comes last.
+    """
+    folders = []
+    current = Path.cwd().resolve()
+    for directory in (current, *current.parents):
+        folders.append(directory / ".agents" / "plugins")
+        if (directory / ".git").exists():
+            break
+    folders.append(Path.home() / ".gemini" / "config" / "plugins")
+    return folders
+
+
+def antigravity_name(root: Path) -> str:
+    """Return the plugin name: the Antigravity manifest, the Claude manifest, or the folder."""
+    for manifest in (".antigravity-plugin/plugin.json", ".claude-plugin/plugin.json"):
+        try:
+            name = load_json(root / manifest).get("name")
+        except (OSError, ValueError):
+            continue
+        if isinstance(name, str) and name:
+            return name
+    return root.name
+
+
+def antigravity_disabled(root: Path, plugin: str, config: Path, entries: dict) -> str | None:
+    """Return why the plugin in ROOT is disabled, or None when it is enabled."""
+    for key in (root.name, plugin):
+        entry = entries.get(key)
+        if isinstance(entry, dict) and isinstance(entry.get("enabled"), bool):
+            return None if entry["enabled"] else f"plugins.{key}.enabled is false in {config}"
+    manifest = root / ".antigravity-plugin" / "plugin.json"
+    try:
+        disabled = load_json(manifest).get("disabled") is True
+    except (OSError, ValueError):
+        disabled = False
+    return f'{manifest} sets "disabled": true' if disabled else None
+
+
+def antigravity_plugin_root(plugin: str) -> Path:
+    """Return the first enabled Antigravity plugin folder named PLUGIN."""
+    matches = []
+    for folder in antigravity_plugin_dirs():
+        try:
+            children = sorted(p for p in folder.iterdir() if p.is_dir())
+        except OSError:
+            continue
+        matches.extend(p for p in children if antigravity_name(p) == plugin)
+    if not matches:
+        global_dir = Path.home() / ".gemini" / "config" / "plugins"
+        raise ResolveError(f"plugin {plugin} is not installed in a workspace .agents/plugins folder or in {global_dir}")
+    config = Path.home() / ".gemini" / "config" / "config.json"
+    try:
+        entries = load_json(config).get("plugins", {}) if config.exists() else {}
+    except (OSError, ValueError) as error:
+        raise ResolveError(f"cannot read the Antigravity config {config} ({error})") from error
+    if not isinstance(entries, dict):
+        raise ResolveError(f"plugins in the Antigravity config {config} is not an object")
+    reasons = [antigravity_disabled(root, plugin, config, entries) for root in matches]
+    for root, reason in zip(matches, reasons):
+        if reason is None:
+            return root
+    raise ResolveError(f"plugin {plugin} is disabled ({reasons[0]})")
+
+
 class Host(NamedTuple):
     """How to find the plugin root and the skills of one host."""
 
@@ -187,6 +267,7 @@ class Host(NamedTuple):
 HOSTS = {
     "claude": Host(claude_plugin_root, ".claude-plugin/plugin.json", "codex-skills", True),
     "codex": Host(codex_plugin_root, ".codex-plugin/plugin.json", "claude-skills", False),
+    "antigravity": Host(antigravity_plugin_root, ".antigravity-plugin/plugin.json", "codex-skills", True),
 }
 
 

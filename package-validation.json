@@ -110,7 +110,7 @@
         {"path": "antigravity-skills/sci-project-layout/templates/layout-notes.md", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/sci-project-layout/templates/layout.md", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/sci-project-layout/templates/paths.py", "hosts": ["antigravity"]},
-        {"path": "scripts/resolve_skill.py", "hosts": ["claude", "codex"]},
+        {"path": "scripts/resolve_skill.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/live_worktrees.py", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },

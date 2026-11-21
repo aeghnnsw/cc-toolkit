@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.14.0
+version: 1.15.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -137,8 +137,20 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    cutoff, or this run's sessions when no record exists. Use the repository's
    session-discovery guidance when it has some. Otherwise read the JSONL logs:
    Claude Code under `projects/` in `~/.claude` or `$CLAUDE_CONFIG_DIR`, and
-   Codex under `sessions/` in `~/.codex` or `$CODEX_HOME`. Select sessions by
-   their recorded `cwd`. Leave the original logs unchanged.
+   Codex under `sessions/` in `~/.codex` or `$CODEX_HOME`. Select these
+   sessions by their recorded `cwd`. Antigravity sessions are under
+   `~/.gemini/antigravity-cli` for the CLI and `~/.gemini/antigravity` for the
+   app, and their records carry no `cwd`. In each folder, open
+   `conversation_summaries.db` read-only and read its `conversation_summaries`
+   table. Its `workspace_uris` column is a JSON list of `file://` URIs of the
+   folders where a session started. A session belongs to this repository when
+   one of these paths, with symbolic links resolved, is the root of the
+   repository or of one of its worktrees, or a folder inside one. Skip a
+   session whose `last_modified_time` (UTC) is before the previous cutoff. For
+   each remaining session, read
+   `brain/<conversation_id>/.system_generated/logs/transcript_full.jsonl`;
+   the `created_at` of each record is in UTC. Leave the original logs
+   unchanged.
 3. Keep findings that cost the run significant time or work, such as a long
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.
@@ -167,10 +179,11 @@ sessions.
 A proposal issue states the finding, its session and time, and the proposed
 change, with the repository's "Needs triage" label. To reuse an issue, add the
 new evidence as a comment. The retro stores no lesson and adds no record file.
-A steering file tells an agent how to work, such as `AGENTS.md`, `CLAUDE.md`, a
-contributor guide, or a skill. A proposal keeps root `AGENTS.md` and `CLAUDE.md`
-to rules for every task and navigation pointers. It never adds a tool
-workaround, a host or machine fact, or a one-off lesson to a steering file.
+A steering file tells an agent how to work, such as `AGENTS.md`, `CLAUDE.md`,
+`GEMINI.md`, a contributor guide, or a skill. A proposal keeps root
+`AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` to rules for every task and
+navigation pointers. It never adds a tool workaround, a host or machine fact,
+or a one-off lesson to a steering file.
 
 ## Sub-agent briefs
 

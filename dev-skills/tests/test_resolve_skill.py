@@ -32,6 +32,7 @@ class ResolverCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.claude_home = self.tmp / "claude"
         self.codex_home = self.tmp / "codex"
+        self.home = self.tmp / "home"
         self.workdir = self.tmp / "work"
         self.workdir.mkdir()
 
@@ -40,9 +41,14 @@ class ResolverCase(unittest.TestCase):
     ) -> subprocess.CompletedProcess:
         # A T3 Code session sets CLAUDE_CODE_PLUGIN_CACHE_DIR; never read the real plugin folder.
         inherited = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_PLUGIN_CACHE_DIR"}
-        env = dict(
-            inherited, CLAUDE_CONFIG_DIR=str(self.claude_home), CODEX_HOME=str(self.codex_home), **(extra_env or {})
-        )
+        # HOME keeps the Antigravity lookup away from the real ~/.gemini.
+        env = {
+            **inherited,
+            "CLAUDE_CONFIG_DIR": str(self.claude_home),
+            "CODEX_HOME": str(self.codex_home),
+            "HOME": str(self.home),
+            **(extra_env or {}),
+        }
         return subprocess.run(
             [sys.executable, str(SCRIPT), *args],
             capture_output=True,
@@ -497,11 +503,168 @@ class CodexResolveTest(ResolverCase):
         self.assertIn("not enabled", completed.stderr)
 
 
+class AntigravityResolveTest(ResolverCase):
+    """Workspace plugins in .agents/plugins/, then global plugins in ~/.gemini/config/plugins/."""
+
+    def setUp(self):
+        super().setUp()
+        (self.workdir / ".git").mkdir()  # The work folder is the Git top level, so the upward walk stops there.
+        self.workspace_plugins = self.workdir / ".agents" / "plugins"
+        self.global_plugins = self.home / ".gemini" / "config" / "plugins"
+
+    def agy_plugin(self, plugins_dir: Path, folder: str, manifest: dict | None = None, *, claude: dict | None = None) -> Path:
+        root = plugins_dir / folder
+        root.mkdir(parents=True)
+        if manifest is not None:
+            write(root / ".antigravity-plugin" / "plugin.json", json.dumps(manifest))
+        if claude is not None:
+            write(root / ".claude-plugin" / "plugin.json", json.dumps(claude))
+        return root
+
+    def agy_config(self, plugins: dict) -> None:
+        write(self.home / ".gemini" / "config" / "config.json", json.dumps({"plugins": plugins}))
+
+    def run_agy(self, *names: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+        return self.run_resolver("--host", "antigravity", *names, cwd=cwd)
+
+    def test_workspace_plugin_wins_over_the_global_plugin(self):
+        workspace = self.agy_plugin(self.workspace_plugins, "matt", {"name": "matt"})
+        expected = make_skill(workspace, "skills/retro")
+        make_skill(self.agy_plugin(self.global_plugins, "matt", {"name": "matt"}), "skills/retro")
+        helper = make_skill(self.agy_plugin(self.global_plugins, "tools", {"name": "tools"}), "skills/helper")
+
+        completed = self.run_agy("matt:retro", "tools:helper")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\ntools:helper {helper}\n")
+
+    def test_upward_walk_finds_the_nearest_workspace_plugin(self):
+        make_skill(self.agy_plugin(self.workspace_plugins, "matt", {"name": "matt"}), "skills/retro")
+        helper = make_skill(self.agy_plugin(self.workspace_plugins, "tools", {"name": "tools"}), "skills/helper")
+        nearer = self.agy_plugin(self.workdir / "pkg" / ".agents" / "plugins", "matt", {"name": "matt"})
+        expected = make_skill(nearer, "skills/retro")
+        deep = self.workdir / "pkg" / "src" / "deep"
+        deep.mkdir(parents=True)
+
+        completed = self.run_agy("matt:retro", "tools:helper", cwd=deep)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\ntools:helper {helper}\n")
+
+    def test_upward_walk_stops_at_the_git_top_level(self):
+        outer = self.tmp / "outer"
+        make_skill(self.agy_plugin(outer / ".agents" / "plugins", "matt", {"name": "matt"}), "skills/retro")
+        repo = outer / "repo"
+        write(repo / ".git", "gitdir: /elsewhere/.git/worktrees/repo\n")  # A linked worktree has a .git file.
+        (repo / "src").mkdir()
+
+        completed = self.run_agy("matt:retro", cwd=repo / "src")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("not installed", completed.stderr)
+
+    def test_enabled_state_follows_folder_key_then_name_key_then_manifest(self):
+        cases = [
+            ("folder key disables", {"matt-dir": {"enabled": False}, "matt": {"enabled": True}}, {}, False),
+            ("folder key enables", {"matt-dir": {"enabled": True}, "matt": {"enabled": False}}, {"disabled": True}, True),
+            ("name key disables", {"matt": {"enabled": False}}, {}, False),
+            ("name key enables", {"matt": {"enabled": True}}, {"disabled": True}, True),
+            ("manifest disables", {}, {"disabled": True}, False),
+            ("no entry enables", {}, {}, True),
+        ]
+        for label, plugins, extra, enabled in cases:
+            with self.subTest(label):
+                shutil.rmtree(self.global_plugins, ignore_errors=True)
+                root = self.agy_plugin(self.global_plugins, "matt-dir", {"name": "matt", **extra})
+                expected = make_skill(root, "skills/retro")
+                self.agy_config(plugins)
+
+                completed = self.run_agy("matt:retro")
+
+                if enabled:
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+                else:
+                    self.assertEqual(completed.returncode, 1)
+                    self.assertEqual(completed.stdout, "")
+                    self.assertIn("matt:retro", completed.stderr)
+                    self.assertIn("disabled", completed.stderr)
+
+    def test_disabled_workspace_plugin_falls_through_to_the_global_plugin(self):
+        make_skill(self.agy_plugin(self.workspace_plugins, "matt-ws", {"name": "matt"}), "skills/retro")
+        expected = make_skill(self.agy_plugin(self.global_plugins, "matt", {"name": "matt"}), "skills/retro")
+        self.agy_config({"matt-ws": {"enabled": False}})
+
+        completed = self.run_agy("matt:retro")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+
+    def test_plugin_matches_by_manifest_name_before_the_folder_name(self):
+        both = self.agy_plugin(self.global_plugins, "renamed-dir", {"name": "matt"}, claude={"name": "claude-name"})
+        retro = make_skill(both, "skills/retro")
+        helper = make_skill(self.agy_plugin(self.global_plugins, "claude-dir", claude={"name": "tools"}), "skills/helper")
+        task = make_skill(self.agy_plugin(self.global_plugins, "bare"), "skills/task")
+
+        completed = self.run_agy("matt:retro", "tools:helper", "bare:task", "claude-name:retro", "renamed-dir:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, f"matt:retro {retro}\ntools:helper {helper}\nbare:task {task}\n")
+        self.assertIn("claude-name:retro: plugin claude-name is not installed", completed.stderr)
+        self.assertIn("renamed-dir:retro: plugin renamed-dir is not installed", completed.stderr)
+
+    def test_declared_skills_paths_come_before_the_skills_dir(self):
+        root = self.agy_plugin(self.global_plugins, "dev", {"name": "dev", "skills": "./antigravity-skills/"})
+        make_skill(root, "skills/pressure-test")
+        expected = make_skill(root, "antigravity-skills/pressure-test")
+        claude_only = make_skill(root, "skills/project-eval")  # Antigravity always scans skills/.
+
+        completed = self.run_agy("dev:pressure-test", "dev:project-eval")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"dev:pressure-test {expected}\ndev:project-eval {claude_only}\n")
+
+    def test_search_skips_the_codex_copy(self):
+        root = self.agy_plugin(self.global_plugins, "dev", {"name": "dev"})
+        make_skill(root, "codex-skills/helper")  # Sorts first, so only the skip keeps it out.
+        expected = make_skill(root, "extra/helper")
+
+        completed = self.run_agy("dev:helper")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"dev:helper {expected}\n")
+
+    def test_unreadable_config_fails(self):
+        make_skill(self.agy_plugin(self.global_plugins, "matt", {"name": "matt"}), "skills/retro")
+        for text in ("{", '{"plugins": []}'):
+            with self.subTest(text=text):
+                write(self.home / ".gemini" / "config" / "config.json", text)
+
+                completed = self.run_agy("matt:retro")
+
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("Antigravity config", completed.stderr)
+                self.assertNotIn("Traceback", completed.stderr)
+
+    def test_missing_plugin_fails(self):
+        completed = self.run_agy("matt:retro")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("not installed", completed.stderr)
+
+
 class UsageTest(ResolverCase):
     def test_bad_arguments_are_a_usage_error(self):
         for args in ((), ("no-colon",), ("--host", "other", "matt:retro"), (":retro",)):
             with self.subTest(args=args):
                 self.assertEqual(self.run_resolver(*args).returncode, 2)
+
+    def test_usage_error_for_an_unknown_host_names_every_host(self):
+        completed = self.run_resolver("--host", "gemini", "matt:retro")
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("--host claude|codex|antigravity", completed.stderr)
 
 
 if __name__ == "__main__":

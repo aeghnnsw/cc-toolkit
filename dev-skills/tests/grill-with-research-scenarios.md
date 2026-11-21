@@ -9,13 +9,16 @@
 
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365),
-[issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388), and
-[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Issue #388
+[issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
+[issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421), and
+[issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432). Issue #388
 adds case 20. Issue #421 moves the planning folder of case 12 into the
-checkout where the session started.
-Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md)
-and the [Codex skill](../codex-skills/grill-with-research/SKILL.md), with the
-Matt skills that the wrapper loads.
+checkout where the session started. Issue #432 adds the Antigravity copy to
+cases 14, 15, and 19.
+Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md),
+the [Codex skill](../codex-skills/grill-with-research/SKILL.md), and the
+[Antigravity skill](../antigravity-skills/grill-with-research/SKILL.md), with
+the Matt skills that the wrapper loads.
 
 For each case, identify the next permitted action, blocked action, and evidence
 needed. Use a fresh review context with the skill and scenario inputs. Keep
@@ -67,10 +70,12 @@ for issue 42, and the Matt skills load.
 13. **Untracked folder not ignored.** The repository's `.gitignore` does not
     list `.scratch/`, and the repository documents no planning folder.
 14. **Omitted Matt skill.** In Claude Code, the Skill tool lacks
-    `mattpocock-skills:domain-modeling`. In Codex, the skill list omits that
-    skill. The resolver finds the skill, which allows model invocation.
+    `mattpocock-skills:domain-modeling`. In Codex and Antigravity, the skill
+    list omits that skill. The resolver finds the skill, which allows model
+    invocation.
 15. **Missing Matt skill.** The resolver reports that the
-    `mattpocock-skills` plugin is not installed.
+    `mattpocock-skills` plugin is not installed. In Antigravity, it can also
+    report that the plugin is disabled.
 16. **Done.** Research settles every remaining candidate question. The user's
     original request also said "then build it".
 17. **Started from the description.** The user asked to grill a plan and named
@@ -82,7 +87,8 @@ for issue 42, and the Matt skills load.
     refuses `grilling`, or lacks `grilling` while the resolved frontmatter sets
     `disable-model-invocation: true`. In Codex, the `agents/openai.yaml` file
     of `grilling` sets `allow_implicit_invocation: false`, and the skill list
-    omits `grilling`.
+    omits `grilling`. In Antigravity, the resolved frontmatter of `grilling`
+    sets `disable-model-invocation: true`.
 20. **Conditional recommendation.** A round asks how to read papers. The
     recommendation says: "Choose (a), remove inline Claude reading, if every
     operator has a Codex login. Then open a separate issue for (c), Claude
@@ -105,7 +111,7 @@ for issue 42, and the Matt skills load.
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d "${TMPDIR:-/tmp}/grill-with-research.XXXXXX"` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
 | No issue yet | Use `trees/cache/.scratch/<YYYYMMDD>-cache-layer/`. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder or in the main checkout. | The folder path. |
 | Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| Omitted Matt skill | Run the resolver (with `--host codex` in Codex), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
+| Omitted Matt skill | Run the resolver (with `--host codex` in Codex and `--host antigravity` in Antigravity), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
 | Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
@@ -116,10 +122,23 @@ for issue 42, and the Matt skills load.
 ## Validation limits
 
 A simulated next-action review checks how an agent interprets these cases. It
-does not demonstrate a full grilling session in Claude Code or Codex. Record
+does not demonstrate a full grilling session in Claude Code, Codex, or
+Antigravity. Record
 static checks, simulated reviews, and live observations separately.
 
 ## Review record
+
+### 2026-11-21, issue #432
+
+**Static checks.** `test_grill_with_research.py` now also reads the
+Antigravity copy. It checks the description, that the model can start the
+skill, that the copy matches the Claude Code copy outside the load section,
+the `--host antigravity` resolver line, the stop at
+`disable-model-invocation: true`, and the 440-word body limit (Antigravity
+copy 432 words). It also checks that the Antigravity copy names no Claude
+Code or Codex tool. Before the copy existed, the new checks failed; after it,
+they pass. No simulated review and no live Antigravity session ran for this
+copy, and the dev-skills Antigravity manifest does not exist yet.
 
 ### 2026-11-18, issue #421
 
