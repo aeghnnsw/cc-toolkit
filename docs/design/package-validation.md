@@ -3,7 +3,8 @@
 Tracked in [issue #206](https://github.com/aeghnnsw/cc-toolkit/issues/206),
 with delivery in [#207](https://github.com/aeghnnsw/cc-toolkit/issues/207),
 [#208](https://github.com/aeghnnsw/cc-toolkit/issues/208), and
-[#209](https://github.com/aeghnnsw/cc-toolkit/issues/209).
+[#209](https://github.com/aeghnnsw/cc-toolkit/issues/209). Antigravity
+support is tracked in [#426](https://github.com/aeghnnsw/cc-toolkit/issues/426).
 Terms are defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## Purpose and constraints
@@ -21,12 +22,14 @@ plugin code. The speed target is less than 10 seconds of validator execution.
 
 Plugin packages remain self-contained. Host manifests, versions, and
 independent discovery roots follow
-[ADR 0001](../adr/0001-isolate-host-adapter-discovery.md).
+[ADR 0001](../adr/0001-isolate-host-adapter-discovery.md). The Antigravity
+layout follows [ADR 0006](../adr/0006-antigravity-plugin-layout.md).
 
 ## Module and interface
 
 [The validator](../../scripts/validate_packages.py) contains the Claude Code
-and Codex registry and manifest adapters in one repository-owned module.
+and Codex registry adapters and the Claude Code, Codex, and Antigravity
+manifest adapters in one repository-owned module.
 The local interface is one command from the repository root:
 
 ```bash
@@ -46,6 +49,37 @@ path, ownership reason, and base version that must be exceeded. A skill
 version error also identifies the skill and its `SKILL.md` path. Successful
 and failed runs report elapsed execution time.
 
+## Antigravity registration
+
+Antigravity has no catalog in this repository. An Antigravity catalog entry
+needs an `https` source URL and a `sha256` for each plugin, and Antigravity
+documents no way to register a third-party catalog. A plugin directory that
+the Claude Code or Codex registry lists is an Antigravity registration when
+it holds `.antigravity-plugin/plugin.json`. The registration uses the
+registered name of the plugin.
+
+The validator checks the Antigravity manifest:
+
+- The manifest `name` equals the registered name.
+- The `version` uses numeric `major.minor.patch` components. Antigravity
+  accepts any string, but release validation compares versions.
+- The manifest uses only the keys of the Antigravity manifest schema:
+  `name`, `displayName`, `description`, `version`, `disabled`, `logo`,
+  `suggestedPrompts`, `skills`, `author`, `homepage`, `repository`,
+  `license`, `keywords`, and `extensions`. Antigravity ignores other keys.
+
+The Antigravity discovery paths are the declared `skills` paths, `skills/`
+only when the manifest declares no `skills` path, a root `hooks.json`, a
+root `mcp_config.json`, `agents/`, and `rules/`. The manifest schema has no
+path field for agents, hooks, or MCP servers, so those paths are fixed.
+
+Antigravity always scans `skills/` and also loads the declared `skills`
+paths. A same-named skill in a declared path replaces the skill in
+`skills/`; this is shadowing. A skill that is only in `skills/` still loads.
+So each skill folder in `skills/` of an Antigravity registration needs a
+same-named skill in a declared `skills` path. Otherwise, the validator fails
+with a message that names the skill and the expected folder.
+
 ## Host ownership
 
 Ownership follows declared host roots and discovery conventions, with
@@ -56,7 +90,13 @@ The rules include these shared and host-specific resources:
 | --- | --- |
 | `core-hooks/hooks/hooks.json` | Claude Code |
 | `core-hooks/hooks/hooks.codex.json` | Codex |
-| Core Hooks and Productivity Skills shared scripts | Both |
+| Core Hooks and Productivity Skills shared scripts | Every registered host |
+
+For Antigravity, the inferred host paths are the `.antigravity-plugin/`
+folder and the Antigravity discovery paths. When the manifest declares a
+`skills` path, `skills/` does not affect Antigravity, because shadowing
+replaces each skill in it. A path that two hosts discover, such as
+`agents/`, affects both.
 
 An ownership rule affects only registered hosts. An unclassified file inside
 a plugin affects all its registered hosts. Release diagnostics include
@@ -81,7 +121,7 @@ Patterns are literal paths, not globs.
 | `defaults.exempt` | List of contributor-only paths for all plugins. Current defaults are `tests/`, `README.md`, and `CHANGELOG.md`. |
 | `plugins` | Object keyed by registered plugin name, independent of its source directory. |
 | `plugins.<name>.exempt` | Additional contributor-only path list. |
-| `plugins.<name>.ownership` | List of objects with `path` and a nonempty `hosts` list. Hosts are `claude`, `codex`, or both. |
+| `plugins.<name>.ownership` | List of objects with `path` and a nonempty `hosts` list. Each host is `claude`, `codex`, or `antigravity`. |
 | `plugins.<name>.resources` | The same object shape, for required local resources and their owning hosts. |
 
 Classification uses required-resource rules first, then ownership rules,
@@ -94,8 +134,11 @@ path to exist for its registered hosts.
 ## Package checks
 
 The command validates all current registrations in both marketplace
-registries. It parses registry and manifest JSON and checks names, duplicate
+registries, and the Antigravity registrations in their plugin directories.
+It parses registry and manifest JSON and checks names, duplicate
 registrations, source directories, and numeric three-part versions.
+A Claude Code manifest `agents` field can declare a list of `.md` files.
+Each declared path must exist.
 
 It checks declared paths and explicitly listed resources. Symlink resolution
 must keep paths inside the plugin package. Required paths must be tracked or
@@ -130,9 +173,9 @@ An unchanged or lower version fails. A valid version-only increase is
 allowed. One increase covers all changed content across the pull request.
 
 A skill can also carry a `version` in its `SKILL.md` frontmatter. Claude
-Code copies usually do; Codex copies do not. A skill changes when an
-affected path of its existing registration is in the skill directory, so
-the same ownership rules and exemptions apply. Each changed skill needs a
+Code copies usually do; Codex and Antigravity copies do not. A skill
+changes when an affected path of its existing registration is in the skill
+directory, so the same ownership rules and exemptions apply. Each changed skill needs a
 frontmatter version greater than its base version. A new skill, a skill
 with no base version, and a skill with no current version need no
 increase. Skills match by plugin identity, host, and skill directory name
@@ -145,6 +188,10 @@ A new plugin or host registration needs valid current packaging and a valid
 initial version. It has no previous registered version to exceed. A removed
 host registration needs no version increase for that host. Remaining
 registrations are checked normally.
+
+A new Antigravity manifest in a registered plugin directory is a new host
+registration, so it needs no version increase. After that, a change that
+affects Antigravity needs a greater Antigravity manifest version.
 
 Source moves match by plugin identity and host, so they preserve release
 history. Only changes since the selected merge base affect release checks.
@@ -159,11 +206,11 @@ Substantial unrelated adoption repairs require a scope review.
 [Command-interface fixtures](../../tests/test_validate_packages.py) use
 temporary Git repositories. They check observable exit status, diagnostics,
 and unchanged repository content. Coverage includes single-host, dual-host,
-and hooks-only packages; invalid metadata; missing and escaped resources;
-skill headers; shared and host-specific changes; exemptions; unknown files;
-plugin and skill version rules; resource changes and source moves;
-registration lifecycle; missing history; and staged, unstaged, and new
-files.
+and hooks-only packages; Antigravity registration and shadowing; invalid
+metadata; missing and escaped resources; skill headers; shared and
+host-specific changes; exemptions; unknown files; plugin and skill version
+rules; resource changes and source moves; registration lifecycle; missing
+history; and staged, unstaged, and new files.
 
 The [skill link test](../../tests/test_skill_links.py) imports the
 validator module. It reuses registry loading, skill discovery, rule

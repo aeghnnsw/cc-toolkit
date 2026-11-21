@@ -50,68 +50,136 @@ See [Verification](#verification) for test commands and test prerequisites.
 The Claude Code and Codex marketplace registries select plugin directories
 such as `dev-skills/` and `core-hooks/`. Each directory contains that
 plugin's manifests, components, and supporting resources. Keep resources
-needed by an installed plugin inside its directory.
+needed by an installed plugin inside its directory. Antigravity has no
+registry in this repository. A plugin directory that a registry selects is
+registered for Antigravity when it holds `.antigravity-plugin/plugin.json`.
 
 - Edit the plugin directory in this repository, not an installed copy under
   `~/.claude/plugins/cache/` or `~/.codex/plugins/cache/`.
 - When you add, remove, or rename a plugin, or change its source path,
   update the marketplace registries: `.claude-plugin/marketplace.json` for
-  Claude Code and `.agents/plugins/marketplace.json` for Codex.
+  Claude Code and `.agents/plugins/marketplace.json` for Codex. To register
+  a plugin for Antigravity, add its Antigravity manifest.
 - When you add, remove, or rename a plugin or a skill, update its entries in
   [README.md](README.md).
 - Before you change component paths, read the plugin's host-specific
   manifests and [host ownership](docs/design/package-validation.md#host-ownership).
 
-### Skills for both hosts
+### Skills for more than one host
 
-A skill that ships to Claude Code and Codex has one copy per host:
-`skills/<name>/` and `codex-skills/<name>/`. Change both copies in the same
+A skill has one copy for each host that ships it: `skills/<name>/` for
+Claude Code, `codex-skills/<name>/` for Codex, and
+`antigravity-skills/<name>/` for Antigravity. Change every copy in the same
 pull request. Keep differences host-specific, such as tool names,
 invocation, and plugin-root paths.
 
 For an example pair, see `creator-skills/skills/sci-slides/` and
 `creator-skills/codex-skills/sci-slides/`. The test
 `creator-skills/tests/test_sci_slides.py` compares the two copies. A new
-skill also needs an entry in both [README.md](README.md) lists of its
-plugin: **Skills:** with a one-line description, and **Codex skills:** with
-its name. When the Codex manifest's `interface.longDescription` describes
-the purposes of the plugin's skills, add the purpose of the new skill. When
-a change alters the purpose of a skill, update that purpose in
-`longDescription` and in the README **Skills:** line.
+skill also needs an entry in each [README.md](README.md) list of its
+plugin: **Skills:** with a one-line description, and **Codex skills:** and
+**Antigravity skills:** with its name for each host that ships it. When the
+Codex manifest's `interface.longDescription` describes the purposes of the
+plugin's skills, add the purpose of the new skill. When a change alters the
+purpose of a skill, update that purpose in `longDescription` and in the
+README **Skills:** line.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
-  `version`. Codex copies carry only `name` and `description`. Run the
-  skill-creator validator on Codex copies only. Its command is in
-  [Verification](#verification).
+  `version`. Codex copies carry only `name` and `description`. Antigravity
+  copies carry `name` and `description`, and
+  `disable-model-invocation: true` when the skill is user-invoked. They
+  carry no `version`. Run the skill-creator validator on Codex copies only.
+  Its command is in [Verification](#verification).
 - **Invocation policy.** To make a skill user-invoked, set
-  `disable-model-invocation: true` in the Claude frontmatter, and
-  `allow_implicit_invocation: false` under `policy:` in the Codex copy's
-  `agents/openai.yaml`. A Codex copy without that file is not user-invoked.
+  `disable-model-invocation: true` in the Claude and Antigravity
+  frontmatter, and `allow_implicit_invocation: false` under `policy:` in
+  the Codex copy's `agents/openai.yaml`. A Codex copy without that file is
+  not user-invoked. In Antigravity, the user runs a skill as `/<name>`.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
   can be bash or zsh. Write each block to run in both shells. For a test
   that runs a skill's blocks in bash and zsh, see
   `dev-skills/tests/test_pressure_test_models.py`.
-- **Paths.** A link relative to `SKILL.md` reads the same in both copies. A
-  plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy
-  and `<plugin-root>/...` in the Codex copy. A command that runs a file
-  inside the skill directory can write `<skill-dir>/...`, which reads the
-  same in both copies.
+- **Paths.** A link relative to `SKILL.md` reads the same in every copy. A
+  plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy,
+  and `<plugin-root>/...` in the Codex and Antigravity copies. A command
+  that runs a file inside the skill directory can write `<skill-dir>/...`,
+  which reads the same in every copy.
 - **Registration.** List each file that a skill links to or runs under the
   plugin's `resources` in `package-validation.json`, once per host that
   ships it. A link to a `SKILL.md` that the same host discovers needs no
   entry. The validator requires only listed resources; it does not find
   them from links in prose. The skill link test,
   [tests/test_skill_links.py](tests/test_skill_links.py), enforces this
-  rule. It also checks that each link target exists in the plugin and each
-  anchor matches a heading.
+  rule for every copy, including Antigravity copies. It also checks that
+  each link target exists in the plugin and each anchor matches a heading.
+
+#### Antigravity copies
+
+Start an Antigravity copy from the Codex copy when one exists. The Codex
+copy has no argument placeholders and already uses `<plugin-root>` paths.
+Otherwise, start from the Claude copy. Then write each host concept as this
+table shows:
+
+| Concept | Antigravity copy |
+| --- | --- |
+| Plugin root | `<plugin-root>`: two directories above the folder of the `SKILL.md` file |
+| Skill folder | `<skill-dir>` |
+| Ask the user | `ask_question` for a choice; plain text otherwise |
+| Task list or plan | A Markdown task artifact; Antigravity has no task-list tool |
+| Subagent | `invoke_subagent` with `TypeName: "self"`, a `Role`, and a `Prompt` |
+| Fan-out workflow | `run_workflow` |
+| Load another skill | Read its `SKILL.md`. The user runs a skill as `/<name>` |
+| Shell | `run_command`, which runs in the user's shell |
+| Web search | `search_web` |
+| Arguments | No argument placeholders; write "the user's request" |
+| Instruction files | `GEMINI.md` and `AGENTS.md`; the global root is `~/.gemini/config/` |
+
+The Antigravity agent reported its tool names itself (`agy` 1.5.13).
+Antigravity's builtin skills confirm `ask_question`, `invoke_subagent`, and
+`run_workflow`. For another tool, a copy can use a plain verb, such as "run
+the command" or "search the web".
+
+The Antigravity manifest declares `"skills": "./antigravity-skills/"` when
+the plugin has skills.
+
+#### Shadowing
+
+Antigravity always scans the `skills/` folder of a plugin. It also loads
+the folders that the `skills` field of the Antigravity manifest declares.
+When `skills/` and a declared folder both hold a skill with the same name,
+the skill in the declared folder wins. A skill that is only in `skills/`
+still loads, so a Claude copy without an Antigravity copy runs in
+Antigravity. Thus every `skills/<name>` of a plugin that is registered for
+Antigravity needs a same-named Antigravity copy. Otherwise, the package
+validator fails. Its message names the skill and the expected folder.
+
+#### Claude agents in an Antigravity plugin
+
+Antigravity loads agent files from `agents/`. Its loader skips a Claude
+agent file, because the Claude `tools` value is a string, not a list, and
+the Claude `model` value is not an Antigravity model tier. Claude Code also
+loads `agents/`, and adds the declared agent paths to it. Thus a plugin
+that ships to Antigravity keeps its Claude agents in `claude-agents/` and
+has no `agents/` folder. In `.claude-plugin/plugin.json`, declare the
+agents as a list of `.md` files, for example
+`"agents": ["./claude-agents/<name>.md"]`. Claude Code rejects a folder
+string in this field. The agent name in Claude Code stays
+`<plugin>:<name>`.
 
 ### Argument placeholders
 
 Claude Code replaces `$N`, `$ARGUMENTS`, and the argument names that the
 `arguments` frontmatter declares in a skill or command body, including code
-blocks. Codex does not replace them. `tests/test_skill_placeholders.py`, one
-of the [root tests](#package-and-release-validation), fails on each
-unescaped placeholder and prints the fix.
+blocks. Codex and Antigravity do not replace them.
+`tests/test_skill_placeholders.py`, one of the
+[root tests](#package-and-release-validation), fails on each unescaped
+placeholder in a Claude copy and prints the fix.
+
+An Antigravity copy has no argument placeholder. It has no `$ARGUMENTS`
+form, no backslash-escaped `\$N`, and no `arguments` frontmatter.
+Antigravity keeps the backslash of `\$N` in the text that the agent reads.
+Write "the user's request" instead. The placeholder test checks Antigravity
+copies for these forms.
 
 ## Repository search
 
@@ -140,9 +208,12 @@ Use this form:
 - <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
 ```
 
-When both hosts ship the same version, write
-`Claude Code and Codex <version>`. When the versions differ, write
-`Claude Code <version>, Codex <version>`. Start a change outside the
+Name each host whose manifest version the change increases, in the order
+Claude Code, Codex, Antigravity. When the versions differ, give each host
+its version: `Claude Code <version>, Codex <version>, Antigravity <version>`.
+When the named hosts ship the same version, write the version once, as in
+`Claude Code and Codex <version>`. For one host, write the host and its
+version, as in `<plugin> (Antigravity <version>)`. Start a change outside the
 plugin directories with `Repository:` and give no version. The plugin entry
 also covers the README catalog entry and the `package-validation.json`
 lines that ship with the plugin change. When a pull request changes a
@@ -192,11 +263,16 @@ that matches your change from the repository root:
 | A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
+| A plugin with an Antigravity manifest, when `agy` is installed | `agy plugin validate <plugin>` |
 | `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
 | Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
 | Code or a test in `productivity-skills` | `uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'` |
 | Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
+
+`agy plugin validate` warns about a skill-name collision for each Claude
+copy that an Antigravity copy shadows (see [Shadowing](#shadowing)). These
+warnings are expected. Do not pass `--strict`, because it fails on them.
 
 Core Hooks tests require Python and `uv` on `PATH`. `cc-customize` and
 `doc-skills` have no test suite. Before you run a plugin suite, read
@@ -217,6 +293,24 @@ manifest, and a greater skill `version` when the skill has one. The
 [package validation design](docs/design/package-validation.md) describes
 each check, the rules in [package-validation.json](package-validation.json),
 and the error messages.
+
+The validator checks an Antigravity registration as follows:
+
+- The Antigravity manifest `name` equals the registered name of the plugin,
+  and its `version` has numeric `major.minor.patch` parts. The manifest
+  uses only the keys of the Antigravity manifest schema.
+- Each `skills/<name>` has a same-named skill in a declared `skills` path
+  (see [Shadowing](#shadowing)).
+- Antigravity owns the `.antigravity-plugin/` folder and its discovery
+  paths: the declared `skills` paths, a root `hooks.json`, a root
+  `mcp_config.json`, `agents/`, and `rules/`. `skills/` affects Antigravity
+  only when the manifest declares no `skills` path.
+- A `hosts` list in `package-validation.json` can name `antigravity`.
+- A new Antigravity registration needs no version increase. After that, a
+  change that affects Antigravity needs a greater Antigravity manifest
+  `version`. An Antigravity-owned file and a shared file both affect it.
+- A Claude manifest `agents` field can list `.md` files (see
+  [Claude agents in an Antigravity plugin](#claude-agents-in-an-antigravity-plugin)).
 
 The root tests are under `tests/`; [Verification](#verification) gives when
 and how to run them.

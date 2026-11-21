@@ -6,7 +6,21 @@ cc-toolkit publishes plugins through host-specific marketplace registries.
 
 **Host**:
 An agent tool that discovers and loads a cc-toolkit plugin. Registered hosts
-are Claude Code and Codex.
+are Claude Code, Codex, and Antigravity. Antigravity is Google's agent host:
+its desktop app, IDE, and `agy` CLI share one plugin loader.
+
+**Antigravity copy**:
+The copy of a skill that ships to Antigravity, in the plugin's
+`antigravity-skills/<name>/` folder. Through shadowing, it replaces the
+same-named Claude copy in Antigravity.
+_Avoid_: Gemini copy
+
+**Shadowing**:
+The Antigravity loader rule that a skill in a `skills` path that the
+Antigravity manifest declares replaces a same-named skill in the plugin's
+`skills/` folder. A skill that is only in `skills/` still loads in
+Antigravity.
+_Avoid_: Skill override
 
 **Plugin package**:
 A self-contained plugin directory selected by a marketplace registry. It

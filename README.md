@@ -51,9 +51,19 @@ Each plugin directory holds `.claude-plugin/plugin.json`, a
 `.codex-plugin/plugin.json` when the plugin supports Codex, and its
 components, resources, and any tests (see
 [Repository and package boundaries](CONTRIBUTING.md#repository-and-package-boundaries)).
-[Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts) names each
-host's skill directory, and [Available Plugins](#available-plugins) describes
-each plugin and lists its skills.
+[Skills for more than one host](CONTRIBUTING.md#skills-for-more-than-one-host)
+names each host's skill directory, and [Available Plugins](#available-plugins)
+describes each plugin and lists its skills.
+
+A plugin that ships to Antigravity also holds these files:
+
+- `.antigravity-plugin/plugin.json`, the Antigravity manifest. It registers
+  the plugin for Antigravity; no Antigravity catalog file exists.
+- `antigravity-skills/`, the Antigravity copies of its skills.
+- A root `hooks.json` for its hooks and a root `mcp_config.json` for its MCP
+  servers, when the plugin has them.
+- `claude-agents/` for its Claude Code agents, when it has them. Antigravity
+  loads `agents/`, so such a plugin has no `agents/` folder.
 
 ## Available Plugins
 
@@ -171,9 +181,9 @@ Both hosts share the local Python bridge and socket plugin. See the
 ## Usage
 
 Run these commands in a terminal with Git and the matching host CLI installed.
-The commands download the marketplace from GitHub; a local checkout is not
-required. Each example installs `creator-skills`. Replace that name with another
-plugin from [Available Plugins](#available-plugins) when needed.
+The commands download from GitHub; a local checkout is not required. The
+Claude Code and Codex examples install `creator-skills`. Replace that name with
+another plugin from [Available Plugins](#available-plugins) when needed.
 
 ### Claude Code
 
@@ -203,6 +213,23 @@ Start a new Codex session to load the plugin. The Codex marketplace includes
 `core-hooks`, `dev-skills`, `creator-skills`, `productivity-skills`, and
 `pymol-skills`. See the [Codex plugin commands](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)
 for command options.
+
+### Antigravity
+
+This repository has no Antigravity catalog. Install one plugin directory from
+its GitHub URL with the Antigravity CLI, `agy`. Replace `<plugin>` with the
+directory name of the plugin:
+
+```bash
+agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/<plugin>
+```
+
+Install only a plugin whose directory holds `.antigravity-plugin/plugin.json`.
+For a plugin without that manifest, `agy plugin install` converts the Claude
+Code plugin, and the result can lose parts of it: converted Core Hooks apply no
+policy, and converted PyMOL Skills has no MCP server. See the
+[Antigravity plugin guide](https://antigravity.google/docs/plugins) for other
+commands.
 
 ### Updates and removal
 
