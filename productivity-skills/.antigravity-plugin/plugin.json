@@ -2,7 +2,7 @@
   "name": "productivity-skills",
   "displayName": "Productivity Skills",
   "version": "1.0.0",
-  "description": "Cloud GTD workflows through the connected Supabase MCP server, plus native macOS Calendar.",
+  "description": "Cloud GTD workflows through the connected Supabase tool, plus native macOS Calendar.",
   "author": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"

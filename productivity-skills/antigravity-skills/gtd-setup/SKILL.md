@@ -63,7 +63,8 @@ item for this owner.
 2. Discover the connected Supabase tools. The hosted Supabase server has
    names such as `list_projects`, `create_project`, `get_cost`,
    `confirm_cost`, `apply_migration`, `execute_sql`, and `list_tables`.
-   Find each tool by its exposed name, for example `execute_sql`.
+   A host can add a prefix to each name, so find each tool by the end of
+   its exposed name.
 3. If no Supabase tool is connected, or the connector needs
    authentication, report the required connection or sign-in, give the
    user these steps, and stop:

@@ -50,8 +50,8 @@ class StepNineBlocks(unittest.TestCase):
         self.home = self.root / "home"
         self.claude = self.home / ".claude"
         self.codex = self.home / ".codex"
-        self.gemini = self.home / ".gemini"
-        for folder in (self.claude, self.codex, self.gemini, self.home / "real"):
+        self.antigravity = self.home / ".gemini"
+        for folder in (self.claude, self.codex, self.antigravity, self.home / "real"):
             folder.mkdir(parents=True)
 
     def run_block(self, shell: str, block: str, **env: str) -> str:
@@ -93,14 +93,14 @@ class StepNineBlocks(unittest.TestCase):
         link = self.claude / "CLAUDE.md"
         link.symlink_to(real)
         agents = self.codex / "AGENTS.md"
-        gemini = self.gemini / "GEMINI.md"
+        antigravity_md = self.antigravity / "GEMINI.md"
 
         self.assertEqual(self.states(shell, check),
-                         {str(link): "absent", str(agents): "missing", str(gemini): "missing"})
+                         {str(link): "absent", str(agents): "missing", str(antigravity_md): "missing"})
 
-        output = self.run_block(shell, append.replace("<file>", str(gemini)))  # Antigravity's file
-        self.assertEqual(output, f"added: {gemini}\n")
-        self.assertEqual(gemini.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
+        output = self.run_block(shell, append.replace("<file>", str(antigravity_md)))  # Antigravity's file
+        self.assertEqual(output, f"added: {antigravity_md}\n")
+        self.assertEqual(antigravity_md.read_text(encoding="utf-8"), f"# GTD agent captures\n\n- {RULE}\n")
 
         output = self.run_block(shell, append.replace("<file>", str(agents)))  # creates the file
         self.assertEqual(output, f"added: {agents}\n")
@@ -126,7 +126,7 @@ class StepNineBlocks(unittest.TestCase):
         wrapped = "- " + RULE[:cut] + "\r\n  " + RULE[cut + 1:] + "\r\n"
         agents.write_text(wrapped, encoding="utf-8")
         self.assertEqual(self.states(shell, check),
-                         {str(link): "present", str(agents): "present", str(gemini): "present"})
+                         {str(link): "present", str(agents): "present", str(antigravity_md): "present"})
         output = self.run_block(shell, append.replace("<file>", str(agents)))
         self.assertEqual(output, f"present: {agents}\n")
         self.assertEqual(agents.read_bytes(), wrapped.encode("utf-8"))
@@ -134,10 +134,10 @@ class StepNineBlocks(unittest.TestCase):
         override = self.codex / "AGENTS.override.md"
         override.touch()  # Codex skips an empty override file
         self.assertEqual(self.states(shell, check),
-                         {str(link): "present", str(agents): "present", str(gemini): "present"})
+                         {str(link): "present", str(agents): "present", str(antigravity_md): "present"})
         override.write_text("# Override\n", encoding="utf-8")
         self.assertEqual(self.states(shell, check),
-                         {str(link): "present", str(override): "absent", str(gemini): "present"})
+                         {str(link): "present", str(override): "absent", str(antigravity_md): "present"})
 
         no_antigravity = self.root / "no-antigravity"  # a machine without Antigravity
         no_antigravity.mkdir()
@@ -160,7 +160,7 @@ class StepNineBlocks(unittest.TestCase):
                             CODEX_HOME=str(self.root / "no-codex"))
         self.assertEqual(found, {str(broken / "CLAUDE.md"): "broken symlink",
                                  str(self.root / "no-codex" / "AGENTS.md"): "no host",
-                                 str(gemini): "present"})
+                                 str(antigravity_md): "present"})
 
 
 if __name__ == "__main__":

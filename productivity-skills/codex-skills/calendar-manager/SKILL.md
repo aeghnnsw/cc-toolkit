@@ -12,7 +12,7 @@ Manage macOS Calendar events using the productivity-cli tool (EventKit-based).
 Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift <command>
+swift "<plugin-root>/scripts/productivity-cli.swift" <command>
 ```
 
 Requires: macOS 13+ with Xcode command line tools installed.
@@ -22,7 +22,7 @@ Requires: macOS 13+ with Xcode command line tools installed.
 Before any create/delete operation, list calendars and ask the user which one to use:
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars list
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars list
 ```
 
 ## Operations
@@ -30,7 +30,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars list
 ### List All Calendars
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars list
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars list
 ```
 
 Returns JSON:
@@ -48,33 +48,33 @@ Returns JSON:
 ### Get Today's Events
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars today
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars today
 ```
 
 ### Get This Week's Events
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars week
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars week
 ```
 
 ### Get Events on a Specific Date
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars date 2025-01-15
-swift <plugin-root>/scripts/productivity-cli.swift calendars date 2025-01-15 --calendar Work
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars date 2025-01-15
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars date 2025-01-15 --calendar Work
 ```
 
 ### Get Events in a Date Range
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31
-swift <plugin-root>/scripts/productivity-cli.swift calendars range 2025-01-01 2025-01-31 --calendar Work
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars range 2025-01-01 2025-01-31
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars range 2025-01-01 2025-01-31 --calendar Work
 ```
 
 ### Search Events by Title
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars search "meeting"
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars search "meeting"
 ```
 
 Searches events in the next 365 days matching the term.
@@ -83,7 +83,7 @@ Searches events in the next 365 days matching the term.
 
 **Basic event (1 hour duration):**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00"
@@ -91,7 +91,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Event with end time:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -100,7 +100,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Event with location and notes:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2025-01-15 14:00" \
@@ -111,7 +111,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **All-day event:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Company Holiday" \
   --calendar "Work" \
   --start "2025-01-20" \
@@ -122,7 +122,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Daily standup:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Daily Standup" \
   --calendar "Work" \
   --start "2026-01-20 09:00" \
@@ -132,7 +132,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Weekly team meeting on Mondays:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Team Meeting" \
   --calendar "Work" \
   --start "2026-01-20 14:00" \
@@ -143,7 +143,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Monthly review (12 occurrences):**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Monthly Review" \
   --calendar "Work" \
   --start "2026-02-01 10:00" \
@@ -153,7 +153,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 
 **Bi-weekly meeting:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars create \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
   --title "Bi-weekly Sync" \
   --calendar "Work" \
   --start "2026-01-20 15:00" \
@@ -164,14 +164,14 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars create \
 ### Delete an Event
 
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars delete \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15"
 ```
 
 With specific calendar:
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars delete \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
   --title "Team Meeting" \
   --date "2025-01-15" \
   --calendar "Work"
@@ -179,7 +179,7 @@ swift <plugin-root>/scripts/productivity-cli.swift calendars delete \
 
 **Delete recurring event and all future occurrences:**
 ```bash
-swift <plugin-root>/scripts/productivity-cli.swift calendars delete \
+swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
   --title "Daily Standup" \
   --date "2026-01-25" \
   --all-future
