@@ -1,4 +1,7 @@
-"""Claude Code skill and command text must not contain an argument placeholder that is not escaped or allowlisted."""
+"""Claude Code skill and command text must not contain an argument placeholder that is not escaped or allowlisted.
+
+Antigravity copies must not contain an argument placeholder at all.
+"""
 import json
 from pathlib import Path
 import re
@@ -14,6 +17,10 @@ from package_support import ROOT, git_files, validator
 # not document. Each file also checks the names that its `arguments` frontmatter declares.
 ALWAYS_CHECKED = r'\d+|ARGUMENTS(?:\[\d+\])?|\{\d+\}'
 ADD_TO_ALLOWED = 'add the line to ALLOWED in tests/test_skill_placeholders.py'
+# Antigravity replaces no placeholder, and an agent that reads the file keeps a backslash before a `$`.
+ANTIGRAVITY_PLACEHOLDER = re.compile(r'\$ARGUMENTS(?:\[\d+\])?|\\\$(?:\d+|\{\d+\})')
+ANTIGRAVITY_REMEDY = ('Antigravity does not replace argument placeholders. Write "the user\'s request" or the value '
+                      'that the skill needs, and remove a backslash before a $.')
 # Intended placeholders: (repository-relative path, line text without surrounding whitespace) -> (line count, reason).
 # The count is the number of lines in that file with this text and an unescaped placeholder.
 ALLOWED = {}
@@ -48,6 +55,30 @@ def claude_skill_and_command_files(root):
             if path.is_file() and validator.included_location(root, path, files):
                 found.setdefault(path.resolve(), path)
     return list(found.values())
+
+
+def antigravity_skill_files(root):
+    """Return the Git-included SKILL.md files in the skills paths of each Antigravity registration."""
+    files = git_files(root)
+    return [skill for package in validator.load_packages(root).values() if package.host == 'antigravity'
+            for field, path in validator.discovery_paths(root, package) if field == 'skills'
+            for skill in sorted((root / package.source / path).glob('*/SKILL.md'))
+            if validator.included_location(root, skill, files)]
+
+
+def antigravity_problems(root):
+    """Return a problem for each argument placeholder and each `arguments` frontmatter field in an Antigravity copy."""
+    problems = []
+    for path in antigravity_skill_files(root):
+        relative_path = relative(root, path)
+        lines = path.read_text(encoding='utf-8').splitlines()
+        frontmatter, start = split_frontmatter(lines)
+        if any(re.match(r'arguments[ \t]*:', line) for line in frontmatter):
+            problems.append(f'{relative_path}: the `arguments` frontmatter has no effect in Antigravity. Remove it.')
+        problems += [f'{relative_path}:{number}: {match.group()} {ANTIGRAVITY_REMEDY}'
+                     for number, line in enumerate(lines[start:], start + 1)
+                     for match in ANTIGRAVITY_PLACEHOLDER.finditer(line)]
+    return problems
 
 
 def escaped(line, start):
@@ -127,7 +158,7 @@ def check_placeholders(root, allowed=None):
             problems.append(f'{relative_path}: ALLOWED expects {count} line(s) {text!r} with a placeholder, found '
                             f'{counts[relative_path, text]}. Review each use, then update the count or remove the '
                             f'entry.')
-    return problems
+    return problems + antigravity_problems(root)
 
 
 SKILL = 'demo/skills/clean/SKILL.md'
@@ -140,6 +171,14 @@ FIXTURE = {
     'demo/.codex-plugin/plugin.json': json.dumps({'name': 'demo', 'version': '1.0.0', 'skills': './codex-skills/'}),
     SKILL: ('---\nname: clean\ndescription: Escaped placeholders only.\n---\n\n'
             'Show `\\$1` and a price of \\$0.67.\n'),
+}
+
+ANTIGRAVITY_SKILL = 'demo/antigravity-skills/clean/SKILL.md'
+ANTIGRAVITY = {
+    **FIXTURE,
+    'demo/.antigravity-plugin/plugin.json': json.dumps({'name': 'demo', 'version': '1.0.0',
+                                                        'skills': './antigravity-skills/'}),
+    ANTIGRAVITY_SKILL: '---\nname: clean\ndescription: Antigravity copy.\n---\n\nRun `local s="$1"` in $HOME.\n',
 }
 
 
@@ -262,6 +301,22 @@ class SkillPlaceholderTests(unittest.TestCase):
         self.assertEqual(len(problems), 1, problems)
         self.assertIn('ALLOWED expects 1 line', problems[0])
         self.assertIn('found 2', problems[0])
+
+    def test_antigravity_copies_have_no_argument_placeholder(self):
+        self.assertEqual(check_placeholders(self.fixture(ANTIGRAVITY)), [])
+        cases = [('Use $ARGUMENTS.\n', '$ARGUMENTS'), ('First: $ARGUMENTS[0]\n', '$ARGUMENTS[0]'),
+                 ('Keep \\$ARGUMENTS.\n', '$ARGUMENTS'), ('Pay \\$0.67.\n', '\\$0'), ('Use `\\${1}`.\n', '\\${1}')]
+        for body, token in cases:
+            with self.subTest(body=body):
+                text = ANTIGRAVITY[ANTIGRAVITY_SKILL] + body
+                problems = check_placeholders(self.fixture({**ANTIGRAVITY, ANTIGRAVITY_SKILL: text}))
+                self.assertEqual(len(problems), 1, problems)
+                self.assertTrue(problems[0].startswith(f'{ANTIGRAVITY_SKILL}:7: {token} '), problems)
+                self.assertIn('Antigravity does not replace', problems[0])
+        text = '---\nname: clean\ndescription: Named.\narguments: target\n---\n'
+        problems = check_placeholders(self.fixture({**ANTIGRAVITY, ANTIGRAVITY_SKILL: text}))
+        self.assertEqual([problem.split(': ', 1)[0] for problem in problems], [ANTIGRAVITY_SKILL])
+        self.assertIn('`arguments`', problems[0])
 
     def test_repository_has_no_unreviewed_placeholders(self):
         self.assertTrue(claude_skill_and_command_files(ROOT), 'no Claude Code skill files found')

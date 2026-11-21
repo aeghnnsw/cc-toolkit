@@ -55,6 +55,12 @@ class AgentFieldTests(unittest.TestCase):
     def test_fixture_agent_with_supported_fields_passes(self):
         self.assertEqual(check_agent_fields(self.fixture()), [])
 
+    def test_declared_agent_files_are_checked(self):
+        manifest = json.dumps({'name': 'demo', 'version': '1.0.0', 'agents': ['./claude-agents/worker.md']})
+        text = '---\nname: worker\nhooks:\n  - value\nmodel: inherit\n---\nBody.\n'
+        root = self.fixture({'demo/.claude-plugin/plugin.json': manifest, 'demo/claude-agents/worker.md': text})
+        self.assertEqual(check_agent_fields(root), ["demo/claude-agents/worker.md: 'hooks' is ignored for plugin agents"])
+
     def test_fixture_agent_with_an_ignored_field_fails(self):
         for field in IGNORED_FIELDS:
             with self.subTest(field=field):

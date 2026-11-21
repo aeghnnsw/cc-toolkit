@@ -144,6 +144,146 @@ class PackageValidationTests(unittest.TestCase):
         self.commit()
         self.git('tag', '-f', 'baseline')
 
+    def add_antigravity(self, fields=None, skills=True, commit=True):
+        manifest = {'name': 'demo', 'version': '1.0.0'}
+        if skills:
+            manifest['skills'] = './antigravity-skills/'
+            self.write('demo/antigravity-skills/greet/SKILL.md', '---\nname: greet\ndescription: Hello.\n---\n')
+        self.write('demo/.antigravity-plugin/plugin.json', {**manifest, **(fields or {})})
+        if commit:
+            self.commit()
+            self.git('tag', '-f', 'baseline')
+
+    def test_antigravity_manifest_in_a_registered_folder_is_a_registration(self):
+        self.add_antigravity()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('2 host registration', result.stdout)
+
+    def test_antigravity_manifest_identity_version_and_fields(self):
+        for fields, expected in [({'name': 'other'}, 'identity must match demo'),
+                                 ({'version': '1.0'}, 'invalid plugin version'),
+                                 ({'hooks': './hooks.json'}, "unknown field 'hooks'")]:
+            with self.subTest(fields=fields):
+                self.add_antigravity(fields, commit=False)
+                self.assert_failure(expected)
+
+    def test_each_claude_copy_needs_an_antigravity_copy_of_the_same_name(self):
+        self.add_antigravity(commit=False)
+        self.write('demo/skills/wave/SKILL.md', '---\nname: wave\ndescription: Wave.\n---\n')
+        self.bump()
+        self.assert_failure('demo/skills/wave/SKILL.md: skill wave has no Antigravity copy; '
+                            'add demo/antigravity-skills/wave/SKILL.md')
+        self.write('demo/antigravity-skills/wave/SKILL.md', '---\nname: wave\ndescription: Wave.\n---\n')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_antigravity_manifest_without_a_skills_path_fails_on_claude_copies(self):
+        self.add_antigravity(skills=False, commit=False)
+        self.assert_failure('skill greet has no Antigravity copy; declare a skills path in '
+                            'demo/.antigravity-plugin/plugin.json')
+
+    def test_antigravity_skills_path_cannot_be_the_claude_skills_folder(self):
+        self.add_antigravity({'skills': './skills/'}, skills=False, commit=False)
+        self.assert_failure('demo/.antigravity-plugin/plugin.json: the skills path skills is the Claude Code '
+                            'skills folder')
+
+    def test_antigravity_copy_with_another_name_names_the_file_to_fix(self):
+        self.add_antigravity(commit=False)
+        self.write('demo/antigravity-skills/greet/SKILL.md', '---\nname: hello\ndescription: Hello.\n---\n')
+        self.assert_failure('skill greet has no Antigravity copy; set name: greet in '
+                            'demo/antigravity-skills/greet/SKILL.md')
+
+    def test_new_antigravity_registration_needs_no_version_increase(self):
+        self.add_antigravity(commit=False)
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_antigravity_owned_files_require_only_an_antigravity_version(self):
+        self.add_antigravity()
+        cases = [('antigravity-skills/greet/SKILL.md', '---\nname: greet\ndescription: Changed.\n---\n'),
+                 ('hooks.json', {'hooks': {}}), ('mcp_config.json', {'mcpServers': {}}), ('rules/style.md', 'Rule.\n')]
+        for path, value in cases:
+            with self.subTest(path=path):
+                self.git('reset', '--hard', 'baseline')
+                self.git('clean', '-fd')
+                self.write(f'demo/{path}', value)
+                self.assert_failure(f'demo [antigravity]: version must increase above 1.0.0; changed demo/{path}')
+                self.bump('antigravity')
+                result = self.run_check()
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_claude_copy_and_agents_follow_their_hosts(self):
+        self.add_antigravity()
+        self.write('demo/skills/greet/SKILL.md', '---\nname: greet\ndescription: Claude change.\n---\n')
+        self.bump()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.write('demo/agents/worker.md', '---\nname: worker\ndescription: Work.\n---\n')
+        self.assert_failure('demo [antigravity]: version must increase above 1.0.0; changed demo/agents/worker.md')
+
+    def test_rules_accept_the_antigravity_host(self):
+        self.add_antigravity()
+        rules = self.read_json('package-validation.json')
+        rules['plugins']['demo'] = {'ownership': [{'path': 'scripts/', 'hosts': ['antigravity']}]}
+        self.write('package-validation.json', rules)
+        self.write('demo/scripts/run.py', '# Run.\n')
+        self.bump('antigravity')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_claude_agents_may_be_declared_markdown_files_that_claude_owns(self):
+        self.add_antigravity()
+        manifest = self.read_json('demo/.claude-plugin/plugin.json')
+        self.write('demo/.claude-plugin/plugin.json', {**manifest, 'agents': ['./claude-agents/worker.md']})
+        self.write('demo/claude-agents/worker.md', '---\nname: worker\ndescription: Work.\n---\n')
+        self.bump()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+        self.write('demo/claude-agents/worker.md', '---\nname: worker\ndescription: Changed.\n---\n')
+        self.assert_failure('demo [claude]: version must increase above 1.0.1; changed demo/claude-agents/worker.md '
+                            '(host discovery path)')
+        self.bump(value='1.0.2')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_shared_file_and_antigravity_manifest_require_an_antigravity_version(self):
+        self.add_antigravity()
+        self.write('demo/shared.txt', 'Shared runtime data.\n')
+        self.bump()
+        self.assert_failure('demo [antigravity]: version must increase above 1.0.0; changed demo/shared.txt '
+                            '(unclassified file; all registered hosts)')
+        self.bump('antigravity')
+        self.assertEqual(self.run_check().returncode, 0)
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+        manifest = self.read_json('demo/.antigravity-plugin/plugin.json')
+        self.write('demo/.antigravity-plugin/plugin.json', {**manifest, 'description': 'Changed.'})
+        self.assert_failure('demo [antigravity]: version must increase above 1.0.1; '
+                            'changed demo/.antigravity-plugin/plugin.json (host manifest)')
+
+    def test_two_registered_names_are_rejected_only_for_an_antigravity_registration(self):
+        self.write('.agents/plugins/marketplace.json', {
+            'name': 'fixture', 'plugins': [{'name': 'other', 'source': {'source': 'local', 'path': './demo'}}],
+        })
+        self.write('demo/.codex-plugin/plugin.json', {'name': 'other', 'version': '1.0.0'})
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.add_antigravity(commit=False)
+        self.assert_failure('demo: registered as both demo and other; Antigravity needs one name')
+
+    def test_claude_code_still_loads_agents_when_agent_files_are_declared(self):
+        self.write('demo/agents/legacy.md', '---\nname: legacy\ndescription: Old.\n---\n')
+        manifest = self.read_json('demo/.claude-plugin/plugin.json')
+        self.write('demo/.claude-plugin/plugin.json', {**manifest, 'agents': ['./claude-agents/worker.md']})
+        self.write('demo/claude-agents/worker.md', '---\nname: worker\ndescription: Work.\n---\n')
+        self.add_antigravity()
+        self.write('demo/agents/legacy.md', '---\nname: legacy\ndescription: Changed.\n---\n')
+        self.bump('antigravity')
+        self.assert_failure('demo [claude]: version must increase above 1.0.0; changed demo/agents/legacy.md')
+
     def test_dual_host_and_hooks_only_packages_accept_optional_roots(self):
         (self.root / 'demo/skills/greet/SKILL.md').unlink()
         (self.root / 'demo/skills/greet').rmdir()

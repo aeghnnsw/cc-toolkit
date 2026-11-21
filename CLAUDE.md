@@ -1,10 +1,10 @@
 # cc-toolkit
 
-This repository develops and publishes Claude Code and Codex plugins. See
-[README.md](README.md) for the plugin catalog and
+This repository develops and publishes Claude Code, Codex, and Antigravity
+plugins. See [README.md](README.md) for the plugin catalog and
 [CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, search, file
 placement, and verification commands. `AGENTS.md` is a symlink to this file;
-edit this file to update instructions for both hosts.
+edit this file to update instructions for every host.
 
 ## Agent skills
 
@@ -68,8 +68,8 @@ git worktree add trees/doc-<description> -b doc-<description>
 - Before changing a plugin's layout, or adding, removing, or renaming a
   plugin or a skill, read
   [Repository and package boundaries](CONTRIBUTING.md#repository-and-package-boundaries).
-- For a skill with Claude and Codex copies, follow
-  [Skills for both hosts](CONTRIBUTING.md#skills-for-both-hosts).
+- For a skill with copies for more than one host, follow
+  [Skills for more than one host](CONTRIBUTING.md#skills-for-more-than-one-host).
 - Before shipping a plugin change, read
   [Package and release validation](CONTRIBUTING.md#package-and-release-validation)
   for version increases.

@@ -89,7 +89,10 @@ class SkillLinkTests(unittest.TestCase):
             if roots:
                 with self.subTest(plugin=package.name, host=package.host):
                     self.assertTrue(skills, f'no SKILL.md found under {roots}')
-        self.assertEqual({package.host for package, _ in self.skills}, set(validator.REGISTRIES))
+        hosts = {package.host for package, _ in self.skills}
+        # Each registry host has skills; a manifest host such as Antigravity has skills once a plugin ships to it.
+        self.assertLessEqual(set(validator.REGISTRIES), hosts)
+        self.assertLessEqual(hosts, set(validator.HOSTS))
 
     def test_references_resolve_inside_package(self):
         checked = 0

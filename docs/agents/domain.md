@@ -24,9 +24,12 @@ Current decisions:
 - [Use the connected Supabase route for GTD](../adr/0003-use-connected-supabase-for-gtd.md)
 - [Ship the GTD schema and a setup skill](../adr/0004-ship-the-gtd-schema.md)
 - [Trigger agent captures from global instruction files](../adr/0005-trigger-agent-captures-from-global-instructions.md)
+- [Use a native Antigravity plugin layout](../adr/0006-antigravity-plugin-layout.md)
 
 ## Host compatibility
 
-Target the current releases of Claude Code and Codex. Avoid adding
-compatibility code or fallbacks for older host releases. Require a host
-update when an installed release lacks a capability needed by the plugin.
+Target the current releases of Claude Code, Codex, and Antigravity. For
+Antigravity, this includes the desktop app, the IDE, and the `agy` CLI,
+which share one plugin loader. Avoid adding compatibility code or fallbacks
+for older host releases. Require a host update when an installed release
+lacks a capability needed by the plugin.

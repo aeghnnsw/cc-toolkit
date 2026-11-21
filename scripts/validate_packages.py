@@ -18,11 +18,23 @@ except ModuleNotFoundError:
 
 
 REGISTRIES = {'claude': '.claude-plugin/marketplace.json', 'codex': '.agents/plugins/marketplace.json'}
+# A manifest host has no registry: its manifest in a plugin directory that a registry lists is its registration.
+MANIFEST_HOSTS = ('antigravity',)
+HOSTS = (*REGISTRIES, *MANIFEST_HOSTS)
+# The fields of the Antigravity manifest schema. The Antigravity loader ignores other fields.
+MANIFEST_FIELDS = {'antigravity': {
+    'name', 'displayName', 'description', 'version', 'disabled', 'logo', 'suggestedPrompts', 'skills', 'author',
+    'homepage', 'repository', 'license', 'keywords', 'extensions'}}
 NAME = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*\Z')
 CONVENTIONAL_PATHS = {
     'claude': {'skills': 'skills/', 'agents': 'agents/', 'commands': 'commands/', 'hooks': 'hooks/hooks.json'},
     'codex': {'skills': 'skills/'},
+    'antigravity': {'skills': 'skills/', 'agents': 'agents/', 'hooks': 'hooks.json', 'mcpServers': 'mcp_config.json',
+                    'rules': 'rules/'},
 }
+# Claude Code loads agents/ as well as the agent files that its manifest declares.
+ADDITIVE_PATHS = {('claude', 'agents')}
+DIRECTORY_FIELDS = ('skills', 'agents', 'commands', 'rules')
 
 
 class InvalidPackage(ValueError):
@@ -124,15 +136,41 @@ def load_packages(root, revision=None):
             sources.add(source)
             if not revision and not require_path(root, source).is_dir():
                 raise InvalidPackage(f'{source}: plugin source must be a directory')
-            manifest_path = f'{source}/.{host}-plugin/plugin.json'
-            if not revision:
-                require_path(root, manifest_path, root / source)
-            manifest = read_json(root, manifest_path, revision)
-            if manifest.get('name') != name:
-                raise InvalidPackage(f'{manifest_path}: identity must match {name}')
-            version(manifest.get('version'))
-            packages[name, host] = Package(name, host, source, manifest_path, manifest)
+            packages[name, host] = load_package(root, name, host, source, revision)
+    names = {}
+    for package in packages.values():
+        names.setdefault(package.source, {})[package.name] = None
+    for source, registered in names.items():
+        unique = list(registered)
+        for host in MANIFEST_HOSTS:
+            path = manifest_file(source, host)
+            if not (path in files if revision else (root / path).exists()):
+                continue
+            if len(unique) > 1:
+                raise InvalidPackage(f'{source}: registered as both {unique[0]} and {unique[1]}; '
+                                     f'{host.capitalize()} needs one name')
+            packages[unique[0], host] = load_package(root, unique[0], host, source, revision)
     return packages
+
+
+def manifest_file(source, host):
+    return f'{source}/.{host}-plugin/plugin.json'
+
+
+def load_package(root, name, host, source, revision):
+    manifest_path = manifest_file(source, host)
+    if not revision:
+        require_path(root, manifest_path, root / source)
+    manifest = read_json(root, manifest_path, revision)
+    allowed = MANIFEST_FIELDS.get(host)
+    unknown = sorted(set(manifest) - allowed) if allowed else []
+    if unknown:
+        raise InvalidPackage(f'{manifest_path}: unknown field {unknown[0]!r}; '
+                             f'{host.capitalize()} ignores fields outside its manifest schema')
+    if manifest.get('name') != name:
+        raise InvalidPackage(f'{manifest_path}: identity must match {name}')
+    version(manifest.get('version'))
+    return Package(name, host, source, manifest_path, manifest)
 
 
 def declared_paths(package):
@@ -153,8 +191,13 @@ def declared_paths(package):
 def host_paths(package):
     yield from ((field, path, True) for field, path in declared_paths(package))
     for field, path in CONVENTIONAL_PATHS[package.host].items():
-        if field not in package.manifest:
+        if field not in package.manifest or (package.host, field) in ADDITIVE_PATHS:
             yield field, path.rstrip('/'), False
+
+
+def directory_path(package, field, path):
+    """Return whether the path names a directory. A Claude Code agents field can also list Markdown files."""
+    return field in DIRECTORY_FIELDS and not (package.host == 'claude' and field == 'agents' and path.endswith('.md'))
 
 
 def discovery_paths(root, package):
@@ -177,11 +220,15 @@ def skill_header(path, text):
     return fields
 
 
-def validate_skill(path):
+def read_skill_header(path):
     try:
-        fields = skill_header(path, path.read_text(encoding='utf-8'))
+        return skill_header(path, path.read_text(encoding='utf-8'))
     except UnicodeError as error:
         raise InvalidPackage(f'{path}: invalid UTF-8 text') from error
+
+
+def validate_skill(path):
+    fields = read_skill_header(path)
     for key in ('name', 'description'):
         if not fields.get(key) or fields[key] in ('null', '~', '|', '>'):
             raise InvalidPackage(f'{path}: requires nonempty single-line {key}')
@@ -230,7 +277,7 @@ def validate_packages(root, packages, files):
         for field, relative in discovery_paths(root, package):
             target = require_path(root, f'{package.source}/{relative}', root / package.source)
             require_included(root, target, files)
-            if field in ('skills', 'agents', 'commands') and not target.is_dir():
+            if directory_path(package, field, relative) and not target.is_dir():
                 raise InvalidPackage(f'{target}: {field} must be a directory')
             if target.suffix == '.json' and target.is_file():
                 read_json(root, target.relative_to(root).as_posix())
@@ -240,6 +287,32 @@ def validate_packages(root, packages, files):
                         require_path(root, skill.relative_to(root).as_posix(), root / package.source)
                         require_included(root, skill, files)
                         validate_skill(skill)
+        if package.host == 'antigravity':
+            validate_shadowing(root, package, files)
+
+
+def validate_shadowing(root, package, files):
+    """Antigravity always loads skills/; a same-named skill in a declared skills path replaces that copy."""
+    base = root / package.source
+    declared = [path for field, path in declared_paths(package) if field == 'skills']
+    for path in declared:
+        if (base / path).resolve() == (base / 'skills').resolve():
+            raise InvalidPackage(f'{package.manifest_path}: the skills path {path} is the Claude Code skills folder; '
+                                 'declare the folder of the Antigravity copies')
+    copies = {read_skill_header(skill).get('name') for path in declared for skill in (base / path).glob('*/SKILL.md')
+              if included_location(root, skill, files)}
+    for skill in sorted((base / 'skills').glob('*/SKILL.md')):
+        name = read_skill_header(skill).get('name') if included_location(root, skill, files) else None
+        if name is None or name in copies:
+            continue
+        expected = f'{package.source}/{declared[0]}/{skill.parent.name}/SKILL.md' if declared else None
+        if expected is None:
+            remedy = f'declare a skills path in {package.manifest_path}'
+        elif (root / expected).is_file():
+            remedy = f'set name: {name} in {expected}'
+        else:
+            remedy = f'add {expected}'
+        raise InvalidPackage(f'{skill.relative_to(root).as_posix()}: skill {name} has no Antigravity copy; {remedy}')
 
 
 RULES_PATH = 'package-validation.json'
@@ -276,7 +349,7 @@ def validate_rules(rules):
                 seen.add(path)
                 hosts = entry['hosts']
                 if (not isinstance(hosts, list) or not hosts
-                        or any(not isinstance(host, str) or host not in REGISTRIES for host in hosts)
+                        or any(not isinstance(host, str) or host not in HOSTS for host in hosts)
                         or len(set(hosts)) != len(hosts)):
                     raise InvalidPackage(f'{RULES_PATH}: invalid hosts for {name}/{path}')
     return rules
@@ -305,12 +378,12 @@ def matches(path, pattern):
 
 
 def inferred_owners(relative, registrations):
-    for host in REGISTRIES:
+    for host in HOSTS:
         if matches(relative, f'.{host}-plugin/'):
             return {host}, 'host manifest'
     owners = set()
     for package in registrations:
-        paths = [(field, path + '/' if field in ('skills', 'agents', 'commands') else path)
+        paths = [(field, path + '/' if directory_path(package, field, path) else path)
                  for field, path, _ in host_paths(package)]
         if any(matches(relative, path) for _, path in paths):
             owners.add(package.host)
