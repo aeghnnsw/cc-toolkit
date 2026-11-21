@@ -284,10 +284,11 @@ not confirm the owner, ask whether the owner is correct. Skip this step
 when the owner is wrong. An agent capture is an inbox item that an agent adds
 when a task that it was given stops and waits on the user. The
 [gtd-inbox skill](../gtd-inbox/SKILL.md#agent-capture) holds its rules. One
-rule in the user's global instruction files turns it on. Codex reads
-`AGENTS.override.md` instead of `AGENTS.md` when that file is not empty,
-so the check uses it. The check also finds a rule that is wrapped on more than
-one line.
+rule in the user's global instruction files turns it on: `CLAUDE.md` for
+Claude Code, `AGENTS.md` for Codex, and `~/.gemini/GEMINI.md` for
+Antigravity. Codex reads `AGENTS.override.md` instead of `AGENTS.md` when
+that file is not empty, so the check uses it. The check also finds a rule
+that is wrapped on more than one line.
 
 1. Check the global instruction file of each host:
 
@@ -296,7 +297,7 @@ one line.
    dir="${CODEX_HOME:-$HOME/.codex}"
    codex="$dir/AGENTS.md"
    if [ -s "$dir/AGENTS.override.md" ]; then codex="$dir/AGENTS.override.md"; fi
-   for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "$codex"; do
+   for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" "$codex" "$HOME/.gemini/GEMINI.md"; do
      if [ ! -d "$(dirname "$f")" ]; then echo "no host: $f"
      elif [ -L "$f" ] && [ ! -e "$f" ]; then echo "broken symlink: $f"
      elif [ ! -e "$f" ]; then echo "missing: $f"
@@ -307,12 +308,13 @@ one line.
    ```
 
 2. When two paths resolve to the same file, treat them as one file. Skip a
-   path with `no host`. Report a `broken symlink` and do not write to it.
-   If no file is `absent` or `missing`, go to step 10. When the variable of
-   the other host is not set in this session, the check uses that host's
-   default folder. If the user runs that host with another configuration
-   folder, ask for it, set `CLAUDE_CONFIG_DIR` or `CODEX_HOME` to it, and
-   run the check again.
+   path with `no host`, which means that its host folder does not exist.
+   Report a `broken symlink` and do not write to it. If no file is `absent`
+   or `missing`, go to step 10. When the variable of another host is not
+   set in this session, the check uses that host's default folder. If the
+   user runs Claude Code or Codex with another configuration folder, ask
+   for it, set `CLAUDE_CONFIG_DIR` or `CODEX_HOME` to it, and run the check
+   again. For Antigravity, the check uses `$HOME/.gemini`.
 3. Show each `absent` or `missing` path and the exact text that item 4 adds
    at the end of the file: a blank line when the file has text, the heading
    `# GTD agent captures`, a blank line, and the rule as a list item. Say

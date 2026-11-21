@@ -15,12 +15,13 @@ inbox items. (These two sentences are superseded in part; read
 [Done agent captures](#done-agent-captures).)
 
 One rule in the user's global instruction files, `CLAUDE.md` for Claude
-Code and `AGENTS.md` for Codex, turns this on. The user-invoked `gtd-setup`
-skill adds the rule after the user agrees. The rules for what to capture,
-the item format, and the limits are in the `gtd-inbox` skill, which loads
-only when it is used and adds agent captures only when the user's
-instructions ask for them. A person who installs the plugin and does
-not turn on agent captures gets no new behavior.
+Code, `AGENTS.md` for Codex, and `~/.gemini/GEMINI.md` for Antigravity,
+turns this on. The user-invoked `gtd-setup` skill adds the rule after the
+user agrees. The rules for what to capture, the item format, and the limits
+are in the `gtd-inbox` skill, which loads only when it is used and adds
+agent captures only when the user's instructions ask for them. A person who
+installs the plugin and does not turn on agent captures gets no new
+behavior.
 
 An agent capture holds a proposal in its notes: a next action, a GTD
 project, a priority, a GTD deadline, and an effort. The other record fields

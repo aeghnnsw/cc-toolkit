@@ -119,7 +119,7 @@ Safety guards and workflow enforcement hooks.
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Productivity Skills (`productivity-skills`)
-GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
+GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. In Antigravity, connect the Supabase MCP server with `agy mcp add supabase https://mcp.supabase.com/mcp`, then sign in when Antigravity asks. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
 
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
@@ -131,6 +131,15 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar. 
 - **gtd-setup**: Create a cloud GTD database or bind an existing one, verify it, and optionally turn on agent captures (user-invoked)
 
 **Codex skills:**
+- **calendar-manager**
+- **gtd-inbox**
+- **gtd-process**
+- **gtd-project**
+- **gtd-next**
+- **gtd-overview**
+- **gtd-setup**
+
+**Antigravity skills:**
 - **calendar-manager**
 - **gtd-inbox**
 - **gtd-process**

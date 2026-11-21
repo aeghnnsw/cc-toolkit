@@ -94,16 +94,16 @@
     },
     "productivity-skills": {
       "ownership": [
-        {"path": "scripts/", "hosts": ["claude", "codex"]}
+        {"path": "scripts/", "hosts": ["claude", "codex", "antigravity"]}
       ],
       "resources": [
-        {"path": "references/gtd-planning.md", "hosts": ["claude", "codex"]},
-        {"path": "references/gtd-cloud.md", "hosts": ["claude", "codex"]},
-        {"path": "references/gtd-connector-transaction.sql", "hosts": ["claude", "codex"]},
-        {"path": "references/gtd-schema.sql", "hosts": ["claude", "codex"]},
-        {"path": "references/gtd-token-connector.md", "hosts": ["claude", "codex"]},
-        {"path": "scripts/gtd_sql.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/productivity-cli.swift", "hosts": ["claude", "codex"]}
+        {"path": "references/gtd-planning.md", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "references/gtd-cloud.md", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "references/gtd-connector-transaction.sql", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "references/gtd-schema.sql", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "references/gtd-token-connector.md", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/gtd_sql.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/productivity-cli.swift", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },
     "pymol-skills": {

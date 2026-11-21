@@ -67,8 +67,9 @@ Resolve uncertain outcomes through that procedure before another write.
 An agent capture is an inbox item that an agent adds when a task that it
 was given stops and waits on the user. Add agent captures only when the
 user's instructions ask for them, for example the rule that `gtd-setup`
-adds to the global `CLAUDE.md` or `AGENTS.md`. The user processes each
-agent capture with `gtd-process`, unless its work is done first; see
+adds to the global `CLAUDE.md` or `AGENTS.md`, or to
+`~/.gemini/GEMINI.md` for Antigravity. The user processes each agent
+capture with `gtd-process`, unless its work is done first; see
 [Done agent captures](#done-agent-captures).
 
 Add one agent capture for each of these items:
