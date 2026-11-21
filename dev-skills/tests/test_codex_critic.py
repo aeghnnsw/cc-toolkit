@@ -25,6 +25,8 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SKILL = PLUGIN_ROOT / "skills" / "pressure-test" / "SKILL.md"
 SCRIPT = SKILL.parent / "scripts" / "codex_critic.py"
+# The Antigravity copy runs its own byte-identical runner (issue #433).
+ANTIGRAVITY_SKILL = PLUGIN_ROOT / "antigravity-skills" / "pressure-test" / "SKILL.md"
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 CRITIC_MODEL = ALLOWED_MODELS["gpt"]["primary"]
 PROMPT = "GOAL:\nShip the runner.\n"
@@ -862,11 +864,18 @@ class CodexCriticTest(unittest.TestCase):
 
 class SkillTextTest(unittest.TestCase):
     def test_skill_text_has_no_argument_placeholders(self):
-        """Claude Code replaces $0-$9 and $ARGUMENTS in skill text when a caller passes arguments."""
-        lines = SKILL.read_text(encoding="utf-8").splitlines()
-        found = [f"{SKILL.name}:{number}: {line.strip()}" for number, line in enumerate(lines, 1)
-                 if re.search(r"\$(\d|ARGUMENTS)", line)]
-        self.assertEqual(found, [])
+        """Claude Code replaces $0-$9 and $ARGUMENTS in skill text; an Antigravity copy has no placeholders."""
+        for skill in (SKILL, ANTIGRAVITY_SKILL):
+            with self.subTest(skill=skill.relative_to(PLUGIN_ROOT).as_posix()):
+                lines = skill.read_text(encoding="utf-8").splitlines()
+                found = [f"{skill.name}:{number}: {line.strip()}" for number, line in enumerate(lines, 1)
+                         if re.search(r"\$(\d|ARGUMENTS)", line)]
+                self.assertEqual(found, [])
+
+    def test_antigravity_runner_is_a_byte_identical_copy(self):
+        """The tests above run the Claude Code runner, so they cover the Antigravity runner only when the bytes match."""
+        copy = ANTIGRAVITY_SKILL.parent / "scripts" / SCRIPT.name
+        self.assertEqual(copy.read_bytes(), SCRIPT.read_bytes(), f"{copy} differs from {SCRIPT}")
 
 
 if __name__ == "__main__":

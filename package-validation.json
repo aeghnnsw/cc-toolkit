@@ -49,8 +49,8 @@
         {"path": "antigravity-skills/", "hosts": ["antigravity"]}
       ],
       "resources": [
-        {"path": "agents/finding-verifier.md", "hosts": ["claude"]},
-        {"path": "agents/project-evaluator.md", "hosts": ["claude"]},
+        {"path": "claude-agents/finding-verifier.md", "hosts": ["claude"]},
+        {"path": "claude-agents/project-evaluator.md", "hosts": ["claude"]},
         {"path": "skills/lean-tests/references/check.md", "hosts": ["claude"]},
         {"path": "skills/lean-tests/references/speed.md", "hosts": ["claude"]},
         {"path": "skills/lean-tests/references/prune.md", "hosts": ["claude"]},
@@ -105,6 +105,11 @@
         {"path": "antigravity-skills/lean-tests/scripts/lt_scan.py", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/lean-tests/scripts/lt_suite.py", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/lean-tests/scripts/pytest_plugin/lean_tests_report.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/pressure-test/scripts/codex_critic.py", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/project-eval/references/dimensions.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/project-eval/references/evaluator.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/project-eval/references/report-format.md", "hosts": ["antigravity"]},
+        {"path": "antigravity-skills/project-eval/references/verifier.md", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/sci-project-layout/templates/experiment-README.md", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/sci-project-layout/templates/gitignore", "hosts": ["antigravity"]},
         {"path": "antigravity-skills/sci-project-layout/templates/layout-notes.md", "hosts": ["antigravity"]},

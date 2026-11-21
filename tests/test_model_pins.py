@@ -12,9 +12,13 @@ from package_support import FENCE, ROOT, agent_files, frontmatter, git_files, va
 import tomllib  # after package_support, which names the uv command on a Python without tomllib
 
 ALLOWED_MODELS = 'allowed-models.json'
-# Each pressure-test copy calls a critic from the model family of the other host.
+# Each pressure-test copy calls a critic from a model family other than the main agent's.
 CRITIC_SKILLS = {'dev-skills/skills/pressure-test/SKILL.md': 'gpt',
-                 'dev-skills/codex-skills/pressure-test/SKILL.md': 'claude'}
+                 'dev-skills/codex-skills/pressure-test/SKILL.md': 'claude',
+                 'dev-skills/antigravity-skills/pressure-test/SKILL.md': 'gpt'}
+# A copy whose main agent can run a model of the critic family, and the name of that family.
+SAME_FAMILY_STOPS = {'dev-skills/antigravity-skills/pressure-test/SKILL.md': 'GPT-family'}
+NO_CRITIC = 'no cross-family critic'
 MODEL_CONFIG = 'cc-customize/skills/model-config/SKILL.md'
 AGENT_MODEL = re.compile(r'^model:[ \t]*(.*?)[ \t]*$', re.MULTILINE)
 MODEL_ID = re.compile(r'\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?')
@@ -86,6 +90,20 @@ def check_critic_models(root, allowed):
     return problems
 
 
+def check_cross_family_stops(root, allowed):
+    """A copy whose main agent can run its critic family stops with "no cross-family critic" before its settings."""
+    problems = []
+    for path, family in SAME_FAMILY_STOPS.items():
+        text = (root / path).read_text(encoding='utf-8')
+        stop = text.find(f'"{NO_CRITIC}"')
+        setting = re.search(r'^[ \t]*PRIMARY_MODEL=', text, re.MULTILINE)
+        if stop < 0 or family not in text:
+            problems.append(f'{path}: no "{NO_CRITIC}" stop for a {family} main agent')
+        elif setting and setting.start() < stop:
+            problems.append(f'{path}: the "{NO_CRITIC}" stop comes after the PRIMARY_MODEL setting')
+    return problems
+
+
 def check_model_config(root, allowed):
     """model-config names the Claude primary and fallback models in its model table and built-in model list."""
     text = (root / MODEL_CONFIG).read_text(encoding='utf-8')
@@ -103,7 +121,8 @@ def check_model_config(root, allowed):
     return problems
 
 
-CHECKS = (check_agent_pins, check_codex_agent_pins, check_critic_models, check_model_config)
+CHECKS = (check_agent_pins, check_codex_agent_pins, check_critic_models, check_cross_family_stops,
+          check_model_config)
 
 
 def check_all(root):
@@ -128,6 +147,9 @@ FIXTURE = {
         'PRIMARY_MODEL="gpt-6-astra"\nFALLBACK_MODEL="gpt-6.1-sol"   # only after a flag\n',
     'dev-skills/codex-skills/pressure-test/SKILL.md':
         'PRIMARY_MODEL="claude-opus-5-5"\nFALLBACK_MODEL="claude-sonnet-5-5"   # only after a flag\n',
+    'dev-skills/antigravity-skills/pressure-test/SKILL.md':
+        'A GPT-family main agent stops: "no cross-family critic".\n'
+        'PRIMARY_MODEL="gpt-6-astra"\nFALLBACK_MODEL="gpt-6.1-sol"\n',
     MODEL_CONFIG: ('### Models and effort levels\n\n| Model | Effort levels |\n|---|---|\n'
                    '| `claude-opus-5-5` | low, max |\n| `claude-sonnet-5-5` | low, max |\n\n'
                    '### Step 5a: Select Base Model\n\n```\n1. claude-opus-5-5\n2. claude-sonnet-5-5\n```\n'),
@@ -166,6 +188,8 @@ class ModelPinTests(unittest.TestCase):
     def test_fixture_with_a_wrong_model_fails(self):
         claude_code_copy = FIXTURE['dev-skills/skills/pressure-test/SKILL.md']
         codex_copy = FIXTURE['dev-skills/codex-skills/pressure-test/SKILL.md']
+        antigravity = 'dev-skills/antigravity-skills/pressure-test/SKILL.md'
+        stop, settings = FIXTURE[antigravity].split('\n', 1)
         cases = [  # (file, wrong text, model or setting that a problem names)
             ('demo/agents/pinned.md', '---\nname: pinned\nmodel: claude-haiku-4-5\n---\n', 'claude-haiku-4-5'),
             ('demo/agents/inherits.md', '---\nname: inherits\nmodel: "claude-sonnet-5-5"\n---\n',
@@ -181,6 +205,11 @@ class ModelPinTests(unittest.TestCase):
             ('dev-skills/skills/pressure-test/SKILL.md', claude_code_copy + 'FALLBACK_MODEL=gpt-5\n', 'gpt-5'),
             ('dev-skills/codex-skills/pressure-test/SKILL.md',
              codex_copy + 'For example, "claude-opus-5 is not available to this account".\n', 'claude-opus-5'),
+            (antigravity, FIXTURE[antigravity].replace('gpt-6.1-sol', 'claude-sonnet-5-5'), 'claude-sonnet-5-5'),
+            (antigravity, settings, NO_CRITIC),
+            (antigravity, f'A GPT-family main agent stops.\n{settings}', NO_CRITIC),
+            (antigravity, FIXTURE[antigravity].replace('GPT-family ', ''), 'GPT-family'),
+            (antigravity, f'{settings}{stop}\n', 'PRIMARY_MODEL'),
             (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('2. claude-sonnet-5-5\n', ''), 'claude-sonnet-5-5'),
             (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('| `claude-opus-5-5` | low, max |\n', ''),
              'claude-opus-5-5'),

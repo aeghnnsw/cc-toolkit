@@ -6,8 +6,9 @@ cover the worktrees that cleanup keeps, from
 [issue #419](https://github.com/aeghnnsw/cc-toolkit/issues/419). Cases 12–16
 cover planning folders in worktrees, from
 [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421). Apply each case
-to the [Claude Code skill](../skills/repo-cleanup/SKILL.md) and the
-[Codex skill](../codex-skills/repo-cleanup/SKILL.md).
+to the [Claude Code skill](../skills/repo-cleanup/SKILL.md), the
+[Codex skill](../codex-skills/repo-cleanup/SKILL.md), and the
+[Antigravity skill](../antigravity-skills/repo-cleanup/SKILL.md).
 
 For each case, identify the next permitted action, blocked action, and evidence
 needed. Use a fresh review context with the skill and scenario inputs. Keep
@@ -102,8 +103,8 @@ Each other named worktree is clean, and its branch was squash-merged.
 ## Validation limits
 
 A simulated next-action review checks how an agent interprets these cases. It
-does not demonstrate a cleanup run in Claude Code or Codex. Record static
-checks, simulated reviews, and live observations separately.
+does not demonstrate a cleanup run in Claude Code, Codex, or Antigravity.
+Record static checks, simulated reviews, and live observations separately.
 
 ## Review record
 
