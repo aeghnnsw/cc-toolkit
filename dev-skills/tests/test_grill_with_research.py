@@ -157,6 +157,7 @@ class AntigravityCopiesTest(unittest.TestCase):
         texts = {
             "grill-with-research": wrapper("antigravity-skills")[1],
             "matt-automode": automode("antigravity-skills"),
+            "pr-feedback": (PLUGIN_ROOT / "antigravity-skills" / "pr-feedback" / "SKILL.md").read_text(),
         }
         for skill, text in texts.items():
             for term in OTHER_HOST_TERMS:

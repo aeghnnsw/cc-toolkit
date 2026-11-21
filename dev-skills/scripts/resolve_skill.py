@@ -34,9 +34,10 @@ plugin.
 
 In the plugin root, search the skills paths of the host manifest and the
 skills/ directory. In Codex, manifest skills paths replace skills/. Without
-manifest skills paths, also search the whole root without the other host's
-skill copies (codex-skills/ for Claude Code and Antigravity, claude-skills/
-for Codex).
+manifest skills paths, also search the whole root without the skill copies
+of the other hosts: codex-skills/ and antigravity-skills/ for Claude Code,
+claude-skills/ and antigravity-skills/ for Codex, and codex-skills/ for
+Antigravity.
 """
 
 from __future__ import annotations
@@ -260,14 +261,17 @@ class Host(NamedTuple):
 
     plugin_root: Callable[[str], Path]
     manifest: str
-    other_copies: str  # skill folder of the other host, skipped by the search
+    other_copies: frozenset[str]  # skill folders of the other hosts, skipped by the search
     keeps_skills_dir: bool  # skills/ still loads when the manifest lists skills paths
 
 
 HOSTS = {
-    "claude": Host(claude_plugin_root, ".claude-plugin/plugin.json", "codex-skills", True),
-    "codex": Host(codex_plugin_root, ".codex-plugin/plugin.json", "claude-skills", False),
-    "antigravity": Host(antigravity_plugin_root, ".antigravity-plugin/plugin.json", "codex-skills", True),
+    "claude": Host(claude_plugin_root, ".claude-plugin/plugin.json",
+                   frozenset({"codex-skills", "antigravity-skills"}), True),
+    "codex": Host(codex_plugin_root, ".codex-plugin/plugin.json",
+                  frozenset({"claude-skills", "antigravity-skills"}), False),
+    "antigravity": Host(antigravity_plugin_root, ".antigravity-plugin/plugin.json",
+                        frozenset({"codex-skills"}), True),
 }
 
 
@@ -295,7 +299,7 @@ def find_skill(root: Path, skill: str, host: Host) -> Path | None:
         for candidate in (base / "SKILL.md", base / skill / "SKILL.md"):
             if candidate.parent.name == skill and candidate.is_file():
                 return candidate
-    skip = SKIP_DIRS | {host.other_copies}
+    skip = SKIP_DIRS | host.other_copies
     for base in bases:
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = sorted(d for d in dirnames if d not in skip)

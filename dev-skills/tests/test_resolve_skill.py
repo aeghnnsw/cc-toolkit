@@ -234,9 +234,10 @@ class ClaudeResolveTest(ResolverCase):
         self.assertIn("matt:helper", completed.stderr)
         self.assertIn("not found", completed.stderr)
 
-    def test_search_skips_the_codex_copy(self):
+    def test_search_skips_the_codex_and_antigravity_copies(self):
         root = self.install_root("dev")
         make_skill(root, "codex-skills/helper")
+        make_skill(root, "antigravity-skills/helper")
         self.claude_plugin("dev", [{"scope": "user", "installPath": str(root)}])
 
         completed = self.run_resolver("dev:helper")

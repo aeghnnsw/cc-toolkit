@@ -123,8 +123,8 @@ for issue 42, and the Matt skills load.
 
 A simulated next-action review checks how an agent interprets these cases. It
 does not demonstrate a full grilling session in Claude Code, Codex, or
-Antigravity. Record
-static checks, simulated reviews, and live observations separately.
+Antigravity. Record static checks, simulated reviews, and live observations
+separately.
 
 ## Review record
 

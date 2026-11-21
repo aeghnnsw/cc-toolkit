@@ -214,9 +214,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 
 Reading the instructions checks coverage. A simulated next-action review checks
 how an agent interprets these cases. Neither demonstrates a full workflow in
-Claude Code, Codex, or Antigravity. Package validation checks metadata and release contracts;
-it does not enforce agent behavior. Record actual review outcomes separately
-from these expected results.
+Claude Code, Codex, or Antigravity. Package validation checks metadata and
+release contracts; it does not enforce agent behavior. Record actual review
+outcomes separately from these expected results.
 
 ## Review record
 
