@@ -6,14 +6,17 @@
 import json
 import sys
 
-from hook_logs import append_log
+from hook_logs import append_log, host_log_dir
+from hook_payload import host_argument
 
 def main():
     try:
         # Read JSON input from stdin
         input_data = json.load(sys.stdin)
 
-        append_log('post_tool_use.jsonl', input_data)
+        directory = host_log_dir(host_argument(sys.argv[1:]), input_data)
+        if directory is not None:
+            append_log('post_tool_use.jsonl', input_data, directory)
 
         sys.exit(0)
 

@@ -32,6 +32,15 @@ to 3 also skip double-quoted text, `[[ ... ]]` tests, and `(( ... ))`
 arithmetic; zsh expands traps 4 and 5 in double quotes and tests too. This
 is a heuristic, not a full zsh parser. The rewrite uses a separate strict
 recognizer for the complete command.
+
+An Antigravity PreToolUse hook cannot warn without blocking the command,
+and no measured Antigravity contract changes the command. So with
+`--host antigravity`, the hook writes nothing to stdout. It blocks a
+command that the rewrite fixes, with a reason on stderr that names the
+corrected command, and it blocks a command with any other trap, with the
+trap messages on stderr. It skips the glob check: the check reads the
+files before the command runs, so it can block a command that first
+creates the files, and no warning can replace the block.
 """
 
 import glob
@@ -42,7 +51,7 @@ import shutil
 import sys
 from collections import namedtuple
 
-from hook_payload import get_shell_command
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 from safety_guard import (
     CONTROL_PREFIXES,
     MAX_NESTED_SHELL_DEPTH,
@@ -118,6 +127,12 @@ MODIFIER_WARNING = (
 )
 # An unbraced variable followed by `:` and a letter, after `$`.
 MODIFIER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):([A-Za-z])")
+REWRITE_DENIAL = (
+    "zsh trap: zsh reads an unquoted word that starts with `=` as the path "
+    "of a command. No such command exists, so zsh would stop the command "
+    "line at this word. Run this corrected command, which quotes the "
+    "word:\n{command}"
+)
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
@@ -532,9 +547,9 @@ def zsh_traps(command, cwd=None, host=None):
     as `PY="uv run python"`, or when it is the only word of a `set` command
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
     `cwd` is the directory where the command runs. The glob check uses it
-    unless the command changes the directory. A parameter flag is a trap
-    only when `host` is "claude", because only the Claude Code safety check
-    rejects it.
+    unless the command changes the directory, and it does not run when
+    `host` is "antigravity". A parameter flag is a trap only when `host` is
+    "claude", because only the Claude Code safety check rejects it.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -551,9 +566,8 @@ def zsh_traps(command, cwd=None, host=None):
     ]
     missing = [word for word in findings.equals_words if _names_no_command(word)]
     directory = None if findings.changes_directory else cwd
-    unmatched = [
-        word for word in findings.glob_words if _matches_no_file(word, directory)
-    ]
+    glob_words = [] if host == ANTIGRAVITY else findings.glob_words
+    unmatched = [word for word in glob_words if _matches_no_file(word, directory)]
     traps = []
     if findings.flags and host == "claude":
         traps.append(Trap(FLAG_DENIAL.format(flag=findings.flags[0]), True))
@@ -590,10 +604,10 @@ def main():
         if not command or os.path.basename(os.environ.get("SHELL", "")) != "zsh":
             sys.exit(0)
         cwd = _working_directory(input_data)
-        args = sys.argv[1:]
-        host = args[1] if len(args) == 2 and args[0] == "--host" else None
+        host = host_argument(sys.argv[1:])
         traps = zsh_traps(command, cwd, host)
         updated_input = None
+        corrected = None
         # Both current hosts supply Bash.command. Compatibility payloads
         # keep their existing decisions and never select a rewrite contract.
         if (
@@ -604,9 +618,22 @@ def main():
             quoted = _quote_echo_separators(command)
             if quoted is not None and not zsh_traps(quoted, cwd, host):
                 updated_input = dict(input_data["tool_input"], command=quoted)
+        elif host == ANTIGRAVITY:
+            quoted = _quote_echo_separators(command)
+            if quoted is not None and not zsh_traps(quoted, cwd, host):
+                corrected = quoted
     except Exception:
         # A hook error never stops a command.
         sys.exit(0)
+    if host == ANTIGRAVITY:
+        if corrected is not None:
+            message = REWRITE_DENIAL.format(command=corrected)
+        elif traps:
+            message = "\n".join(trap.message for trap in traps)
+        else:
+            sys.exit(0)
+        print(f"BLOCKED: {message}", file=sys.stderr)
+        sys.exit(block_status(host))
     if updated_input is not None:
         output = {"hookEventName": "PreToolUse", "updatedInput": updated_input}
         # Codex requires allow to apply the rewrite; its normal execution

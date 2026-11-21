@@ -15,17 +15,19 @@
       "ownership": [
         {"path": "hooks/hooks.json", "hosts": ["claude"]},
         {"path": "hooks/hooks.codex.json", "hosts": ["codex"]},
-        {"path": "scripts/", "hosts": ["claude", "codex"]}
+        {"path": "hooks.json", "hosts": ["antigravity"]},
+        {"path": "scripts/", "hosts": ["claude", "codex", "antigravity"]}
       ],
       "resources": [
         {"path": "hooks/hooks.json", "hosts": ["claude"]},
-        {"path": "scripts/hook_logs.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/hook_payload.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/post_tool_use.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/pre_git_hook.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/safety_guard.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/system_notification.py", "hosts": ["claude", "codex"]},
-        {"path": "scripts/zsh_traps.py", "hosts": ["claude", "codex"]}
+        {"path": "hooks.json", "hosts": ["antigravity"]},
+        {"path": "scripts/hook_logs.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/hook_payload.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/post_tool_use.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/pre_git_hook.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/safety_guard.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/system_notification.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/zsh_traps.py", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },
     "creator-skills": {

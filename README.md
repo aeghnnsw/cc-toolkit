@@ -109,7 +109,7 @@ Scientific content creation for figures and presentations.
 - **sci-slides**
 
 ### Core Hooks (`core-hooks`)
-Safety guards and workflow enforcement hooks.
+Safety guards and workflow enforcement hooks for Claude Code, Codex, and Antigravity.
 
 **Hooks:**
 - **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed. Also blocks `env` or `printenv` with no command, which prints every environment variable; `env | cut -d= -f1` lists the names only
@@ -117,6 +117,16 @@ Safety guards and workflow enforcement hooks.
 - **zsh_traps.py**: When the shell is zsh, quotes separators with two or more leading equals signs in standalone `echo` commands, with optional `-n`. Labels can use ASCII letters, digits, and underscores, as in `echo =====CODEX`. Current Claude Code and Codex apply the corrected input through their normal permission checks. Complex commands keep the existing checks: the hook blocks unresolved `=name` expansions and warns about valid command expansions, unsplit variables, unmatched globs, and a letter after `$NAME:`, which zsh can read as a modifier. In Claude Code, it blocks a zsh parameter flag such as `${(f)...}`, which the Claude Code safety check rejects with a message about `rm`. Each message names the fix
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
+
+In Antigravity, a root `hooks.json` runs the same scripts, and a block
+shows its reason. An Antigravity hook cannot warn without blocking the
+command. So each zsh trap blocks the command, and the `echo` quoting
+becomes a block that names the corrected command. The hooks drop the Git
+policy reminders and the branch-prefix message. The unmatched-glob check
+does not run, because a command can create the files before its glob. A
+safety or Git policy hook that cannot read its input blocks the command.
+Antigravity has no Notification, SessionEnd, or SubagentStop event; the
+sound plays when the agent stops.
 
 ### Productivity Skills (`productivity-skills`)
 GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. In Antigravity, connect the Supabase MCP server with `agy mcp add supabase https://mcp.supabase.com/mcp`, then sign in when Antigravity asks. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
@@ -228,8 +238,7 @@ agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/<plugin>
 
 Install only a plugin whose directory holds `.antigravity-plugin/plugin.json`.
 For a plugin without that manifest, `agy plugin install` converts the Claude
-Code plugin, and the result can lose parts of it: for example, converted Core
-Hooks apply no policy. See the
+Code plugin, and the result can lose parts of it. See the
 [Antigravity plugin guide](https://antigravity.google/docs/plugins) for other
 commands.
 

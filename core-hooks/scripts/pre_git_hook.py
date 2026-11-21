@@ -11,7 +11,7 @@ import shlex
 import sys
 from collections import namedtuple
 
-from hook_payload import get_shell_command
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 from safety_guard import CONTROL_PREFIXES, strip_heredoc_bodies
 
 
@@ -145,17 +145,20 @@ GREP_VALUE_OPTIONS = GitOptions(set('efABCm'), {
 GREP_PLAIN_ESCAPES = set('bBsSdDwW<>')
 
 
-def block(reason):
+def block(reason, host=None):
     print(f"BLOCKED: {reason}", file=sys.stderr)
-    sys.exit(2)
+    sys.exit(block_status(host))
 
 
-def remind(message):
+def remind(message, host=None):
     """Show a reminder to the user and the agent, then allow the command.
 
     `systemMessage` reaches only the user; `additionalContext` reaches the
-    agent.
+    agent. An Antigravity PreToolUse hook has no channel for a message that
+    allows the command, so in Antigravity mode the reminder is dropped.
     """
+    if host == ANTIGRAVITY:
+        sys.exit(0)
     print(json.dumps({
         "systemMessage": message,
         "hookSpecificOutput": {
@@ -476,6 +479,10 @@ def check_branch_names(command):
 
 
 def main():
+    # In Antigravity mode, stdout stays empty: a block is exit 3 with the
+    # reason on stderr, which the root hooks.json changes to 2, and an
+    # allowed command prints nothing.
+    host = host_argument(sys.argv[1:])
     try:
         input_data = json.loads(sys.stdin.read())
     except json.JSONDecodeError:
@@ -488,7 +495,8 @@ def main():
             block(
                 "Bulk git add operations are prohibited. "
                 "Use specific file names instead of 'git add .', 'git add -A', "
-                "or 'git add --all'."
+                "or 'git add --all'.",
+                host,
             )
 
         # AI attribution is a hard block. Check it before the advisory handlers
@@ -501,14 +509,16 @@ def main():
                     block(
                         "AI tool attribution detected in git operation. "
                         "Remove AI contribution messages from commit messages and "
-                        "PR descriptions/comments."
+                        "PR descriptions/comments.",
+                        host,
                     )
 
         invalid_branch, saw_valid_branch = check_branch_names(command)
         if invalid_branch:
             block(
                 f"Branch name '{invalid_branch}' is invalid. "
-                f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
+                f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}",
+                host,
             )
 
         for segment in command_segments(command):
@@ -518,21 +528,24 @@ def main():
                     f"`git grep -E` reads `{escape}` as the plain character "
                     f"`{escape[1]}` on macOS and gives no error, so the search "
                     "can miss lines or print nothing. Use `-P` instead of `-E`, "
-                    "and write a word boundary as `\\b`."
+                    "and write a word boundary as `\\b`.",
+                    host,
                 )
 
         if "gh pr merge" in command and "--squash" not in command:
-            remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.")
+            remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.", host)
 
         if is_contribution_cmd:
             remind(
                 "Contribution Guidelines: Keep messages concise and accurate. "
-                "Avoid AI attribution in commit messages or PR descriptions/comments."
+                "Avoid AI attribution in commit messages or PR descriptions/comments.",
+                host,
             )
 
         # The praise goes last: it is for the user, and the reminders above
-        # must reach the agent.
-        if saw_valid_branch:
+        # must reach the agent. Antigravity mode drops it, as it drops the
+        # reminders.
+        if saw_valid_branch and host != ANTIGRAVITY:
             response = {
                 "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
             }

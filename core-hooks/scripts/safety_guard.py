@@ -17,8 +17,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from hook_logs import append_log, log_dir
-from hook_payload import get_shell_command
+from hook_logs import append_log, host_log_dir
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 
 
 SHELL_PUNCTUATION = ";&|()<>\n`"
@@ -1159,7 +1159,29 @@ def is_dangerous_rm_command(command):
     return dangerous_rm_reason(command) is not None
 
 
+def _log_error(text, host, input_data):
+    directory = host_log_dir(host, input_data)
+    if directory is not None:
+        with open(directory / 'hook_errors.log', 'a') as f:
+            f.write(text)
+
+
+def error_status(host):
+    """Return the exit status after a script error on `host`.
+
+    Claude Code and Codex allow the command. In Antigravity mode, the
+    status is 1, and the root `hooks.json` wrapper blocks the command,
+    because an Antigravity safety hook fails closed.
+    """
+    return 1 if host == ANTIGRAVITY else 0
+
+
 def main():
+    # In Antigravity mode, stdout stays empty, because Antigravity reads text
+    # on stdout as a decision. A block is exit 3 with the reason on stderr,
+    # and the root hooks.json changes it to 2.
+    host = host_argument(sys.argv[1:])
+    input_data = None
     try:
         # Read JSON input from stdin
         input_data = json.load(sys.stdin)
@@ -1172,7 +1194,7 @@ def main():
             print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
-            sys.exit(2)  # Blocks the tool call in Claude, Codex, and Grok.
+            sys.exit(block_status(host))  # The root hooks.json maps 3 to 2.
 
         if command and prints_environment(command):
             print(
@@ -1182,25 +1204,21 @@ def main():
                 "variable, run `printenv NAME`.",
                 file=sys.stderr,
             )
-            sys.exit(2)
+            sys.exit(block_status(host))
 
-        append_log('pre_tool_use.jsonl', input_data)
+        directory = host_log_dir(host, input_data)
+        if directory is not None:
+            append_log('pre_tool_use.jsonl', input_data, directory)
 
         sys.exit(0)
 
     except json.JSONDecodeError as e:
-        # Log error and allow command (fail-open for JSON errors)
-        debug_log = log_dir() / 'hook_errors.log'
-        with open(debug_log, 'a') as f:
-            f.write(f"JSONDecodeError: {e}\n")
-        sys.exit(0)
+        _log_error(f"JSONDecodeError: {e}\n", host, input_data)
+        sys.exit(error_status(host))
     except Exception as e:
-        # Log error and allow command (fail-open for safety)
-        debug_log = log_dir() / 'hook_errors.log'
-        with open(debug_log, 'a') as f:
-            import traceback
-            f.write(f"Exception: {e}\n{traceback.format_exc()}\n")
-        sys.exit(0)
+        import traceback
+        _log_error(f"Exception: {e}\n{traceback.format_exc()}\n", host, input_data)
+        sys.exit(error_status(host))
 
 if __name__ == '__main__':
     main()
