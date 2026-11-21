@@ -98,7 +98,8 @@ or GPT-family model.
 Each command runs in a new shell, so variables do not carry over. Setup
 writes them to `env.sh` in a new work directory and prints its path. Start
 every later block with `source "<workdir>/env.sh"`, where `<workdir>` is that
-printed path.
+printed path. `<skill-dir>` is the folder that holds this `SKILL.md`; write
+its absolute path in the block.
 
 ```bash
 DIR="$(mktemp -d "${TMPDIR:-/tmp}/pressure-test.XXXXXX")"   # transcript + working files

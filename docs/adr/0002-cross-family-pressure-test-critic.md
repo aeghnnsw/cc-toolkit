@@ -4,9 +4,15 @@
 > uses the fallback model only after a flag, and a flag on the fallback model
 > no longer always ends it. The user or a calling skill can choose the
 > critic model. Read [Critic model choice](#critic-model-choice).
+>
+> **Superseded in part (2026-11-21, issue #433).** Antigravity ships a third
+> `pressure-test` skill. Its critic comes from a model family other than the
+> main agent's, not from the model family of another host. Read
+> [Antigravity critic](#antigravity-critic).
 
 Each host ships a `pressure-test` skill whose critic comes from the other
 host's model family, called through that host's CLI in non-interactive mode.
+(Superseded in part; read [Antigravity critic](#antigravity-critic).)
 In Claude Code, the skill calls `codex exec`. In Codex, it calls `claude -p`.
 The [Antigravity critic](#antigravity-critic) is GPT, through `codex exec`.
 A critic from another model family shares fewer blind spots with the main
@@ -42,6 +48,8 @@ Consequences:
 
 - Each skill needs the other host's CLI, installed and signed in. Neither
   skill falls back to inline self-critique or to a same-host subagent.
+  (Superseded in part: the Antigravity skill needs the Codex CLI, and it
+  has no fallback either; read [Antigravity critic](#antigravity-critic).)
 - In Codex, the `claude` command needs network access and write access to
   `~/.claude`, so a restricted sandbox must allow it.
 - `codex exec resume` does not keep the sandbox or working directory of the
@@ -53,7 +61,9 @@ Consequences:
   fallback model only after a flag. (Superseded; read
   [Critic model choice](#critic-model-choice).)
 - A change to the allowed models starts in `allowed-models.json`. The same
-  change updates both skills, the cc-customize `model-config` skill, and the
+  change updates both skills (superseded in part: all three skills; read
+  [Antigravity critic](#antigravity-critic)), the cc-customize
+  `model-config` skill, and the
   model pins in agent and Codex agent files.
   `dev-skills/tests/test_critic_status.py`, `test_codex_critic.py`, and
   `test_pressure_test_models.py` read their test data from the file.
