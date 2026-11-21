@@ -1,6 +1,6 @@
 # cc-toolkit
 
-Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing, with Antigravity support for some plugins.
+Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing, with Antigravity support where a plugin has been ported.
 
 ## Overview
 

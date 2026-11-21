@@ -21,6 +21,7 @@ def split_skill(path: Path) -> tuple[dict[str, str], str]:
         if sep:
             fields[key.strip()] = value.strip()
     return fields, body
+OTHER_HOSTS = [host for host in HOST_SKILLS if host != "claude"]
 
 
 def supporting_files(skill_dir: Path) -> dict[str, bytes]:
@@ -37,8 +38,8 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
 class SciSlidesParityTest(unittest.TestCase):
     def test_bodies_match(self) -> None:
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        for host, body in bodies.items():
-            self.assertEqual(bodies["claude"], body, f"the {host} body differs")
+        for host in OTHER_HOSTS:
+            self.assertEqual(bodies["claude"], bodies[host], f"the {host} body differs")
 
     def test_name_and_description_match(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
@@ -48,11 +49,11 @@ class SciSlidesParityTest(unittest.TestCase):
 
     def test_supporting_files_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
-        for host, skill_dir in HOST_SKILLS.items():
-            other = supporting_files(skill_dir)
-            self.assertEqual(sorted(claude), sorted(other), host)
+        for host in OTHER_HOSTS:
+            copy = supporting_files(HOST_SKILLS[host])
+            self.assertEqual(sorted(claude), sorted(copy), f"the {host} file list differs")
             for name in claude:
-                self.assertEqual(claude[name], other[name], f"{name} differs between claude and {host}")
+                self.assertEqual(claude[name], copy[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":

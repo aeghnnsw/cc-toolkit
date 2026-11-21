@@ -1,6 +1,6 @@
 ---
 name: docling-pdf
-version: 1.0.0
+version: 1.0.1
 description: Convert PDF documents to AI-accessible markdown format using IBM's Docling library. This skill should be used when the user needs to extract content from PDFs including text, figures, and tables in a structured markdown format. It handles scientific papers, technical documents, reports, and any PDF requiring content extraction for AI processing or analysis.
 ---
 
@@ -24,8 +24,12 @@ Use this skill when the user needs to:
 Convert a PDF using the bundled script:
 
 ```bash
-uv run --python 3.10 scripts/convert_pdf.py input.pdf output_folder
+uv run --python 3.10 "<skill-dir>/scripts/convert_pdf.py" input.pdf output_folder
 ```
+
+Here `<skill-dir>` is this skill's directory, the folder of this `SKILL.md`.
+Run the command from the user's working directory, so that relative input and
+output paths resolve there.
 
 This produces:
 - `full_document.md` - Complete markdown with cleaned references
@@ -44,7 +48,7 @@ The script uses `uv` to manage dependencies automatically. No manual installatio
 Run the conversion script with the following syntax:
 
 ```bash
-uv run --python 3.10 scripts/convert_pdf.py <pdf_file> <output_folder> [options]
+uv run --python 3.10 "<skill-dir>/scripts/convert_pdf.py" <pdf_file> <output_folder> [options]
 ```
 
 **Required arguments:**
@@ -58,7 +62,7 @@ uv run --python 3.10 scripts/convert_pdf.py <pdf_file> <output_folder> [options]
 
 ```bash
 # Basic conversion
-uv run --python 3.10 scripts/convert_pdf.py paper.pdf output/
+uv run --python 3.10 "<skill-dir>/scripts/convert_pdf.py" paper.pdf output/
 
 ```
 
