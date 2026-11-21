@@ -138,7 +138,8 @@ class AntigravityHostAdapterTests(unittest.TestCase):
 
     def run_hook(self, command, data, *, plugin_root=None, env=None, shell="/bin/sh"):
         """Run one configured command as Antigravity does: through a shell,
-        from the plugin root, with the payload on stdin."""
+        from the plugin root, with the payload on stdin. A string payload
+        goes to stdin as it is."""
         plugin_root = plugin_root or self.plugin_root
         process_env = os.environ.copy()
         process_env.pop("CLAUDE_PROJECT_DIR", None)
@@ -154,7 +155,7 @@ class AntigravityHostAdapterTests(unittest.TestCase):
         process_env.update(env or {})
         result = subprocess.run(
             [shell, "-c", command],
-            input=json.dumps(data),
+            input=data if isinstance(data, str) else json.dumps(data),
             text=True,
             capture_output=True,
             cwd=plugin_root,
@@ -376,6 +377,14 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                         self.assertEqual(result.returncode, expected_status, result.stderr)
                         self.assertEqual(result.stdout, "")
                         self.assertIn(marker, result.stderr)
+
+    def test_unreadable_payload_blocks_the_safety_and_git_policy_hooks(self):
+        for script_name, expected_status, marker in POLICY_CASES[:2]:
+            with self.subTest(script_name=script_name):
+                result = self.run_hook(command_for(script_name), "not json")
+                self.assertEqual(result.returncode, expected_status, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn(marker, result.stderr)
 
     def test_blocks_pass_through_each_wrapper_without_a_failure_line(self):
         cases = (

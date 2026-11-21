@@ -39,16 +39,18 @@ The wrappers apply the Codex failure policy: a safety or git policy hook
 failure blocks, and a zsh trap, logging, or notification hook failure writes
 a warning to stderr and exits 0. `uv` also exits 2 when it cannot start a
 script. So the safety, git policy, and zsh trap scripts exit 3 for a block,
-and their wrappers change that status to 2 without the failure line. The
-wrappers keep the status in `rc`, because zsh reserves `status` as a
-read-only variable.
+and their wrappers change that status to 2 without the failure line. An
+Antigravity safety script error exits 1, so its wrapper blocks; in Claude
+Code and Codex, a safety script error still allows the command. The wrappers
+keep the status in `rc`, because zsh reserves `status` as a read-only
+variable.
 
 Antigravity has no Notification, SessionEnd, or SubagentStop event, and a
-PreToolUse hook cannot warn without blocking. So the git policy reminders
-and the branch-prefix message are dropped, and each zsh trap blocks,
-except an unmatched glob: that check reads the files before the command
-runs, so it can block a command that creates them first. No
-measured Antigravity contract changes the command, so the zsh rewrite
-becomes a block that names the corrected command. See
+PreToolUse hook cannot warn without blocking. So the adapter drops the git
+policy reminders and the branch-prefix message, and each zsh trap blocks.
+The adapter skips the unmatched-glob check. That check reads the files
+before the command runs, so it can block a command that creates them
+first. No measured Antigravity contract changes the command, so the zsh
+rewrite becomes a block that names the corrected command. See
 [ADR 0006](0006-antigravity-plugin-layout.md#hook-failure-policy) and the
 [Antigravity adapter tests](../../core-hooks/tests/test_antigravity_host_adapter.py).

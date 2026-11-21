@@ -7,16 +7,17 @@ SHELL_COMMAND_KEYS = {
     "run_terminal_command": "command",
 }
 ANTIGRAVITY = "antigravity"
-# The exit status of an Antigravity block. The root hooks.json changes it to
-# 2, the Antigravity block status, without its "hook failed" line. uv also
-# exits 2 when it cannot start a script, so the wrappers must tell that
-# failure from a block.
-ANTIGRAVITY_BLOCK_STATUS = 3
 
 
 def block_status(host):
-    """Return the exit status that blocks a tool call for `host`."""
-    return ANTIGRAVITY_BLOCK_STATUS if host == ANTIGRAVITY else 2
+    """Return the exit status of a script that blocks a tool call on `host`.
+
+    In Antigravity mode, a script blocks with status 3. The root `hooks.json`
+    changes 3 to 2, the Antigravity block status, without its "hook failed"
+    line. `uv` also exits 2 when it cannot start a script, so the wrappers
+    must tell that failure from a block.
+    """
+    return 3 if host == ANTIGRAVITY else 2
 
 
 def host_argument(argv):

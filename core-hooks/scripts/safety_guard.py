@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 
 from hook_logs import append_log, host_log_dir
-from hook_payload import block_status, get_shell_command, host_argument
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 
 
 SHELL_PUNCTUATION = ";&|()<>\n`"
@@ -1166,9 +1166,20 @@ def _log_error(text, host, input_data):
             f.write(text)
 
 
+def error_status(host):
+    """Return the exit status after a script error on `host`.
+
+    Claude Code and Codex allow the command. In Antigravity mode, the
+    status is 1, and the root `hooks.json` wrapper blocks the command,
+    because an Antigravity safety hook fails closed.
+    """
+    return 1 if host == ANTIGRAVITY else 0
+
+
 def main():
-    # In Antigravity mode, stdout stays empty: Antigravity reads text on
-    # stdout as a decision, and a block is exit 2 with the reason on stderr.
+    # In Antigravity mode, stdout stays empty, because Antigravity reads text
+    # on stdout as a decision. A block is exit 3 with the reason on stderr,
+    # and the root hooks.json changes it to 2.
     host = host_argument(sys.argv[1:])
     input_data = None
     try:
@@ -1202,14 +1213,12 @@ def main():
         sys.exit(0)
 
     except json.JSONDecodeError as e:
-        # Log error and allow command (fail-open for JSON errors)
         _log_error(f"JSONDecodeError: {e}\n", host, input_data)
-        sys.exit(0)
+        sys.exit(error_status(host))
     except Exception as e:
-        # Log error and allow command (fail-open for safety)
         import traceback
         _log_error(f"Exception: {e}\n{traceback.format_exc()}\n", host, input_data)
-        sys.exit(0)
+        sys.exit(error_status(host))
 
 if __name__ == '__main__':
     main()

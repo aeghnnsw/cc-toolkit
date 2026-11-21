@@ -120,11 +120,13 @@ Safety guards and workflow enforcement hooks for Claude Code, Codex, and Antigra
 
 In Antigravity, a root `hooks.json` runs the same scripts, and a block
 shows its reason. An Antigravity hook cannot warn without blocking the
-command. So each zsh trap blocks the command, the `echo` quoting becomes a
-block that names the corrected command, and the Git reminders and the
-branch-prefix message are dropped. The unmatched-glob check does not run,
-because a command can create the files before its glob. Antigravity has no Notification,
-SessionEnd, or SubagentStop event; the sound plays when the agent stops.
+command. So each zsh trap blocks the command, and the `echo` quoting
+becomes a block that names the corrected command. The hooks drop the Git
+policy reminders and the branch-prefix message. The unmatched-glob check
+does not run, because a command can create the files before its glob. A
+safety or Git policy hook that cannot read its input blocks the command.
+Antigravity has no Notification, SessionEnd, or SubagentStop event; the
+sound plays when the agent stops.
 
 ### Productivity Skills (`productivity-skills`)
 GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. In Antigravity, connect the Supabase MCP server with `agy mcp add supabase https://mcp.supabase.com/mcp`, then sign in when Antigravity asks. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).

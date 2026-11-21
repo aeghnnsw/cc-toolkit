@@ -51,7 +51,7 @@ import shutil
 import sys
 from collections import namedtuple
 
-from hook_payload import ANTIGRAVITY, ANTIGRAVITY_BLOCK_STATUS, get_shell_command
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 from safety_guard import (
     CONTROL_PREFIXES,
     MAX_NESTED_SHELL_DEPTH,
@@ -591,11 +591,6 @@ def _working_directory(input_data):
     cwd = cwd if isinstance(cwd, str) and os.path.isdir(cwd) else None
     tool_input = input_data.get("tool_input", input_data.get("toolInput"))
     workdir = tool_input.get("workdir") if isinstance(tool_input, dict) else None
-    tool_call = input_data.get("toolCall")
-    if tool_input is None and isinstance(tool_call, dict):
-        # An Antigravity `run_command` can name its directory in `Cwd`.
-        args = tool_call.get("args")
-        workdir = args.get("Cwd") if isinstance(args, dict) else None
     if isinstance(workdir, str) and workdir:
         workdir = os.path.join(cwd or "", workdir)
         return workdir if os.path.isabs(workdir) and os.path.isdir(workdir) else None
@@ -609,8 +604,7 @@ def main():
         if not command or os.path.basename(os.environ.get("SHELL", "")) != "zsh":
             sys.exit(0)
         cwd = _working_directory(input_data)
-        args = sys.argv[1:]
-        host = args[1] if len(args) == 2 and args[0] == "--host" else None
+        host = host_argument(sys.argv[1:])
         traps = zsh_traps(command, cwd, host)
         updated_input = None
         corrected = None
@@ -639,7 +633,7 @@ def main():
         else:
             sys.exit(0)
         print(f"BLOCKED: {message}", file=sys.stderr)
-        sys.exit(ANTIGRAVITY_BLOCK_STATUS)
+        sys.exit(block_status(host))
     if updated_input is not None:
         output = {"hookEventName": "PreToolUse", "updatedInput": updated_input}
         # Codex requires allow to apply the rewrite; its normal execution

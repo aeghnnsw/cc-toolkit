@@ -479,8 +479,9 @@ def check_branch_names(command):
 
 
 def main():
-    # In Antigravity mode, stdout stays empty: a block is exit 2 with the
-    # reason on stderr, and an allowed command prints nothing.
+    # In Antigravity mode, stdout stays empty: a block is exit 3 with the
+    # reason on stderr, which the root hooks.json changes to 2, and an
+    # allowed command prints nothing.
     host = host_argument(sys.argv[1:])
     try:
         input_data = json.loads(sys.stdin.read())
