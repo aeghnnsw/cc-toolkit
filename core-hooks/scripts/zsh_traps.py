@@ -32,6 +32,13 @@ to 3 also skip double-quoted text, `[[ ... ]]` tests, and `(( ... ))`
 arithmetic; zsh expands traps 4 and 5 in double quotes and tests too. This
 is a heuristic, not a full zsh parser. The rewrite uses a separate strict
 recognizer for the complete command.
+
+An Antigravity PreToolUse hook cannot warn without blocking the command,
+and no measured Antigravity contract changes the command. So with
+`--host antigravity`, the hook writes nothing to stdout. It blocks a
+command that the rewrite fixes, with a reason on stderr that names the
+corrected command, and it blocks a command with any other trap, with the
+trap messages on stderr.
 """
 
 import glob
@@ -42,7 +49,7 @@ import shutil
 import sys
 from collections import namedtuple
 
-from hook_payload import get_shell_command
+from hook_payload import ANTIGRAVITY, get_shell_command
 from safety_guard import (
     CONTROL_PREFIXES,
     MAX_NESTED_SHELL_DEPTH,
@@ -118,6 +125,17 @@ MODIFIER_WARNING = (
 )
 # An unbraced variable followed by `:` and a letter, after `$`.
 MODIFIER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):([A-Za-z])")
+REWRITE_DENIAL = (
+    "zsh trap: zsh reads an unquoted word that starts with `=` as the path "
+    "of a command. No such command exists, so zsh would stop the command "
+    "line at this word. Run this corrected command, which quotes the "
+    "word:\n{command}"
+)
+# The exit status of an Antigravity block. The root hooks.json changes it to
+# 2, the Antigravity block status. uv also exits 2 when it cannot start this
+# script, and the wrapper must tell that failure, which only warns, from a
+# block.
+ANTIGRAVITY_BLOCK_STATUS = 3
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
@@ -577,6 +595,11 @@ def _working_directory(input_data):
     cwd = cwd if isinstance(cwd, str) and os.path.isdir(cwd) else None
     tool_input = input_data.get("tool_input", input_data.get("toolInput"))
     workdir = tool_input.get("workdir") if isinstance(tool_input, dict) else None
+    tool_call = input_data.get("toolCall")
+    if tool_input is None and isinstance(tool_call, dict):
+        # An Antigravity `run_command` can name its directory in `Cwd`.
+        args = tool_call.get("args")
+        workdir = args.get("Cwd") if isinstance(args, dict) else None
     if isinstance(workdir, str) and workdir:
         workdir = os.path.join(cwd or "", workdir)
         return workdir if os.path.isabs(workdir) and os.path.isdir(workdir) else None
@@ -594,6 +617,7 @@ def main():
         host = args[1] if len(args) == 2 and args[0] == "--host" else None
         traps = zsh_traps(command, cwd, host)
         updated_input = None
+        corrected = None
         # Both current hosts supply Bash.command. Compatibility payloads
         # keep their existing decisions and never select a rewrite contract.
         if (
@@ -604,9 +628,22 @@ def main():
             quoted = _quote_echo_separators(command)
             if quoted is not None and not zsh_traps(quoted, cwd, host):
                 updated_input = dict(input_data["tool_input"], command=quoted)
+        elif host == ANTIGRAVITY:
+            quoted = _quote_echo_separators(command)
+            if quoted is not None and not zsh_traps(quoted, cwd, host):
+                corrected = quoted
     except Exception:
         # A hook error never stops a command.
         sys.exit(0)
+    if host == ANTIGRAVITY:
+        if corrected is not None:
+            message = REWRITE_DENIAL.format(command=corrected)
+        elif traps:
+            message = "\n".join(trap.message for trap in traps)
+        else:
+            sys.exit(0)
+        print(f"BLOCKED: {message}", file=sys.stderr)
+        sys.exit(ANTIGRAVITY_BLOCK_STATUS)
     if updated_input is not None:
         output = {"hookEventName": "PreToolUse", "updatedInput": updated_input}
         # Codex requires allow to apply the rewrite; its normal execution

@@ -11,7 +11,7 @@ import shlex
 import sys
 from collections import namedtuple
 
-from hook_payload import get_shell_command
+from hook_payload import ANTIGRAVITY, get_shell_command, host_argument
 from safety_guard import CONTROL_PREFIXES, strip_heredoc_bodies
 
 
@@ -150,12 +150,15 @@ def block(reason):
     sys.exit(2)
 
 
-def remind(message):
+def remind(message, host=None):
     """Show a reminder to the user and the agent, then allow the command.
 
     `systemMessage` reaches only the user; `additionalContext` reaches the
-    agent.
+    agent. An Antigravity PreToolUse hook has no channel for a message that
+    allows the command, so in Antigravity mode the reminder is dropped.
     """
+    if host == ANTIGRAVITY:
+        sys.exit(0)
     print(json.dumps({
         "systemMessage": message,
         "hookSpecificOutput": {
@@ -476,6 +479,9 @@ def check_branch_names(command):
 
 
 def main():
+    # In Antigravity mode, stdout stays empty: a block is exit 2 with the
+    # reason on stderr, and an allowed command prints nothing.
+    host = host_argument(sys.argv[1:])
     try:
         input_data = json.loads(sys.stdin.read())
     except json.JSONDecodeError:
@@ -522,17 +528,19 @@ def main():
                 )
 
         if "gh pr merge" in command and "--squash" not in command:
-            remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.")
+            remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.", host)
 
         if is_contribution_cmd:
             remind(
                 "Contribution Guidelines: Keep messages concise and accurate. "
-                "Avoid AI attribution in commit messages or PR descriptions/comments."
+                "Avoid AI attribution in commit messages or PR descriptions/comments.",
+                host,
             )
 
         # The praise goes last: it is for the user, and the reminders above
-        # must reach the agent.
-        if saw_valid_branch:
+        # must reach the agent. Antigravity mode drops it, as it drops the
+        # reminders.
+        if saw_valid_branch and host != ANTIGRAVITY:
             response = {
                 "systemMessage": "Branch Naming Convention: Using approved prefix - good practice!"
             }
