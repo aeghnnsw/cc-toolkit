@@ -9,6 +9,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOST_SKILLS = {
     "claude": PLUGIN_ROOT / "skills" / "sci-slides",
     "codex": PLUGIN_ROOT / "codex-skills" / "sci-slides",
+    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "sci-slides",
 }
 
 
@@ -20,6 +21,7 @@ def split_skill(path: Path) -> tuple[dict[str, str], str]:
         if sep:
             fields[key.strip()] = value.strip()
     return fields, body
+OTHER_HOSTS = [host for host in HOST_SKILLS if host != "claude"]
 
 
 def supporting_files(skill_dir: Path) -> dict[str, bytes]:
@@ -36,20 +38,22 @@ def supporting_files(skill_dir: Path) -> dict[str, bytes]:
 class SciSlidesParityTest(unittest.TestCase):
     def test_bodies_match(self) -> None:
         bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(bodies["claude"], bodies["codex"])
+        for host in OTHER_HOSTS:
+            self.assertEqual(bodies["claude"], bodies[host], f"the {host} body differs")
 
     def test_name_and_description_match(self) -> None:
         fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
-        self.assertEqual(fields["claude"]["name"], "sci-slides")
-        self.assertEqual(fields["codex"]["name"], "sci-slides")
-        self.assertEqual(fields["claude"]["description"], fields["codex"]["description"])
+        for host, host_fields in fields.items():
+            self.assertEqual(host_fields["name"], "sci-slides", host)
+            self.assertEqual(fields["claude"]["description"], host_fields["description"], host)
 
     def test_supporting_files_match(self) -> None:
         claude = supporting_files(HOST_SKILLS["claude"])
-        codex = supporting_files(HOST_SKILLS["codex"])
-        self.assertEqual(sorted(claude), sorted(codex))
-        for name in claude:
-            self.assertEqual(claude[name], codex[name], f"{name} differs between hosts")
+        for host in OTHER_HOSTS:
+            copy = supporting_files(HOST_SKILLS[host])
+            self.assertEqual(sorted(claude), sorted(copy), f"the {host} file list differs")
+            for name in claude:
+                self.assertEqual(claude[name], copy[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 # cc-toolkit
 
-Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing.
+Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing, with Antigravity support where a plugin has been ported.
 
 ## Overview
 
-**cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex-specific manifests.
+**cc-toolkit** is a modular plugin marketplace following the Claude Code plugin system, with Codex and Antigravity plugin support where a plugin has been ported. Each plugin is self-contained and can include skills, agents, hooks, commands, scripts, and Codex and Antigravity manifests.
 
 ## Development
 
@@ -103,6 +103,10 @@ Scientific content creation for figures and presentations.
 - **sci-slides**: Academic presentation slide creation for STEM fields
 
 **Codex skills:**
+- **sci-figure-format**
+- **sci-slides**
+
+**Antigravity skills:**
 - **sci-figure-format**
 - **sci-slides**
 

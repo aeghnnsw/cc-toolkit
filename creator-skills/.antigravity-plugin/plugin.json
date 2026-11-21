@@ -1,0 +1,27 @@
+{
+  "name": "creator-skills",
+  "displayName": "Creator Skills",
+  "version": "1.0.0",
+  "description": "Scientific content creation skills for publication-quality figures and academic presentation slides.",
+  "author": {
+    "name": "Steven",
+    "email": "aeghnnsw@users.noreply.github.com"
+  },
+  "repository": "https://github.com/aeghnnsw/cc-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "science",
+    "scientific",
+    "presentation",
+    "slides",
+    "figures",
+    "visualization",
+    "publication"
+  ],
+  "suggestedPrompts": [
+    "Design an effective scientific presentation.",
+    "Review these academic slides.",
+    "Format this scientific figure for publication."
+  ],
+  "skills": "./antigravity-skills/"
+}
