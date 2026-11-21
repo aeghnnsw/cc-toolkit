@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"scripts/safety_guard.py\" --host antigravity || { rc=$?; printf 'BLOCKED: core-hooks safety hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
+            "command": "uv run --no-project \"scripts/safety_guard.py\" --host antigravity || { rc=$?; if [ \"$rc\" -eq 3 ]; then exit 2; fi; printf 'BLOCKED: core-hooks safety hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"scripts/pre_git_hook.py\" --host antigravity || { rc=$?; printf 'BLOCKED: core-hooks git policy hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
+            "command": "uv run --no-project \"scripts/pre_git_hook.py\" --host antigravity || { rc=$?; if [ \"$rc\" -eq 3 ]; then exit 2; fi; printf 'BLOCKED: core-hooks git policy hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
           },
           {
             "type": "command",

@@ -260,6 +260,7 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertEqual(result.stdout, "")
                 self.assertIn(reason, result.stderr)
+                self.assertNotIn("hook failed", result.stderr)
 
     def test_unmatched_glob_is_allowed_because_files_can_appear_first(self):
         result = self.run_shell_hook("zsh_traps.py", "touch a.md && ls *.md")
@@ -376,12 +377,19 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                         self.assertEqual(result.stdout, "")
                         self.assertIn(marker, result.stderr)
 
-    def test_zsh_trap_block_survives_the_warning_wrapper_in_each_shell(self):
+    def test_blocks_pass_through_each_wrapper_without_a_failure_line(self):
+        cases = (
+            ("safety_guard.py", "rm -rf ~"),
+            ("pre_git_hook.py", "git add ."),
+            ("zsh_traps.py", "echo =====CODEX"),
+        )
         for shell in SHELLS:
-            with self.subTest(shell=shell):
-                result = self.run_shell_hook("zsh_traps.py", "echo =====CODEX", shell=shell)
-                self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertNotIn("WARNING", result.stderr)
+            for script_name, command in cases:
+                with self.subTest(shell=shell, script_name=script_name):
+                    result = self.run_shell_hook(script_name, command, shell=shell)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)
+                    self.assertNotIn("hook failed", result.stderr)
 
 
 if __name__ == "__main__":

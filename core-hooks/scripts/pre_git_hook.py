@@ -11,7 +11,7 @@ import shlex
 import sys
 from collections import namedtuple
 
-from hook_payload import ANTIGRAVITY, get_shell_command, host_argument
+from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
 from safety_guard import CONTROL_PREFIXES, strip_heredoc_bodies
 
 
@@ -145,9 +145,9 @@ GREP_VALUE_OPTIONS = GitOptions(set('efABCm'), {
 GREP_PLAIN_ESCAPES = set('bBsSdDwW<>')
 
 
-def block(reason):
+def block(reason, host=None):
     print(f"BLOCKED: {reason}", file=sys.stderr)
-    sys.exit(2)
+    sys.exit(block_status(host))
 
 
 def remind(message, host=None):
@@ -494,7 +494,8 @@ def main():
             block(
                 "Bulk git add operations are prohibited. "
                 "Use specific file names instead of 'git add .', 'git add -A', "
-                "or 'git add --all'."
+                "or 'git add --all'.",
+                host,
             )
 
         # AI attribution is a hard block. Check it before the advisory handlers
@@ -507,14 +508,16 @@ def main():
                     block(
                         "AI tool attribution detected in git operation. "
                         "Remove AI contribution messages from commit messages and "
-                        "PR descriptions/comments."
+                        "PR descriptions/comments.",
+                        host,
                     )
 
         invalid_branch, saw_valid_branch = check_branch_names(command)
         if invalid_branch:
             block(
                 f"Branch name '{invalid_branch}' is invalid. "
-                f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}"
+                f"Branch name must start with one of: {', '.join(VALID_PREFIXES)}",
+                host,
             )
 
         for segment in command_segments(command):
@@ -524,7 +527,8 @@ def main():
                     f"`git grep -E` reads `{escape}` as the plain character "
                     f"`{escape[1]}` on macOS and gives no error, so the search "
                     "can miss lines or print nothing. Use `-P` instead of `-E`, "
-                    "and write a word boundary as `\\b`."
+                    "and write a word boundary as `\\b`.",
+                    host,
                 )
 
         if "gh pr merge" in command and "--squash" not in command:

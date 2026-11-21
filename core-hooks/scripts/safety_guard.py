@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 
 from hook_logs import append_log, host_log_dir
-from hook_payload import get_shell_command, host_argument
+from hook_payload import block_status, get_shell_command, host_argument
 
 
 SHELL_PUNCTUATION = ";&|()<>\n`"
@@ -1183,7 +1183,7 @@ def main():
             print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
-            sys.exit(2)  # Blocks the tool call in Claude, Codex, Grok, and Antigravity.
+            sys.exit(block_status(host))  # The root hooks.json maps 3 to 2.
 
         if command and prints_environment(command):
             print(
@@ -1193,7 +1193,7 @@ def main():
                 "variable, run `printenv NAME`.",
                 file=sys.stderr,
             )
-            sys.exit(2)
+            sys.exit(block_status(host))
 
         directory = host_log_dir(host, input_data)
         if directory is not None:

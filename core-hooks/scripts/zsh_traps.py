@@ -51,7 +51,7 @@ import shutil
 import sys
 from collections import namedtuple
 
-from hook_payload import ANTIGRAVITY, get_shell_command
+from hook_payload import ANTIGRAVITY, ANTIGRAVITY_BLOCK_STATUS, get_shell_command
 from safety_guard import (
     CONTROL_PREFIXES,
     MAX_NESTED_SHELL_DEPTH,
@@ -133,11 +133,6 @@ REWRITE_DENIAL = (
     "line at this word. Run this corrected command, which quotes the "
     "word:\n{command}"
 )
-# The exit status of an Antigravity block. The root hooks.json changes it to
-# 2, the Antigravity block status. uv also exits 2 when it cannot start this
-# script, and the wrapper must tell that failure, which only warns, from a
-# block.
-ANTIGRAVITY_BLOCK_STATUS = 3
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
