@@ -5,9 +5,9 @@ Superseded in part on 2026-11-07 by
 project links and mutation identity now follow the
 [cloud GTD contract](../../productivity-skills/references/gtd-cloud.md).
 The native lists, name references and reminder-ID decisions below describe
-the preserved source workflow. Calendar remains native. The general
-Reminders skill and its CLI commands were removed in
-[#435](https://github.com/aeghnnsw/cc-toolkit/issues/435).
+the preserved source workflow. Calendar remains native. On 2026-11-21,
+[#435](https://github.com/aeghnnsw/cc-toolkit/issues/435) removed the general
+Reminders skill and its CLI commands.
 
 The user selects work through `gtd-next`. The complete spec and single
 implementation ticket are [#215](https://github.com/aeghnnsw/cc-toolkit/issues/215).

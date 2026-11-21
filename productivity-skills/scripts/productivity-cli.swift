@@ -34,7 +34,6 @@ struct EventInfo: Codable {
 struct ActionResult: Codable {
     let success: Bool
     let message: String
-    let id: String?
 }
 
 struct ErrorResponse: Codable {
@@ -73,8 +72,8 @@ func outputSuccess<T: Codable>(_ data: [T]) {
     outputJSON(SuccessResponse(success: true, data: data, count: data.count))
 }
 
-func outputResult(_ success: Bool, _ message: String, id: String? = nil) {
-    outputJSON(ActionResult(success: success, message: message, id: id))
+func outputResult(_ success: Bool, _ message: String) {
+    outputJSON(ActionResult(success: success, message: message))
     if !success { exit(1) }
 }
 
