@@ -1,7 +1,7 @@
 {
   "name": "productivity-skills",
-  "version": "7.4.0",
-  "description": "Cloud GTD workflows for Codex through the connected Supabase tool, plus native macOS Calendar and Reminders.",
+  "version": "7.5.0",
+  "description": "Cloud GTD workflows for Codex through the connected Supabase tool, plus native macOS Calendar.",
   "author": {
     "name": "Steven",
     "email": "aeghnnsw@users.noreply.github.com"
@@ -12,7 +12,6 @@
     "productivity",
     "gtd",
     "calendar",
-    "reminders",
     "macos",
     "eventkit",
     "supabase",
@@ -23,8 +22,8 @@
   "skills": "./codex-skills/",
   "interface": {
     "displayName": "Productivity Skills",
-    "shortDescription": "Cloud GTD plus native macOS Calendar and Reminders.",
-    "longDescription": "Use the connected Supabase tool to capture and process GTD inbox items, review linked projects and actions, and select feasible work with shared status rules. Create a GTD database, or bind an existing one on a new computer, with the user-invoked setup skill. The setup skill can also turn on agent captures, which let agents add inbox items when a task waits on the user. Keep the GTD binding, a private project reference and owner UUID, outside repositories. Manage native macOS Calendar and general Reminders through their separate skills.",
+    "shortDescription": "Cloud GTD plus native macOS Calendar.",
+    "longDescription": "Use the connected Supabase tool to capture and process GTD inbox items, review linked projects and actions, and select feasible work with shared status rules. Create a GTD database, or bind an existing one on a new computer, with the user-invoked setup skill. The setup skill can also turn on agent captures, which let agents add inbox items when a task waits on the user. Keep the GTD binding, a private project reference and owner UUID, outside repositories. Manage native macOS Calendar through its separate skill.",
     "developerName": "Steven",
     "category": "Productivity",
     "capabilities": [
@@ -33,7 +32,6 @@
     ],
     "defaultPrompt": [
       "What's on my calendar today?",
-      "Add a reminder to buy groceries tomorrow.",
       "Process my GTD inbox.",
       "What should I work on next?"
     ]

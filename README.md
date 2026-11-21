@@ -1,6 +1,6 @@
 # cc-toolkit
 
-Unified Claude Code and Codex plugin marketplace for development workflows, scientific content creation, and document processing, with Antigravity support where a plugin has been ported.
+Unified Claude Code and Codex plugin marketplace for development workflows and scientific content creation, with Antigravity support where a plugin has been ported.
 
 ## Overview
 
@@ -41,7 +41,6 @@ cc-toolkit/
 ├── core-hooks/                       # Safety and workflow hooks plugin
 ├── creator-skills/                   # Scientific content creation plugin
 ├── dev-skills/                       # Development workflow plugin
-├── doc-skills/                       # Document processing plugin
 ├── productivity-skills/              # Personal productivity plugin
 ├── pymol-skills/                     # PyMOL molecular visualization plugin
 └── task-loop/                        # Not in the marketplaces; see its README
@@ -82,7 +81,6 @@ Development workflows, repository hygiene, documentation, and review.
 - **sci-project-layout**: Set up or adopt the layout of a scientific Python research project, and find where a file goes in it: one store for data and results that every worktree finds, one folder for each experiment and each run, and read-only cited runs for the results you keep
 - **lean-tests**: Check a pytest suite without changing a file: run time, the slowest tests and fixtures, flaky or order-dependent tests, tests that check nothing, coverage-subset candidates, and diff coverage of recent changes, with one recommended next mode; on request, make the suite faster without deleting a test, with ordered fixes, test tiers with time budgets, the tier commands in each agent instruction file that exists, and a before/after table; or prune redundant tests under one path, deleting a test only when a full kill matrix of bundled mutants and a written rationale show that retained tests detect the same faults, in checked batches of one commit each; or review the tests of a change: a weakening gate that fails a change to product code that also removes, skips, loosens, or rewrites an existing test, a label for each new test from a run against the base code, a mutation check that each new test detects a fault that no existing test detects, the changed lines that no test executes, and pinned requirement sources for the acceptance of an intended test change
 - **project-eval**: Evaluate a feature, a design document, a running web app, or a whole project with skeptical evaluator agents; a separate verifier checks every finding before it enters one report
-- **discord-setup**: Configure Discord plugin prerequisites
 
 **Codex skills:**
 - **doc-update**
@@ -110,17 +108,6 @@ Scientific content creation for figures and presentations.
 - **sci-figure-format**
 - **sci-slides**
 
-### Document Skills (`doc-skills`)
-Document processing and AI-accessible content extraction.
-
-**Skills:**
-- **docling-pdf**: PDF to markdown conversion using IBM's Docling library
-- **paper-rename**: Intelligent PDF renaming based on extracted titles and metadata
-
-**Agents (deprecated; retained for compatibility):**
-- **paper-reader**: Analyzes research papers and answers questions about content
-- **paper-consolidator**: Consolidates multiple paper analysis outputs into unified reports
-
 ### Core Hooks (`core-hooks`)
 Safety guards and workflow enforcement hooks.
 
@@ -132,11 +119,10 @@ Safety guards and workflow enforcement hooks.
 - **system_notification.py**: Plays sound notifications on task completion
 
 ### Productivity Skills (`productivity-skills`)
-GTD workflows through a connected Supabase account, plus native macOS Calendar and Reminders. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
+GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).
 
 **Skills:**
 - **calendar-manager**: Manage macOS Calendar events via EventKit CLI
-- **reminder-manager**: Manage macOS Reminders via EventKit CLI
 - **gtd-inbox**: Capture thoughts and tasks into the cloud GTD inbox, including agent captures
 - **gtd-process**: Process cloud inbox items into linked projects or actions
 - **gtd-project**: Review and manage cloud GTD projects and their actions
@@ -146,7 +132,6 @@ GTD workflows through a connected Supabase account, plus native macOS Calendar a
 
 **Codex skills:**
 - **calendar-manager**
-- **reminder-manager**
 - **gtd-inbox**
 - **gtd-process**
 - **gtd-project**

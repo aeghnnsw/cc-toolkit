@@ -92,12 +92,6 @@
         {"path": "scripts/live_worktrees.py", "hosts": ["claude", "codex"]}
       ]
     },
-    "doc-skills": {
-      "ownership": [],
-      "resources": [
-        {"path": "skills/docling-pdf/scripts/convert_pdf.py", "hosts": ["claude"]}
-      ]
-    },
     "productivity-skills": {
       "ownership": [
         {"path": "scripts/", "hosts": ["claude", "codex"]}

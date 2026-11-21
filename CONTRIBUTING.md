@@ -34,13 +34,12 @@ does not set the minimum for installed plugins.
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
 | Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
 | [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
-| [Doc Skills: PDF converter](doc-skills/skills/docling-pdf/scripts/convert_pdf.py) | 3.10 | `docling`, `docling-ibm-models`, `numpy<2`, `pillow`, `pypdfium2`, and `tabulate`. |
 | [PyMOL Skills: MCP bridge](pymol-skills/pymol_mcp_server.py) | 3.10 | `mcp[cli]>=1.0.0,<2`. |
 | [Retained task-loop code](task-loop/cli/task-loop) (retired plugin) | 3.11 | The CLI needs `httpx>=0.27`; hooks and sync helpers use the standard library. |
 
 The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
 minimum; the bridge requirement does not apply to that separate process.
-Productivity Skills also uses Swift for native Calendar and Reminders.
+Productivity Skills also uses Swift for native Calendar.
 CC Customize uses Bash and `jq`, with Git for status information.
 Dev Skills `repo-cleanup` runs `lsof` and `ps` to find live sessions.
 See [Verification](#verification) for test commands and test prerequisites.
@@ -275,8 +274,8 @@ that matches your change from the repository root:
 copy that an Antigravity copy shadows (see [Shadowing](#shadowing)). These
 warnings are expected. Do not pass `--strict`, because it fails on them.
 
-Core Hooks tests require Python and `uv` on `PATH`. `cc-customize` and
-`doc-skills` have no test suite. Before you run a plugin suite, read
+Core Hooks tests require Python and `uv` on `PATH`. `cc-customize` has no
+test suite. Before you run a plugin suite, read
 [Plugin runtime tests](#plugin-runtime-tests).
 
 ### Package and release validation
@@ -324,8 +323,8 @@ and how to run them.
 
 The table in [Verification](#verification) gives the command for each suite.
 
-The `productivity-skills` suite needs `uv`, `swiftc`, and PostgreSQL tools
-(`initdb`, `pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
+The `productivity-skills` suite needs `uv` and PostgreSQL tools (`initdb`,
+`pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
 
 The `dev-skills` suite takes about 2 minutes, most of it in
 `dev-skills/tests/test_codex_critic.py`.
