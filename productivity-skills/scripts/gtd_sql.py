@@ -8,12 +8,15 @@ import json
 from pathlib import Path
 import re
 import sys
+
 if sys.version_info < (3, 11):
-    # Python 3.10 rejects fractional seconds in fromisoformat. Keep this guard parseable by Python 3.6.
+    # Before 3.11, fromisoformat rejects some valid fractional seconds, such as 09:00:00.5.
+    # The module keeps Python 3.6 syntax, so that this guard runs.
     import shlex
     sys.exit("gtd_sql: needs Python 3.11 or newer; Python {} is running. No SQL was sent. Run:\n{}".format(
         sys.version.split()[0], " ".join(shlex.quote(arg) for arg in
                                          ["uv", "run", "--no-project", "--python", ">=3.11", "python", *sys.argv])))
+
 import uuid
 from zoneinfo import ZoneInfo
 

@@ -1,10 +1,11 @@
 """Run the gtd-setup step 7 and step 9 shell blocks of every copy in bash and zsh.
 
-Step 7 has one block, which writes the GTD binding. Step 9 has two blocks: a check of the global instruction files, and an append
-of the agent-capture rule to one file. The blocks come from SKILL.md, so the
-checks cover the text that an agent runs. Each block runs in a new shell with
-a temporary HOME, CLAUDE_CONFIG_DIR, and CODEX_HOME. Antigravity's file is
-$HOME/.gemini/GEMINI.md.
+Step 7 has one block, which writes the GTD binding. It runs in a new shell
+with a temporary HOME. Step 9 has two blocks: a check of the global
+instruction files, and an append of the agent-capture rule to one file. Each
+step 9 block runs in a new shell with a temporary HOME, CLAUDE_CONFIG_DIR,
+and CODEX_HOME. Antigravity's file is $HOME/.gemini/GEMINI.md. The blocks
+come from SKILL.md, so the checks cover the text that an agent runs.
 """
 
 from __future__ import annotations

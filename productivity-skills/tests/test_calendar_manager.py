@@ -19,8 +19,9 @@ COPIES = {
     "antigravity": PLUGIN_ROOT / "antigravity-skills" / "calendar-manager" / "SKILL.md",
 }
 FLAG = re.compile(r"--[a-z][a-z-]*")
-# Words that name an edit of an existing event. The CLI has no such command.
+# Words that name an edit of an existing event, as in "update event". The CLI has no such command.
 EDIT_WORDS = ("update", "edit", "modify", "reschedule", "rename", "move", "change")
+EDIT_OBJECT = r"\w*\s+(?:an?\s+|the\s+)?(?:calendar\s+)?(?:events?|meetings?|appointments?)\b"
 
 
 def usage() -> dict[str, tuple[set[str], set[str]]]:
@@ -102,7 +103,7 @@ class CalendarManagerCopies(unittest.TestCase):
                 self.assertLessEqual(set(FLAG.findall(text)), flags, f"{copy}: a flag that the CLI lacks")
                 for word in EDIT_WORDS:
                     if word not in self.usage:
-                        found = re.search(rf"\b{word}\w*", text, re.IGNORECASE)
+                        found = re.search(rf"\b{word}{EDIT_OBJECT}", text, re.IGNORECASE)
                         self.assertIsNone(found, f"{copy}: names `{found and found.group()}`, "
                                                  "but the CLI has no command for it")
 

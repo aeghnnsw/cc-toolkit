@@ -83,7 +83,8 @@ None means unset, not highest priority. Preserve an explicit zero. New
 clarified work defaults to Medium unless the user supplies another priority
 or urgency context supports a different proposal. A project action inherits
 the project's stored priority, including zero, unless the user overrides
-it. Use Medium only when that project priority is unavailable.
+it. Use Medium only when that project priority is unavailable, or when it
+is a legacy value other than 0, 1, 5, or 9, which a write rejects.
 
 Choose feasible actions by context, available time, and energy. Then weigh
 importance, real deadlines, and consequences against current commitments
