@@ -12,7 +12,14 @@ import sys
 from collections import namedtuple
 
 from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
-from safety_guard import CONTROL_PREFIXES, strip_heredoc_bodies
+from safety_guard import (
+    CONTROL_PREFIXES,
+    MAX_NESTED_SHELL_DEPTH,
+    PROCESS_WRAPPERS,
+    SHELL_PROGRAMS,
+    SIMPLE_WRAPPERS,
+    strip_heredoc_bodies,
+)
 
 
 VALID_PREFIXES = ['feat-', 'bugfix-', 'doc-', 'refactor-', 'chore-', 'test-']
@@ -85,8 +92,9 @@ QUOTED_PART_RE = re.compile(r'"([^"]*)"' + r"|'([^']*)'")
 # any other option is a flag with an optional `=value`. A separate value
 # cannot start with `-`. Otherwise each `-C` in `git -C -C -C ...` is a flag
 # or a value, and a failed match backtracks exponentially.
+GIT_VALUE_OPTIONS = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env')
 GIT_GLOBAL_OPTION = (
-    r'(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+(?!-)' + SHELL_WORD
+    r'(?:' + '|'.join(GIT_VALUE_OPTIONS) + r')[ \t]+(?!-)' + SHELL_WORD
     + r'|--?[A-Za-z][\w-]*(?:=' + SHELL_WORD + r')?'
 )
 GIT_WORDS = r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t]+'
@@ -99,14 +107,16 @@ ASSIGNMENTS = r'(?:[A-Za-z_]\w*=(?:' + SHELL_WORD + r')?[ \t]+)*'
 GIT_ADD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'add(?=[ \t]|$)')
 GIT_COMMIT_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'commit(?=[ \t]|$)')
 GH_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'gh(?=[ \t]|$)')
+COMMAND_PREFIX_RE = re.compile(SEGMENT_START + ASSIGNMENTS)
 COMMAND_WORD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'(?P<word>' + SHELL_WORD + r')')
 # Pathspecs that name the whole working tree.
 BULK_PATHSPECS = {'.', './', ':/'}
-# Programs that run another command, which the segment rules do not read.
-INDIRECT_PROGRAMS = {
-    'bash', 'builtin', 'command', 'dash', 'env', 'eval', 'exec', 'fish', 'ksh',
-    'nohup', 'sh', 'sudo', 'xargs', 'zsh',
-}
+# Programs that run the command in their arguments, such as
+# `timeout 60 git commit`, and programs that run a command string.
+WRAPPER_PROGRAMS = (
+    set(SIMPLE_WRAPPERS) | set(PROCESS_WRAPPERS) | {'builtin', 'env', 'sudo', 'xargs'}
+)
+LAUNCHER_PROGRAMS = SHELL_PROGRAMS | {'eval'}
 # A mention of a contribution command anywhere in the text.
 CONTRIBUTION_MENTION_RE = re.compile(
     r'\b(?:commit|pr[ \t]+(?:create|edit|comment|review|merge)'
@@ -115,6 +125,8 @@ CONTRIBUTION_MENTION_RE = re.compile(
 # Options that name a file with the message or body.
 COMMIT_FILE_OPTIONS = GitOptions(set('F'), {'--file'})
 GH_BODY_FILE_OPTIONS = GitOptions(set('F'), {'--body-file'})
+MERGE_PIN_OPTION = GitOptions(set(), {'--match-head-commit'})
+PATHSPEC_FILE_OPTION = GitOptions(set(), {'--pathspec-from-file'})
 
 # A git subcommand that can create a branch, at the start of one command
 # segment. Its arguments are read as shell words (see shell_words). A segment
@@ -487,10 +499,10 @@ def is_bulk_add(segment):
         if word == '--':
             pathspecs.extend(words)
         elif word.startswith('--'):
-            name, equals, value = word.partition('=')
-            add_all = add_all or name == '--all'
-            if name == '--pathspec-from-file':
-                pathspecs.append(value if equals else next(words, ''))
+            add_all = add_all or word == '--all'
+            pathspec_file = option_value(word, words, PATHSPEC_FILE_OPTION)
+            if pathspec_file is not None:
+                pathspecs.append(pathspec_file)
         elif word.startswith('-') and word != '-':
             add_all = add_all or 'A' in short_option_letters(word)
         else:
@@ -501,8 +513,79 @@ def is_bulk_add(segment):
 
 
 def has_bulk_add(command):
-    """Report whether a segment of `command` is a bulk `git add`."""
-    return any(is_bulk_add(segment) for segment in command_segments(command))
+    """Report whether a command that `command` runs is a bulk `git add`."""
+    return any(is_bulk_add(text) for text in invocations(command))
+
+
+def word_matches(text):
+    """Yield the match of each shell word of `text`. As in raw_shell_words, a
+    redirection and its target are skipped, and a comment ends the words."""
+    matches = WORD_RE.finditer(text)
+    for match in matches:
+        if match.group().startswith('#'):
+            return
+        if REDIRECTION_RE.fullmatch(match.group()):
+            next(matches, None)  # skip the redirection target
+        else:
+            yield match
+
+
+def program_name(word):
+    """Return the program that the shell word `word` names, without a folder."""
+    return os.path.basename(received_word(word))
+
+
+def invocations(command, depth=0):
+    """Yield the text of each command that `command` runs.
+
+    The command after a wrapper such as `timeout 60` or `sudo`, and each
+    command in the string of `sh -c` or `eval`, counts too. A `git` or `gh`
+    that a path or a backslash names, such as `/usr/bin/git`, becomes
+    `git` or `gh`, so that the segment rules read it (#455).
+    """
+    if depth > MAX_NESTED_SHELL_DEPTH:
+        return
+    for segment in command_segments(command):
+        yield from segment_invocations(segment, depth)
+
+
+def segment_invocations(segment, depth):
+    """Yield the text of each command that one segment runs (see
+    invocations). A wrapper's own options and arguments are skipped."""
+    start = COMMAND_PREFIX_RE.match(segment).end()
+    words = list(word_matches(segment[start:]))
+    for index, match in enumerate(words):
+        name = program_name(match.group())
+        if name in ('git', 'gh'):
+            yield name + segment[start + match.end():]
+            return
+        if name in LAUNCHER_PROGRAMS:
+            arguments = [received_word(word.group()) for word in words[index + 1:]]
+            yield from launched_commands(name, arguments, depth)
+            return
+        if index == 0 and name not in WRAPPER_PROGRAMS:
+            yield segment
+            return
+
+
+def launched_commands(name, arguments, depth):
+    """Yield the commands in the string that `eval` or `<shell> -c` runs.
+
+    A shell that reads a script file or standard input runs commands that
+    are not in its arguments; the indirect check in main() covers it.
+    """
+    if name == 'eval':
+        yield from invocations(' '.join(arguments), depth + 1)
+        return
+    words = iter(arguments)
+    for word in words:
+        if not word.startswith('-'):
+            return
+        if 'c' in short_option_letters(word):
+            string = next(words, None)
+            if string is not None:
+                yield from invocations(string, depth + 1)
+            return
 
 
 def contribution_kind(segment):
@@ -530,11 +613,11 @@ def contribution_kind(segment):
 
 def runs_indirect_command(segment):
     """Report whether `segment` starts with a program that runs another
-    command, such as `bash -c` or `sudo`."""
+    command, such as `bash` or `sudo`."""
     match = COMMAND_WORD_RE.match(segment)
     if not match:
         return False
-    return os.path.basename(received_word(match.group('word'))) in INDIRECT_PROGRAMS
+    return program_name(match.group('word')) in WRAPPER_PROGRAMS | LAUNCHER_PROGRAMS
 
 
 def git_directory(segment, cwd):
@@ -549,7 +632,7 @@ def git_directory(segment, cwd):
             cwd = os.path.join(cwd, os.path.expanduser(next(words, '')))
         elif not word.startswith('-'):
             break
-        elif word in ('-c', '--git-dir', '--work-tree', '--namespace', '--config-env'):
+        elif word in GIT_VALUE_OPTIONS:
             next(words, None)  # skip the option value
     return cwd
 
@@ -599,11 +682,9 @@ def pinned_merge(segment):
     for word in words:
         if word == '--disable-auto':
             return True
-        name, equals, value = word.partition('=')
-        if name == '--match-head-commit':
-            value = value if equals else next(words, '')
-            if re.fullmatch(r'[0-9a-fA-F]{40}', value) or '$' in value:
-                return True
+        value = option_value(word, words, MERGE_PIN_OPTION)
+        if value and (re.fullmatch(r'[0-9a-fA-F]{40}', value) or '$' in value):
+            return True
     return False
 
 
@@ -660,19 +741,19 @@ def main():
         # below so a compound command (e.g. `gh pr edit ... && gh pr merge`)
         # cannot short-circuit the deny via an earlier advisory exit.
         #
-        # Once a segment runs a contribution command, the whole command is
+        # Once the command runs a contribution command, the whole command is
         # searched, heredoc bodies included, so a message built in an earlier
-        # segment is checked too. A program that runs another command, such
-        # as `bash -c`, counts when the text mentions one (#455).
-        segments = command_segments(command)
+        # segment is checked too. A shell that reads a script or standard
+        # input, or another program that runs a command the hook cannot
+        # read, counts when the text mentions one (#455).
         contributions = []
-        for segment in segments:
-            kind = contribution_kind(segment)
+        for text in invocations(command):
+            kind = contribution_kind(text)
             if kind:
-                contributions.append((segment, kind))
+                contributions.append((text, kind))
         is_contribution_cmd = bool(contributions) or (
             bool(CONTRIBUTION_MENTION_RE.search(command))
-            and any(runs_indirect_command(segment) for segment in segments)
+            and any(runs_indirect_command(segment) for segment in command_segments(command))
         )
         cwd = payload_cwd(input_data)
         texts = [command]
@@ -696,8 +777,8 @@ def main():
             TEST_PLAN_HEADING_RE.search(text) for text in pull_request_texts
         ):
             block(
-                "Test plan section detected in a PR description. This repository's "
-                "PR descriptions have no test plan; drop the section.",
+                "Test plan section detected in a PR description. A PR description "
+                "must have no test plan section; drop the section.",
                 host,
             )
 

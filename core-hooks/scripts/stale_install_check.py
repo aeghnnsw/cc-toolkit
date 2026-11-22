@@ -86,7 +86,7 @@ def manifest_version(read, source, host_folder):
     return parse_version(manifest.get("version")) if isinstance(manifest, dict) else None
 
 
-def reference_versions(root, read):
+def reference_versions(read):
     """Return {plugin: (Claude version, Codex version)} of the reference."""
     marketplace = load_json(read(MARKETPLACE_FILE))
     plugins = marketplace.get("plugins") if isinstance(marketplace, dict) else None
@@ -146,7 +146,7 @@ def codex_version(plugin):
     return max(versions) if versions else None
 
 
-def text_of(version):
+def version_text(version):
     """Return a version tuple as text."""
     return ".".join(str(part) for part in version)
 
@@ -161,7 +161,7 @@ def stale_report(cwd):
     if not isinstance(marketplace, dict) or marketplace.get("name") != MARKETPLACE:
         return ""
     ref, read = reference_reader(root)
-    reference = reference_versions(root, read)
+    reference = reference_versions(read)
 
     lines, claude_commands, codex_commands = [], [], []
     for plugin, installed, scope, project in claude_installs():
@@ -171,7 +171,7 @@ def stale_report(cwd):
             if project:
                 where += ", project {}".format(project)
             line = "- {} (Claude Code, {}): installed {}, default branch {}.".format(
-                plugin, where, text_of(installed), text_of(latest))
+                plugin, where, version_text(installed), version_text(latest))
             command = "claude plugin update {}@{} --scope {}".format(plugin, MARKETPLACE, scope)
             if line not in lines:
                 lines.append(line)
@@ -181,7 +181,7 @@ def stale_report(cwd):
         installed = codex_version(plugin)
         if installed and latest and installed < latest:
             lines.append("- {} (Codex): installed {}, default branch {}.".format(
-                plugin, text_of(installed), text_of(latest)))
+                plugin, version_text(installed), version_text(latest)))
             codex_commands.append("codex plugin add {}@{}".format(plugin, MARKETPLACE))
     if not lines:
         return ""

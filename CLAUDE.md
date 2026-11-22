@@ -64,7 +64,7 @@ Before a navigation retrospective of earlier agent sessions, read
    one.
 5. Use squash merges after review to keep one commit per change on the
    default branch:
-   `gh pr merge --squash --match-head-commit <reviewed head SHA>`. After
+   `gh pr merge --squash --match-head-commit <full head SHA>`. After
    merging, run `repo-cleanup`.
 
 To base the work branch on the default branch, run these commands.

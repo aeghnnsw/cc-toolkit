@@ -1186,6 +1186,40 @@ class PreGitHookTests(unittest.TestCase):
                 result = run_hook_process({"tool_name": "Bash", "tool_input": {"command": command}})
                 self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_reads_commands_after_wrappers_launchers_and_program_paths(self):
+        # A wrapper, a shell string, or a program path must not hide a
+        # contribution command from any of the #455 checks.
+        trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        link = "Generated with [Claude Code](https://claude.com/claude-code)"
+        with tempfile.TemporaryDirectory() as cwd:
+            Path(cwd, "bad.md").write_text(f"Fix typo\n\n{trailer}\n")
+            for command, reason in [
+                (f'timeout 60 git commit -m "Fix" -m "{trailer}"', "AI tool attribution"),
+                (f'nice -n 5 git commit -m "Fix" -m "{trailer}"', "AI tool attribution"),
+                (f'/usr/bin/git commit -m "Fix" -m "{trailer}"', "AI tool attribution"),
+                (f'\\git commit -m "Fix" -m "{trailer}"', "AI tool attribution"),
+                (f'/opt/homebrew/bin/gh pr create --title x --body "{link}"', "AI tool attribution"),
+                ("bash -c 'git commit -F bad.md'", "AI tool attribution"),
+                ("env GH_TOKEN=x gh pr merge 1 --squash", "--match-head-commit"),
+                ("bash -c 'gh pr merge 1 --squash'", "--match-head-commit"),
+                ("timeout 60 gh pr merge 1 --squash", "--match-head-commit"),
+                ("/opt/homebrew/bin/gh pr merge 1 --squash", "--match-head-commit"),
+                ('timeout 60 gh pr create --title x --body "## Test plan"', "Test plan"),
+                ("timeout 5 git add .", "Bulk git add"),
+            ]:
+                with self.subTest(command=command):
+                    result = run_blocked_hook(
+                        {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
+                    )
+                    self.assertIn(reason, result.stderr)
+        for command in [
+            "rg -n 'git commit.*Co-Authored-By: Claude' -- docs",
+            "timeout 5 rg -n 'gh pr merge 1 --squash' docs",
+            "command -v gh",
+        ]:
+            with self.subTest(command=command):
+                run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
 
 if __name__ == "__main__":
     unittest.main()
