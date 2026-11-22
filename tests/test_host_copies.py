@@ -336,19 +336,9 @@ HOST_LINES = {
 +Use `dev-skills:step-workflow` for numbered planning files, within repository
 +layout rules. Keep the session task list as a Markdown task list in your own
 +task artifact, never in a tracked file. Keep the planning files in the planning
--Use the host's PR monitoring mechanism for pending checks. Fix failures on the
--PR branch; code changes need review against the same comparison commit before
--merge. For a rebase, give the agent a resolution rule per conflicted file and
--the required final versions; recheck versions that Git merged without conflict.
--If a required human review cannot be supplied, continue independent tickets,
--then report the blocker and keep the work. Respect branch protection.
+-Use the host's PR monitoring mechanism for pending checks.
 +For pending PR checks, run `gh pr checks`, and check again later until the
-+required checks finish. Fix failures on the PR branch; code changes need review
-+against the same comparison commit before merge. For a rebase, give the agent a
-+resolution rule per conflicted file and the required final versions; recheck
-+versions that Git merged without conflict. If a required human review cannot be
-+supplied, continue independent tickets, then report the blocker and keep the
-+work. Respect branch protection.
++required checks finish.
 -Give each agent a self-contained task, owned files, and relevant planning-file
 -sections by path and line. Keep plan and task-list tools in this session.
 -Allow only one full test suite at a time; other agents can run focused tests.

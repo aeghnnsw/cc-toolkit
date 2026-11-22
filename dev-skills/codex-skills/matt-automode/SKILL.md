@@ -51,8 +51,8 @@ Challenge candidate answers against evidence, alternatives, failure cases,
 compatibility, and consumers. Record the decision and rationale, then take the
 next round. If evidence leaves a near tie, or only a preference can decide,
 choose the answer easiest to reverse and record the gap and risk. Resolve
-routine checkpoints yourself, including testing seams, ticket breakdown, review
-base, and which retro findings justify a proposal issue.
+routine checkpoints yourself, including testing seams, ticket breakdown, the
+comparison commit, and which retro findings justify a proposal issue.
 
 ## Phases and completion checks
 
@@ -70,7 +70,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    a decision names a conflict and gives a reason, record the conflict as an
    unresolved decision and reopen phase 1. When no conflict is unresolved,
    publish and verify the spec with scope, decisions, and testing seams. Align
-   any glossary entries added by this task with its decisions.
+   any glossary entries added by this task with its decisions. For a change to
+   a safety check, such as a command hook, the spec states what the check must
+   block. Where the check cannot decide, it blocks: it fails closed.
 3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
    verify tickets with acceptance criteria and blocking dependencies that cover
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
@@ -85,10 +87,19 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    search new prose for glossary `_Avoid_` terms and report helpers imported
    from other modules. Complete when the ticket's tests pass and edits are
    committed for review.
-5. **Review — `mattpocock-skills:code-review`.** Review against the ticket spec
-   and a recorded comparison commit. This fulfills `implement`'s review step.
-   Fix actionable Standards and Spec findings, commit, and pass affected checks.
-   Record the head SHA that the review covers.
+5. **Review — `mattpocock-skills:code-review`.** Run one full review against
+   the ticket spec and a recorded comparison commit. This fulfills
+   `implement`'s review step. Only these findings block: a regression that a
+   failing run or a reproducible case shows at the head, a missed ticket
+   requirement, a broken cited rule, and shipped text that the change makes
+   false. A problem present at the comparison commit blocks only when the
+   ticket requires its fix. List other findings with a reason in the review
+   record. Open or reuse an issue only for a defect that a user can hit. Fix
+   the blocking findings, commit, and pass affected checks. Then give one
+   fresh reviewer only the fix diff and the findings that it closes. Run no
+   second full review. If this focused check finds a blocking finding, stop
+   the ticket without a merge, keep the work, report the finding, and
+   continue independent tickets. Record the head SHA that the review covers.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
@@ -99,9 +110,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
       `--match-head-commit` rejects a short SHA.
    2. Post the phase 5 review record for that head with
       `gh pr review <PR> --comment --body-file <file>`. Name the comparison
-      commit, the head SHA, the Standards and Spec results, the fixes, and the
-      test results. When the head is not the commit that phase 5 reviewed,
-      name that commit and state what changed since it.
+      commit, the head SHA, the Standards and Spec results, the fixes, the
+      focused checks, and the test results. When the head is not the commit
+      that phase 5 reviewed, name that commit and state what changed since it.
    3. Merge with `gh pr merge <PR> --match-head-commit <head SHA>` and the
       merge method that the repository requires, such as `--squash`.
    4. Record the merged PR link.
@@ -136,12 +147,13 @@ If coding started early, report the ordering failure and stop dependent work.
 Complete the missing phases and treat that code as unreviewed. Later artifacts
 do not make the earlier order compliant.
 
-Use the host's PR monitoring mechanism for pending checks. Fix failures on the
-PR branch; code changes need review against the same comparison commit before
-merge. For a rebase, give the agent a resolution rule per conflicted file and
-the required final versions; recheck versions that Git merged without conflict.
-If a required human review cannot be supplied, continue independent tickets,
-then report the blocker and keep the work. Respect branch protection.
+Use the host's PR monitoring mechanism for pending checks.
+Fix failures on the PR branch. Give each fix one focused check of its diff and
+the failure that it fixes; a blocking finding stops the ticket as in phase 5.
+For a rebase, give the agent a resolution rule per conflicted file and the
+required final versions; recheck versions that Git merged without conflict. If
+a required human review cannot be supplied, continue independent tickets, then
+report the blocker and keep the work. Respect branch protection.
 
 ## Navigation retrospective
 
