@@ -266,7 +266,7 @@ _Avoid_: Handoff, worker prompt
 **Close-out worker**:
 The worker that runs the navigation retrospective of a batch with merged PRs,
 and then repo-cleanup. The project lead settles the batch's workers only after
-it reports, so that the retrospective can read their sessions.
+the close-out worker reports, so that the retrospective can read their sessions.
 _Avoid_: Cleanup worker, retro worker
 
 ## Lean-tests language

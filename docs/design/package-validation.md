@@ -96,6 +96,9 @@ The rules include these shared and host-specific resources:
 | `core-hooks/hooks/hooks.json` | Claude Code |
 | `core-hooks/hooks/hooks.codex.json` | Codex |
 | `core-hooks/hooks.json` | Antigravity |
+| `dev-skills/hooks/hooks.json` | Claude Code |
+| `dev-skills/hooks/hooks.codex.json` | Codex |
+| `dev-skills/hooks.json` | Antigravity |
 | Core Hooks and Productivity Skills shared scripts | Every registered host |
 
 For Antigravity, the inferred host paths are the `.antigravity-plugin/`

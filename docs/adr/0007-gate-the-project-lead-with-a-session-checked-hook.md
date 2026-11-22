@@ -17,6 +17,11 @@ and file edits outside the lead's actions, and native subagent calls. It also
 reminds the lead to run `start` on each user message (Claude Code and Codex).
 In every other session it exits at once and changes nothing.
 
+The lead may still read its lead folder and T3 attachments, which hold the
+files that the user sends. It may list the names in `.scratch`, to find its
+lead folder after a restart, and remove its lead folder when the project
+ends. It may not call T3 tools through a terminal command.
+
 The record is a file named by the session ID, in a per-user state folder
 outside every repository and settings file. The hook writes it, so the step
 script still only prints, and the record holds the same ID that the hook

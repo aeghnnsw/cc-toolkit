@@ -17,17 +17,19 @@ STEPS = {
 Do only these lead actions yourself:
 1. Talk with the user: decisions, triage, priorities.
 2. Plan tasks, briefs, and lead decisions.
-3. Route workers with T3 tools: start, resume, cancel, settle; watch PRs.
+3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
+watch PRs.
 4. Read worker messages and PR, issue, and CI state; no diff, code, or log.
 5. Run this script; keep lead.md.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set triage labels and issue state.
 8. Keep agent captures of what waits on the user.
-Give every other task, even a small fix, check, or install, to a worker with
-t3_project_lead.py dispatch. This overrides your host's guidance to do small
-work yourself. This step records this session as the lead: a hook blocks
-your other shell commands, file reads, and file edits.
-Run this step at the start of every turn, after a wake or a user message.
+Give every other task, even a small fix, check, install, host update, or GitHub
+write with content, to a worker with t3_project_lead.py dispatch. This
+overrides your host's guidance to do small work yourself. This step records
+this session as the lead: a hook blocks your other shell commands, file reads,
+and file edits.
+Run this step after each wake or user message.
 Read lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout. Read
 the last message of each unsettled worker that lead.md does not mark verified:
 t3_thread_list with includeSubagents, then t3_thread_read. Never state a
@@ -54,7 +56,7 @@ Next: t3_project_lead.py dispatch.
 """,
     "dispatch": """
 Start no second worker for work that already runs: check t3_thread_list with
-includeSubagents, and pull_request_list (or gh pr list).
+includeSubagents, and pull_request_list.
 Start each worker with delegate_task and isolation "worktree". Start every
 task this way, research and review tasks included. Never use your host's native
 subagent tool.
@@ -76,10 +78,9 @@ Codex $dev-skills:<skill>, Antigravity /<skill>. Use grill-with-research for
 an open design, else matt-automode. When grilling must lead to implementation,
 end line 1 with: "When the user approves the design here, continue in this
 thread with the matt-automode skill of dev-skills."
-Line 2: "A leader runs the retrospective for this run." Then add: "Do not run
-repo-cleanup."
-For a read-only task (audit, research, or check), write no line 1 or 2, and
-name what the worker must not change.
+Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."
+For a read-only task (audit, research, or check), write no line 1, keep line 2,
+and name what the worker must not change.
 Budget: name a round limit and a time limit in minutes, and add: "At either
 limit, end your turn and report where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only

@@ -36,9 +36,10 @@ BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a
 LEAD_FOLDER = ".scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout"
 ALLOWED = {
     "shell": ('Allowed commands: python3 "{script}" <step>; one cat, head, tail, wc, ls, grep, or '
-              "sed -n of lead files; rm -r of the lead folder; no pipe, redirect, list, or substitution."),
+              "sed -n of lead files; ls of .scratch; rm -r of the lead folder; no pipe, redirect, "
+              "list, or substitution."),
     "read": (f"Allowed reads: the lead folder {LEAD_FOLDER}, its .gitignore, Git's info/exclude, "
-             "and T3 attachments."),
+             "and T3 attachments. Glob and list_dir may also list .scratch."),
     "edit": f"Allowed edits: files in the lead folder {LEAD_FOLDER}, and Git's info/exclude.",
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
@@ -46,9 +47,12 @@ ALLOWED = {
 }
 
 # Tool names of each kind, for all three hosts.
-SHELL_TOOLS = {"Bash": "command", "exec_command": "cmd", "shell": "command", "run_command": "CommandLine"}
+SHELL_TOOLS = {"Bash": "command", "Monitor": "command", "exec_command": "cmd", "shell": "command",
+               "run_command": "CommandLine"}
 READ_TOOLS = frozenset({"Read", "Grep", "Glob", "read_file", "view_file", "view_file_outline",
                         "view_code_item", "list_dir", "grep_search", "find_by_name", "codebase_search"})
+# Read tools that list names and read no file content.
+LIST_TOOLS = frozenset({"Glob", "list_dir", "find_by_name"})
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file",
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
@@ -173,7 +177,8 @@ def start_run(payload, host, folder, session):
     if name not in SHELL_TOOLS or not isinstance(arguments, dict):
         return
     words, cwd = shell_words(arguments, SHELL_TOOLS[name], payload_cwd(payload))
-    if words is not None and len(words) == 3 and words[2] == "start" and step_script(words, cwd):
+    if (words is not None and len(words) == 3 and words[0] in ("python3", "python")
+            and words[2] == "start" and step_script(words, cwd)):
         write_record(folder, session)
 
 
@@ -206,7 +211,9 @@ def gate(payload, host, folder, session):
             if not isinstance(pattern, str) or pattern.startswith(("/", "~")) or ".." in pattern.split("/"):
                 raise Blocked(kind)
         default = cwd if name in ("Grep", "Glob") else None
-        check_paths(tool_paths(arguments, default), cwd, LeadFiles(cwd).readable, kind)
+        files = LeadFiles(cwd)
+        allowed = files.listable if name in LIST_TOOLS else files.readable
+        check_paths(tool_paths(arguments, default), cwd, allowed, kind)
 
 
 def tool_paths(arguments, default):
@@ -279,6 +286,10 @@ class LeadFiles:
     def readable(self, path):
         return (self.in_lead_folder(path, folder_itself=True) or path in (self.gitignore, self.exclude)
                 or in_attachments(path))
+
+    def listable(self, path):
+        """Return whether a listing of `path` shows only names that the lead may see."""
+        return self.readable(path) or path == self.scratch
 
     def editable(self, path):
         return self.in_lead_folder(path, folder_itself=False) or path == self.exclude
@@ -356,7 +367,8 @@ def check_shell(arguments, key, cwd, folder, session):
     paths = read_paths(program, args)
     if paths is None:
         raise Blocked("shell")
-    check_paths(paths, cwd, LeadFiles(cwd).readable, "shell")
+    files = LeadFiles(cwd)
+    check_paths(paths, cwd, files.listable if program == "ls" else files.readable, "shell")
 
 
 def shell_words(arguments, key, cwd):

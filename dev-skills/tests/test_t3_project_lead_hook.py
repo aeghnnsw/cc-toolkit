@@ -221,6 +221,7 @@ class RecordTests(HookCase):
                             "python3 dev-skills/scripts/t3_project_lead.py start",
                             f"python3 {STEP_SCRIPT} plan",
                             f"python3 {STEP_SCRIPT} start | cat",
+                            f"cat {self.installed} start",
                             f"python3 {STEP_SCRIPT.parent / 'missing' / 't3_project_lead.py'} start"):
                 with self.subTest(host=host, command=command):
                     self.assert_passes(self.run_hook(host, shell_payload(host, command, self.dev)))
@@ -278,12 +279,29 @@ class GateTests(HookCase):
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
         self.check_shell(("git status", "ssh host uptime", "cat notes.md", f"cat {lead_md} notes.md",
                           "cat .scratch/520-other/x.md", f"cat .scratch/{LEAD_NAME}/../../notes.md",
-                          f"ls .scratch", "ls", f"cat {self.dev}/.gitignore", f"tail -f {lead_md}",
+                          "ls", f"cat {self.dev}/.gitignore", f"tail -f {lead_md}",
                           f"sed -n '1w out' {lead_md}", f"sed -i 's/a/b/' {lead_md}", f"sed -n 1e {lead_md}",
                           f"grep -f notes.md {lead_md}", f"grep Lead {lead_md} -f notes.md",
                           f"cat .scratch/*/lead.md", f'cat "$LEAD_TEST_UNSET/lead.md"', "echo hi",
                           f"FOO=1 cat {lead_md}", f"cat {lead_md} # note"),
                          allowed=False)
+
+    def test_the_lead_can_list_names_in_scratch_but_read_no_other_folder(self):
+        # A lead that lost its folder name finds it from the names in .scratch.
+        scratch = self.main / ".scratch"
+        self.check_shell(("ls .scratch", f"ls -1 {scratch}/"), allowed=True)
+        self.check_shell(("grep -rn x .scratch", "cat .scratch/520-other/x.md", "ls .scratch/520-other"),
+                         allowed=False)
+        self.check_tools("claude", (("Glob", {"pattern": "*-lead-*/lead.md", "path": str(scratch)}),),
+                         (("Grep", {"pattern": "x", "path": str(scratch)}),
+                          ("Glob", {"pattern": "*", "path": str(scratch / "520-other")})))
+        self.check_tools("antigravity", (("list_dir", {"DirectoryPath": str(scratch)}),),
+                         (("grep_search", {"SearchPath": str(scratch), "Query": "x"}),))
+
+    def test_claude_monitor_is_a_shell_tool(self):
+        lead_md = f".scratch/{LEAD_NAME}/lead.md"
+        self.check_tools("claude", (("Monitor", {"command": f"cat {lead_md}", "description": "x"}),),
+                         (("Monitor", {"command": "ssh h1 'claude plugin update'", "description": "x"}),))
 
     def test_pipes_redirects_lists_and_substitutions_are_blocked(self):
         # In the lead folder each word names a lead file, so only the parser can block.
@@ -439,8 +457,9 @@ def matcher_names(entry):
 
 
 class HookFileTests(HookCase):
-    CLAUDE_TOOLS = {"Bash", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Task"}
-    CODEX_TOOLS = ("Bash", "exec_command", "apply_patch", "spawn_agent", "collaborationspawn_agent")
+    CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
+                    "Agent", "Task"}
+    CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
                          "invoke_subagent"}
