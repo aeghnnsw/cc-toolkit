@@ -42,8 +42,11 @@ MCP server to the user's global MCP configuration,
 `~/.gemini/config/mcp_config.json`. Then the user starts a new conversation and
 signs in when Antigravity asks. The token connector has no Antigravity setup.
 A failure before sending confirms no save. A failure during or after sending
-has an uncertain outcome; use the receipt procedure below. Keep native GTD files and Reminders as
-preserved source copies after cloud cutover; do not fall back to them.
+has an uncertain outcome; use the receipt procedure below.
+
+Missing cloud access or data makes the GTD operation unavailable. Keep
+native GTD files and Reminders as preserved source copies after cloud
+cutover; do not fall back to them.
 
 If the connected route reports that the project is paused, report the pause
 and the restore step: the user restores the project in the Supabase
@@ -76,10 +79,10 @@ directory two levels above the loaded skill. Each contains `scripts/` and
 `references/`.
 
 ```bash
-uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py read --limit 50
-uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py get <item-uuid>
-uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py receipt <request-uuid>
-uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py apply <private-request-file.json>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> read --limit 50
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> get <item-uuid>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> receipt <request-uuid>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> apply <private-request-file.json>
 ```
 
 The renderer returns one JSON object with `project_id` and `query`. Pass both
@@ -160,9 +163,12 @@ uncertain-response retries. The file contains `request_id` and an
 
 Writable data fields are `title`, `kind`, `notes`, `priority`,
 `duration_label`, `due`, and `start`. Put goals, waits, and human effort in
-text notes. Preserve explicit priority zero. New items default to open,
-priority 5, and null notes, deadline, duration label, and completion date.
-Use the lifecycle operations for completion rather than patching its fields.
+text notes. Preserve explicit priority zero. A write accepts only the
+priorities of [GTD planning](gtd-planning.md#priority): 0, 1, 5, and 9. It
+rejects the legacy duration label `@agent`. Stored legacy values stay
+readable. New items default to open, priority 5, and null notes, deadline,
+duration label, and completion date. Use the lifecycle operations for
+completion rather than patching its fields.
 
 Read the current record before changing it. Preserve unrequested fields and
 merge edited notes with the latest notes. A nested patch value replaces that

@@ -7,10 +7,12 @@ import os
 from pathlib import Path
 import re
 import select
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
 import uuid
@@ -31,9 +33,9 @@ class RendererCase(unittest.TestCase):
         self.config = self.root / "config.json"
         self.config.write_text(json.dumps({"project_id": "synthetic-project", "owner_id": OWNER}))
 
-    def cli(self, *args, ok=True, config=None, script=SCRIPT):
+    def cli(self, *args, ok=True, config=None, script=SCRIPT, python=sys.executable):
         process = subprocess.run(
-            [sys.executable, str(script), "--config", str(config or self.config), *args],
+            [python, str(script), "--config", str(config or self.config), *args],
             text=True, capture_output=True, timeout=10,
         )
         if ok:
@@ -90,8 +92,12 @@ class RendererTests(RendererCase):
             bad_operations.append([{**create, "data": data}])
         for key, value in (("source_record", {}), ("is_completed", True), ("completion_date", None),
                            ("notes", 3), ("duration_label", []), ("priority", True),
-                           ("priority", -1), ("priority", 10), ("priority", 3.0)):
+                           ("priority", -1), ("priority", 10), ("priority", 3.0),
+                           ("duration_label", "@agent"), ("duration_label", " @Agent\n"),
+                           *(("priority", value) for value in (2, 3, 4, 6, 7, 8))):
             bad_operations.append([{**create, "data": {**create["data"], key: value}}])
+        for patch in ({"duration_label": "@agent"}, {"priority": 3}):
+            bad_operations.append([{"op": "patch", "id": item_id, "expected_revision": 1, "patch": patch}])
         for operations in bad_operations:
             with self.subTest(operations=operations):
                 self.cli("apply", str(self.request(operations)), ok=False)
@@ -109,6 +115,7 @@ class RendererTests(RendererCase):
             None,
             {"kind": "date_only", "date": "2026-12-31"},
             {"kind": "floating_datetime", "local": "2026-12-31T09:00:00"},
+            {"kind": "floating_datetime", "local": "2026-12-31T09:00:00.5"},
             {"kind": "zoned_datetime", "local": "2026-12-31T09:00:00", "time_zone": "America/New_York"},
         ):
             with self.subTest(value=value):
@@ -140,6 +147,33 @@ class RendererTests(RendererCase):
         self.cli("apply", str(path), script=script, ok=False)
         template.unlink()
         self.cli("apply", str(path), script=script, ok=False)
+
+    def test_python_before_3_11_stops_with_the_rerun_command(self):
+        for name in ("python3.10", "python3.9", "python3.8", "python3"):
+            python = shutil.which(name)
+            probe = python and subprocess.run(
+                [python, "-c", "import sys; print((3, 6) <= sys.version_info < (3, 11), sys.version.split()[0])"],
+                text=True, capture_output=True, timeout=10).stdout.split()
+            if probe and probe[0] == "True":
+                break
+        else:
+            self.skipTest("no Python 3.6 through 3.10 interpreter on PATH")
+        error = self.cli("read", "--limit", "1", ok=False, python=python)
+        self.assertTrue(error.startswith(f"gtd_sql: needs Python 3.11 or newer; Python {probe[1]} is running."),
+                        error)
+        self.assertIn("No SQL was sent.", error)
+        self.assertIn(" ".join(shlex.quote(arg) for arg in (
+            "uv", "run", "--no-project", "--python", ">=3.11", "python", str(SCRIPT),
+            "--config", str(self.config), "read", "--limit", "1")), error)
+
+    def test_cloud_contract_commands_pass_a_private_binding_copy(self):
+        lines = [line for line in (PLUGIN / "references" / "gtd-cloud.md").read_text().splitlines()
+                 if re.search(r"\bpython[0-9.]*\s+\S*gtd_sql\.py", line)]
+        self.assertTrue(lines)
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertRegex(line, r"gtd_sql\.py\S*\s+--config\s+<private-binding-copy\.json>\s+"
+                                       r"(?:read|get|receipt|apply)\s")
 
 
 class DatabaseCase(RendererCase):
@@ -315,7 +349,16 @@ class ContractTests:
                    [{**valid, "data": {**valid["data"], "title": "\n\t "}}],
                    [{**valid, "data": {"title": "Missing kind"}}],
                    [{**valid, "data": {**valid["data"], "due": "2026-12-31"}}]]
-        for payload in invalid:
+        # psql prints ERROR: for each failure. The new checks must fail with their own message.
+        legacy = "duration_label must not be the legacy @agent label"
+        priority = "priority must be 0 (None), 1 (High), 5 (Medium), or 9 (Low)"
+        invalid = [(payload, "ERROR:") for payload in invalid] + [
+            ([{**valid, "data": {**valid["data"], "duration_label": "@agent"}}], legacy),
+            ([{**valid, "data": {**valid["data"], "duration_label": " @Agent\n"}}], legacy),
+            ([{**valid, "data": {**valid["data"], "priority": 3}}], priority),
+            ([{"op": "patch", "id": item_id, "expected_revision": 1, "patch": {"duration_label": "@agent"}}], legacy),
+        ]
+        for payload, error in invalid:
             with self.subTest(payload=payload):
                 self.sql("TRUNCATE public.gtd_items, public.gtd_links, public.gtd_requests;")
                 request_id = str(uuid.uuid4())
@@ -324,9 +367,24 @@ class ContractTests:
                 query, replacements = re.subn(r"decode\('[A-Za-z0-9+/=]*', 'base64'\)",
                                               f"decode('{encoded}', 'base64')", query)
                 self.assertEqual(replacements, 1)
-                self.sql(query, ok=False)
+                self.assertIn(error, self.sql(query, ok=False))
                 self.assertEqual(self.sql(self.cli("receipt", request_id))["status"], "missing")
                 self.assertEqual(self.get(item_id)["status"], "missing")
+
+    def test_writes_accept_planning_priorities_and_leave_legacy_stored_values_readable(self):
+        ids = [str(uuid.uuid4()) for _ in range(4)]
+        values = [(0, "@quick"), (1, "@1pomo"), (5, "@2pomo"), (9, None)]
+        self.apply([{"op": "create", "id": item_id, "data": {
+            "kind": "action", "title": "Step", "priority": priority, "duration_label": label}}
+                    for item_id, (priority, label) in zip(ids, values)])
+        self.assertEqual([(data["priority"], data["duration_label"]) for data in
+                          (self.get(item_id)["item"]["data"] for item_id in ids)], values)
+        legacy = str(uuid.uuid4())
+        self.sql(f"""INSERT INTO public.gtd_items (id, owner_id, data) VALUES ('{legacy}', '{OWNER}',
+            '{{"kind":"action","title":"Legacy","priority":3,"duration_label":"@agent"}}');""")
+        self.apply([{"op": "patch", "id": legacy, "expected_revision": 1, "patch": {"title": "Renamed"}}])
+        self.assertEqual(self.get(legacy)["item"]["data"],
+                         {"kind": "action", "title": "Renamed", "priority": 3, "duration_label": "@agent"})
 
     def test_stale_second_operation_rolls_back_the_batch_and_request(self):
         item_id, new_id, request_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
@@ -627,6 +685,72 @@ class MigrationRecordTests(ContractTests, DatabaseCase):
         for key in ("source_namespace", "source_id", "source_record", "created_at"):
             self.assertEqual(current[key], imported[key])
         self.assertEqual(self.snapshot(), [[OWNER, "synthetic snapshot\n雪 ☃", True]])
+
+
+class SetupSkillSqlTests(DatabaseCase):
+    """The SQL of gtd-setup steps 4 through 6 in each host copy, on synthetic databases."""
+    COPIES = [PLUGIN / folder / "gtd-setup" / "SKILL.md"
+              for folder in ("skills", "codex-skills", "antigravity-skills")]
+    REQUIRED_TABLES = {"gtd_items", "gtd_links", "gtd_requests"}
+
+    def step_sql(self, path, title):
+        """Return the only sql block of the step with this title, dedented, and the text of the step."""
+        step = re.search(rf"^## \d+\. {re.escape(title)}\n(.*?)(?=^## |\Z)", path.read_text(), re.M | re.S)
+        self.assertIsNotNone(step, title)
+        blocks = re.findall(r"^( *)```sql\n(.*?)^\1```$", step.group(1), re.M | re.S)
+        self.assertEqual(len(blocks), 1, title)
+        return textwrap.dedent(blocks[0][1]), step.group(1)
+
+    def classify(self, result, required):
+        """Apply the three states that step 5 states in prose."""
+        relations = {relation["name"]: relation["type"] for relation in result["gtd_relations"]}
+        if not relations:
+            return "No GTD tables"
+        columns = {(column["table"], column["column"], column["type"]) for column in result["gtd_columns"]}
+        if (all(relations.get(table) == "BASE TABLE" for table in self.REQUIRED_TABLES)
+                and set(relations) <= self.REQUIRED_TABLES | {"gtd_snapshots"} and required <= columns):
+            return "Complete GTD schema"
+        return "Anything else"
+
+    def test_role_query_returns_the_user_and_whether_it_bypasses_row_level_security(self):
+        for path in self.COPIES:
+            with self.subTest(path=path):
+                query, _ = self.step_sql(path, "Check the connector role")
+                self.assertEqual(self.psql(self.psql_command, query, check=True).stdout.split(), ["gtd_test|t"])
+
+    def test_catalog_query_and_required_columns_classify_each_database(self):
+        empty = self.create_database()
+        extras = self.create_database(SCHEMA, Path(__file__).parent / "gtd_extras_overlay.sql")
+        for path in self.COPIES:
+            with self.subTest(path=path):
+                query, text = self.step_sql(path, "Classify the project")
+                required = {(table, column, kind)
+                            for table, cells in re.findall(r"^\| `(gtd_\w+)` \| (.*) \|$", text, re.M)
+                            for column, kind in re.findall(r"`(\w+)` \(`(\w+)`\)", cells)}
+                shipped = self.sql(query)
+                self.assertEqual(required, {(column["table"], column["column"], column["type"])
+                                            for column in shipped["gtd_columns"]})
+                self.assertEqual(self.classify(shipped, required), "Complete GTD schema")
+                self.assertEqual(self.classify(self.sql(query, command=extras), required), "Complete GTD schema")
+                self.assertEqual(self.classify(self.sql(query, command=empty), required), "No GTD tables")
+                for change in ("ALTER TABLE public.gtd_links DROP COLUMN deleted_at",
+                               "ALTER TABLE public.gtd_items ALTER COLUMN revision TYPE integer"):
+                    changed = self.sql(f"BEGIN; {change}; {query} ROLLBACK;")
+                    self.assertEqual(self.classify(changed, required), "Anything else", change)
+
+    def test_owner_query_lists_owners_by_item_count_then_owner(self):
+        third = "00000000-0000-4000-8000-000000000003"
+        for path in self.COPIES:
+            with self.subTest(path=path):
+                self.sql("TRUNCATE public.gtd_links, public.gtd_items, public.gtd_requests;")
+                query, _ = self.step_sql(path, "Apply the schema and establish the owner")
+                self.assertEqual(self.sql(query), [])
+                self.sql("INSERT INTO public.gtd_items (id, owner_id, data) VALUES " + ", ".join(
+                    f"""('{uuid.uuid4()}', '{owner}', '{{"kind":"inbox","title":"Item"}}')"""
+                    for owner in (third, OTHER_OWNER, OWNER, OTHER_OWNER)) + ";")
+                self.assertEqual(self.sql(query), [{"owner_id": OTHER_OWNER, "items": 2},
+                                                   {"owner_id": OWNER, "items": 1},
+                                                   {"owner_id": third, "items": 1}])
 
 
 if __name__ == "__main__":

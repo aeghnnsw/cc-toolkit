@@ -1,6 +1,6 @@
 ---
 name: gtd-inbox
-version: 1.4.1
+version: 1.4.2
 description: "Use when capturing thoughts or tasks into the GTD inbox, when the user's instructions ask you to add waiting items to the GTD inbox (agent captures), when the work of an agent capture is done, or when listing, counting, removing, clearing, or restoring inbox items."
 ---
 
@@ -10,8 +10,7 @@ immediately. Keep their wording and scope.
 Before any operation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
 contract for the GTD binding, connector calls, UUIDs, revisions, atomic
-writes, receipts, and recovery. Missing access makes the operation
-unavailable. It does not authorize a local or Reminders fallback.
+writes, receipts, and recovery.
 
 ## Gather
 

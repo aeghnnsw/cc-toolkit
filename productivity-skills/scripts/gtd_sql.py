@@ -8,6 +8,15 @@ import json
 from pathlib import Path
 import re
 import sys
+
+if sys.version_info < (3, 11):
+    # Before 3.11, fromisoformat rejects some valid fractional seconds, such as 09:00:00.5.
+    # The module keeps Python 3.6 syntax, so that this guard runs.
+    import shlex
+    sys.exit("gtd_sql: needs Python 3.11 or newer; Python {} is running. No SQL was sent. Run:\n{}".format(
+        sys.version.split()[0], " ".join(shlex.quote(arg) for arg in
+                                         ["uv", "run", "--no-project", "--python", ">=3.11", "python", *sys.argv])))
+
 import uuid
 from zoneinfo import ZoneInfo
 
@@ -15,6 +24,7 @@ from zoneinfo import ZoneInfo
 TRANSACTION = Path(__file__).resolve().parents[1] / "references" / "gtd-connector-transaction.sql"
 KINDS = ("inbox", "action", "project")
 DATA_FIELDS = {"kind", "title", "notes", "priority", "duration_label", "due", "start"}
+PRIORITIES = (0, 1, 5, 9)
 OP_FIELDS = {
     "create": {"op", "id", "data"},
     "patch": {"op", "id", "expected_revision", "patch"},
@@ -84,8 +94,12 @@ def validate_data(data, create=False):
     for key in ("notes", "duration_label"):
         if key in data and data[key] is not None and not isinstance(data[key], str):
             raise ValueError("invalid text field")
-    if "priority" in data and (type(data["priority"]) is not int or not 0 <= data["priority"] <= 9):
-        raise ValueError("priority must be an integer from 0 through 9")
+    # The transaction trims the same ASCII whitespace and lowercases the same way.
+    label = data.get("duration_label")
+    if isinstance(label, str) and label.strip(" \t\n\r\f\v").lower() == "@agent":
+        raise ValueError("duration_label must not be the legacy @agent label")
+    if "priority" in data and (type(data["priority"]) is not int or data["priority"] not in PRIORITIES):
+        raise ValueError("priority must be 0 (None), 1 (High), 5 (Medium), or 9 (Low)")
     for key in ("due", "start"):
         if key in data:
             validate_date(data[key])

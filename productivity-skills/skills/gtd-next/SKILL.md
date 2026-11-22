@@ -1,6 +1,6 @@
 ---
 name: gtd-next
-version: 3.3.1
+version: 3.3.2
 description: "Use when deciding what to work on next or requesting an agenda, with calendar-aware selection of cloud GTD human actions."
 ---
 
@@ -13,8 +13,7 @@ Before every invocation, read the [cloud operating contract](../../references/gt
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
 contract for the GTD binding, complete reads, UUID links, and dates. Use
 the planning policy for readiness, effort, priority, and the human time
-budget. Missing cloud data or access makes selection unavailable; it does
-not authorize a native GTD fallback.
+budget.
 
 ## Gather
 

@@ -11,8 +11,7 @@ Before every invocation, read the [cloud operating contract](../../references/gt
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
 contract for the GTD binding, complete reads, UUID grouping, dates,
 revisions, atomic writes, receipts, and recovery. Apply the planning policy
-to every project and action. Missing cloud data or access makes the affected
-review or operation unavailable; it does not authorize a native fallback.
+to every project and action.
 
 ## Gather
 

@@ -83,10 +83,14 @@ BEGIN
                     RAISE EXCEPTION 'invalid text field';
                 END IF;
             END LOOP;
+            -- The renderer trims the same ASCII whitespace and lowercases the same way.
+            IF lower(btrim(v_data->>'duration_label', E' \t\n\r\f\x0B')) = '@agent' THEN
+                RAISE EXCEPTION 'duration_label must not be the legacy @agent label';
+            END IF;
             IF v_data ? 'priority' AND (jsonb_typeof(v_data->'priority') IS DISTINCT FROM 'number'
-                OR v_data->>'priority' !~ '^[0-9]$')
+                OR v_data->>'priority' !~ '^[0159]$')
             THEN
-                RAISE EXCEPTION 'priority must be an integer from 0 through 9';
+                RAISE EXCEPTION 'priority must be 0 (None), 1 (High), 5 (Medium), or 9 (Low)';
             END IF;
             FOREACH v_key IN ARRAY ARRAY['due', 'start'] LOOP
                 v_date := v_data->v_key;

@@ -1,6 +1,6 @@
 ---
 name: gtd-setup
-version: 1.3.0
+version: 1.3.1
 description: "Use when the user invokes gtd-setup to create a GTD database in a Supabase project, to bind an existing GTD database on a new computer, or to turn on agent captures."
 disable-model-invocation: true
 ---
@@ -65,10 +65,9 @@ item for this owner.
    `create_project`, `get_cost`, `confirm_cost`, `apply_migration`,
    `execute_sql`, and `list_tables`. A host can add a prefix to each name.
 3. If no Supabase tool is connected, or the connector needs
-   authentication, report the required connection or sign-in. For several
-   Claude Code profiles, or for Codex without a connected Supabase app,
-   also name the [token connector](../../references/gtd-token-connector.md).
-   Then stop.
+   authentication, follow the connector rules in
+   [Bind the route](../../references/gtd-cloud.md#bind-the-route). Then
+   stop.
 4. List the accessible projects to prove the access. If the connection is
    scoped to one project, it cannot list or create projects. If the
    connection is read-only, it cannot apply the schema. A connector URL
@@ -105,9 +104,9 @@ only after an explicit confirmation.
 1. Show the accessible projects with name, organization, region, and
    status.
 2. Ask the user to choose one project, or to ask for a new project.
-3. If the chosen project is paused, report the pause and the restore step
-   (the Supabase dashboard, or the connector's restore tool). Restore it
-   only when the user asks. Otherwise stop.
+3. If the chosen project is paused, follow the paused-project rule in
+   [Bind the route](../../references/gtd-cloud.md#bind-the-route).
+   Continue only after a restore that the user asked for. Otherwise stop.
 
 To create a project:
 
