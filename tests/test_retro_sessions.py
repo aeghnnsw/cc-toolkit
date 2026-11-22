@@ -288,7 +288,7 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(summary["status"], "partial")
         self.assertEqual(manifest["diagnostics"][0]["code"], "missing_cwd")
 
-    def test_default_active_and_explicit_roots_are_isolated_and_deduplicated(self):
+    def test_default_active_and_per_host_explicit_roots_are_deduplicated(self):
         fixture_home = self.base / "home"
         defaults = [fixture_home / ".claude" / "projects", fixture_home / ".codex" / "sessions"]
         active_claude = self.base / "active-claude"

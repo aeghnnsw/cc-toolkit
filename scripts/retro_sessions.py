@@ -393,7 +393,7 @@ def main(argv=None):
         "CLAUDE_CONFIG_DIR; Codex reads sessions/ in ~/.codex and in CODEX_HOME; "
         "Antigravity reads ~/.gemini/antigravity-cli, ~/.gemini/antigravity, and "
         "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
-        "folder. The manifest lists each root read. "
+        "folder. The manifest lists each root with its status. "
         "A partial result retains usable evidence; inspect manifest diagnostics. "
         "Originals remain unchanged."))
     parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
@@ -439,9 +439,9 @@ def main(argv=None):
         # of them. T3 Code runs Antigravity with a private profile for each
         # provider instance and keeps its sessions in antigravity-acp there.
         # A missing default folder is left out instead of reported.
-        t3_profiles = sorted((home / ".t3" / "userdata" / "providers" / "antigravity").glob("*/antigravity-acp"))
+        t3_antigravity_roots = sorted((home / ".t3" / "userdata" / "providers" / "antigravity").glob("*/antigravity-acp"))
         args.antigravity_root = [path for path in (home / ".gemini" / "antigravity-cli",
-                                                   home / ".gemini" / "antigravity", *t3_profiles)
+                                                   home / ".gemini" / "antigravity", *t3_antigravity_roots)
                                  if path.is_dir()]
     args.claude_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.claude_root))
     args.codex_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.codex_root))
