@@ -28,14 +28,24 @@ choose.
      --repo . --after 2026-11-07T21:01:06.000Z --output "$retro_tmp/retro"
    ```
 
-   Without a root option, the helper reads Claude Code sessions in
-   `~/.claude/projects`, Codex sessions in `~/.codex/sessions`, and
-   Antigravity sessions in `~/.gemini/antigravity-cli` (CLI),
-   `~/.gemini/antigravity` (app), and the `antigravity-acp` folder of each
-   T3 Code profile in `~/.t3/userdata/providers/antigravity/`, plus the
-   active `CLAUDE_CONFIG_DIR` and `CODEX_HOME` roots. A missing root is a
-   `root_unavailable` diagnostic, except a missing default Antigravity
-   folder, which the helper leaves out.
+   For each host without a root option, the helper reads the default roots
+   of that host:
+
+   - Claude Code: the `projects` folder in `~/.claude`, in each T3 Code
+     Claude profile folder `~/.claude-t3/<profile>/`, and in the active
+     `CLAUDE_CONFIG_DIR`.
+   - Codex: the `sessions` folder in `~/.codex` and in the active
+     `CODEX_HOME`.
+   - Antigravity: `~/.gemini/antigravity-cli` (CLI),
+     `~/.gemini/antigravity` (app), and the `antigravity-acp` folder of each
+     T3 Code profile in `~/.t3/userdata/providers/antigravity/`.
+
+   A root option, such as `--claude-root`, replaces only the default roots
+   of its own host; the other hosts keep their default roots. The manifest
+   `roots` list names each root and its status. A missing root is a
+   `root_unavailable` diagnostic, with two exceptions. The helper leaves out
+   a T3 Code profile that has no `projects` or `antigravity-acp` folder. It
+   also leaves out a missing default Antigravity folder.
    Antigravity records have no working folder. The helper reads a copy of
    `conversation_summaries.db` and selects a conversation when one of its
    `workspace_uris`, resolved, is a repository root or a folder below one,

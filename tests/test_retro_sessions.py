@@ -26,6 +26,14 @@ class RetroSessionsTests(unittest.TestCase):
         self.repo = self.base / "project"
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        # A host without a root option reads its default roots from HOME and
+        # the host variables. Point them at fake folders, so that no test
+        # reads a real host folder.
+        environment = patch.dict(os.environ, {"HOME": str(self.base / "home")})
+        environment.start()
+        self.addCleanup(environment.stop)
+        for name in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
+            os.environ.pop(name, None)
         self.claude = self.base / "claude"
         self.codex = self.base / "codex"
         self.claude.mkdir()
@@ -280,14 +288,19 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(summary["status"], "partial")
         self.assertEqual(manifest["diagnostics"][0]["code"], "missing_cwd")
 
-    def test_default_active_and_explicit_roots_are_isolated_and_deduplicated(self):
+    def test_default_active_and_per_host_explicit_roots_are_deduplicated(self):
         fixture_home = self.base / "home"
         defaults = [fixture_home / ".claude" / "projects", fixture_home / ".codex" / "sessions"]
         active_claude = self.base / "active-claude"
         active_codex = self.base / "active-codex"
-        for root in [*defaults, active_claude / "projects", active_codex / "sessions"]:
+        # T3 Code runs Claude Code with a config folder for each profile;
+        # a profile without projects/ is left out.
+        t3_claude = fixture_home / ".claude-t3" / "claude2" / "projects"
+        (fixture_home / ".claude-t3" / "claude3").mkdir(parents=True)
+        for root in [*defaults, active_claude / "projects", active_codex / "sessions", t3_claude]:
             root.mkdir(parents=True)
-        for root, text in [(defaults[0], "default Claude"), (active_claude / "projects", "active Claude")]:
+        for root, text in [(defaults[0], "default Claude"), (active_claude / "projects", "active Claude"),
+                           (t3_claude, "T3 Code Claude"), (self.claude, "explicit Claude")]:
             self.transcript(root, "session.jsonl", [self.claude_message(text)])
         for root, text in [(defaults[1], "default Codex"), (active_codex / "sessions", "active Codex")]:
             self.transcript(root, "session.jsonl", [
@@ -311,26 +324,40 @@ class RetroSessionsTests(unittest.TestCase):
             def now(cls, tz=None):
                 return cls(2026, 1, 3, 0, 0, 0, 123456, tzinfo=timezone.utc)
 
+        def host_roots(manifest):
+            roots = {}
+            for entry in manifest["roots"]:
+                roots.setdefault(entry["host"], []).append(entry["path"])
+            return roots
+
         with patch.object(Path, "home", return_value=fixture_home), patch.dict(os.environ, {
                 "CLAUDE_CONFIG_DIR": str(active_claude), "CODEX_HOME": str(active_codex)}), patch("datetime.datetime", FixedClock):
             _, manifest, _, digests = self.artifacts(self.run_in_process())
-            self.assertEqual(len(digests), 6)
-            self.assertIn("T3 Code Antigravity", [event["text"] for digest in digests for event in digest["events"]])
-            self.assertEqual([(entry["path"], entry["status"], entry["candidates"]) for entry in manifest["roots"]
-                              if entry["host"] == "antigravity"],
-                             [(str(antigravity_cli), "ok", 1), (str(t3_profile), "ok", 1)])
-            self.assertNotIn("antigravity", [entry["host"] for entry in manifest["diagnostics"]
-                                             if entry["code"] == "root_unavailable"])
+            self.assertEqual(len(digests), 7)
+            texts = [event["text"] for digest in digests for event in digest["events"]]
+            self.assertIn("T3 Code Claude", texts)
+            self.assertIn("T3 Code Antigravity", texts)
+            default_roots = {"claude": [str(defaults[0]), str(t3_claude), str(active_claude / "projects")],
+                             "codex": [str(defaults[1]), str(active_codex / "sessions")],
+                             "antigravity": [str(antigravity_cli), str(t3_profile)]}
+            self.assertEqual(host_roots(manifest), default_roots)
+            self.assertEqual([(entry["status"], entry["candidates"]) for entry in manifest["roots"]], [("ok", 1)] * 7)
+            self.assertEqual(manifest["status"], "ok")
             self.assertEqual(manifest["window"]["through"], "2026-01-03T00:00:00.123+00:00")
-            self.output = self.base / "explicit"
+            # A root option replaces only the default roots of its own host.
             alias = self.base / "alias"
             alias.symlink_to(defaults[1], target_is_directory=True)
             (defaults[1] / "duplicate.jsonl").symlink_to(defaults[1] / "session.jsonl")
-            _, manifest, _, digests = self.artifacts(self.run_in_process(
-                "--codex-root", str(defaults[1]), "--codex-root", str(alias)))
-        self.assertEqual([event["text"] for digest in digests for event in digest["events"]], ["default Codex"])
-        self.assertEqual(len(manifest["roots"]), 1)
-        self.assertEqual(manifest["counts"]["candidate_sources"], 1)
+            for option, host, paths in (("--claude-root", "claude", [self.claude]),
+                                        ("--codex-root", "codex", [defaults[1], alias]),
+                                        ("--antigravity-root", "antigravity", [t3_profile])):
+                with self.subTest(option=option):
+                    self.output = self.base / f"explicit-{host}"
+                    _, manifest, _, _ = self.artifacts(self.run_in_process(
+                        *[value for path in paths for value in (option, str(path))]))
+                    self.assertEqual(host_roots(manifest), {**default_roots, host: [str(paths[0])]})
+                    self.assertEqual([entry["candidates"] for entry in manifest["roots"]],
+                                     [1] * len(manifest["roots"]))
 
     def test_invalid_arguments_and_output_paths_fail_without_changing_existing_files(self):
         existing = self.base / "existing"
@@ -407,7 +434,8 @@ class RetroSessionsTests(unittest.TestCase):
 
                 with patch.object(Path, "open", changing_open):
                     summary, _, selected, _ = self.artifacts(self.run_in_process(
-                        "--claude-root", str(self.claude), "--through", "2026-01-03T00:00:00Z"))
+                        "--claude-root", str(self.claude), "--codex-root", str(self.codex),
+                        "--through", "2026-01-03T00:00:00Z"))
                 self.assertEqual(selected[0]["boundary_bytes"], len(initial))
                 expected = initial[:first_line + 5] if mutation == "truncate" else initial
                 self.assertEqual((self.output / selected[0]["copy"]).read_bytes(), expected)

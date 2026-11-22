@@ -387,19 +387,28 @@ def snapshot(path, destination):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
-        "Any explicit host root replaces all default discovery. Otherwise read "
-        "default and active host config roots. A partial result retains usable "
-        "evidence; inspect manifest diagnostics. Originals remain unchanged."))
+        "A root option replaces only the default roots of its own host; the "
+        "other hosts keep theirs. Default roots: Claude Code reads projects/ in "
+        "~/.claude, in each ~/.claude-t3/<profile> folder, and in "
+        "CLAUDE_CONFIG_DIR; Codex reads sessions/ in ~/.codex and in CODEX_HOME; "
+        "Antigravity reads ~/.gemini/antigravity-cli, ~/.gemini/antigravity, and "
+        "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
+        "folder. The manifest lists each root with its status. "
+        "A partial result retains usable evidence; inspect manifest diagnostics. "
+        "Originals remain unchanged."))
     parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
     parser.add_argument("--output", required=True, type=Path, help="new directory outside transcript roots")
     parser.add_argument("--through", help="inclusive aware ISO cutoff (default: now, before discovery)")
     parser.add_argument("--after", help="exclusive aware ISO cutoff (default: no lower bound)")
     parser.add_argument("--max-events", type=int, default=60, help="head/tail events per digest (default: 60)")
     parser.add_argument("--max-text", type=int, default=300, help="characters per displayed text field (default: 300)")
-    parser.add_argument("--claude-root", action="append", type=Path, default=[], help="Claude projects directory; repeatable")
-    parser.add_argument("--codex-root", action="append", type=Path, default=[], help="Codex sessions directory; repeatable")
+    parser.add_argument("--claude-root", action="append", type=Path, default=[],
+                        help="Claude projects directory; repeatable; replaces the Claude Code default roots")
+    parser.add_argument("--codex-root", action="append", type=Path, default=[],
+                        help="Codex sessions directory; repeatable; replaces the Codex default roots")
     parser.add_argument("--antigravity-root", action="append", type=Path, default=[],
-                        help="Antigravity directory with conversation_summaries.db and brain/; repeatable")
+                        help="Antigravity directory with conversation_summaries.db and brain/; repeatable; "
+                             "replaces the Antigravity default roots")
     args = parser.parse_args(argv)
     through_text = args.through if args.through is not None else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     try:
@@ -411,21 +420,29 @@ def main(argv=None):
         parser.error("--after must be earlier than --through")
     if args.max_events < 1 or args.max_text < 1:
         parser.error("--max-events and --max-text must be positive")
-    if not args.claude_root and not args.codex_root and not args.antigravity_root:
-        args.claude_root = [Path.home() / ".claude" / "projects"]
-        args.codex_root = [Path.home() / ".codex" / "sessions"]
+    # A root option replaces only the default roots of its own host.
+    home = Path.home()
+    if not args.claude_root:
+        # T3 Code runs Claude Code with a config folder for each profile in
+        # ~/.claude-t3. Read only its projects folder; a profile without one
+        # is left out instead of reported.
+        args.claude_root = [home / ".claude" / "projects",
+                            *sorted(path for path in (home / ".claude-t3").glob("*/projects") if path.is_dir())]
+        if os.environ.get("CLAUDE_CONFIG_DIR"):
+            args.claude_root.append(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser() / "projects")
+    if not args.codex_root:
+        args.codex_root = [home / ".codex" / "sessions"]
+        if os.environ.get("CODEX_HOME"):
+            args.codex_root.append(Path(os.environ["CODEX_HOME"]).expanduser() / "sessions")
+    if not args.antigravity_root:
         # Antigravity has a CLI folder and an app folder; a user often has one
         # of them. T3 Code runs Antigravity with a private profile for each
         # provider instance and keeps its sessions in antigravity-acp there.
         # A missing default folder is left out instead of reported.
-        t3_profiles = sorted((Path.home() / ".t3" / "userdata" / "providers" / "antigravity").glob("*/antigravity-acp"))
-        args.antigravity_root = [path for path in (Path.home() / ".gemini" / "antigravity-cli",
-                                                   Path.home() / ".gemini" / "antigravity", *t3_profiles)
+        t3_antigravity_roots = sorted((home / ".t3" / "userdata" / "providers" / "antigravity").glob("*/antigravity-acp"))
+        args.antigravity_root = [path for path in (home / ".gemini" / "antigravity-cli",
+                                                   home / ".gemini" / "antigravity", *t3_antigravity_roots)
                                  if path.is_dir()]
-        if os.environ.get("CLAUDE_CONFIG_DIR"):
-            args.claude_root.append(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser() / "projects")
-        if os.environ.get("CODEX_HOME"):
-            args.codex_root.append(Path(os.environ["CODEX_HOME"]).expanduser() / "sessions")
     args.claude_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.claude_root))
     args.codex_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.codex_root))
     args.antigravity_root = list(dict.fromkeys(path.expanduser().resolve() for path in args.antigravity_root))
