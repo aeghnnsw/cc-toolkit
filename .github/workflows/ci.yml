@@ -1,6 +1,7 @@
 name: CI
 
-# One job runs the package validator, the root tests, and the plugin test suites on each pull request.
+# One job on Linux and one on macOS run the package validator, the root tests, and the plugin test suites
+# on each pull request.
 # The commands match the Verification table in CONTRIBUTING.md.
 on:
   pull_request:
@@ -14,8 +15,12 @@ concurrency:
 
 jobs:
   checks:
-    # macOS matches the machines that the suites were written on. Some suites fail on Linux; see #496.
-    runs-on: macos-latest
+    # Core Hooks and Dev Skills run on Linux and macOS hosts, so the suites run on both (#496).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       # The default ref is the merge of the pull request into its target, so the validator compares the
@@ -31,9 +36,19 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # The productivity-skills suite needs initdb, pg_ctl, and psql. Use the PostgreSQL that Homebrew has
-      # installed, or install one. A missing tool fails the next step, so that no suite skips its cases.
+      # zsh runs the zsh cases of the Core Hooks and Dev Skills suites, and jq runs the cc-customize checks.
+      # The productivity-skills suite needs initdb, pg_ctl, and psql; the Linux runner installs PostgreSQL
+      # outside PATH. A missing tool fails the check step below, so that no suite skips its cases.
+      - name: Install the Linux test tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q zsh jq
+          ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
+
+      # On macOS, use the PostgreSQL that Homebrew has installed, or install one.
       - name: Put the PostgreSQL tools on PATH
+        if: runner.os == 'macOS'
         run: |
           for dir in "$(brew --prefix)"/opt/postgresql@*/bin; do
             if [ -x "$dir/initdb" ]; then

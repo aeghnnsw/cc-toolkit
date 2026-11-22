@@ -4,16 +4,23 @@ Run with: python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
 Requires uv and access to provision the script's declared dependencies.
 """
 
+import contextlib
 import json
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 
 
 def run_server(command, args, cwd):
-    """Start the server, send initialize and tools/list, and return the run."""
+    """Start the server, send initialize and tools/list, and return the run.
+
+    stdin stays open until the tools/list response arrives, as it does for an
+    MCP client. When stdin closes first, the server can stop before it answers
+    a request that it has read.
+    """
     messages = [
         {
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -25,12 +32,35 @@ def run_server(command, args, cwd):
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
     ]
-    return subprocess.run(
-        [command, *args],
-        cwd=cwd,
-        input="".join(json.dumps(message) + "\n" for message in messages),
-        text=True, capture_output=True, timeout=120,
-    )
+    # A file, not a pipe, takes stderr, so that a long log cannot stall the server.
+    with tempfile.TemporaryFile("w+") as stderr:
+        process = subprocess.Popen(
+            [command, *args], cwd=cwd, text=True,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr,
+        )
+        # Stop a server that does not answer in time.
+        timer = threading.Timer(120, process.kill)
+        timer.start()
+        lines = []
+        try:
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.write("".join(json.dumps(message) + "\n" for message in messages))
+                process.stdin.flush()
+            for line in process.stdout:
+                lines.append(line)
+                if json.loads(line).get("id") == 2:
+                    break
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.close()
+            lines.append(process.stdout.read())
+            returncode = process.wait()
+        finally:
+            timer.cancel()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        stderr.seek(0)
+        return subprocess.CompletedProcess(process.args, returncode, "".join(lines), stderr.read())
 
 
 class McpStartupTests(unittest.TestCase):

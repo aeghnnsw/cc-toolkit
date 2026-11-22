@@ -112,8 +112,10 @@ def current_session_pids() -> set[str]:
 
 def process_dirs(skip: set[str]) -> list[tuple[str, str, str]]:
     """Return (pid, command, working directory) for each visible process outside skip."""
+    # On Linux, lsof forks a helper process with its own pid and the working
+    # directory of lsof. Run it from / so that neither counts for a worktree.
     try:
-        proc = subprocess.Popen(["lsof", "-w", "-d", "cwd", "-Fpcn"],
+        proc = subprocess.Popen(["lsof", "-w", "-d", "cwd", "-Fpcn"], cwd="/",
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except FileNotFoundError:
         fail("lsof is not installed, so running processes cannot be checked")
