@@ -39,8 +39,9 @@ choose.
    Antigravity records have no working folder. The helper reads a copy of
    `conversation_summaries.db` and selects a conversation when one of its
    `workspace_uris`, resolved, is a repository root or a folder below one,
-   including worktrees under `trees/`. Events from that conversation show
-   the workspace folder as `cwd`. The digest names the host of each source.
+   including each linked worktree that Git lists. Events from that
+   conversation show the workspace folder as `cwd`. The digest names the
+   host of each source.
 
    The manifest gives the exact `window.through` cutoff, the source limits,
    and the digests to read. Use `--help` for other options. Verify each

@@ -45,8 +45,15 @@ Before a navigation retrospective of earlier agent sessions, read
 
 1. Start each change with a GitHub issue. Reuse an existing issue when it
    covers the work.
-2. Develop in a Git worktree under `trees/` in the checkout where the
-   session runs.
+2. Develop in a Git worktree, on one work branch for the change. A linked
+   worktree is a worktree other than the main checkout.
+   - When the session runs in a linked worktree made for the session,
+     develop in that worktree. The branch of that worktree is the work
+     branch. Keep the branch name. Before the first commit, base the work
+     branch on the default branch. So a host tool that opens a PR for the
+     session pushes the work branch.
+   - Only a session in the main checkout makes a worktree, under `trees/`,
+     on a new work branch.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification).
 4. Keep commits, issues, PR descriptions, and PR comments concise and
@@ -57,7 +64,15 @@ Before a navigation retrospective of earlier agent sessions, read
 5. Use squash merges after review (`gh pr merge --squash`) to keep one commit
    per change on the default branch. After merging, run `repo-cleanup`.
 
-Create a worktree for a change, for example:
+To base the work branch on the default branch, run these commands.
+`--keep` stops instead of discarding uncommitted changes:
+
+```bash
+git fetch origin
+git reset --keep origin/master
+```
+
+In the main checkout, create a worktree for a change, for example:
 
 ```bash
 git worktree add trees/doc-<description> -b doc-<description>
