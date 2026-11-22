@@ -11,6 +11,7 @@ the fake is the supervisor, not the runner command.
 from __future__ import annotations
 
 import fcntl
+import importlib.util
 import json
 import os
 import re
@@ -21,6 +22,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SKILL = PLUGIN_ROOT / "skills" / "pressure-test" / "SKILL.md"
@@ -709,18 +711,32 @@ class CodexCriticTest(unittest.TestCase):
     def test_wait_without_a_call_is_an_error(self):
         self.assertEqual(self.run_wait(), (1, f"exit=2 model={CRITIC_MODEL} status=error:no call"))
 
-    def test_wait_step_fits_inside_a_lower_bash_tool_limit(self):
-        # Both steps are the 5-second floor: 32 s - 30 s = 2 s, and 1 s - 30 s is below 0.
-        for limit, low, slack in (("32000", 1.5, 1), ("1000", 5, 5)):
-            with self.subTest(limit=limit):
-                env = dict.fromkeys(BASH_LIMITS, limit)
-                started = time.monotonic()
-                self.assertEqual(self.run_critic("kickoff", env=env, sleep=30),
-                                 (1, f"exit=- model={CRITIC_MODEL} status=running"))
-                elapsed = time.monotonic() - started
-                kill_quietly(self.kill_supervisor()["pid"])  # before the checks, so the next subtest is not busy
-                self.assertGreaterEqual(elapsed, low)
-                self.assertLess(elapsed, 5 + scaled(slack))
+    def test_a_runner_command_reports_running_inside_the_bash_tool_default_timeout(self):
+        # The step is the 5-second floor: 32 s - 30 s = 2 s. A higher BASH_MAX_TIMEOUT_MS does not raise it,
+        # because the agent runs the command without a Bash tool timeout.
+        env = {"BASH_DEFAULT_TIMEOUT_MS": "32000", "BASH_MAX_TIMEOUT_MS": "600000"}
+        started = time.monotonic()
+        self.assertEqual(self.run_critic("kickoff", env=env, sleep=60),
+                         (1, f"exit=- model={CRITIC_MODEL} status=running"))
+        elapsed = time.monotonic() - started
+        kill_quietly(self.kill_supervisor()["pid"])
+        self.assertGreaterEqual(elapsed, 5)
+        self.assertLess(elapsed, 5 + scaled(1))
+
+    def test_replies_md_keeps_the_status_line_and_reply_of_every_call(self):
+        self.assertEqual(self.run_critic("kickoff", events=[THREAD_STARTED], reply="The weakest point is X."),
+                         (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
+        kickoff_seconds = self.seconds
+        self.assertEqual(self.run_critic("resume", reply="NO SUBSTANTIVE OBJECTION.\n"),
+                         (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
+        resume_seconds = self.seconds
+        # The resume replaced msg.txt; replies.md still holds both replies, each after its final status line.
+        self.assertEqual((self.workdir / "msg.txt").read_text(encoding="utf-8"), "NO SUBSTANTIVE OBJECTION.\n")
+        self.assertEqual((self.workdir / "replies.md").read_text(encoding="utf-8"),
+                         f"## kickoff\n\nexit=0 model={CRITIC_MODEL} seconds={kickoff_seconds} status=ok\n\n"
+                         "The weakest point is X.\n\n"
+                         f"## resume\n\nexit=0 model={CRITIC_MODEL} seconds={resume_seconds} status=ok\n\n"
+                         "NO SUBSTANTIVE OBJECTION.\n\n")
 
     def test_timeout_kills_the_call_and_reports_exit_124(self):
         result, overrun = self.run_limited(self.record.exists, reply="late reply")
@@ -860,6 +876,26 @@ class CodexCriticTest(unittest.TestCase):
                          (1, f"exit=127 model={CRITIC_MODEL} status=error:codex not found"))
         self.assertFalse(self.record.exists())
         self.assertFalse((self.workdir / "msg.txt").exists())
+
+
+class WaitStepTest(unittest.TestCase):
+    def test_wait_step_fits_inside_the_bash_tool_default_timeout(self):
+        """The agent runs a runner command without a Bash tool timeout, so the step must end before the default."""
+        spec = importlib.util.spec_from_file_location("codex_critic", SCRIPT)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        cases = (
+            ({}, 90),                                       # the default timeout, 120000 ms, minus 30 s
+            ({"BASH_MAX_TIMEOUT_MS": "600000"}, 90),        # the largest explicit timeout does not count
+            ({"BASH_DEFAULT_TIMEOUT_MS": "300000"}, 270),
+            ({"BASH_DEFAULT_TIMEOUT_MS": "3600000"}, 570),  # at most 570 s
+            ({"BASH_DEFAULT_TIMEOUT_MS": "32000"}, 5),      # at least 5 s
+            ({"BASH_DEFAULT_TIMEOUT_MS": "soon"}, 90),      # a value that is not a number counts as unset
+        )
+        base = {key: value for key, value in os.environ.items() if key not in BASH_LIMITS}
+        for env, step in cases:
+            with self.subTest(env=env), mock.patch.dict(os.environ, {**base, **env}, clear=True):
+                self.assertEqual(runner.default_wait_step(), step)
 
 
 class SkillTextTest(unittest.TestCase):

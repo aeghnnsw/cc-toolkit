@@ -4,12 +4,12 @@
 Usage: python3 codex_critic.py <smoke|kickoff|resume|retry|wait> <workdir>
 
 smoke, kickoff, resume, and retry start a critic call; wait waits for the call
-that was started last. The Bash tool stops waiting for a command after at most
-600 seconds, and a critic turn can take longer. So each call runs in a detached
-supervisor: a process in a new session whose parent has already exited, so a
-kill of the command's process group and process tree does not reach it. The
-command that starts a call, and each wait, wait for the final status for at most
-one wait step.
+that was started last. The Bash tool moves a command that has no Bash tool
+timeout to the background after BASH_DEFAULT_TIMEOUT_MS, and a critic turn can
+take longer. So each call runs in a detached supervisor: a process in a new
+session whose parent has already exited, so a kill of the command's process
+group and process tree does not reach it. The command that starts a call, and
+each wait, wait for the final status for at most one wait step.
 
 Every call runs `codex exec` from the repository root with the pinned model
 and a read-only sandbox:
@@ -25,10 +25,11 @@ Time limits: the supervisor stops a call when codex writes no output to
 events.jsonl or err.log for the idle limit, 600 seconds, or when the call has
 run for the total limit, 1,800 seconds. The smoke call has 60 seconds for both.
 After a limit, the cleanup of the codex process tree takes at most 5 more
-seconds. The wait step is 570 seconds. When the Bash tool limit, the larger of
-BASH_MAX_TIMEOUT_MS (default 600000) and BASH_DEFAULT_TIMEOUT_MS (default
-120000), is lower, the step is that limit minus 30 seconds, and at least 5
-seconds.
+seconds. The wait step is the Bash tool default timeout, BASH_DEFAULT_TIMEOUT_MS
+(default 120000), minus 30 seconds: 90 seconds by default, at most 570 seconds,
+and at least 5 seconds. So a runner command that the agent runs without a Bash
+tool timeout prints its status line before the Bash tool moves it to the
+background.
 
 Inputs in <workdir>:
 
@@ -42,7 +43,9 @@ Inputs in <workdir>:
                optional seconds in place of the defaults
 
 Outputs in <workdir>: msg.txt (the critic's reply; deleted first when a call
-starts), events.jsonl (codex stdout), err.log (codex stderr), request.txt (the
+starts), replies.md (the final status line and the reply of every call, under
+a heading that names its mode; the supervisor appends each call when it ends),
+events.jsonl (codex stdout), err.log (codex stderr), request.txt (the
 stdin of codex), runner.log (supervisor errors), call.json and status.json (the
 current call and its final status), start.lock (held while a call starts),
 call.lock (held by the supervisor while it runs), and, after a kickoff,
@@ -106,9 +109,9 @@ from typing import NoReturn
 SMOKE_PROMPT = "Reply with exactly: ok"
 CALL_LIMITS = {"idle_limit": 600, "total_limit": 1800}
 SMOKE_LIMITS = {"idle_limit": 60, "total_limit": 60}
-WAIT_STEP = 570
-BASH_LIMITS = {"BASH_MAX_TIMEOUT_MS": 600_000, "BASH_DEFAULT_TIMEOUT_MS": 120_000}
-BASH_MARGIN = 30          # seconds between the end of a wait step and the Bash tool limit
+WAIT_STEP = 570           # the longest wait step
+BASH_DEFAULT_TIMEOUT_MS = 120_000  # the Bash tool default timeout when the variable of the same name is unset
+BASH_MARGIN = 30          # seconds between the end of a wait step and the Bash tool default timeout
 MIN_WAIT_STEP = 5
 STOPPED_MARGIN = 60       # seconds past the total limit after which a call counts as stopped
 POLL_SECONDS = 0.25
@@ -176,14 +179,17 @@ def limit(workdir: Path, name: str, default: float) -> float | None:
 
 
 def default_wait_step() -> float:
-    """Return 570 seconds, or less when the Bash tool limit leaves less than 30 seconds of margin."""
-    limits = []
-    for name, default in BASH_LIMITS.items():
-        try:
-            limits.append(float(os.environ.get(name) or default))
-        except ValueError:
-            limits.append(default)
-    return max(MIN_WAIT_STEP, min(WAIT_STEP, max(limits) / 1000 - BASH_MARGIN))
+    """Return the Bash tool default timeout minus 30 seconds, at least 5 and at most 570 seconds.
+
+    The agent runs a runner command without a Bash tool timeout, so the command
+    must print its status line before the default timeout moves it to the
+    background. A value that is not a number counts as unset.
+    """
+    try:
+        timeout = float(os.environ.get("BASH_DEFAULT_TIMEOUT_MS") or BASH_DEFAULT_TIMEOUT_MS)
+    except ValueError:
+        timeout = BASH_DEFAULT_TIMEOUT_MS
+    return max(MIN_WAIT_STEP, min(WAIT_STEP, timeout / 1000 - BASH_MARGIN))
 
 
 def call_limits(mode: str, workdir: Path) -> dict[str, float] | None:
@@ -505,6 +511,23 @@ def supervisor_ended(workdir: Path) -> bool:
     return True
 
 
+def append_reply(workdir: Path, mode: str, final: dict) -> None:
+    """Append the final status line and the reply of a call to replies.md.
+
+    The next call deletes msg.txt, so replies.md is the only record of every
+    reply. A failed write goes to runner.log and does not stop the status.
+    """
+    entry = f"## {mode}\n\n{status_line(final['exit'], final['model'], final['seconds'], final['status'])}\n"
+    reply = read_text(workdir / "msg.txt").rstrip("\n")
+    if reply:
+        entry += f"\n{reply}\n"
+    try:
+        with open(workdir / "replies.md", "a", encoding="utf-8") as replies:
+            replies.write(entry + "\n")
+    except OSError:
+        traceback.print_exc()
+
+
 def supervise(workdir: Path, job: dict, ready: int, lock: int) -> NoReturn:
     """Run one codex call and write its final status; never returns.
 
@@ -538,6 +561,7 @@ def supervise(workdir: Path, job: dict, ready: int, lock: int) -> NoReturn:
                 write_atomic(workdir / "thread_id", "")
             final = {"exit": TIMEOUT_EXIT if exit_code is None else exit_code, "model": job["model"],
                      "seconds": seconds, "status": status}
+            append_reply(workdir, job["mode"], final)
             write_atomic(workdir / "status.json", json.dumps(final))
         code = 0
     except BaseException:
@@ -697,16 +721,22 @@ def start_locked(mode: str, workdir: Path, model: str, lock: int) -> int | dict[
         (workdir / "request.txt").write_bytes(stdin)
     if form == "kickoff":
         (workdir / "thread_id").unlink(missing_ok=True)
-    job = {"form": form, "model": model, "repo": repo, "command": codex_command(form, workdir, repo, model),
+    job = {"mode": mode, "form": form, "model": model, "repo": repo,
+           "command": codex_command(form, workdir, repo, model),
            "idle": limits["idle_limit"], "total": limits["total_limit"]}
     if not launch(workdir, job, lock):
         return report(NO_CODE, model, 0, "error:runner stopped")
     return limits
 
 
+def status_line(code: int | str, model: str, seconds: int, status: str) -> str:
+    """Return the status line of a call."""
+    return f"exit={code} model={model} seconds={seconds} status={status}"
+
+
 def report(code: int | str, model: str, seconds: int, status: str) -> int:
     """Print the status line; return 0 for ok and 1 otherwise."""
-    print(f"exit={code} model={model} seconds={seconds} status={status}", flush=True)
+    print(status_line(code, model, seconds, status), flush=True)
     return 0 if status == "ok" else 1
 
 

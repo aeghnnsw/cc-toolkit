@@ -34,8 +34,10 @@ from lt_common import (
     ran_tests, read_node_ids, rel, suite_node_ids, tail,
 )
 from lt_coverage import changed_lines, lines_by_test, product_files, unmeasured_tests
+from lt_scan import function_id
 from lt_suite import (
-    copy_env, interpreter, kill_type, load_suite, probe, pytest_command, read_records, run_pytest, test_entries,
+    copy_env, ini_addopts, interpreter, kill_type, load_suite, probe, pytest_command, read_records, run_pytest,
+    test_entries, xdist_sources,
 )
 
 DEFAULT_BUDGET = 1800.0
@@ -53,6 +55,8 @@ SKIP_NAMES = frozenset({
 CLASSES = ("unique", "subsumed", "union-only", "empty", "unmeasured", "incomplete")
 # A test of these classes can be deleted, so no candidate counts on its kills.
 DELETION_CLASSES = frozenset({"empty", "subsumed"})
+# Safety rule 3: a removal batch deletes at most this many tests.
+BATCH_LIMIT = 20
 
 # The order of OPERATORS decides which mutants a line keeps when it has more than PER_LINE.
 OPERATORS = ("comparison", "boolean", "arithmetic", "condition", "return-none", "raise-removal", "constant", "stub")
@@ -542,6 +546,13 @@ class Runner:
         self.versions = probe(self.python, project, probe_env)
         if not self.versions.get("pytest"):
             raise UsageError("the target interpreter cannot import pytest", package="pytest")
+        # A run stops at its first unfinished test, so the tests run in one process: -n 0 turns off pytest-xdist.
+        self.xdist_off: list[str] = []
+        if self.versions.get("xdist"):
+            addopts = ini_addopts(
+                self.python, project, probe_env, self.work / "addopts.json", bool(self.versions.get("pytest_cov"))
+            )
+            self.xdist_off = xdist_sources(addopts, probe_env, extra)
         self.idle: queue.Queue = queue.Queue()
         self.copies: list[ProjectCopy] = []
         try:
@@ -560,7 +571,8 @@ class Runner:
     def command(self, name: str, files: list[str], deselect: list[str]) -> list[str]:
         targets = [*files, *(f"--deselect={n}" for n in deselect)]
         argfile = self.work / f"{name}-args.txt"
-        return pytest_command(self.python, self.versions, targets, argfile, every_test=True) + self.extra
+        cmd = pytest_command(self.python, self.versions, targets, argfile, every_test=True) + self.extra
+        return cmd + ["-n", "0"] if self.xdist_off else cmd
 
     def baseline(self, cmd: list[str]) -> dict | None:
         """Run the scope once on the unchanged copy; None when the budget runs out."""
@@ -603,6 +615,7 @@ class Runner:
             "budget_seconds": self.budget,
             "mutant_timeout_seconds": round(self.timeout, 3),
             "wall_seconds": round(time.monotonic() - started, 3),
+            "xdist_off": self.xdist_off,
         }
 
     def close(self) -> None:
@@ -743,6 +756,10 @@ def mutate_command(args, extra: list[str]) -> dict:
         raise UsageError("--base and --new-tests go together")
     if args.recheck and args.base:
         raise UsageError("--recheck takes no --base or --new-tests")
+    if args.recheck and not args.scan:
+        raise UsageError("--recheck needs --scan: the scan output of the prune scope")
+    if not args.recheck and (args.scan or args.previous):
+        raise UsageError("--scan and --previous go with --recheck")
     if args.budget is None:
         args.budget = DEFAULT_REVIEW_BUDGET if args.base else DEFAULT_BUDGET
     if args.budget <= 0:
@@ -886,7 +903,7 @@ def without_mutants(suite: dict, nodeids: list[str], budget: float, started: flo
     ]
     timing = {
         "workers": 0, "budget_seconds": budget, "mutant_timeout_seconds": None,
-        "wall_seconds": round(time.monotonic() - started, 3),
+        "wall_seconds": round(time.monotonic() - started, 3), "xdist_off": [],
     }
     passed = [n for n in nodeids if outcomes.get(n) == "passed"]
     return Evidence(None, passed, excluded, [], Counter(), timing)
@@ -1023,7 +1040,116 @@ def demotions(tests: list[dict]) -> list[str]:
     return demoted
 
 
+def function_key(nodeid: str) -> str:
+    """The node ID of a test function without its parameters, as the scan names it."""
+    path, parts = function_id(nodeid)
+    return "::".join([path, *parts])
+
+
+def load_scan(path: str, scope: int) -> dict:
+    """The scan output of the prune scope, which has `scope` node IDs."""
+    scan = load_json(path, "scan output")
+    if not isinstance(scan.get("findings"), list) or not isinstance(scan.get("unresolved"), list):
+        raise UsageError(f"{path} is not a scan output")
+    scanned = (scan.get("summary") or {}).get("nodeids")
+    if scanned != scope:
+        raise UsageError(
+            f"the scan output {path} scanned {scanned} node IDs, but the matrix scope has {scope}; "
+            "scan the suite output of the prune scope"
+        )
+    return scan
+
+
+def load_previous(path: str, matrix: str) -> set:
+    """The removed tests of the passed killed-set check of an earlier batch of the same matrix."""
+    previous = load_json(path, "killed-set check output")
+    summary = previous.get("summary") or {}
+    if summary.get("mode") != "recheck" or previous.get("matrix") != matrix:
+        raise UsageError(f"{path} is not a killed-set check of the matrix {matrix}")
+    if summary.get("passed") is not True:
+        raise UsageError(f"the killed-set check {path} did not pass, so it is not the check of a committed batch")
+    return {entry["nodeid"] for entry in previous.get("removed", [])}
+
+
+def removal_check(matrix: dict, collected: list[str], scan: dict, earlier: set) -> dict:
+    """The prune limits of a removal batch: the batch size, the classes, and the excluded and protected tests.
+
+    A removed test is a matrix test that the batch did not collect. A merged
+    test keeps the name of its retained test, so a missing matrix test whose
+    function the batch collects with more cases than the matrix had, one of
+    them new, is the retained test of a merge. Each other missing test counts
+    as removed, also when it cannot be told apart from a merge. The `earlier`
+    tests, which a committed batch of the same matrix removed, do not count
+    toward the batch size.
+    """
+    classes = {test["nodeid"]: test.get("class") for test in matrix.get("tests", [])}
+    excluded = {entry["nodeid"] for entry in matrix.get("excluded", [])}
+    scope = [*classes, *sorted(excluded - set(classes))]
+    in_scope, batch = set(scope), set(collected)
+    cases_before = Counter(function_key(nodeid) for nodeid in scope)
+    cases_after: dict[str, list[str]] = {}
+    for nodeid in collected:
+        cases_after.setdefault(function_key(nodeid), []).append(nodeid)
+    protected: dict[str, list[str]] = {}
+    for finding in scan["findings"]:
+        if finding.get("code") == "protected":
+            protected.setdefault(finding.get("nodeid"), []).append(finding.get("detail") or "protected")
+    unresolved = {entry.get("nodeid"): entry.get("reason") for entry in scan["unresolved"]}
+    removed, merged = [], []
+    for nodeid in scope:
+        if nodeid in batch:
+            continue
+        key = function_key(nodeid)
+        entry = {
+            "nodeid": nodeid, "class": classes.get(nodeid), "excluded": nodeid in excluded,
+            "protected": protected.get(key, []), "unresolved": unresolved.get(key),
+        }
+        cases = cases_after.get(key, [])
+        new = [n for n in cases if n not in in_scope]
+        if new and len(cases) > cases_before[key]:
+            merged.append({**entry, "into": new})
+        else:
+            removed.append({**entry, "earlier_batch": nodeid in earlier})
+    in_batch = [entry["nodeid"] for entry in removed if not entry["earlier_batch"]]
+    changed = removed + merged
+    found = {
+        "removed": in_batch if len(in_batch) > BATCH_LIMIT else [],
+        "keep_class": [
+            f"{e['nodeid']} ({e['class']})" for e in removed if not e["excluded"] and e["class"] not in DELETION_CLASSES
+        ],
+        "excluded": [e["nodeid"] for e in changed if e["excluded"]],
+        "protected": [f"{e['nodeid']}: {'; '.join(e['protected'])}" for e in changed if e["protected"]],
+        "protection_unknown": [f"{e['nodeid']}: {e['unresolved']}" for e in changed if e["unresolved"] is not None],
+    }
+    texts = {
+        "removed": f"{len(in_batch)} tests removed in this batch, more than the batch size of {BATCH_LIMIT}",
+        "keep_class": f"{len(found['keep_class'])} removed tests have a class other than empty or subsumed",
+        "excluded": f"{len(found['excluded'])} removed or merged tests are in the excluded list of the matrix",
+        "protected": f"{len(found['protected'])} removed or merged tests have a protected scan finding",
+        "protection_unknown": (
+            f"{len(found['protection_unknown'])} removed or merged tests are unresolved in the scan, so their "
+            "protection is unknown"
+        ),
+    }
+    examples = {name: shown[:EXAMPLES] for name, shown in found.items()}
+    examples["removed"] = in_batch[:EXAMPLES]
+    examples["merged"] = [entry["nodeid"] for entry in merged][:EXAMPLES]
+    return {
+        "removed": removed,
+        "merged": merged,
+        "batch": in_batch,
+        "reasons": [texts[name] for name, shown in found.items() if shown],
+        "examples": examples,
+    }
+
+
 def recheck(args, extra: list[str]) -> dict:
+    """The killed-set check of a removal batch, with the prune limits of the batch.
+
+    `passed` is true only when the evidence is complete, each mutant of the
+    killed set is still killed, no test that passed before fails, and the
+    batch keeps the prune limits of removal_check.
+    """
     started = time.monotonic()
     before = load_json(args.recheck, "mutate output")
     summary = before.get("summary") or {}
@@ -1031,7 +1157,8 @@ def recheck(args, extra: list[str]) -> dict:
         raise UsageError(f"{args.recheck} is not the output of a mutate matrix run")
     if not summary.get("complete"):
         raise UsageError(f"the matrix {args.recheck} is incomplete evidence; it cannot back a removal")
-    suite, project, _ = load_scope_suite(args.suite)
+    matrix_path = str(Path(args.recheck).resolve())
+    suite, project, collected = load_scope_suite(args.suite)
     texts = {}
     for module in before.get("modules", []):
         path = module["path"]
@@ -1041,6 +1168,10 @@ def recheck(args, extra: list[str]) -> dict:
             raise UsageError(f"cannot read the product module {path}: {parse_failure(error)}") from error
         if hashlib.sha256(texts[path].raw).hexdigest() != module["sha256"]:
             raise UsageError(f"the product module {path} changed after the matrix run; run mutate again")
+    in_matrix = {t["nodeid"] for t in before.get("tests", [])}
+    scan = load_scan(args.scan, len(in_matrix | {e["nodeid"] for e in before.get("excluded", [])}))
+    earlier = load_previous(args.previous, matrix_path) if args.previous else set()
+    limits = removal_check(before, collected, scan, earlier)
     keys = ("id", "path", "line", "operator", "before", "after", "splices")
     killed = [m for m in before.get("mutants", []) if m.get("status") == "killed"]
     mutants = [{**{k: m[k] for k in keys}, **status_before_run()} for m in killed]
@@ -1049,36 +1180,51 @@ def recheck(args, extra: list[str]) -> dict:
         raise UsageError(f"the matrix {args.recheck} has no killed mutant to check")
     evidence = gather(args, extra, suite, project, texts, mutants, started)
     reason = evidence.reason
-    in_matrix = {t["nodeid"] for t in before.get("tests", [])}
     broken = [e for e in evidence.excluded if e["nodeid"] in in_matrix]
     lost = [
         {**{k: m[k] for k in keys if k != "splices"}, "killed_before_by": killed_before[m["id"]]}
         for m in mutants if m["status"] == "survived"
     ]
+    reasons = [f"incomplete evidence: {reason}"] if reason is not None else []
+    if lost:
+        reasons.append(f"{len(lost)} mutants of the killed set survived")
+    if broken:
+        reasons.append(f"{len(broken)} tests that passed in the matrix run did not pass")
+    reasons += limits["reasons"]
+    still_killed = evidence.statuses["killed"]
+    # The first line of the commit body of a passed batch.
+    commit_line = f"Killed-set check: {still_killed} of {len(mutants)} mutants still killed."
     result_summary = {
         "mode": "recheck",
         "complete": reason is None,
         "incomplete_reason": reason,
-        "passed": reason is None and not lost and not broken,
+        "passed": not reasons,
+        "reasons": reasons,
+        "commit_line": None if reasons else commit_line,
         "tests": len(evidence.tests),
         "killed_set": len(mutants),
-        "still_killed": evidence.statuses["killed"],
+        "still_killed": still_killed,
         "lost": len(lost),
         "not_run": evidence.statuses["not-run"],
         "broken": len(broken),
+        "removed": len(limits["batch"]),
+        "merged": len(limits["merged"]),
         **evidence.timing,
         "examples": {
             "lost": [label(m) for m in mutants if m["status"] == "survived"][:EXAMPLES],
             "broken": [e["nodeid"] for e in broken][:EXAMPLES],
+            **limits["examples"],
         },
     }
     return {
         "summary": result_summary,
         "project": str(project),
-        "matrix": str(Path(args.recheck).resolve()),
+        "matrix": matrix_path,
         "sanity": evidence.sanity,
         "excluded": evidence.excluded,
         "broken": broken,
         "lost": lost,
+        "removed": limits["removed"],
+        "merged": limits["merged"],
         "mutants": mutants,
     }

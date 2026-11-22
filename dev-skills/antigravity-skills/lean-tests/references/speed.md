@@ -62,7 +62,8 @@ as `inner-loop` or `hand-off`.
   the pytest configuration, the development dependencies and their lock
   file, the tox or nox sessions and other local commands that run coverage
   (fix 3), and the "Tests" section of the agent instruction files. Report a
-  needed product-code change, such as a lazy import, to the user.
+  needed product-code change, such as a lazy import, to the user. Step 7
+  checks this rule.
 - Read test commands, Python versions, and options only from these local
   sources: the pytest configuration, the dependency files and their lock
   file, the agent instruction files, tox or nox sessions, Makefile or
@@ -79,10 +80,11 @@ as `inner-loop` or `hand-off`.
 Run `git -C <project> status --porcelain`. speed commits each fix on its
 own, and a speed commit holds only speed's changes. When the command lists
 changes, ask the user how to continue before you change a file. Follow the
-project's branch and commit rules.
+project's branch and commit rules. Then record `<start>`, the commit that
+`git -C <project> rev-parse HEAD` prints, for step 7.
 
 Done when the command prints nothing, or the user has said how to handle
-the listed changes.
+the listed changes, and you have `<start>`.
 
 ## 2. Measure
 
@@ -107,9 +109,7 @@ wall times vary between runs.
    commands of check step 2. Each pytest-xdist worker imports `<source>`
    again and adds this cost.
 4. Run `suite` with the label `reversed` and `--reverse`, and compare
-   `reversed`. `changed` lists the order-dependent tests. When the project's
-   options turn on pytest-xdist (`-n`), add `-- -n 0`, because pytest-xdist
-   does not keep the reversed order.
+   `reversed`. `changed` lists the order-dependent tests.
 5. Time the inner loop: run `suite` with the label `inner-loop-before` and
    `-- "<node-id>" -x -q`. `<node-id>` is the first node ID in `collected`
    of the before run.
@@ -480,7 +480,21 @@ pytest-xdist. The no-loss invariant holds when:
 When the invariant fails, find the change that caused it, revert or correct
 it, and run this step again.
 
-Done when the no-loss invariant holds.
+Then check the files that the speed commits changed:
+
+```bash
+<python> <skill-dir>/scripts/lean_tests.py changed-files --project <project> \
+  --base <start>
+```
+
+`passed` is false, and the exit status is 1, when a changed file is not one
+that the [Rules](#rules) allow, or is a file that speed may not change
+([safety rule 7](../SKILL.md#safety-rules)). In `pyproject.toml` and
+`setup.cfg`, only the pytest configuration and the development dependency
+sections pass. When `passed` is false, find the commit that changed each
+file of `failures`, revert or correct the change, and run this step again.
+
+Done when the no-loss invariant holds and changed-files passes.
 
 ## 8. Print the before/after table
 

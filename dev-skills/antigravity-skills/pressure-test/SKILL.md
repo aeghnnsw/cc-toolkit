@@ -46,7 +46,7 @@ pins the model, enforces the time limits, and prints one status line.
   (`error:timeout`). Both report exit code 124. The preflight smoke call has
   60 seconds for both limits.
 - Waiting: each call runs in a detached process, so a shell limit does not
-  stop it. A runner command waits for the result for at most 570 seconds,
+  stop it. A runner command waits for the result for at most 90 seconds,
   then prints `status=running`; then run `wait` (see
   [Status line](#status-line)). A runner command can move to the background
   after at most 10 seconds. Then wait for its completion message, which gives
@@ -73,6 +73,7 @@ pins the model, enforces the time limits, and prints one status line.
 - One goal per critic thread. A new goal starts a new pressure test with its
   own setup. Send no critic call after convergence or the round cap.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
+- `REPLIES_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-replies.md`
 - `CONCLUSION_PATH = docs/pressure-test/YYYY-MM-DD-topic-slug-conclusion.md`
 - An explicit direction from the user or from a calling skill overrides the
   corresponding output path.
@@ -279,8 +280,10 @@ python3 "$RUNNER" resume "$DIR" && cat "$DIR/msg.txt"
 The runner prints `exit=<code> model=<model> seconds=<n> status=<status>`,
 where `seconds` is the time of the call so far. It writes the reply to
 `$DIR/msg.txt`, the Codex events to `$DIR/events.jsonl`, and stderr to
-`$DIR/err.log`. On the kickoff, it saves the thread ID to `$DIR/thread_id`;
-each resume uses that ID. Act on the status:
+`$DIR/err.log`. When a call ends, the runner appends its final status line
+and reply to `$DIR/replies.md`, because the next call deletes `msg.txt`. On
+the kickoff, it saves the thread ID to `$DIR/thread_id`; each resume uses
+that ID. Act on the status:
 
 - **`running`** (exit `-`) — the call continues in its detached process. Wait
   for it, and repeat until a final status:
@@ -302,8 +305,9 @@ each resume uses that ID. Act on the status:
 - **`error:no thread id`** (a kickoff, or a retry that starts a new thread) —
   the call succeeded but did not emit a `thread.started` event, which means
   the event shape changed. **STOP** and report the last lines of
-  `$DIR/err.log` and `$DIR/events.jsonl`. The runner never falls back to the
-  `--last` form.
+  `$DIR/err.log` and `$DIR/events.jsonl`. Make no retry. The runner never
+  falls back to the `--last` form. Write the conclusion with what exists; the
+  ending condition is "cut short".
 - **`error:timeout`** or **`error:idle`** (exit code 124) — the call reached a
   time limit. Make one [narrow retry](#narrow-retry).
 - **Any other `error:` status**, for example `error:exit 1` or
@@ -380,10 +384,12 @@ cannot match, and reports `status=flagged`.
   assessed and does not converge.
 - **Round cap** — 6 rounds reached. Carry any live disagreements into the
   conclusion as explicitly unresolved.
-- **Error** — a runner call reports an `error:` status without a flag. After
-  `error:timeout` or `error:idle`, make one [narrow retry](#narrow-retry);
-  after any other error, retry the same block once. If the retry also fails,
-  write the conclusion with what exists and end with "cut short".
+- **Error** — a runner call reports a final `error:` status without a flag.
+  `error:busy` is not a final status: run `wait`. After `error:no thread id`,
+  make no retry; the ending condition is "cut short". After `error:timeout`
+  or `error:idle`, make one [narrow retry](#narrow-retry); after any other
+  error, retry the same block once. If the retry also fails, write the
+  conclusion with what exists; the ending condition is "cut short".
 - **Critic flagged** — the other allowed model was also flagged (see
   [Flags](#flags)).
 - **Critic unavailable** — the preflight failed.
@@ -428,7 +434,9 @@ after the critic's latest reply.
 
 ## Step 3 — Conclusion (always)
 
-Write the conclusion to `CONCLUSION_PATH` and present it in chat.
+Write the conclusion to `CONCLUSION_PATH` and present it in chat. When
+`$DIR/replies.md` exists, copy it to `REPLIES_PATH` first. It keeps the
+critic's exact replies, so a reader can check the conclusion against them.
 
 Include:
 
@@ -441,6 +449,7 @@ Include:
 - ending condition: converged, round cap, critic unavailable, critic flagged,
   no cross-family critic, or cut short
 - the critic model or models that took part
+- a link to `REPLIES_PATH`, when you copied the replies
 
 Then tell the user the path and show the conclusion. When another skill called
 this skill, that skill reads the conclusion and continues its own work; do not

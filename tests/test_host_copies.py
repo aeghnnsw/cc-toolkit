@@ -276,6 +276,11 @@ HOST_LINES = {
 -description: Guide for creating publication-quality scientific figures that meet major journal standards (Nature, Science, ACS, RSC). Use this skill when users ask about scientific figure formatting, journal requirements, colorblind-safe palettes, resolution/DPI, file formats, fonts, or figure dimensions for publication.
 +description: Use when creating or reviewing scientific figures for publication, including journal dimensions, resolution, file formats, typography, line weights, colorblind-safe palettes, and Nature, Science, ACS, or RSC requirements.
 ''',
+    'dev-skills/codex-skills/lean-tests/SKILL.md': r'''
+# Codex ships no project-eval (#313), so the description does not route to it.
+-description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
++description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review.
+''',
     'dev-skills/codex-skills/grill-with-research/SKILL.md': r'''
 -Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
 -the Skill tool, and follow both. If the Skill tool lacks one, resolve its path
@@ -382,14 +387,14 @@ HOST_LINES = {
 +[cross-family check](#cross-family-check). The result is a written
 +conclusion, not code changes.
 -- Waiting: each call runs in a detached process, so the Bash tool limit does
--  not stop it. A runner command waits for the result for at most 570 seconds
--  (less when the Bash tool limit is below 600 seconds), then prints
--  `status=running`; then run `wait` (see [Status line](#status-line)). Run
--  every runner command with the Bash tool `timeout` set to `600000`. With the
--  default of 120000 ms, the Bash tool moves a long command to the background
--  after 2 minutes.
+-  not stop it. A runner command waits for the result for one wait step, then
+-  prints `status=running`; then run `wait` (see [Status line](#status-line)).
+-  The wait step is 30 seconds less than the Bash tool default timeout,
+-  `BASH_DEFAULT_TIMEOUT_MS`: 90 seconds when it is unset, and at most 570
+-  seconds. So a runner command prints its status line before the Bash tool
+-  moves it to the background, and it needs no Bash tool `timeout`.
 +- Waiting: each call runs in a detached process, so a shell limit does not
-+  stop it. A runner command waits for the result for at most 570 seconds,
++  stop it. A runner command waits for the result for at most 90 seconds,
 +  then prints `status=running`; then run `wait` (see
 +  [Status line](#status-line)). A runner command can move to the background
 +  after at most 10 seconds. Then wait for its completion message, which gives
@@ -418,9 +423,6 @@ HOST_LINES = {
 +its absolute path in the block.
 -RUNNER="<plugin-root>/skills/pressure-test/scripts/codex_critic.py"
 +RUNNER="<skill-dir>/scripts/codex_critic.py"
--  for it with the Bash tool `timeout` set to `600000`, and repeat until a
--  final status:
-+  for it, and repeat until a final status:
 -  Run `wait` also when the Bash tool stops a runner command or moves it to the
 -  background. The call continues, and `wait` prints its status. Do not start
 -  the call again.

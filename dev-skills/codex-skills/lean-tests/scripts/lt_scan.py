@@ -1,7 +1,8 @@
 """scan: find weak, duplicate, and protected tests by their syntax tree.
 
 Imported by lean_tests.py; never run directly. Every finding is a
-candidate for review, not a verdict: the scan reads only the test source.
+candidate for review, not a verdict: the scan reads only the test source
+and, with --git-history, the subject of the commit that added each test.
 """
 
 from __future__ import annotations
@@ -13,7 +14,9 @@ import re
 import tokenize
 from pathlib import Path
 
-from lt_common import EXAMPLES, PARSE_ERRORS, UsageError, load_json, parse_failure, read_node_ids, suite_node_ids
+from lt_common import (
+    EXAMPLES, PARSE_ERRORS, UsageError, git, load_json, parse_failure, read_node_ids, suite_node_ids, tail,
+)
 
 MOCK_ASSERTS = frozenset({
     "assert_called", "assert_called_once", "assert_called_with", "assert_called_once_with",
@@ -37,6 +40,12 @@ ISSUE_TEXT = re.compile(
     r"(?:\b(?:issue|bug|gh|ticket)\s*[#-]?\s*\d+|(?<![\w&])#\d+\b|/(?:issues|pull)/\d+)", re.IGNORECASE
 )
 ISSUE_NAME = re.compile(r"(?:^|_)(?:issue|bug|gh|ticket)_?\d+", re.IGNORECASE)
+# The protection words of the subject of the commit that added a test.
+COMMIT_WORDS = re.compile(
+    r"\b((?:bug|hot)?fix(?:e[sd]|ing)?|bugs?|regression|characteri[sz]ation|security|compat(?:ibility)?"
+    r"|perf(?:ormance)?)\b",
+    re.IGNORECASE,
+)
 NAME_PROTECTION = {
     "regression": "regression", "regressions": "regression", "characterization": "characterization",
     "characterisation": "characterization", "security": "security", "compat": "compat",
@@ -80,7 +89,7 @@ def scan_command(args) -> dict:
         root = Path(args.project or ".").resolve()
     if not root.is_dir():
         raise UsageError(f"project directory {root} does not exist")
-    return scan(root, nodeids)
+    return scan(root, nodeids, args.git_history)
 
 
 def function_id(nodeid: str) -> tuple[str, list[str]]:
@@ -91,7 +100,8 @@ def function_id(nodeid: str) -> tuple[str, list[str]]:
     return path, parts
 
 
-def scan(root: Path, nodeids: list[str]) -> dict:
+def scan(root: Path, nodeids: list[str], git_history: bool = False) -> dict:
+    """Scan the test functions of `nodeids`; with `git_history`, also read the subject of the commit that added each."""
     functions: dict[str, tuple[str, list[str]]] = {}
     for nodeid in nodeids:
         path, parts = function_id(nodeid)
@@ -102,6 +112,7 @@ def scan(root: Path, nodeids: list[str]) -> dict:
     findings: list[dict] = []
     unresolved: list[dict] = []
     shapes: dict[str, list[tuple[str, str, int]]] = {}
+    found_tests: list[tuple[str, str, int, str]] = []
     for key, (path, parts) in functions.items():
         if path not in modules:
             modules[path] = load_module(root / path)
@@ -118,6 +129,12 @@ def scan(root: Path, nodeids: list[str]) -> dict:
         for code, line, detail in test.findings():
             findings.append(finding(code, key, path, line, detail))
         shapes.setdefault(test.shape(), []).append((key, path, func.lineno))
+        found_tests.append((key, path, func.lineno, func.name))
+
+    history = None
+    if git_history:
+        commit_found, history = commit_findings(root, found_tests)
+        findings += commit_found
 
     groups = []
     for members in shapes.values():
@@ -144,6 +161,7 @@ def scan(root: Path, nodeids: list[str]) -> dict:
             "counts": dict(sorted(counts.items())),
             "duplicate_groups": len(groups),
             "unresolved": len(unresolved),
+            "git_history": history,
             "examples": dict(sorted(examples.items())),
         },
         "findings": findings,
@@ -154,6 +172,64 @@ def scan(root: Path, nodeids: list[str]) -> dict:
 
 def finding(code: str, nodeid: str, path: str, line: int, detail: str) -> dict:
     return {"code": code, "nodeid": nodeid, "file": path, "line": line, "detail": detail}
+
+
+def commit_findings(root: Path, tests: list[tuple[str, str, int, str]]) -> tuple[list[dict], dict]:
+    """The protected findings from the subject of the commit that added each test, and a summary of the search.
+
+    `tests` holds (node ID, file, line, function name). A subject protects
+    a test when it has an issue reference or a word of COMMIT_WORDS.
+    """
+    check = git(root, "rev-parse", "--is-inside-work-tree", "--is-shallow-repository")
+    answers = check.stdout.split()
+    if check.returncode != 0 or answers[:1] != ["true"]:
+        raise UsageError(f"--git-history needs a Git work tree; {root} is not in one", log_tail=tail(check.stderr, 5))
+    if answers[1:2] == ["true"]:
+        raise UsageError("--git-history needs the full Git history; the repository is a shallow clone")
+    by_file: dict[str, dict[str, list[tuple[str, int]]]] = {}
+    for nodeid, path, line, name in tests:
+        by_file.setdefault(path, {}).setdefault(name, []).append((nodeid, line))
+    findings = []
+    not_found = 0
+    for path, names in by_file.items():
+        added = first_commits(root, path, sorted(names))
+        for name, entries in names.items():
+            if name not in added:
+                not_found += len(entries)
+                continue
+            commit, subject = added[name]
+            signals = [m.group(0) for m in ISSUE_TEXT.finditer(subject)]
+            signals += [m.group(0).lower() for m in COMMIT_WORDS.finditer(subject)]
+            for nodeid, line in entries:
+                for signal in dict.fromkeys(signals):
+                    entry = finding("protected", nodeid, path, line, f"commit: {signal}")
+                    findings.append({**entry, "commit": commit[:12], "subject": subject})
+    return findings, {"files": len(by_file), "tests_not_in_history": not_found}
+
+
+def first_commits(root: Path, path: str, names: list[str]) -> dict[str, tuple[str, str]]:
+    """The hash and subject of the oldest commit whose diff of `path` adds or removes the def line of each name.
+
+    One `git log -G` per file gives, for each name, the first commit of
+    `git log --reverse -G "def <name>\\(" -- <path>`.
+    """
+    pattern = "def (" + "|".join(names) + r")\("
+    result = git(
+        root, "log", "--reverse", "--no-color", "--no-ext-diff", "--no-textconv", "-p", "-U0",
+        "--format=%x00%H%x00%s", "-G", pattern, "--", path,
+    )
+    if result.returncode != 0:
+        raise UsageError(f"git log failed for {path}", log_tail=tail(result.stderr, 5))
+    changed_def = re.compile(pattern)
+    found: dict[str, tuple[str, str]] = {}
+    chunks = result.stdout.split("\0")
+    for commit, body in zip(chunks[1::2], chunks[2::2]):
+        subject, _, patch = body.partition("\n")
+        for line in patch.splitlines():
+            if line[:1] in ("+", "-"):
+                for match in changed_def.finditer(line):
+                    found.setdefault(match.group(1), (commit, subject))
+    return found
 
 
 def load_module(path: Path):
