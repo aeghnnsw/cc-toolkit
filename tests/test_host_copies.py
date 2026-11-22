@@ -210,8 +210,6 @@ class HostCopyTests(unittest.TestCase):
                                                  'of the Codex copy, or none of them')
                 for name in policy.keys() & INVOCATION_EXCEPTIONS.keys():
                     self.assertNotIn(policy[name], agreed, f'{name} agrees now; remove it from INVOCATION_EXCEPTIONS')
-                if (plugin, skill) in PINNED_POLICY:
-                    self.assertEqual(agreed, {PINNED_POLICY[plugin, skill][0]}, PINNED_POLICY[plugin, skill][1])
 
     def test_pinned_skills_keep_their_policy_on_every_host(self):
         found = set()

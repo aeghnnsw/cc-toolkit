@@ -63,6 +63,11 @@ class InstallPromptTests(unittest.TestCase):
                                                       'unchanged'])
         self.assertEqual(len(self.backups()), 1)
 
+    def test_a_moved_section_is_not_dropped(self):
+        self.write_target(GTD_SECTION + '\n' + ASSET)
+        out = self.run_script()
+        self.assertEqual(out, [f'target: {self.target}', 'keep: # GTD agent captures'])
+
     def test_new_file(self):
         self.assertEqual(self.run_script(), [f'target: {self.target}', 'new file'])
         self.assertFalse(self.config.exists())

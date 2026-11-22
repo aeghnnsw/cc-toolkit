@@ -13,7 +13,8 @@
 #   new file                     the target does not exist
 #   unchanged                    the target already has the new content
 #   keep: # GTD agent captures   the new file keeps the section of the target
-#   drop: <line>                 each line with text that the target has and the new file does not
+#   drop: <line>                 each line with text that the target has and the new file does not have
+#                                anywhere
 # With --apply, it also backs up the target to <target>.bak-YYYYMMDD-HHMMSS, writes the new file through a
 # symlink, compares the result with the new content, and prints "backup: <path>" and "wrote: <path>".
 # It exits 2 and writes nothing on a usage error, a missing asset, or a broken symlink at the target.
@@ -60,7 +61,8 @@ if [ -f "$target" ]; then
     echo "unchanged"
     exit 0
   fi
-  { diff "$target" "$new" || true; } | sed -n 's/^< //p' | { grep -v '^[[:space:]]*$' || true; } | sed 's/^/drop: /'
+  # A line that only moves is not dropped, so compare the lines as a set.
+  { grep -vxF -f "$new" "$target" || true; } | { grep -v '^[[:space:]]*$' || true; } | sed 's/^/drop: /'
 else
   echo "new file"
 fi

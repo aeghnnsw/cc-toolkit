@@ -233,12 +233,12 @@ class ModelPinTests(unittest.TestCase):
                 self.assertTrue(any(re.search(rf'\b{re.escape(named)}\b(?![-.]\w)', problem) for problem in problems),
                                 problems)
 
-
     def test_current_list_names_the_primary_and_fallback_models(self):
         allowed = json.loads(FIXTURE[ALLOWED_MODELS])
         allowed['claude']['current'] = ['claude-opus-5-5']
         problems = check_model_config(self.fixture({ALLOWED_MODELS: json.dumps(allowed)}), allowed)
         self.assertIn(f"{ALLOWED_MODELS}: the claude current list has no 'claude-sonnet-5-5' (fallback)", problems)
+
 
 if __name__ == '__main__':
     unittest.main()

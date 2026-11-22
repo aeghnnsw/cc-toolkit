@@ -340,8 +340,8 @@ Validate the integer:
 - Above `1000000`: inform the user that the maximum is 1,000,000 and ask again.
 - Above the model context window: inform the user that Claude Code caps the
   window at the model context window, and confirm the value.
-- Equal to the current setting: report "Already set. No change needed." and
-  skip the write.
+- Equal to the current setting: record the action anyway. The script then
+  removes a stacked override, or it reports `no change`.
 
 Record the action `window <integer>` for Step 8. In the same write, the
 script removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
@@ -349,9 +349,9 @@ script removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
 `autoCompactWindow` is the only threshold.
 
 If Step 2 found either variable outside
-`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, give the user the file and line, and
-ask them to remove it. The skill does not edit
-shell profiles or project files.
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, give the user the file and
+line, and ask them to remove it. The skill does not edit shell profiles or
+project files.
 
 Report the new trigger. Tell the user that `/autocompact <value>` sets the same
 key from inside a session.
@@ -381,12 +381,11 @@ overrides `autoCompactEnabled` and keeps auto-compact off.
 
 ## Step 8: Write All Changes
 
-Write only the keys the user selected that differ from the current value.
-
 ### Step 8a: Auto-compact
 
-When Step 7 recorded an action, run the script with it. This skill writes
-auto-compact settings only with this script:
+When Step 7 recorded an action, run the script with it, even when the value
+equals the current setting. This skill writes auto-compact settings only with
+this script:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/model-config/scripts/set_autocompact.sh" window 400000
@@ -394,8 +393,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/model-config/scripts/set_autocompact.sh" wind
 
 Replace `window 400000` with the recorded action: `window <tokens>`, `auto`,
 `off`, `off-all`, or `on`. The script edits
-`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, or the file after `--file <path>`. It keeps every other key, and it writes
-through a symlink. Every action also removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, or the file after
+`--file <path>`. It keeps every other key, and it writes through a symlink.
+Every action also removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
 and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the `env` block. The script prints
 `file: <path>`, then `no change` when the file already has the values, then a
 `removed: env.<name>=<old value>` line for each removed variable, then the
@@ -406,7 +406,8 @@ removed. Exit status 2 means that it changed nothing; report its error.
 ### Step 8b: Model and effort
 
 Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` again, then apply the
-model and effort changes in one surgical update:
+model and effort changes in one surgical update. Write only the keys that the
+user selected and that differ from the current value:
 
 - If the file does not exist, use **Write** to create it with only the keys
   being set.
@@ -446,8 +447,8 @@ If nothing changed, confirm: "No changes were made."
 
 ## Uninstall
 
-Remove these keys from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` to return to
-defaults:
+Remove these keys from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` to
+return to defaults:
 
 - `model`, to restore the account default model
 - `effortLevel` and `modelSettings`, to restore the model default effort

@@ -1,7 +1,7 @@
 ---
 name: claude-prompt-config
 version: 1.1.0
-description: This skill should be used when the user asks to "sync my CLAUDE.md", "install my global prompt", "apply my Claude config", "update the global CLAUDE.md", "push my CLAUDE.md to <host>", or wants to replace the global Claude Code instruction file with the maintained default, on this machine or on a remote host.
+description: "Use when the user invokes claude-prompt-config to replace the global Claude Code instruction file with the maintained default, on this machine or on a remote host, for example to sync, install, or push their CLAUDE.md."
 disable-model-invocation: true
 ---
 
