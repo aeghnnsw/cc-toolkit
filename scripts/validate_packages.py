@@ -437,6 +437,7 @@ CHANGELOG_FORM = ('- <plugin> (<Host> <version>): <change>. See [#N](https://git
 CHANGELOG_BULLET = re.compile(
     r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): (?:(?! See \[#).)+'
     r' See \[#(?P<issue>\d+)\]\(https://github\.com/aeghnnsw/cc-toolkit/issues/(?P=issue)\)\.')
+MARKDOWN_HEADING = re.compile(r'#{1,6}(?:[ \t]|$)')
 HOST_NAME = '(?:Claude Code|Codex|Antigravity)'
 HOST_GROUP = re.compile(rf'(?P<hosts>{HOST_NAME}(?:(?:, and |, | and ){HOST_NAME})*) (?P<version>\d+\.\d+\.\d+)')
 
@@ -481,7 +482,7 @@ def check_changelog(text, old_text, packages, previous):
             heading, section = line, None
         elif line.startswith('### '):
             section = line
-        if not line.strip() or line.startswith('#') or line in old_lines:
+        if not line.strip() or MARKDOWN_HEADING.match(line) or line in old_lines:
             continue
         where = f'{CHANGELOG_PATH}:{number}'
         if not line.startswith('- '):

@@ -484,8 +484,10 @@ class PackageValidationTests(unittest.TestCase):
                 self.reset_changelog()
                 self.add_bullet(bullet, issue)
                 self.assert_failure('CHANGELOG.md:9: the new bullet breaks the entry form')
-        for bullet in ['* Repository: another marker.', '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n  ' + 'y' * 600]:
-            with self.subTest(bullet=bullet[:30]):
+        linked = '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).'
+        for index, bullet in enumerate(['* Repository: another marker.', linked + '\n  ' + 'y' * 600,
+                                        linked + '\n#' + 'y' * 600]):
+            with self.subTest(index=index):
                 self.reset_changelog()
                 self.add_bullet(bullet, None)
                 self.assert_failure('a new line must be a one-line bullet that starts with "- "')
