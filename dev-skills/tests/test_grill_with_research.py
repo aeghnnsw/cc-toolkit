@@ -38,11 +38,6 @@ USER_INVOKED_SETTING = {
     "codex-skills": "`allow_implicit_invocation: false`",
     "antigravity-skills": "`disable-model-invocation: true`",
 }
-# Tools and wording of another host that an Antigravity copy must not name.
-OTHER_HOST_TERMS = (
-    "Skill tool", "CLAUDE_PLUGIN_ROOT", "--host codex", "In Codex", "In Claude Code",
-    "update_plan", "TodoWrite", "run_in_background", "PR monitoring mechanism",
-)
 RETRO_HEADING = "## Navigation retrospective"
 ANTIGRAVITY_SESSION_FACTS = (
     "`~/.gemini/antigravity-cli`",
@@ -161,17 +156,6 @@ class MattAutomodeUsesTheWrapperTest(unittest.TestCase):
 
 class AntigravityCopiesTest(unittest.TestCase):
     """Issue #432: the Antigravity copies use Antigravity terms and sessions."""
-
-    def test_antigravity_copies_name_no_tool_of_another_host(self) -> None:
-        texts = {
-            "grill-with-research": wrapper("antigravity-skills")[1],
-            "matt-automode": automode("antigravity-skills"),
-            "pr-feedback": (PLUGIN_ROOT / "antigravity-skills" / "pr-feedback" / "SKILL.md").read_text(),
-        }
-        for skill, text in texts.items():
-            for term in OTHER_HOST_TERMS:
-                with self.subTest(skill=skill, term=term):
-                    self.assertNotIn(term, text)
 
     def test_antigravity_automode_keeps_its_task_list_in_a_task_artifact(self) -> None:
         text = automode("antigravity-skills")

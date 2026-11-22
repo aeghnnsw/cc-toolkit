@@ -135,12 +135,6 @@ class SkillCopyTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^policy:\n  allow_implicit_invocation: false$")
         self.assertIn("$dev-skills:t3-project-lead", text)
 
-    def test_copies_say_the_same(self) -> None:
-        for host in HOSTS[1:]:
-            with self.subTest(host=host):
-                self.assertIn(PLUGIN_ROOT_LINE, words(split_skill(host)[1]))
-                self.assertEqual(shared_text(host), shared_text("skills"))
-
     def test_skill_starts_the_script_and_stays_short(self) -> None:
         _, body = split_skill("skills")
         self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead.py" start', body)

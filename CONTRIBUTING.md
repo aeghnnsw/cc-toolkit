@@ -74,9 +74,19 @@ invocation, and plugin-root paths.
 
 For an example, see `creator-skills/skills/sci-slides/`,
 `creator-skills/codex-skills/sci-slides/`, and
-`creator-skills/antigravity-skills/sci-slides/`. The test
-`creator-skills/tests/test_sci_slides.py` compares the three copies. A new
-skill also needs an entry in each [README.md](README.md) list of its
+`creator-skills/antigravity-skills/sci-slides/`.
+
+The root test [tests/test_host_copies.py](tests/test_host_copies.py)
+compares each copy with the Claude copy: its file list, and the
+`description` line, body, and text of each shared file. It also checks the
+frontmatter, invocation policy, and tool-name rules below. A difference
+fails unless an allowlist at the end of the test lists it. List only
+host-specific lines in `HOST_LINES`, and files that only one copy has in
+`HOST_FILES`. A drifted copy names its repair issue in `UNMATCHED`,
+`INVOCATION_EXCEPTIONS`, or a `#` comment in `HOST_LINES`. An entry that no
+longer matches a difference also fails; delete it.
+
+A new skill also needs an entry in each [README.md](README.md) list of its
 plugin: **Skills:** with a one-line description, and **Codex skills:** and
 **Antigravity skills:** with its name for each host that ships it. When the
 Codex manifest's `interface.longDescription` describes the purposes of the
@@ -95,6 +105,9 @@ README **Skills:** line.
   frontmatter, and `allow_implicit_invocation: false` under `policy:` in
   the Codex copy's `agents/openai.yaml`. A Codex copy without that file is
   not user-invoked. In Antigravity, the user runs a skill as `/<name>`.
+  All copies of a skill set the same policy. The root test also pins the
+  policy of each skill in its `PINNED_POLICY`, such as repo-cleanup, which
+  workflows run.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
   can be bash or zsh. Write each block to run in both shells. For a test
   that runs a skill's blocks in bash and zsh, see
@@ -139,7 +152,8 @@ Antigravity's builtin skills confirm only `ask_question`,
 `invoke_subagent`, and `run_workflow`. A copy names only these tools. For
 another action, write a plain verb. T3 Code tools, such as `delegate_task`,
 keep the same names in every copy, because T3 gives each host the same tool
-instructions.
+instructions. The root test fails on a Claude Code or Codex tool name in an
+Antigravity copy, and on a Claude Code tool name in a Codex copy.
 
 The Antigravity manifest declares `"skills": "./antigravity-skills/"` when
 the plugin has skills.
