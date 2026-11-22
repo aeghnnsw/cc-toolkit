@@ -2,6 +2,3 @@ interface:
   display_name: "Repository Cleanup"
   short_description: "Clean merged Git work and reconcile issues"
   default_prompt: "Use $repo-cleanup to clean merged worktrees and branches and reconcile their completed issues in this repository."
-
-policy:
-  allow_implicit_invocation: false

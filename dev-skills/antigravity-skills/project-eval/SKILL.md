@@ -5,9 +5,9 @@ description: This skill should be used when the user asks to "evaluate the proje
 
 # Project Evaluation
 
-Skeptical evaluator subagents search a target for issues, each along
-assigned dimensions. A neutral verifier subagent checks every finding against
-the current project. You write one report with the verified findings.
+Skeptical evaluator agents search a target for issues, each along assigned
+dimensions. A neutral verifier agent checks every finding against the current
+project. You write one report with the verified findings.
 
 ## When to Use
 
@@ -117,8 +117,8 @@ When an evaluator finishes:
 2. If the result has no findings list, or the result is partial, send the
    evaluator one message. Ask for its findings so far in its final-message
    format.
-3. Append the answer of the evaluator to `<RUN>/E<N>.md`. If no answer
-   comes, keep the saved result, and mark it as partial in the report.
+3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
+   answer comes, keep the saved result, and mark it as partial in the report.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.
@@ -173,7 +173,7 @@ When every evaluator and verifier has finished:
   experiments only in a temporary directory. Only you write the run results
   and the report.
 - Evaluators and verifiers change no Git state, start no server, and take no
-  action with external effects. Their reference files set these limits; no
+  action with external effects. Their instructions set these limits; no
   tool list enforces them.
 - Evaluators and verifiers use browser tools when the session has them.
   When the session has no browser tools, or it refuses a browser call, the

@@ -239,9 +239,7 @@ PINNED_POLICY = {
     ('dev-skills', 'grill-with-research'): (False, 'matt-automode runs grill-with-research as a step (#365)'),
 }
 
-INVOCATION_EXCEPTIONS = {
-    'dev-skills/codex-skills/repo-cleanup': '#453 sets repo-cleanup model-invocable in the Codex copy',
-}
+INVOCATION_EXCEPTIONS = {}
 
 HOST_FILES = {
     # The Codex copy runs a Claude critic with its own scripts.
@@ -252,13 +250,6 @@ HOST_FILES = {
 }
 
 UNMATCHED = {
-    'dev-skills/codex-skills/doc-update/SKILL.md': '#453: the Codex copy is a separate rewrite',
-    'dev-skills/codex-skills/goal-rubric/SKILL.md': '#453: the shared sections drift',
-    'dev-skills/antigravity-skills/goal-rubric/SKILL.md': '#453: the shared sections drift',
-    'dev-skills/codex-skills/pressure-test/SKILL.md': '#453: the Codex copy drifts beyond its critic changes',
-    'dev-skills/antigravity-skills/project-eval/SKILL.md': '#453: the rules and resume steps drift',
-    'dev-skills/codex-skills/step-workflow/SKILL.md': '#453: the Claude copy drifts',
-    'dev-skills/antigravity-skills/step-workflow/SKILL.md': '#453: the Claude copy drifts',
 }
 
 HOST_LINES = {
@@ -276,6 +267,16 @@ HOST_LINES = {
 # Codex ships no project-eval (#313), so the description does not route to it.
 -description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 +description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review.
+''',
+    'dev-skills/codex-skills/goal-rubric/SKILL.md': r'''
+# Each copy renders the /goal condition for its own host by default.
+-6. Render the `/goal` condition for the tool that the user names, or for Claude Code when the user names none. Use the framing for that tool in [Condition Framing](#condition-framing).
++6. Render the `/goal` condition for the tool that the user names, or for Codex when the user names none. Use the framing for that tool in [Condition Framing](#condition-framing).
+''',
+    'dev-skills/antigravity-skills/goal-rubric/SKILL.md': r'''
+# Each copy renders the /goal condition for its own host by default.
+-6. Render the `/goal` condition for the tool that the user names, or for Claude Code when the user names none. Use the framing for that tool in [Condition Framing](#condition-framing).
++6. Render the `/goal` condition for the tool that the user names, or for Antigravity when the user names none. Use the framing for that tool in [Condition Framing](#condition-framing).
 ''',
     'dev-skills/codex-skills/grill-with-research/SKILL.md': r'''
 -Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
@@ -310,6 +311,11 @@ HOST_LINES = {
 -- The Skill tool refuses a Matt skill.
 -Otherwise, follow the resolved `SKILL.md`.
 +Otherwise, read and follow each resolved `SKILL.md`.
+''',
+    'dev-skills/codex-skills/doc-update/SKILL.md': r'''
+# The instruction files that the request can name.
+-- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` (only if the request mentions skills, agents, or Claude configuration). List what was found and confirm scope before editing.
++- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` (only if the request mentions skills, agents, or Claude Code or Codex configuration). List what was found and confirm scope before editing.
 ''',
     'dev-skills/antigravity-skills/doc-update/SKILL.md': r'''
 -- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` (only if the request mentions skills, agents, or Claude configuration). List what was found and confirm scope before editing.
@@ -348,8 +354,8 @@ HOST_LINES = {
 +task artifact.
 ''',
     'dev-skills/antigravity-skills/pr-feedback/SKILL.md': r'''
-# Only this copy names a review skill; #453 makes both copies name the same one.
--Invoke a code review or PR review skill via the **Skill tool** for the self-review. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
+# Antigravity has no Skill tool, no background Bash wait, and asks with ask_question.
+-Invoke a code review or PR review skill via the **Skill tool** for the self-review, such as `mattpocock-skills:code-review`. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
 +Load a code review or PR review skill for the self-review, such as `mattpocock-skills:code-review`. Resolve the path of its `SKILL.md`, then read and follow it. `<plugin-root>` is this plugin's root, two levels above the skill folder:
 -If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
 +```bash
@@ -369,6 +375,307 @@ HOST_LINES = {
 +- Read and follow the review skill's `SKILL.md` again — do not just scan the diff or skim changes
 -Ask the user: "PR feedback cycle complete. No new issues found. What would you like to do?"
 +Ask the user with `ask_question`: "PR feedback cycle complete. No new issues found. What would you like to do?"
+''',
+    'dev-skills/codex-skills/pressure-test/SKILL.md': r'''
+# In Codex, Codex holds the position, and the critic is Claude, run through Claude Code.
+-description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with codex", "debate this with codex", "get codex's take", "deliberate with codex", or wants an independent adversarial review of a design, plan, rubric, PR, failure diagnosis, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Claude holds a genuine position while the Codex CLI acts as an always-adversarial read-only critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
++description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with claude", "debate this with claude", "get claude's take", "deliberate with claude", or wants an independent adversarial review of a design, plan, rubric, PR, failure diagnosis, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Codex holds a genuine position while the Claude Code CLI runs an always-adversarial read-only Claude critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
+-Run a pressure test on a goal: a question, a decision, or a design. You (Claude)
+-hold the position. The critic is GPT, run read-only through the Codex CLI in
++Run a pressure test on a goal: a question, a decision, or a design. You (Codex)
++hold the position. The critic is Claude, run read-only through Claude Code in
+# The shell function critic, with limit_call.py and critic_status.py, replaces the runner codex_critic.py. A call returns only when it ends (#502).
+-runs through the runner script `codex_critic.py`. It sets the read-only flags,
+-pins the model, enforces the time limits, and prints one status line.
++runs through the shell function `critic`. It sets the read-only flags,
++pins the model, enforces the time limits, and prints the status line.
+-- Time limits: the runner stops a critic call when Codex writes no output for
+-  600 seconds (`error:idle`) or when the call has run for 1,800 seconds
+-  (`error:timeout`). Both report exit code 124. The preflight smoke call has
+-  60 seconds for both limits.
+-- Waiting: each call runs in a detached process, so the Bash tool limit does
+-  not stop it. A runner command waits for the result for one wait step, then
+-  prints `status=running`; then run `wait` (see [Status line](#status-line)).
+-  The wait step is 30 seconds less than the Bash tool default timeout,
+-  `BASH_DEFAULT_TIMEOUT_MS`: 90 seconds when it is unset, and at most 570
+-  seconds. So a runner command prints its status line before the Bash tool
+-  moves it to the background, and it needs no Bash tool `timeout`.
+-- Critic model: `gpt-6-astra`, the primary model. The user or a calling skill
+-  can choose the fallback model, `gpt-6.1-sol`, instead (see
++- Time limits: `limit_call.py` stops a critic call when it has run for
++  `CALL_TIMEOUT`, 1,800 seconds, and exits 124. The preflight smoke call has
++  `SMOKE_TIMEOUT`, 120 seconds.
++- Waiting: a critic command returns only when the call ends. Give each critic
++  command a shell timeout above `CALL_TIMEOUT`, for example 1860000 ms, or
++  poll the command until it exits.
++- Critic model: `claude-opus-5-5`, the primary model. The user or a calling
++  skill can choose the fallback model, `claude-sonnet-5-5`, instead (see
+-  runner pins the model on every call, so the skill does not depend on the
+-  ambient `~/.codex/config.toml`.
++  `critic` function passes `--model` on every call, and `critic_status.py`
++  accepts a reply only from the current critic model.
+# Claude Code flags make the critic read-only; the Codex sandbox can block the claude CLI.
+-- Codex sandbox: `read-only` on every call. The kickoff passes `-s read-only`.
+-  `codex exec resume` rejects `-s` and does not keep the kickoff sandbox; it
+-  reads `sandbox_mode` from the user config. The runner therefore passes
+-  `-c sandbox_mode="read-only"` on each resume.
+-- Plugins: the runner passes `--disable plugins` on every call, so the
+-  critic loads no plugin skill. With plugins, the critic opened this skill's
+-  Codex copy, because a packet matches its trigger.
+-- Working directory: the runner runs every codex call from `$REPO`.
+-  `codex exec resume` rejects `-C` and uses the current directory.
+-- One goal per critic thread. A new goal starts a new pressure test with its
++- Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell,
++  edit, or write tool. `--permission-mode dontAsk` denies anything that is not
++  pre-approved. `--strict-mcp-config` loads no MCP servers, and
++  `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the
++  critic read evidence files in the work directory.
++- Refusal fallback: setup exports `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`.
++  Claude Code otherwise picks its own model after a refusal; this skill
++  switches models itself.
++- Working directory: `critic` runs every claude call from `$REPO`, because
++  Claude Code stores sessions per project directory.
++- Codex sandbox: the `claude` CLI needs network access and write access to
++  `~/.claude`. If the Codex sandbox blocks either, run each `claude` command
++  with escalated permissions. If escalation is unavailable or denied, stop and
++  report that the critic could not run. Write a short conclusion; the ending
++  condition is "critic unavailable".
++- One goal per critic session. A new goal starts a new pressure test with its
+# Codex has no Bash tool.
+-Each Bash tool call starts a new shell, so variables do not carry over. Setup
++Each command runs in a new shell, so variables do not carry over. Setup
+# Setup finds the Codex-only scripts in <skill-dir> and defines the Claude models, the time limits, and critic.
+-printed path.
++printed path. `<skill-dir>` is the folder that holds this `SKILL.md`; write
++its absolute path in the block.
+-RUNNER="<plugin-root>/skills/pressure-test/scripts/codex_critic.py"
++SKILL_DIR="<skill-dir>"
+-  printf 'DIR="%s"\nREPO="%s"\nRUNNER="%s"\n' "$DIR" "$REPO" "$RUNNER"
++  printf 'DIR="%s"\nREPO="%s"\nSKILL_DIR="%s"\n' "$DIR" "$REPO" "$SKILL_DIR"
+-PRIMARY_MODEL="gpt-6-astra"
+-FALLBACK_MODEL="gpt-6.1-sol"            # when chosen, or after a flag
++PRIMARY_MODEL="claude-opus-5-5"
++FALLBACK_MODEL="claude-sonnet-5-5"      # when chosen, or after a flag
++CALL_TIMEOUT=1800
++SMOKE_TIMEOUT=120
++export CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
++
++# One read-only critic call. The prompt comes from stdin. limit_call.py stops
++# the call at the time limit and exits 124 only after the CLI has ended. Prints
++# the exit code, the model, and the call time in seconds, then one status from
++# critic_status.py, and writes the reply to $DIR/msg.txt. Appends both lines and
++# the reply to $DIR/replies.md, which keeps every reply. Only the current
++# critic model may answer; any other model is wrong_model.
++critic() {                              # usage: critic <seconds> <effort> [session flags] < prompt
++  local s="$1" effort="$2" start="$SECONDS" rc line verdict; shift 2
++  (cd "$REPO" && python3 "$SKILL_DIR/scripts/limit_call.py" "$s" \
++    claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
++    --output-format stream-json --verbose --tools "Read,Grep,Glob" \
++    --permission-mode dontAsk --strict-mcp-config --disable-slash-commands \
++    --add-dir "$DIR") > "$DIR/events.jsonl" 2> "$DIR/err.log"
++  rc=$?
++  line="exit=$rc model=$(cat "$DIR/model") seconds=$((SECONDS - start))"
++  verdict="$(python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
++    "$(cat "$DIR/model")")"
++  printf '%s\n%s\n' "$line" "$verdict"
++  printf '## critic call\n\n%s\n%s\n\n%s\n\n' "$line" "$verdict" "$(cat "$DIR/msg.txt")" >> "$DIR/replies.md"
++}
++
++new_session() { python3 -c 'import uuid; print(uuid.uuid4())' > "$DIR/session_id"; }
+-printf '%s\n' "$REPO" > "$DIR/repo"
+# The Claude critic has only Read, Grep, and Glob.
+-Your sandbox is read-only and has no network, so `gh`, `curl`, a heredoc, and a file write fail. When the packet names a file with line ranges, read those ranges first, for example with `sed -n '120,160p' <file>`, and read the whole file only when the ranges do not settle the point. Long command output is cut short.
++Your only tools are Read, Grep, and Glob, so you cannot run a command or reach the network. When the packet names a file with line ranges, read those ranges first, with the offset and limit of Read, and read the whole file only when the ranges do not settle the point.
+# Setup checks the Codex-only scripts.
+-test -f "$RUNNER" || echo "runner not found: $RUNNER"
++test -f "$SKILL_DIR/scripts/limit_call.py" || echo "critic scripts not found: $SKILL_DIR/scripts"
+# The critic calls, not a runner script, send the prompt.
+-The runner sends `prompt.md` followed by `critic.txt` to the critic, so every
++The call blocks send `prompt.md` followed by `critic.txt` to the critic, so every
+# The Claude critic models.
+-The critic starts on the primary model, `gpt-6-astra`. The user or a calling
+-skill can choose the fallback model, `gpt-6.1-sol`, by its ID or a short name,
+-for example "pressure-test this with sol". Then run this block once, after
+-setup and before the preflight:
++The critic starts on the primary model, `claude-opus-5-5`. The user or a
++calling skill can choose the fallback model, `claude-sonnet-5-5`, by its ID or
++a short name, for example "pressure-test this with sonnet". Then run this
++block once, after setup and before the preflight:
+-- A request that names the primary model, for example "astra", needs no
++- A request that names the primary model, for example "opus", needs no
+-  critic can use only `gpt-6-astra` or `gpt-6.1-sol`, and ask which one to use.
++  critic can use only `claude-opus-5-5` or `claude-sonnet-5-5`, and ask which
++  one to use.
+# The preflight calls claude through critic. The call blocks, so it has no running or busy status.
+-A real smoke call catches broken Codex environments that `command -v` cannot
+-(failed/missing Codex hooks, auth problems, sandbox refusals).
++A real smoke call catches problems that `command -v` cannot: a missing
++sign-in, a model that the account cannot use, or a sandbox that blocks the
++network.
+-python3 "$RUNNER" smoke "$DIR"
++command -v claude  >/dev/null || { echo "claude CLI not found"; exit 1; }
++command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
++printf 'Reply with exactly: ok\n' | critic "$SMOKE_TIMEOUT" low --no-session-persistence
++grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail -5 "$DIR/err.log"; }
+-- **`status=ok`** — continue to Step 1.
+-- **`status=flagged`** — follow [Flags](#flags), then re-run the preflight.
+-- **`status=running`** or **`status=error:busy`** — run `wait` as described in
+-  [Status line](#status-line), then act on its final status here.
+-- **Any other status** — stop. Report a one-line diagnosis from the status line
+-  and `$DIR/err.log`, for example "Codex is not signed in", "Codex hooks are
+-  failing — check the `~/.codex` plugin cache", or "the critic model is not
++- **`ok` and `REPLY OK`** — continue to Step 1.
++- **`flagged`** — follow [Flags](#flags), then re-run the preflight.
++- **Any other result** — stop. Report a one-line diagnosis from the status line
++  and `$DIR/err.log`, for example "Claude Code is not signed in", "the Codex
++  sandbox blocked network access", or "the critic model is not
+# A Codex subagent shares the model family of the main agent, so it is no independent critic.
+-  independent critic, so do not continue with self-critique only.
++  independent critic, so do not continue with self-critique only, and do not
++  use a Codex subagent as the critic.
+# The kickoff and later rounds call critic with a Claude Code session; test_pressure_test_models.py reads this section (#502).
++## Calling the critic
++
++Kickoff (round 1):
++
+-python3 "$RUNNER" kickoff "$DIR" && cat "$DIR/msg.txt"
++new_session
++cat "$DIR/prompt.md" "$DIR/critic.txt" | critic "$CALL_TIMEOUT" xhigh --session-id "$(cat "$DIR/session_id")"
++cat "$DIR/msg.txt"
++```
++
++Later rounds:
++
++```bash
++source "<workdir>/env.sh"
++cat > "$DIR/prompt.md" <<'__PROMPT_END__'
++<pressure-test packet for this round>
++__PROMPT_END__
++cat "$DIR/prompt.md" "$DIR/critic.txt" | critic "$CALL_TIMEOUT" xhigh --resume "$(cat "$DIR/session_id")"
++cat "$DIR/msg.txt"
+# The Claude critic has only Read, Grep, and Glob.
+-- The critic can read files and run read-only commands in the repository and
+-  in `$DIR`. It has no network, so it cannot run `gh` or `curl`. Save issue
++- The critic can read files in the repository and in `$DIR`. It cannot run
++  a command, such as `gh` or `curl`, and it has no network. Save issue
+# Claude Code keeps a session, not a thread.
+-The critic keeps earlier rounds in its thread. A later packet states the
++The critic keeps earlier rounds in its session. A later packet states the
+# Step 6 points to the later-round block.
+-6. Otherwise send the next packet:
+-
+-```bash
+-source "<workdir>/env.sh"
+-cat > "$DIR/prompt.md" <<'__PROMPT_END__'
+-<pressure-test packet for this round>
+-__PROMPT_END__
+-python3 "$RUNNER" resume "$DIR" && cat "$DIR/msg.txt"
+-```
++6. Otherwise send the next packet (see [Calling the critic](#calling-the-critic)).
+# critic prints its status line in two lines; critic_status.py reports wrong_model, not running, busy, or no thread id.
+-The runner prints `exit=<code> model=<model> seconds=<n> status=<status>`,
+-where `seconds` is the time of the call so far. It writes the reply to
+-`$DIR/msg.txt`, the Codex events to `$DIR/events.jsonl`, and stderr to
+-`$DIR/err.log`. When a call ends, the runner appends its final status line
+-and reply to `$DIR/replies.md`, because the next call deletes `msg.txt`. On
+-the kickoff, it saves the thread ID to `$DIR/thread_id`; each resume uses
++`critic` prints the status line in two lines. The first line is
++`exit=<code> model=<model> seconds=<n>`, where `seconds` is the time of the
++call; the second line is the status from `critic_status.py`. It writes the
++reply to `$DIR/msg.txt`, the Claude Code events to `$DIR/events.jsonl`, and
++stderr to `$DIR/err.log`. When a call ends, `critic` appends its status line
++and reply to `$DIR/replies.md`, because the next call overwrites `msg.txt`.
++The kickoff saves a new session ID to `$DIR/session_id`; each resume uses
+-- **`running`** (exit `-`) — the call continues in its detached process. Wait
+-  for it, and repeat until a final status:
+-
+-  ```bash
+-  source "<workdir>/env.sh"
+-  python3 "$RUNNER" wait "$DIR" && cat "$DIR/msg.txt"
+-  ```
+-
+-  Run `wait` also when the Bash tool stops a runner command or moves it to the
+-  background. The call continues, and `wait` prints its status. Do not start
+-  the call again.
+-- **`error:busy`** — a call in this work directory still runs, and the runner
+-  started no new call. Run `wait` until a final status, then act on that
+-  status.
+-- **`error:no thread id`** (a kickoff, or a retry that starts a new thread) —
+-  the call succeeded but did not emit a `thread.started` event, which means
+-  the event shape changed. **STOP** and report the last lines of
+-  `$DIR/err.log` and `$DIR/events.jsonl`. Make no retry. The runner never
+-  falls back to the `--last` form. Write the conclusion with what exists; the
++- **`wrong_model:<ids>`** — a model other than the current critic model
++  answered. **STOP** and report the model IDs, and do not use the reply.
++  Make no retry. Write the conclusion with what exists; the
+-- **`error:timeout`** or **`error:idle`** (exit code 124) — the call reached a
++- **Exit code 124**, with any `error:` status — the call reached a
+-- **Any other `error:` status**, for example `error:exit 1` or
+-  `error:runner stopped` — the call failed. Follow the **Error** stop
++- **Any other `error:` status**, for example `error:no result event`, or
++  another non-zero exit code — the call failed. Follow the **Error** stop
+# A narrow retry of a timed-out kickoff starts a new session; a later round resumes its session.
+-The runner reports the time limit only after it has stopped the call, so the
+-retry cannot overlap it. Run the retry once; `prompt.md` is unchanged:
++`limit_call.py` exits 124 only after it has stopped the call, so the
++retry cannot overlap it. Run the retry once; `prompt.md` is unchanged.
++
++A timed-out kickoff retries in a new session, because the timed-out call may
++not have created a session that Claude Code can resume:
+-python3 "$RUNNER" retry "$DIR" && cat "$DIR/msg.txt"
++new_session
++cat "$DIR/prompt.md" "$DIR/critic.txt" "$DIR/narrow.txt" | critic "$CALL_TIMEOUT" xhigh --session-id "$(cat "$DIR/session_id")"
++cat "$DIR/msg.txt"
+-The runner sends `prompt.md`, `critic.txt`, and then `narrow.txt`, with the
+-same limits and effort. When the timed-out call saved a thread ID, the retry
+-resumes that thread, so the critic keeps what it already read. Otherwise, for
+-example when a kickoff stopped before Codex started its thread, the retry
+-starts a new thread. Each form follows the status rules of the call it makes.
++A timed-out later round retries in the same session, so the critic keeps what
++it already read:
++
++```bash
++source "<workdir>/env.sh"
++cat "$DIR/prompt.md" "$DIR/critic.txt" "$DIR/narrow.txt" | critic "$CALL_TIMEOUT" xhigh --resume "$(cat "$DIR/session_id")"
++cat "$DIR/msg.txt"
++```
++
++The retry sends `prompt.md`, `critic.txt`, and then `narrow.txt`, with the
++same limit and effort. Each form follows the status rules of the call it makes.
+# critic_status.py reports Claude safeguard actions.
+-Codex flags a request with a policy error, for example "This request has been
+-flagged for possible cybersecurity risk." (`cyber_policy`), a biological-risk
+-flag (`bio_policy`), or a misalignment policy error (`misalignment_policy`).
+-Codex can also reroute a flagged account to another model. The runner searches
+-only error events and stderr for these notices, so the critic's own words
+-cannot match, and reports `status=flagged`.
++Any safeguard action flags the call, even when the critic finished its answer.
++`critic_status.py` reports `flagged` when a response ends with
++`stop_reason: "refusal"`, when the result reports `safety_stops` above zero,
++or when Claude Code reports a `model_refusal_fallback` or
++`model_refusal_no_fallback` event.
+# The Claude critic models.
+-  `gpt-6-astra` is `gpt-6.1-sol`, and the reverse:
++  `claude-opus-5-5` is `claude-sonnet-5-5`, and the reverse:
+# Claude Code refuses to reuse a session ID.
+-  For the kickoff, the re-run starts a new thread. For a resume, it continues
+-  the same thread on the other allowed model. Codex then warns that the
+-  session was recorded with the starting model; ignore that warning. Keep the
++  For the kickoff, the re-run calls `new_session` again, because Claude Code
++  refuses to reuse a session ID. For a resume, it continues the same session
++  on the other allowed model. Keep the
+# The Error stop uses the statuses of critic_status.py and limit_call.py.
+-- **Error** — a runner call reports a final `error:` status without a flag.
+-  `error:busy` is not a final status: run `wait`. After `error:no thread id`,
+-  make no retry; the ending condition is "cut short". After `error:timeout`
+-  or `error:idle`, make one [narrow retry](#narrow-retry); after any other
++- **Error** — a critic call reports an `error:` status, a `wrong_model:`
++  status, or a non-zero exit code, without a flag. After `wrong_model:<ids>`,
++  make no retry; the ending condition is "cut short". After exit code 124,
++  make one [narrow retry](#narrow-retry); after any other
+# The progress block names the main agent.
+-Claude ▸ <concede/rebut per objection, condensed>
++Codex ▸ <concede/rebut per objection, condensed>
 ''',
     'dev-skills/antigravity-skills/pressure-test/SKILL.md': r'''
 -description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with codex", "debate this with codex", "get codex's take", "deliberate with codex", or wants an independent adversarial review of a design, plan, rubric, PR, failure diagnosis, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Claude holds a genuine position while the Codex CLI acts as an always-adversarial read-only critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
@@ -433,6 +740,85 @@ HOST_LINES = {
 -  or cut short
 +  no cross-family critic, or cut short
 ''',
+    'dev-skills/antigravity-skills/project-eval/SKILL.md': r'''
+# Antigravity has no /code-review command and starts subagents with invoke_subagent.
+-description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It dispatches skeptical evaluator agents, has a separate verifier check every finding, and writes one report. For a diff or PR, use /code-review; for one decision or design choice, use pressure-test.
++description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It starts skeptical evaluator subagents, has a separate verifier subagent check every finding, and writes one report. For a diff or PR, use a code-review skill; for one decision or design choice, use pressure-test.
+# Antigravity has no /code-review or /security-review command.
+-- **Use instead**: `/code-review` for a diff or PR, `/security-review` for
+-  the security of a diff, and `pressure-test` for one decision, design
+-  choice, or position.
++- **Use instead**: a code-review skill for a diff or PR, including the
++  security of a diff, and `pressure-test` for one decision, design choice,
++  or position.
+# Antigravity reads GEMINI.md.
+-   CLAUDE.md or AGENTS.md, the top-level layout, and `git log --oneline -20`.
++   GEMINI.md, AGENTS.md, or CLAUDE.md, the top-level layout, and
++   `git log --oneline -20`.
+# Step 3 starts each evaluator with invoke_subagent and its reference file.
+-Send one Agent call for each evaluator, all in one message:
++`<skill-dir>` is the folder that holds this `SKILL.md`. In each prompt,
++write its absolute path.
++
++Start each evaluator with `invoke_subagent`:
+-Agent(
+-  subagent_type: "dev-skills:project-evaluator",
+-  description: "Evaluator E<N>: <dimensions>",
+-  prompt: "
++invoke_subagent(
++  TypeName: "self",
++  Role: "Evaluator E<N>: <dimensions>",
++  Prompt: "
++    Read <skill-dir>/references/evaluator.md and follow it.
+-The evaluators run in the background. Reply to the user and do not wait.
+-Do not stop an evaluator unless the user asks.
++`invoke_subagent` returns at once. The evaluators run at the same time as
++you and as each other, and each one sends you a message when it finishes.
++So start every evaluator before you wait, and give each one the `DEADLINE`
++of the run. Do not poll for results. Do not stop an evaluator unless the
++user asks.
+# Antigravity has no SendMessage; the agent sends the subagent a message.
+-2. If the result has no findings list, or the result is partial (turn
+-   limit), resume the evaluator once with SendMessage. Ask for its findings
+-   so far in its final-message format.
++2. If the result has no findings list, or the result is partial, send the
++   evaluator one message. Ask for its findings so far in its final-message
++   format.
+# Step 4 starts each verifier with invoke_subagent and its reference file.
+-7. Send one verifier for each batch:
++7. Start one verifier for each batch with `invoke_subagent`:
+-   Agent(
+-     subagent_type: "dev-skills:finding-verifier",
+-     description: "Verify E<N> batch <b>",
+-     prompt: "
++   invoke_subagent(
++     TypeName: "self",
++     Role: "Verifier for E<N> batch <b>",
++     Prompt: "
++       Read <skill-dir>/references/verifier.md and follow it.
+# Antigravity has no SendMessage; the agent sends the subagent a message.
+-3. For missing IDs, resume the verifier once with SendMessage.
+-4. If the verifier cannot resume, send one new verifier for the missing IDs
+-   only.
++3. For missing IDs, send the verifier one message that asks for their
++   verdicts.
++4. If the verifier cannot answer, start one new verifier for the missing
++   IDs only.
+# Antigravity has no plugin agents, so it has no agent tools line to list browser servers in.
+-## Browser Servers
+-
+-Both agents can use the tools of these browser MCP servers: the desktop
+-app's browser (`Claude_Browser`), Claude in Chrome (`claude-in-chrome`),
+-Chrome DevTools (`chrome-devtools`), and Playwright (`playwright`, or the
+-Playwright plugin). To support another server, add its tool prefix to the
+-`tools` line of both agents in the dev-skills plugin:
+-`mcp__<server>__*` for a server that the user configured, or
+-`mcp__plugin_<plugin>_<server>__*` for a server that a plugin provides.
+-
+-A tool in the list still needs permission in the session. A server that
+-connects after an agent starts gives that agent no tools.
+-
+''',
     'dev-skills/antigravity-skills/project-eval/references/dimensions.md': r'''
 -**Tool tip:** Use WebSearch to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "express 4.18 vulnerabilities"). Code-only analysis catches injection and auth issues, but WebSearch catches known vulnerabilities in third-party packages.
 +**Tool tip:** Search the web to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "express 4.18 vulnerabilities"). Code-only analysis catches injection and auth issues, but a web search catches known vulnerabilities in third-party packages.
@@ -444,17 +830,49 @@ HOST_LINES = {
 +- `project-rules` — Compliance with GEMINI.md, AGENTS.md, or CLAUDE.md, project-specific conventions
 ''',
     'dev-skills/codex-skills/repo-cleanup/SKILL.md': r'''
-# Drift, repaired by #453: the description drops the workflow trigger.
--description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
-+description: Clean merged worktrees and branches, reconcile completed issues, delete their planning folders, and update the Default Branch.
+# The copy says where <plugin-root> is; the Claude copy uses its plugin-root variable.
 -run this command from the checkout that the current session runs in:
 +run this command from the checkout that the current session runs in.
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
 ''',
     'dev-skills/antigravity-skills/repo-cleanup/SKILL.md': r'''
+# The copy says where <plugin-root> is; the Claude copy uses its plugin-root variable.
 -run this command from the checkout that the current session runs in:
 +run this command from the checkout that the current session runs in.
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
+''',
+    'dev-skills/codex-skills/step-workflow/SKILL.md': r'''
+# Codex tracks the steps with update_plan.
+-5. **Track the numbered work in the host's task list** - Map each task to its
+-   corresponding step, keep at most one task in progress, and leave none in
++5. **Track the numbered work with `update_plan`** - Map each plan item to its
++   corresponding step, keep at most one item in progress, and leave none in
+-## Task List Integration
++## Plan Integration
+-Each task in the host's task list corresponds to a numbered step:
++Each plan item corresponds to a numbered step:
+-Update the task list as the work advances so file order and task state
+-remain aligned.
++Use `update_plan` as the work advances so file order and task state remain
++aligned.
+''',
+    'dev-skills/antigravity-skills/step-workflow/SKILL.md': r'''
+# Antigravity has no task-list tool; it keeps a Markdown task list in its task artifact.
+-5. **Track the numbered work in the host's task list** - Map each task to its
++5. **Track the numbered work in a Markdown task list** - Keep the list in
++   your own task artifact, never in a tracked file. Map each task to its
+-Each task in the host's task list corresponds to a numbered step:
++Each task in the Markdown task list corresponds to a numbered step:
+-```text
+-1. [in_progress] Load data (01_load_data.py)
+-2. [pending] Clean data (02_clean_data.py)
+-3. [pending] Run analysis (03_analysis.py)
++```markdown
++- [ ] Load data (01_load_data.py) - in progress
++- [ ] Clean data (02_clean_data.py)
++- [ ] Run analysis (03_analysis.py)
+-remain aligned.
++remain aligned. Mark a finished task `[x]`.
 ''',
     'dev-skills/codex-skills/t3-project-lead/SKILL.md': r'''
 +   `<plugin-root>` is two levels above this folder.

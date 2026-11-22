@@ -1,24 +1,28 @@
 ---
 name: step-workflow
-version: 1.0.0
-description: This skill should be used when organizing work using step-based file naming and folder structure. Load this skill at the start of working on a new feature to establish sequential, numbered organization for all files (scripts, outputs, tests, documentation). The skill guides the use of numbered prefixes (01_, 02_, 03_) and sub-step notation (01_1_, 01_2_) to maintain clear workflow order and traceability.
+version: 1.1.0
+description: Use when the user or a calling skill requests step-based file naming and folder organization for a new feature, including sequential numbered prefixes, sub-step notation, and plan tracking across scripts, outputs, tests, or documentation.
 ---
 
 # Step-Based Workflow Organization
 
 ## Overview
 
-Organize all work for a feature using step-based file naming with numbered prefixes. All files (scripts, outputs, tests, documentation) in the feature folder follow this convention.
+Organize all work for a feature using step-based file naming with numbered
+prefixes. Apply this convention only when the user or a calling skill
+requests it and it does not conflict with an established repository layout
+or naming convention.
 
 ## File Naming Convention
 
 ### Basic Pattern
 
-```
+```text
 <step_number>_<descriptive_name>.<extension>
 ```
 
 Examples:
+
 - `01_load_data.py`
 - `02_clean_data.py`
 - `03_analysis.ipynb`
@@ -28,11 +32,12 @@ Examples:
 
 When a step has multiple related files:
 
-```
+```text
 <step>_<substep>_<descriptive_name>.<extension>
 ```
 
 Examples:
+
 - `01_1_fetch_api.py`
 - `01_2_parse_response.py`
 - `02_1_clean_text.py`
@@ -40,28 +45,37 @@ Examples:
 
 ### Leading Zeros
 
-Use leading zeros based on expected number of steps:
-- 10-99 steps: `01`, `02`, ..., `99`
-- 100-999 steps: `001`, `002`, ..., `999`
+Use leading zeros based on the expected number of steps:
+
+- 10–99 steps: `01`, `02`, ..., `99`
+- 100–999 steps: `001`, `002`, ..., `999`
 
 This ensures proper alphabetical sorting.
 
 ## Workflow Rules
 
-1. **Keep everything in one folder** - All files related to the feature stay in the feature folder
-2. **Number files sequentially** - Based on execution/workflow order
-3. **Use underscores, not spaces** - For file names
-4. **Always use TodoWrite tool** - Track progress through numbered steps
-5. **Renumber when needed** - When inserting or reordering steps
+1. **Respect repository conventions** - Apply step-based names only when the
+   user or a calling skill requests them and they do not conflict with
+   established project layout
+2. **Keep related artifacts together** - Keep files for the feature in its
+   feature folder while preserving the repository's expected subdirectories
+3. **Number files sequentially** - Order prefixes by execution or workflow
+4. **Use underscores, not spaces** - Keep file names shell- and tool-friendly
+5. **Track the numbered work in the host's task list** - Map each task to its
+   corresponding step, keep at most one task in progress, and leave none in
+   progress after completion
+6. **Renumber when needed** - Restore a clear sequence after inserting or
+   reordering steps
 
-## Todo List Integration
+## Task List Integration
 
-Each todo item corresponds to a numbered step:
+Each task in the host's task list corresponds to a numbered step:
 
-```
+```text
 1. [in_progress] Load data (01_load_data.py)
 2. [pending] Clean data (02_clean_data.py)
 3. [pending] Run analysis (03_analysis.py)
 ```
 
-This makes progress tracking natural and clear.
+Update the task list as the work advances so file order and task state
+remain aligned.
