@@ -25,11 +25,12 @@ and later changes from issues #302, #305, #354,
 [#392](https://github.com/aeghnnsw/cc-toolkit/issues/392),
 [#388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [#420](https://github.com/aeghnnsw/cc-toolkit/issues/420),
-[#421](https://github.com/aeghnnsw/cc-toolkit/issues/421), and
-[#432](https://github.com/aeghnnsw/cc-toolkit/issues/432). Issue #358 removes
+[#421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
+[#432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
+[#409](https://github.com/aeghnnsw/cc-toolkit/issues/409). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
-case 37.
+case 37. Issue #409 adds cases 38 and 39.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -167,6 +168,13 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     the repository, and another repository; all three were modified after
     the previous cutoff. The fourth names the repository root and was last
     modified at 2026-11-19T15:00:00Z.
+38. **Merge with no record on the PR.** Phase 5 passed for ticket T1, and the
+    planning files record it. The PR is #41. Its required checks and reviews
+    passed. The PR has no review record. The repository allows only squash
+    merges. The run is about to run `gh pr merge 41 --squash`.
+39. **Rebase after the record.** As case 38, but the run posted the review
+    record for head A. Before the merge, another PR merges. The run rebases
+    T1, resolves a `CHANGELOG.md` conflict, and force-pushes head B.
 
 ## Expected results
 
@@ -209,6 +217,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Documented planning folder | Write the planning files in `trees/feat-77/docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
 | Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
 | Antigravity sessions | Open the database read-only. Read the transcript of the `trees/feat-77` session only, and keep its records whose `created_at` is after 2026-11-20T09:00:00Z and at or before 2026-11-21T04:00:00Z. | Selecting Antigravity sessions by `cwd`; reading the sessions of the containing folder, the other repository, or the 2026-11-19 session; changing the database or a transcript. | The `workspace_uris` and `last_modified_time` of each session, and the sessions read in the retro record. |
+| Merge with no record on the PR | Get the full 40-character head SHA with `gh pr view 41 --json headRefOid --jq .headRefOid`. Post the phase 5 review record for that head with `gh pr review 41 --comment`. Then run `gh pr merge 41 --squash --match-head-commit <head SHA>`. | Merging with no record for the head on the PR; a merge without `--match-head-commit`; a short SHA. | The PR review that names the comparison commit, the full head SHA, the Standards and Spec results, the fixes, and the test results; then the merged PR link. |
+| Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
 
 ## Validation limits
 

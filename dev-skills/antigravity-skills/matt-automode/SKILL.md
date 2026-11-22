@@ -92,8 +92,20 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
-   to the final integration PR for stacked work. Merge after required checks
-   and reviews pass, under repository rules. Record the merged PR link.
+   to the final integration PR for stacked work. After required checks and
+   reviews pass, merge under repository rules:
+   1. Get the full 40-character head SHA with
+      `gh pr view <PR> --json headRefOid --jq .headRefOid`. A short SHA fails.
+   2. Post the phase 5 review record for that head with
+      `gh pr review <PR> --comment --body-file <file>`. Name the comparison
+      commit, the head SHA, the Standards and Spec results, the fixes, and the
+      test results.
+   3. Merge with `gh pr merge <PR> --match-head-commit <head SHA>` and the
+      merge method that the repository requires, such as `--squash`.
+
+   If a push changes the head, such as a fix, a rebase, or a conflict
+   resolution, do steps 1 and 2 again before step 3. State in the new record
+   what changed since the last reviewed head. Record the merged PR link.
 7. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
    the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
    and close the parent only when fully satisfied. Close tickets by hand only
