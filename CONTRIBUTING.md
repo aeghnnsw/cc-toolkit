@@ -371,7 +371,8 @@ a hook before a tool runs, for example:
 ```
 
 Then run a policy script on the payload. `pre_git_hook.py` checks git
-policy, and `safety_guard.py` checks `rm`, `env`, and `printenv` commands.
+policy, and `safety_guard.py` checks `rm` commands and commands that print
+every environment variable.
 Exit status 2 means the policy script blocks the command:
 
 ```bash

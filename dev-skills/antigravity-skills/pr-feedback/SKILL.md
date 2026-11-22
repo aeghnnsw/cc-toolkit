@@ -129,8 +129,10 @@ When no new issues are found, summarize the overall PR state:
 Merge the PR directly:
 
 ```bash
-gh pr merge --squash
+gh pr merge --squash --match-head-commit "$(git rev-parse HEAD)"
 ```
+
+`--match-head-commit` merges only when the PR head is the reviewed local commit.
 
 After successful merge, inform the user to clean up their worktree and local branch if applicable.
 
@@ -139,4 +141,4 @@ After successful merge, inform the user to clean up their worktree and local bra
 Ask the user with `ask_question`: "PR feedback cycle complete. No new issues found. What would you like to do?"
 - Options: "Merge the PR", "I'll handle it manually"
 
-If merge requested, run `gh pr merge --squash`. After successful merge, inform the user to clean up their worktree and local branch if applicable.
+If merge requested, run `gh pr merge --squash --match-head-commit "$(git rev-parse HEAD)"`. After successful merge, inform the user to clean up their worktree and local branch if applicable.

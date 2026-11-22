@@ -130,11 +130,12 @@ Scientific content creation for figures and presentations.
 Safety guards and workflow enforcement hooks for Claude Code, Codex, and Antigravity.
 
 **Hooks:**
-- **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed. Also blocks `env` or `printenv` with no command, which prints every environment variable; `env | cut -d= -f1` lists the names only. The guard skips a quoted heredoc body only when the whole command is a `cat` file write, a `git commit` message, or a `gh` PR or issue body in one of the allowed forms (see [#445](https://github.com/aeghnnsw/cc-toolkit/issues/445)); it scans every other heredoc body
-- **pre_git_hook.py**: Checks Git policy, including branch prefixes, bulk staging, and AI attribution. Blocks `git grep -E` with an escape such as `\b`, `\s`, or `\d`, which macOS reads as a plain character; the message says to use `-P`
+- **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed. Also blocks a command that prints every environment variable: `env` or `printenv` with no command, `export`, `declare`, or `typeset` with only options, and a bare `set`. `env | cut -d= -f1` and `env | awk -F= '{print $1}'` list the names only, and `--version` or `--help` prints no variable. The guard skips a quoted heredoc body only when the whole command is a `cat` file write, a `git commit` message, or a `gh` PR or issue body in one of the allowed forms (see [#445](https://github.com/aeghnnsw/cc-toolkit/issues/445)); it scans every other heredoc body
+- **pre_git_hook.py**: Checks Git policy, including branch prefixes and bulk staging (`git add .`, `git add -- .`, `git add :/`, and `-A` or `--all` with no path). Blocks AI attribution in a commit message, in PR and issue text, in the squash message of `gh pr merge`, and in a file that `--body-file`, `-F`, or `--file` names. Blocks a test-plan heading in a PR description, and a `gh pr merge` without `--match-head-commit <full head SHA>`. Blocks `git grep -E` with an escape such as `\b`, `\s`, or `\d`, which macOS reads as a plain character; the message says to use `-P`
 - **zsh_traps.py**: When the shell is zsh, quotes separators with two or more leading equals signs in standalone `echo` commands, with optional `-n`. Labels can use ASCII letters, digits, and underscores, as in `echo =====CODEX`. Current Claude Code and Codex apply the corrected input through their normal permission checks. Complex commands keep the existing checks: the hook blocks unresolved `=name` expansions and warns about valid command expansions, unsplit variables, unmatched globs, and a letter after `$NAME:`, which zsh can read as a modifier. In Claude Code, it blocks a zsh parameter flag such as `${(f)...}`, which the Claude Code safety check rejects with a message about `rm`. Each message names the fix
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
+- **stale_install_check.py**: Opt-in, Claude Code only. When `CORE_HOOKS_STALE_CHECK=1` is set, for example in the `env` block of Claude Code settings, a session that starts in a cc-toolkit checkout gets the update commands for each installed Claude Code or Codex plugin that is older than the default branch
 
 In Antigravity, a root `hooks.json` runs the same scripts, and a block
 shows its reason. An Antigravity hook cannot warn without blocking the
@@ -143,8 +144,8 @@ becomes a block that names the corrected command. The hooks drop the Git
 policy reminders and the branch-prefix message. The unmatched-glob check
 does not run, because a command can create the files before its glob. A
 safety or Git policy hook that cannot read its input blocks the command.
-Antigravity has no Notification, SessionEnd, or SubagentStop event; the
-sound plays when the agent stops.
+Antigravity has no SessionEnd or SubagentStop event; the sound plays when
+the agent stops.
 
 ### Productivity Skills (`productivity-skills`)
 GTD workflows through a connected Supabase account, plus native macOS Calendar. GTD uses a GTD binding (a private project reference and owner UUID) and `uv` on `PATH`, which supplies Python 3.11+. Run `gtd-setup` to create a GTD database or to bind an existing one on a new computer. `gtd-setup` can also turn on agent captures: agents then add inbox items when a task waits on you. In Antigravity, connect the Supabase MCP server with `agy mcp add supabase https://mcp.supabase.com/mcp`, then sign in when Antigravity asks. See the [cloud workflow](productivity-skills/references/gtd-cloud.md).

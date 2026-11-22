@@ -775,9 +775,9 @@ class SafetyGuardTests(unittest.TestCase):
             f"safety_guard.py matcher should include exec_command, got {matchers}",
         )
 
-    def test_blocks_env_or_printenv_with_no_command(self):
+    def test_blocks_commands_that_print_every_variable(self):
         # Each command prints every environment variable, and a value can be
-        # a token (#391).
+        # a token (#391, #455).
         for command in (
             "env",
             "printenv",
@@ -798,6 +798,24 @@ class SafetyGuardTests(unittest.TestCase):
             'echo "$(env)"',
             'x="$(printenv)"',
             "echo `env`",
+            # `-u` takes `--help` as its value.
+            "env -u --help",
+            # Only the exact names-only awk program is allowed. In double
+            # quotes, the shell expands `$1`, and awk prints each whole line.
+            "env | awk '{print $1}'",
+            "env | awk -F= '{print $2}'",
+            'env | awk -F= "{print $1}"',
+            "export",
+            "export -p",
+            "declare",
+            "declare -x",
+            "declare -p",
+            "typeset",
+            "typeset -x",
+            "set",
+            "export -p | grep TOKEN",
+            "cd /tmp && set",
+            'echo "$(typeset -x)"',
         ):
             for tool_name in ("Bash", "exec_command"):
                 with self.subTest(command=command, tool_name=tool_name):
@@ -806,7 +824,7 @@ class SafetyGuardTests(unittest.TestCase):
                     self.assertIn("BLOCKED", result.stderr)
                     self.assertIn("`env | cut -d= -f1`", result.stderr)
 
-    def test_allows_env_with_a_command_or_names_only(self):
+    def test_allows_commands_that_print_no_value_or_names_only(self):
         for command in (
             "env | cut -d= -f1",
             "printenv | cut -d= -f1",
@@ -825,6 +843,24 @@ class SafetyGuardTests(unittest.TestCase):
             "ls env/",
             "cat <<'EOF'\nenv\nEOF",
             "echo hi # env",
+            "env --version",
+            "env --help",
+            "printenv --version",
+            "printenv --help",
+            "env | awk -F= '{print $1}'",
+            "printenv | awk -F '=' '{ print $1 }'",
+            "export -p | awk -F = '{print $1}'",
+            "declare -x | cut -d= -f1",
+            "export FOO=bar",
+            "export FOO",
+            "declare -x FOO=bar",
+            "declare -p FOO",
+            "typeset -x FOO",
+            "set -e",
+            "set -euo pipefail",
+            "set -o pipefail",
+            "set --",
+            "set +x",
         ):
             with self.subTest(command=command):
                 self.assert_allowed(command, tool_name="Bash")

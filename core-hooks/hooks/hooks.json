@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"${CORE_HOOKS_STALE_CHECK:-}\" = 1 ] || exit 0; uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/stale_install_check.py || exit 0"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|Write|Edit|MultiEdit|Read",
@@ -31,17 +42,6 @@
           {
             "type": "command",
             "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/post_tool_use.py"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run --no-project ${CLAUDE_PLUGIN_ROOT}/scripts/system_notification.py"
           }
         ]
       }
