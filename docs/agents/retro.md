@@ -33,7 +33,7 @@ choose.
    `2026-10-27T15:02:52.722Z`, `` `2026-11-09T00:22:55.226+00:00` ``, and
    `2026-11-21T05:16:55Z`.
 
-   For each host without a root option, the helper reads the default roots
+   For each host without a root option, the script reads the default roots
    of that host:
 
    - Claude Code: the `projects` folder in `~/.claude`, in each T3 Code
@@ -48,10 +48,10 @@ choose.
    A root option, such as `--claude-root`, replaces only the default roots
    of its own host; the other hosts keep their default roots. The manifest
    `roots` list names each root and its status. A missing root is a
-   `root_unavailable` diagnostic, with two exceptions. The helper leaves out
+   `root_unavailable` diagnostic, with two exceptions. The script leaves out
    a T3 Code profile that has no `projects` or `antigravity-acp` folder. It
    also leaves out a missing default Antigravity folder.
-   Antigravity records have no working folder. The helper reads a copy of
+   Antigravity records have no working folder. The script reads a copy of
    `conversation_summaries.db` and selects a conversation when one of its
    `workspace_uris`, resolved, is a repository root or a folder below one,
    including each linked worktree that Git lists. Events from that

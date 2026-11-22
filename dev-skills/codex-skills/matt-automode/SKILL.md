@@ -85,11 +85,11 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    delegation only after phases 1–3 pass and every blocking ticket's PR merges.
    When the tracker is GitHub, first run
    `python3 "<plugin-root>/scripts/phase_gate.py" --ticket <N>`. On exit status 1,
-   do not start: each `FAIL` line names the missing issue or the blocker
-   without a merged PR. Follow the testing workflow and commit the changes.
-   Before committing, run
+   do not start. Each `FAIL` line names the missing issue, the blocker
+   without a merged PR, or the reason that the script cannot decide. Follow
+   the testing workflow and commit the changes. Before committing, run
    `python3 "<plugin-root>/scripts/avoid_terms.py" --base <comparison commit>`.
-   It lists each added Markdown line that uses a glossary `_Avoid_` term; use
+   It lists each added Markdown line that uses a glossary `_Avoid_` term. Use
    the glossary term where the line names its concept. Report helpers
    imported from other modules. Complete when the ticket's tests pass and
    edits are committed for review.
@@ -178,7 +178,7 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    when no record exists. `<new-dir>` must not exist yet:
    `python3 "<plugin-root>/scripts/retro_sessions.py" --repo . --after <cutoff> --output <new-dir>`.
    It copies the Claude Code, Codex, and Antigravity sessions of the
-   repository and its worktrees, and leaves the original logs unchanged;
+   repository and its worktrees, and leaves the original logs unchanged.
    `--help` names the session folders that it reads. Read the digests that
    `<new-dir>/manifest.json` lists, and check each finding against its copied
    source lines. Keep the copies out of Git and PR content, and remove
@@ -224,8 +224,8 @@ Run each full test suite through
 `python3 "<plugin-root>/scripts/run_suite.py" -- <suite command>`, and put that
 command in each brief that runs one. It runs one full suite at a time, reports
 a pass recorded for the same clean tree instead of a new run, and prints the
-failing tests and the exit status last; do not pipe it into `tail`. Focused
-tests do not need it.
+failing tests and the exit status last. Do not pipe it into `tail`.
+Focused tests do not need it.
 State the repository search rules in reviewer briefs, including excluded paths.
 Require measured evidence for claims about external tool behavior.
 

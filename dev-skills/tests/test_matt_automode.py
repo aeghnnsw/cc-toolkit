@@ -154,7 +154,6 @@ class RetrospectiveRunsTheShippedCutoffScriptTest(unittest.TestCase):
                 self.assertNotIn("When the repository has", steps)
 
 
-
 class ScriptsReplaceProseRulesTest(unittest.TestCase):
     """Issue #458: each host copy runs the script that replaces a prose rule."""
 
