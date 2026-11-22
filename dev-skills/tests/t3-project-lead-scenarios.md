@@ -4,7 +4,8 @@ These cases cover [issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448
 Cases 15 to 19 also cover
 [#468](https://github.com/aeghnnsw/cc-toolkit/issues/468),
 [#476](https://github.com/aeghnnsw/cc-toolkit/issues/476), and
-[#478](https://github.com/aeghnnsw/cc-toolkit/issues/478).
+[#478](https://github.com/aeghnnsw/cc-toolkit/issues/478). Issue
+[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504) changes case 17.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -98,7 +99,7 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 | Planned tasks remain | Run the `dispatch` step for task C. | Deleting the lead folder; settling the lead thread. | `lead.md` and the `t3_thread_list` output. |
 | Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, a time limit in minutes, the at-limit line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget. | The brief and `lead.md`. |
 | Research task | Start a worker with `delegate_task` and isolation "worktree", with the read-only form of the brief and "You may start your own subagents. Keep your report short, and leave the detail in this thread." Read the detail in the worker's thread only when a check needs it. | Starting the research with the native subagent tool; asking the worker for a long report. | The `t3_thread_list` output with the worker thread, and the brief. |
-| Worker budget | Give the brief a round limit of one full review, then at most one focused check, a time limit in minutes, and "At either limit, end your turn and report where you are, with links and what remains." Tell the user that the worker ends its turn at either limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit or a time limit. | The brief. |
+| Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, a time limit in minutes, and "At either limit, end your turn and report where you are, with links and what remains." Tell the user that the worker ends its turn at either limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit or a time limit. | The brief. |
 | Status question | Run the `start` step: read `lead.md`, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
 | Worker waits on the user | Run the `answer` step for B in this turn: put B on the list of what waits on the user, with its link, "2 decisions", and a one-line topic for each, and write the item in `lead.md`. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions. | B's last message and its thread link. |
 
@@ -125,6 +126,15 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-22, issue #504
+
+**Static checks.** `test_t3_project_lead.py` requires the new `brief` line:
+"one full review and one fix of any size, then merge", and that the worker
+stops only for a blocking problem that it cannot settle. The `brief` step has
+no "focused check". These checks fail on the 953103b script and pass after
+the change. The step has 199 words; the limit is 200. No simulated review of
+case 17 ran.
 
 ### 2026-11-21, issues #468, #476, and #478
 

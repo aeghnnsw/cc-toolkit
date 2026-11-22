@@ -3,9 +3,10 @@
 Issue #409: before the merge, phase 6 posts the phase 5 review record on the
 PR for the full head SHA, then merges with `--match-head-commit` on that SHA.
 After a push changes the head, the run posts a new record before the merge.
-Issue #475: phase 5 runs one full review and one focused check of the fixes,
-only blocking findings block, and a blocking finding in a focused check stops
-the ticket. A fix for a failing check gets a focused check, not a full review.
+Issue #475: phase 5 runs one full review, and only blocking findings block.
+Issue #504: one fix of any size follows the review, then the merge, with no
+focused check. Only a blocking problem that the run cannot settle stops the
+ticket. A fix for a failing check gets no review.
 Issue #446: the retrospective runs the cutoff script that dev-skills ships, in
 every repository.
 Issue #458: phase 4 runs the phase gate and the glossary term scripts, and a
@@ -30,7 +31,6 @@ RECORD_ITEMS = (
     "the head SHA",
     "the Standards and Spec results",
     "the fixes",
-    "the focused checks",
     "the test results",
 )
 REVIEW_BOUND = (
@@ -41,13 +41,19 @@ REVIEW_BOUND = (
     "A problem present at the comparison commit blocks only when the ticket requires its fix.",
     "List other findings with a reason in the review record.",
     "Open or reuse an issue only for a defect that a user can hit.",
-    "give one fresh reviewer only the fix diff and the findings that it closes.",
-    "Run no second full review.",
-    "If this focused check finds a blocking finding, stop the ticket without a merge, keep the "
-    "work, report the finding, and continue independent tickets.",
+    "Fix all blocking findings in one fix, commit, and pass the affected checks.",
+    "The fix has no size limit.",
+    "Run no second full review and no focused check of the fix.",
+    "Then go to phase 6 and merge.",
+    "Stop the ticket without a merge only for a blocking problem that the run cannot settle: a "
+    "design or scope choice that the ticket and the spec do not settle, a needed approval or "
+    "access, or a test or CI failure that the fix does not close.",
+    "Then keep the work, report the problem to the user, and continue independent tickets.",
 )
-OLD_FIX_RULE = "code changes need review against the same comparison commit"
-FIX_RULE = "Give each fix one focused check of its diff and the failure that it fixes"
+OLD_FIX_RULES = ("code changes need review against the same comparison commit",
+                 "Give each fix one focused check")
+FIX_RULE = ("Give each failure one fix of any size, and run no review of the fix. When the fix "
+            "does not close the failure, stop the ticket as in phase 5.")
 PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
                      "antigravity-skills": "<plugin-root>"}
 SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec states what the "
@@ -93,6 +99,7 @@ class PhaseSixPinsTheReviewedHeadTest(unittest.TestCase):
         for item in RECORD_ITEMS:
             with self.subTest(item=item):
                 self.assertIn(item, record)
+        self.assertNotIn("focused check", record)
         self.assertIn("When the head is not the commit that phase 5 reviewed, name that commit "
                       "and state what changed since it.", record)
 
@@ -120,18 +127,25 @@ class PhaseSixPinsTheReviewedHeadTest(unittest.TestCase):
 
 
 class ReviewLoopIsBoundedTest(unittest.TestCase):
-    def test_phase_five_runs_one_full_review_and_one_focused_check(self) -> None:
+    def test_phase_five_runs_one_full_review_and_one_fix(self) -> None:
         for host in HOSTS:
             phase = between(host, "5. **Review", "6. **PR")
             for rule in REVIEW_BOUND:
                 with self.subTest(host=host, rule=rule):
                     self.assertIn(rule, phase)
 
-    def test_a_fix_for_a_failing_check_gets_a_focused_check(self) -> None:
+    def test_no_copy_runs_a_focused_check(self) -> None:
+        for host in HOSTS:
+            words_before = re.findall(r"(\S+) focused checks?", flat(automode(host)))
+            with self.subTest(host=host):
+                self.assertEqual(words_before, ["no"])
+
+    def test_a_fix_for_a_failing_check_gets_no_review(self) -> None:
         for host in HOSTS:
             paragraph = between(host, "Fix failures on the PR branch", "For a rebase")
             with self.subTest(host=host):
-                self.assertNotIn(OLD_FIX_RULE, flat(automode(host)))
+                for old in OLD_FIX_RULES:
+                    self.assertNotIn(old, flat(automode(host)))
                 self.assertIn(FIX_RULE, paragraph)
 
     def test_the_spec_of_a_safety_check_change_fails_closed(self) -> None:
