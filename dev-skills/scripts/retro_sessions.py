@@ -38,6 +38,13 @@ ANTIGRAVITY_KINDS = {"USER_INPUT": "user", "PLANNER_RESPONSE": "assistant"}
 # reads the same forms on every Python version.
 TIMESTAMP = re.compile(r"(\d{4}-\d\d-\d\d[Tt ]\d\d:\d\d(?::\d\d)?)(?:[.,](\d+))?"
                        r"(?:(Z)|([+-]\d\d)(?::?(\d\d))?)?", re.ASCII)
+# A timeline flags an event that starts this many seconds or more after the
+# previous window event of its source.
+GAP_SECONDS = 30
+# Claude Code returns a blocked tool call as an error result that starts with
+# the hook event and tool, for example "PreToolUse:Bash hook error: ...".
+HOOK_BLOCK = re.compile(r"\w+:\S+ hook error:")
+TIMELINE_HEADER = "line\ttime\tkind\ttool\tflags\ttext\n"
 
 
 def timestamp(value):
@@ -174,12 +181,42 @@ def record_events(record, host, unknown, ignored):
     return []
 
 
+def timeline_cell(value, max_text):
+    """Return VALUE as one line without tabs, clipped to MAX_TEXT characters."""
+    if value is None:
+        return "-"
+    text = " ".join((value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)).split())
+    if len(text) > max_text:
+        return f"{text[:max_text]} [+{len(text) - max_text} chars]"
+    return text or "-"
+
+
+def timeline_line(line, time, event, tool, gap, max_text):
+    """Return the timeline line of one window event.
+
+    GAP is the number of seconds since the previous window event of the
+    source, or None for the first one.
+    """
+    flags = []
+    if gap is not None and gap >= GAP_SECONDS:
+        flags.append(f"gap={int(gap)}s")
+    if event.get("is_error") is True:
+        flags.append("error")
+        if isinstance(event["text"], str) and HOOK_BLOCK.match(event["text"]):
+            flags.append("hook_block")
+    cells = [timeline_cell(value, max_text) for value in (time, event["kind"], tool, event["text"])]
+    return "\t".join([str(line), *cells[:3], ",".join(flags) or "-", cells[3]]) + "\n"
+
+
 def extract(stream, host, repository_roots, after, through, max_events, max_text, cwd=None):
-    """Return the bounded digest of one transcript.
+    """Return the bounded digest and the timeline of one transcript.
 
     CWD is the starting working folder. Antigravity records carry no cwd, so
     the caller gives the matched workspace folder.
     """
+    timeline = []
+    tools = {}
+    previous = None
     events = []
     tail = deque(maxlen=max_events // 2)
     head_size = (max_events + 1) // 2
@@ -226,6 +263,9 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
                 cwd = payload.get("cwd", cwd)
         unknown, ignored = [], []
         rendered = record_events(record, host, unknown, ignored)
+        for event in rendered:
+            if event["kind"] == "tool_call" and isinstance(event.get("call_id"), str):
+                tools[event["call_id"]] = event.get("tool")
         if ignored:
             counts["ignored_records"] += 1
             for ignored_type in ignored:
@@ -260,6 +300,14 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             diagnose("unsupported_content", line, type=shape)
         for event in rendered:
             eligible_events += 1
+            call_id = event.get("call_id")
+            if event["kind"] == "tool_call":
+                tool = event.get("tool")
+            else:
+                tool = tools.get(call_id) if isinstance(call_id, str) else None
+            timeline.append(timeline_line(line, record[time_field], event, tool,
+                                          None if previous is None else instant - previous, max_text))
+            previous = instant
             event = {"line": line, "timestamp": record[time_field],
                      "cwd": cwd, "omitted_characters": 0, **event}
             bounded = bound_event(event, max_text)
@@ -271,7 +319,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
     counts.update(eligible_events=eligible_events, shown_events=len(events),
                   omitted_events=eligible_events - len(events),
                   clipped_characters=sum(event["omitted_characters"] for event in events))
-    return {"selected": selected, "events": events, "counts": counts,
+    return {"selected": selected, "events": events, "timeline": timeline, "counts": counts,
             "diagnostics": diagnostics, "ignored_types": ignored_types}
 
 
@@ -401,6 +449,12 @@ def main(argv=None):
         "Antigravity reads ~/.gemini/antigravity-cli, ~/.gemini/antigravity, and "
         "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
         "folder. The manifest lists each root with its status. "
+        "With --after, a source whose modification time is at or before that "
+        "cutoff is not copied or read; counts.unchanged_sources counts it. "
+        "Each selected source has a digest and a timeline: one tab-separated "
+        "line for each window event, with its line, time, kind, tool, flags, "
+        f"and clipped text. Flags mark gaps of {GAP_SECONDS} s or more, error "
+        "results, and hook blocks. "
         "A partial result retains usable evidence; inspect manifest diagnostics. "
         "Originals remain unchanged."))
     parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
@@ -477,7 +531,9 @@ def main(argv=None):
     output.mkdir(mode=0o700)
     (output / "raw").mkdir()
     (output / "digests").mkdir()
+    (output / "timelines").mkdir()
     sources = []
+    unchanged = 0
     totals = {"eligible_events": 0, "shown_events": 0, "omitted_events": 0,
               "clipped_characters": 0, "records": 0, "foreign_records": 0,
               "outside_window_records": 0, "unattributed_records": 0,
@@ -519,6 +575,17 @@ def main(argv=None):
                 alias = f"source-{candidates:04d}"
                 copy = f"raw/{alias}.jsonl"
                 digest = f"digests/{alias}.json"
+                timeline = f"timelines/{alias}.tsv"
+                # A record is written after its time, so a source modified at
+                # or before --after holds no record after it. A source that
+                # cannot be read here goes on to snapshot(), which reports it.
+                try:
+                    modified = Fraction(path.stat().st_mtime_ns, 10 ** 9)
+                except OSError:
+                    modified = None
+                if after is not None and modified is not None and modified <= after:
+                    unchanged += 1
+                    continue
                 boundary, copied, copy_diagnostics = snapshot(path, output / copy)
                 if not (output / copy).exists():
                     diagnostics.extend({"path": str(path), "host": host, **item} for item in copy_diagnostics)
@@ -535,12 +602,15 @@ def main(argv=None):
                     (output / copy).unlink()
                     continue
                 events, counts = extracted["events"], extracted["counts"]
+                with (output / timeline).open("x", encoding="utf-8", errors="backslashreplace") as stream:
+                    stream.write(TIMELINE_HEADER)
+                    stream.writelines(extracted["timeline"])
                 write_json(output / digest, {"source": alias, "host": host,
-                                            "copy": copy, "events": events, "counts": counts,
+                                            "copy": copy, "timeline": timeline, "events": events, "counts": counts,
                                             "diagnostics": extracted["diagnostics"],
                                             "ignored_types": extracted["ignored_types"]})
                 sources.append({"host": host, "path": str(path.resolve()), "selected": True,
-                                "copy": copy, "digest": digest, "boundary_bytes": boundary,
+                                "copy": copy, "digest": digest, "timeline": timeline, "boundary_bytes": boundary,
                                 "copied_bytes": copied, "counts": counts,
                                 "diagnostics": extracted["diagnostics"]})
     diagnostic_count = sum(item.get("count", 1) for item in diagnostics)
@@ -554,11 +624,15 @@ def main(argv=None):
                 "roots": roots, "sources": sources, "diagnostics": diagnostics,
                 "limitations": ["Removed external worktrees cannot be attributed without current Git registration.",
                                 "Copies are measured byte prefixes, not atomic filesystem snapshots.",
+                                "A source modified at or before --after is not read; a record whose time "
+                                "is later than its file's modification time, such as after a clock change, "
+                                "is missed.",
                                 "Raw copies can include records outside the repository and time window.",
                                 "Antigravity records carry no cwd; their events show the matched workspace folder as cwd.",
                                 "Digests are evidence indexes, not complete semantic reviews."],
                 "counts": {"candidate_sources": candidates, "selected_sources": len(sources),
-                           "skipped_sources": candidates - len(sources), **totals, "diagnostics": diagnostic_count}}
+                           "skipped_sources": candidates - len(sources), "unchanged_sources": unchanged,
+                           **totals, "diagnostics": diagnostic_count}}
     write_json(output / "manifest.json", manifest)
     print(json.dumps({"status": status, "manifest": str(output / "manifest.json"),
                       "selected_sources": len(sources), "eligible_events": totals["eligible_events"],

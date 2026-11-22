@@ -233,6 +233,33 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual([event["line"] for event in digests[0]["events"]], [1, 2, 65])
         self.assertTrue(all(event["text"] == "x" * 10 for event in digests[0]["events"]))
 
+    def test_timeline_lists_every_window_event_with_gaps_errors_and_hook_blocks(self):
+        self.transcript(self.claude, "session.jsonl", [
+            self.claude_message("before the window", timestamp="2026-01-01T00:00:00Z"),
+            self.claude_message("first\n\tline", timestamp="2026-01-02T12:00:00Z"),
+            self.claude_message([{"type": "tool_use", "id": "call-a", "name": "Bash",
+                                  "input": {"command": "git add ."}}],
+                                type="assistant", timestamp="2026-01-02T12:00:29Z"),
+            self.claude_message([{"type": "tool_result", "tool_use_id": "call-a", "is_error": True,
+                                  "content": "PreToolUse:Bash hook error: BLOCKED."}],
+                                timestamp="2026-01-02T12:00:59Z"),
+            self.claude_message([{"type": "tool_result", "tool_use_id": "call-b", "is_error": True,
+                                  "content": "Exit code 1"}], timestamp="2026-01-02T12:01:00Z"),
+            self.claude_message("x" * 50, timestamp="2026-01-02T12:01:00Z"),
+        ])
+        _, _, selected, digests = self.artifacts(self.run_cli(
+            "--after", "2026-01-02T00:00:00Z", "--through", "2026-01-03T00:00:00Z",
+            "--max-events", "2", "--max-text", "40"))
+        self.assertEqual(len(digests[0]["events"]), 2)
+        self.assertEqual(digests[0]["timeline"], selected[0]["timeline"])
+        self.assertEqual((self.output / selected[0]["timeline"]).read_text().splitlines(), [
+            "line\ttime\tkind\ttool\tflags\ttext",
+            "2\t2026-01-02T12:00:00Z\tuser\t-\t-\tfirst line",
+            '3\t2026-01-02T12:00:29Z\ttool_call\tBash\t-\t{"command": "git add ."}',
+            "4\t2026-01-02T12:00:59Z\ttool_result\tBash\tgap=30s,error,hook_block\tPreToolUse:Bash hook error: BLOCKED.",
+            "5\t2026-01-02T12:01:00Z\ttool_result\t-\terror\tExit code 1",
+            "6\t2026-01-02T12:01:00Z\tuser\t-\t-\t" + "x" * 40 + " [+10 chars]"])
+
     def test_damaged_and_unsupported_history_is_partial_with_physical_lines(self):
         source = self.transcript(self.claude, "damaged.jsonl", [
             {"type": "file-history-snapshot"},
@@ -483,6 +510,33 @@ class RetroSessionsTests(unittest.TestCase):
             "--after", "`2026-11-09T00:22:55.226+00:00`", "--through", "2026-11-21T05:16:55Z"))
         self.assertEqual([event["text"] for digest in digests for event in digest["events"]],
                          ["after the cutoff"])
+
+    def test_after_skips_sources_modified_at_or_before_it_and_reads_newer_ones(self):
+        after_ns = int(datetime(2026, 1, 2, tzinfo=timezone.utc).timestamp()) * 10 ** 9
+        # Both records are in the window, so only the modification time can
+        # leave the unchanged source out.
+        sources = {}
+        for name, modified in (("unchanged", after_ns), ("newer", after_ns + 1_000_000)):
+            sources[name] = self.transcript(self.claude, f"{name}.jsonl", [self.claude_message(name)])
+            os.utime(sources[name], ns=(modified, modified))
+        opened = []
+        original_open = Path.open
+        def recording_open(path, mode="r", *args, **kwargs):
+            opened.append(path)
+            return original_open(path, mode, *args, **kwargs)
+
+        with patch.object(Path, "open", recording_open):
+            _, manifest, _, digests = self.artifacts(self.run_in_process(
+                "--claude-root", str(self.claude), "--codex-root", str(self.codex),
+                "--after", "2026-01-02T00:00:00Z", "--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual([event["text"] for digest in digests for event in digest["events"]], ["newer"])
+        self.assertNotIn(sources["unchanged"], opened)
+        self.assertEqual(manifest["counts"]["records"], 1)
+        self.assertEqual((manifest["counts"]["candidate_sources"], manifest["counts"]["unchanged_sources"],
+                          manifest["counts"]["skipped_sources"]), (2, 1, 1))
+        self.output = self.base / "no-lower-bound"
+        _, manifest, _, _ = self.artifacts(self.run_cli("--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual((manifest["counts"]["selected_sources"], manifest["counts"]["unchanged_sources"]), (2, 0))
 
     def test_unknown_json_shapes_and_unreadable_sources_do_not_abort_available_evidence(self):
         denied = self.transcript(self.claude, "denied.jsonl", [self.claude_message("unreadable")])
