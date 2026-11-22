@@ -2,9 +2,10 @@
 
 Issue #448 fixes the steps, the flag model, and the lines that must match
 matt-automode. Issues #468, #476, and #478 add the read-only brief, the dispatch
-rules for every task, the start of every turn, and the worker budget. Issue #504
-sets the budget of a code change to one full review and one fix, then the merge. Agent
-behavior is checked by the scenario review in t3-project-lead-scenarios.md.
+rules for every task, the start of every turn, and the worker budget. Issue
+#504 sets the budget of a code change to one full review and one fix, then the
+merge. Agent behavior is checked by the scenario review in
+t3-project-lead-scenarios.md.
 """
 from __future__ import annotations
 
@@ -62,8 +63,8 @@ REQUIRED = {
               "Budget: name a round limit and a time limit in minutes",
               '"At either limit, end your turn and report where you are, with links and what '
               'remains."',
-              "For a code change: one full review and one fix of any size, then merge. The "
-              "worker stops only for a blocking problem it cannot settle."],
+              "For a code change: one full review and one fix of any size, then merge. Only "
+              "a blocking problem of matt-automode phase 5 stops the merge."],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
                "In this turn, put it on the list of what waits on the user, with its link and "

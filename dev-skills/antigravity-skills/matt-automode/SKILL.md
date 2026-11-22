@@ -101,15 +101,16 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    requirement, a broken cited rule, and shipped text that the change makes
    false. A problem present at the comparison commit blocks only when the
    ticket requires its fix. List other findings with a reason in the review
-   record. Open or reuse an issue only for a defect that a user can hit. Fix
-   all blocking findings in one fix, commit, and pass the affected checks.
-   The fix has no size limit. Run no second full review and no focused check
-   of the fix. Then go to phase 6 and merge. Stop the ticket without a merge
-   only for a blocking problem that the run cannot settle: a design or scope
-   choice that the ticket and the spec do not settle, a needed approval or
-   access, or a test or CI failure that the fix does not close. Then keep the
+   record. Open or reuse an issue only for a defect that a user can hit.
+   Close all blocking findings in one fix, commit, and pass the affected
+   checks. The fix has no size limit. Run no second full review and no
+   focused check of the fix. Stop the ticket without a merge only for a
+   blocking problem that the run cannot settle: a design or scope choice that
+   the ticket and the spec do not settle, a needed approval or access, or a
+   test or CI failure that the fix does not close. In that case, keep the
    work, report the problem to the user, and continue independent tickets.
-   Record the head SHA that the review covers.
+   Otherwise, go to phase 6 and merge. Record the head SHA that the review
+   covers.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references

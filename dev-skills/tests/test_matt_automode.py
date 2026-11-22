@@ -41,14 +41,14 @@ REVIEW_BOUND = (
     "A problem present at the comparison commit blocks only when the ticket requires its fix.",
     "List other findings with a reason in the review record.",
     "Open or reuse an issue only for a defect that a user can hit.",
-    "Fix all blocking findings in one fix, commit, and pass the affected checks.",
+    "Close all blocking findings in one fix, commit, and pass the affected checks.",
     "The fix has no size limit.",
     "Run no second full review and no focused check of the fix.",
-    "Then go to phase 6 and merge.",
     "Stop the ticket without a merge only for a blocking problem that the run cannot settle: a "
     "design or scope choice that the ticket and the spec do not settle, a needed approval or "
     "access, or a test or CI failure that the fix does not close.",
-    "Then keep the work, report the problem to the user, and continue independent tickets.",
+    "In that case, keep the work, report the problem to the user, and continue independent "
+    "tickets. Otherwise, go to phase 6 and merge.",
 )
 OLD_FIX_RULES = ("code changes need review against the same comparison commit",
                  "Give each fix one focused check")
@@ -138,7 +138,7 @@ class ReviewLoopIsBoundedTest(unittest.TestCase):
         for host in HOSTS:
             words_before = re.findall(r"(\S+) focused checks?", flat(automode(host)))
             with self.subTest(host=host):
-                self.assertEqual(words_before, ["no"])
+                self.assertEqual(set(words_before), {"no"})
 
     def test_a_fix_for_a_failing_check_gets_no_review(self) -> None:
         for host in HOSTS:

@@ -130,9 +130,9 @@ after another clear case.
 ### 2026-11-22, issue #504
 
 **Static checks.** `test_t3_project_lead.py` requires the new `brief` line:
-"one full review and one fix of any size, then merge", and that the worker
-stops only for a blocking problem that it cannot settle. The `brief` step has
-no "focused check". These checks fail on the 953103b script and pass after
+"one full review and one fix of any size, then merge", and that only a
+blocking problem of matt-automode phase 5 stops the merge. The `brief` step
+has no "focused check". These checks fail on the 953103b script and pass after
 the change. The step has 199 words; the limit is 200. No simulated review of
 case 17 ran.
 
