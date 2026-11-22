@@ -17,6 +17,7 @@ from safety_guard import (
     MAX_NESTED_SHELL_DEPTH,
     PROCESS_WRAPPERS,
     SHELL_PROGRAMS,
+    SHELL_VALUE_OPTIONS,
     SIMPLE_WRAPPERS,
     strip_heredoc_bodies,
 )
@@ -108,7 +109,6 @@ GIT_ADD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'add(?=[ \t]|
 GIT_COMMIT_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'commit(?=[ \t]|$)')
 GH_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'gh(?=[ \t]|$)')
 COMMAND_PREFIX_RE = re.compile(SEGMENT_START + ASSIGNMENTS)
-COMMAND_WORD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'(?P<word>' + SHELL_WORD + r')')
 # Pathspecs that name the whole working tree.
 BULK_PATHSPECS = {'.', './', ':/'}
 # Programs that run the command in their arguments, such as
@@ -549,43 +549,63 @@ def invocations(command, depth=0):
         yield from segment_invocations(segment, depth)
 
 
+def segment_program(segment):
+    """Return the program that one segment runs and the text after it.
+
+    The program is a name without a folder. A wrapper such as `timeout 60`
+    or `sudo` is skipped with its options and arguments, up to a git, gh,
+    shell, or eval word. Return (None, '') when no such word follows a
+    wrapper.
+    """
+    start = COMMAND_PREFIX_RE.match(segment).end()
+    for index, match in enumerate(word_matches(segment[start:])):
+        name = program_name(match.group())
+        if (
+            name in ('git', 'gh')
+            or name in LAUNCHER_PROGRAMS
+            or (index == 0 and name not in WRAPPER_PROGRAMS)
+        ):
+            return name, segment[start + match.end():]
+    return None, ''
+
+
+def received_words(text):
+    """Return the words of `text` as the command receives them."""
+    return [received_word(word) for word in raw_shell_words(text)]
+
+
 def segment_invocations(segment, depth):
     """Yield the text of each command that one segment runs (see
-    invocations). A wrapper's own options and arguments are skipped."""
-    start = COMMAND_PREFIX_RE.match(segment).end()
-    words = list(word_matches(segment[start:]))
-    for index, match in enumerate(words):
-        name = program_name(match.group())
-        if name in ('git', 'gh'):
-            yield name + segment[start + match.end():]
-            return
-        if name in LAUNCHER_PROGRAMS:
-            arguments = [received_word(word.group()) for word in words[index + 1:]]
-            yield from launched_commands(name, arguments, depth)
-            return
-        if index == 0 and name not in WRAPPER_PROGRAMS:
-            yield segment
-            return
-
-
-def launched_commands(name, arguments, depth):
-    """Yield the commands in the string that `eval` or `<shell> -c` runs.
-
-    A shell that reads a script file or standard input runs commands that
-    are not in its arguments; the indirect check in main() covers it.
-    """
+    invocations)."""
+    name, rest = segment_program(segment)
     if name == 'eval':
-        yield from invocations(' '.join(arguments), depth + 1)
-        return
+        yield from invocations(' '.join(received_words(rest)), depth + 1)
+    elif name in SHELL_PROGRAMS:
+        string = shell_command_string(received_words(rest))
+        if string is not None:
+            yield from invocations(string, depth + 1)
+    elif name:
+        yield name + rest
+
+
+def shell_command_string(arguments):
+    """Return the `-c` command string of `<shell> <arguments>`, or None.
+
+    Without `-c`, the shell reads a script file or standard input, whose
+    commands are not in its arguments.
+    """
     words = iter(arguments)
+    has_string = False
     for word in words:
-        if not word.startswith('-'):
-            return
-        if 'c' in short_option_letters(word):
-            string = next(words, None)
-            if string is not None:
-                yield from invocations(string, depth + 1)
-            return
+        if word == '--':
+            break
+        if word in SHELL_VALUE_OPTIONS:
+            next(words, None)  # skip the option value
+        elif word.startswith('-') and not word.startswith('--'):
+            has_string = has_string or 'c' in word[1:]
+        elif not word.startswith(('--', '+')):
+            return word if has_string else None
+    return next(words, None) if has_string else None
 
 
 def contribution_kind(segment):
@@ -611,13 +631,16 @@ def contribution_kind(segment):
     return None
 
 
-def runs_indirect_command(segment):
-    """Report whether `segment` starts with a program that runs another
-    command, such as `bash` or `sudo`."""
-    match = COMMAND_WORD_RE.match(segment)
-    if not match:
-        return False
-    return program_name(match.group('word')) in WRAPPER_PROGRAMS | LAUNCHER_PROGRAMS
+def runs_hidden_commands(segment):
+    """Report whether `segment` runs `eval`, or a shell with no `-c` string.
+
+    Such a shell reads a script file or standard input, such as a heredoc,
+    so the hook cannot read its commands as segments (#455).
+    """
+    name, rest = segment_program(segment)
+    if name == 'eval':
+        return True
+    return name in SHELL_PROGRAMS and shell_command_string(received_words(rest)) is None
 
 
 def git_directory(segment, cwd):
@@ -743,9 +766,9 @@ def main():
         #
         # Once the command runs a contribution command, the whole command is
         # searched, heredoc bodies included, so a message built in an earlier
-        # segment is checked too. A shell that reads a script or standard
-        # input, or another program that runs a command the hook cannot
-        # read, counts when the text mentions one (#455).
+        # segment is checked too. When the text mentions a contribution
+        # command, `eval` or a shell with no `-c` string, which reads a script
+        # file or standard input, also starts the search (#455).
         contributions = []
         for text in invocations(command):
             kind = contribution_kind(text)
@@ -753,7 +776,7 @@ def main():
                 contributions.append((text, kind))
         is_contribution_cmd = bool(contributions) or (
             bool(CONTRIBUTION_MENTION_RE.search(command))
-            and any(runs_indirect_command(segment) for segment in command_segments(command))
+            and any(runs_hidden_commands(segment) for segment in command_segments(command))
         )
         cwd = payload_cwd(input_data)
         texts = [command]

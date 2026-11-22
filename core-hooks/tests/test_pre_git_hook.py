@@ -1216,9 +1216,29 @@ class PreGitHookTests(unittest.TestCase):
             "rg -n 'git commit.*Co-Authored-By: Claude' -- docs",
             "timeout 5 rg -n 'gh pr merge 1 --squash' docs",
             "command -v gh",
+            # A wrapper alone does not start the whole-command search.
+            "timeout 60 git grep -n -E 'git commit.*Co-Authored-By: Claude' -- '*.md'",
+            "nice rg -n 'git commit.*Co-Authored-By: Claude' -- docs",
+            "timeout 10 git cat-file commit HEAD | grep -i 'Co-Authored-By: Claude'",
+            "timeout 60 python3 - <<'EOF'\nprint(\"git commit -m 'x' -m 'Co-Authored-By: Claude'\")\nEOF",
         ]:
             with self.subTest(command=command):
                 run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
+    def test_reads_shell_strings_and_shells_that_read_standard_input(self):
+        trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        for command, reason in [
+            # A shell with no `-c` string runs commands the hook cannot read.
+            (f"bash <<'EOF'\ngit commit -m Fix -m '{trailer}'\nEOF", "AI tool attribution"),
+            (f"eval 'git commit -m Fix -m \"{trailer}\"'", "AI tool attribution"),
+            ("bash -o pipefail -c 'gh pr merge 1 --squash'", "--match-head-commit"),
+            ("bash -c -- 'gh pr merge 1 --squash'", "--match-head-commit"),
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn(reason, result.stderr)
 
 
 if __name__ == "__main__":
