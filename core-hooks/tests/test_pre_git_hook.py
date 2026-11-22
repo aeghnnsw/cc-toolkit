@@ -75,6 +75,50 @@ class PreGitHookTests(unittest.TestCase):
         self.assertIn(title, output["additionalContext"])
         self.assertEqual(response["systemMessage"], output["additionalContext"])
 
+    def test_monitor_command_gets_the_bash_result(self):
+        # The Claude Code Monitor tool runs its `command` as a shell script
+        # (#527).
+        for command, status in (
+            ("git add .", 2),
+            ("git add --all", 2),
+            ("git switch -c no-prefix", 2),
+            ("git status", 0),
+        ):
+            results = {
+                tool: run_hook_process({
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": tool,
+                    "tool_input": {"command": command},
+                })
+                for tool in ("Bash", "Monitor")
+            }
+            with self.subTest(command=command):
+                monitor, bash = results["Monitor"], results["Bash"]
+                self.assertEqual(monitor.returncode, status, monitor.stderr)
+                self.assertEqual(
+                    (monitor.returncode, monitor.stdout, monitor.stderr),
+                    (bash.returncode, bash.stdout, bash.stderr),
+                )
+        result = run_hook_process({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Monitor",
+            "tool_input": {"command": "git add ."},
+        })
+        self.assertIn("Bulk git add operations are prohibited", result.stderr)
+
+    def test_allows_monitor_without_a_command(self):
+        result = run_hook_raw({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Monitor",
+            "tool_input": {
+                "ws": {"url": "wss://events.example.invalid/stream"},
+                "description": "events",
+                "timeout_ms": 1000,
+            },
+        })
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
+
     def test_blocks_invalid_grok_branch_name(self):
         result = run_blocked_hook(
             {

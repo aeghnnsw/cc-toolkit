@@ -700,6 +700,41 @@ class ZshTrapTests(unittest.TestCase):
                     self.assertEqual(output["permissionDecision"], "deny")
                     self.assertNotIn("updatedInput", output)
 
+    def test_monitor_command_gets_the_checks_but_not_the_rewrite(self):
+        # The Claude Code Monitor tool runs its `command` as a shell script
+        # (#527). Only a Bash command gets the `echo` rewrite.
+        def run(tool, tool_input):
+            payload = {
+                "hook_event_name": "PreToolUse",
+                "tool_name": tool,
+                "tool_input": tool_input,
+            }
+            return run_hook_input(json.dumps(payload), args=("--host", "claude"))
+
+        for command in ('[ "a" == "a" ]', next(iter(FLAG_TRAPS))):
+            with self.subTest(command=command):
+                monitor = run("Monitor", {"command": command})
+                bash = run("Bash", {"command": command})
+                self.assertEqual(monitor.returncode, 0, monitor.stderr)
+                output = json.loads(monitor.stdout)["hookSpecificOutput"]
+                self.assertEqual(output["permissionDecision"], "deny")
+                self.assertEqual(
+                    (monitor.returncode, monitor.stdout, monitor.stderr),
+                    (bash.returncode, bash.stdout, bash.stderr),
+                )
+        bash = json.loads(run("Bash", {"command": "echo ====="}).stdout)
+        self.assertIn("updatedInput", bash["hookSpecificOutput"])
+        monitor = json.loads(run("Monitor", {"command": "echo ====="}).stdout)
+        self.assertEqual(monitor["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertNotIn("updatedInput", monitor["hookSpecificOutput"])
+        result = run("Monitor", {
+            "ws": {"url": "wss://events.example.invalid/stream"},
+            "description": "events",
+            "timeout_ms": 1000,
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
     def test_malformed_input_or_unrelated_tools_remain_silent(self):
         payloads = (
             "{", "null", "[]", '"text"', "{}",

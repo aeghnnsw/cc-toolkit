@@ -117,6 +117,44 @@ class SafetyGuardTests(unittest.TestCase):
             "wildcard rm target",
         )
 
+    def test_monitor_command_gets_the_bash_result(self):
+        # The Claude Code Monitor tool runs its `command` as a shell script
+        # (#527). The guard only reads the text; no command runs.
+        for command, status in (
+            ("rm -rf /var/log/example", 2),
+            (HOME_RM, 2),
+            ("env", 2),
+            ("rm -rf build", 0),
+        ):
+            results = {
+                tool: run_hook({
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": tool,
+                    "tool_input": {"command": command},
+                })
+                for tool in ("Bash", "Monitor")
+            }
+            with self.subTest(command=command):
+                monitor, bash = results["Monitor"], results["Bash"]
+                self.assertEqual(monitor.returncode, status, monitor.stderr)
+                self.assertEqual(
+                    (monitor.returncode, monitor.stdout, monitor.stderr),
+                    (bash.returncode, bash.stdout, bash.stderr),
+                )
+
+    def test_allows_monitor_without_a_command(self):
+        result = run_hook({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Monitor",
+            "tool_input": {
+                "ws": {"url": "wss://events.example.invalid/stream"},
+                "description": "events",
+                "timeout_ms": 1000,
+            },
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+
     def test_blocks_dangerous_grok_rm(self):
         result = run_hook(
             {

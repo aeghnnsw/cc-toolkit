@@ -1,8 +1,12 @@
 """Normalize shell commands from supported hook event payloads."""
 
 
+# The input key of the shell command of each tool that runs one. The
+# Claude Code `Monitor` tool runs its `command` as a shell script; its
+# `ws` form has no command.
 SHELL_COMMAND_KEYS = {
     "Bash": "command",
+    "Monitor": "command",
     "exec_command": "cmd",
     "run_terminal_command": "command",
 }

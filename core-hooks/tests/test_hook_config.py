@@ -1,6 +1,7 @@
 """Check the hook configuration files of every host."""
 
 import json
+import re
 import shlex
 import unittest
 from pathlib import Path
@@ -15,6 +16,10 @@ HOOK_FILES = (
 )
 # The flags that make system_notification.py play a sound.
 SOUND_FLAGS = {"--success", "--error", "--info", "--attention"}
+# The Claude Code tools that run a shell command, and the scripts that check
+# that command before it runs (#527).
+CLAUDE_SHELL_TOOLS = ("Bash", "Monitor")
+SHELL_CHECKS = ("safety_guard.py", "pre_git_hook.py", "zsh_traps.py")
 
 
 def configured_commands(path):
@@ -48,6 +53,22 @@ class HookConfigTests(unittest.TestCase):
                     ]
                     self.assertEqual(len(flags), 1, flags)
         self.assertGreater(checked, 0)
+
+    def test_claude_code_shell_checks_match_each_shell_tool(self):
+        config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+        found = set()
+        for entry in config["hooks"]["PreToolUse"]:
+            for hook in entry["hooks"]:
+                for script in SHELL_CHECKS:
+                    if script not in hook["command"]:
+                        continue
+                    found.add(script)
+                    for tool in CLAUDE_SHELL_TOOLS:
+                        with self.subTest(script=script, tool=tool):
+                            self.assertIsNotNone(
+                                re.fullmatch(entry["matcher"], tool), entry["matcher"]
+                            )
+        self.assertEqual(found, set(SHELL_CHECKS))
 
 
 if __name__ == "__main__":
