@@ -66,7 +66,7 @@ def pytest_collection_modifyitems(session, config, items) -> None:
 def _fixture_names(session) -> list | None:
     """The fixture names that pytest knows, or None when the fixture manager has none of _FIXTURE_MAPS."""
     manager = getattr(session, "_fixturemanager", None)
-    maps = [found for found in (getattr(manager, name, None) for name in _FIXTURE_MAPS) if found is not None]
+    maps = [mapping for mapping in (getattr(manager, name, None) for name in _FIXTURE_MAPS) if mapping is not None]
     return sorted(set().union(*maps)) if maps else None
 
 
