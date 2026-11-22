@@ -5,13 +5,13 @@ A Codex or Antigravity copy differs from it only where an allowlist at the end o
 
 - HOST_FILES: the files that only one copy has.
 - HOST_LINES: the lines that differ in a shared file, as `-` (Claude copy) and `+` (host copy) lines.
-  The lines must equal the entry, so a new difference fails and so does an entry line that no longer
-  differs. A `#` line in an entry is a comment.
+  The lines, with their repeats, must equal the entry, so a new difference fails and so does an entry
+  line that no longer differs. A `#` line in an entry is a comment.
 - UNMATCHED: the files whose text the test does not compare yet, each with its repair issue. The entry
-  fails when the file matches again.
+  fails when the file differs only in the lines that HOST_LINES lists for it, or not at all.
 - INVOCATION_EXCEPTIONS: the copies whose invocation policy does not agree yet, each with its repair issue.
 """
-from collections import defaultdict
+from collections import Counter, defaultdict
 import difflib
 from pathlib import Path
 import re
@@ -22,9 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from package_support import ROOT, git_files
 from test_skill_links import discover
 
-FIELD = re.compile(r'^([A-Za-z][\w-]*):\s*(.*)$')
-# The frontmatter keys that each host allows; None means any key (CONTRIBUTING.md, "Frontmatter").
-KEYS = {'claude': None, 'codex': {'name', 'description'},
+FRONTMATTER_FIELD = re.compile(r'^([A-Za-z][\w-]*):\s*(.*)$')
+# The frontmatter keys that each host allows; a host that is not listed allows any key (CONTRIBUTING.md,
+# "Frontmatter").
+ALLOWED_KEYS = {'codex': {'name', 'description'},
         'antigravity': {'name', 'description', 'disable-model-invocation'}}
 CODEX_POLICY = 'agents/openai.yaml'
 # Tool names and wording that a copy for another host must not use (CONTRIBUTING.md, "Antigravity copies").
@@ -44,13 +45,6 @@ def skill_copies(registrations):
     return {key: hosts for key, hosts in sorted(found.items()) if len(set(hosts.values())) > 1}
 
 
-def other_copies(hosts):
-    """Yield (host, folder) for each copy that is not the Claude copy."""
-    for host, folder in hosts.items():
-        if host != 'claude' and folder != hosts['claude']:
-            yield host, folder
-
-
 def relative(path):
     return path.relative_to(ROOT).as_posix()
 
@@ -60,13 +54,19 @@ def copy_files(folder, files):
     return {name[len(prefix):] for name in files if name.startswith(prefix) and (ROOT / name).is_file()}
 
 
+def read_lines(path):
+    """Return the lines of a file. A `\r` line ending stays in its line, and a final newline gives a last
+    empty line, so equal lines mean equal bytes."""
+    return path.read_text(encoding='utf-8', newline='').split('\n')
+
+
 def split_skill(path):
     """Return the frontmatter fields, unquoted, and the body lines of a SKILL.md file."""
-    lines = path.read_text(encoding='utf-8').splitlines()
+    lines = read_lines(path)
     end = lines.index('---', 1)
     fields = {}
     for line in lines[1:end]:
-        match = FIELD.match(line)
+        match = FRONTMATTER_FIELD.match(line)
         if match:
             fields[match[1]] = match[2].strip().strip('"\'')
     return fields, lines[end + 1:]
@@ -77,13 +77,13 @@ def compared_lines(path):
     if path.name == 'SKILL.md':
         fields, body = split_skill(path)
         return [f'description: {fields.get("description", "")}', *body]
-    return path.read_text(encoding='utf-8').splitlines()
+    return read_lines(path)
 
 
 def changed_lines(claude, host):
-    """Return the lines that differ, as `-` lines of the Claude copy and `+` lines of the host copy."""
+    """Count the lines that differ, as `-` lines of the Claude copy and `+` lines of the host copy."""
     claude = [line.replace('${CLAUDE_PLUGIN_ROOT}', '<plugin-root>') for line in claude]
-    changed = set()
+    changed = Counter()
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, claude, host, autojunk=False).get_opcodes():
         if tag != 'equal':
             changed.update('-' + line for line in claude[i1:i2])
@@ -92,9 +92,8 @@ def changed_lines(claude, host):
 
 
 def allowed_lines(path):
-    """Return the `-` and `+` lines that HOST_LINES lists for a host file."""
-    entry = HOST_LINES.get(path, '').splitlines()
-    return {line for line in entry if line and not line.startswith('#')}
+    """Count the `-` and `+` lines that HOST_LINES lists for a host file."""
+    return Counter(line for line in HOST_LINES.get(path, '').splitlines() if line and not line.startswith('#'))
 
 
 def user_invoked(host, folder):
@@ -104,8 +103,10 @@ def user_invoked(host, folder):
         section = None
         for line in policy.read_text(encoding='utf-8').splitlines() if policy.is_file() else ():
             if line and not line[0].isspace():
-                section = line.split(':')[0]
-            elif section == 'policy' and re.fullmatch(r'\s+allow_implicit_invocation:\s*false\s*', line):
+                section, _, rest = line.partition(':')
+                if section == 'policy' and re.search(r'\ballow_implicit_invocation:\s*false\b', rest):
+                    return True  # The flow form: policy: {allow_implicit_invocation: false}
+            elif section == 'policy' and re.match(r'\s+allow_implicit_invocation:\s*false\b', line):
                 return True
         return False
     return split_skill(folder / 'SKILL.md')[0].get('disable-model-invocation') == 'true'
@@ -120,13 +121,16 @@ class HostCopyTests(unittest.TestCase):
 
     def pairs(self):
         """Yield (copy name, host, Claude folder, host folder) for each copy that is not the Claude copy."""
-        for (plugin, skill), hosts in self.copies.items():
-            if 'claude' in hosts:
-                for host, folder in other_copies(hosts):
+        for hosts in self.copies.values():
+            for host, folder in hosts.items():
+                if 'claude' in hosts and folder != hosts['claude']:
                     yield relative(folder), host, hosts['claude'], folder
 
     def test_skills_with_copies_are_found(self):
         self.assertEqual(set(self.copies[('dev-skills', 'repo-cleanup')]), {'claude', 'codex', 'antigravity'})
+        for (plugin, skill), hosts in self.copies.items():
+            with self.subTest(skill=f'{plugin}/{skill}'):
+                self.assertIn('claude', hosts, 'the test compares each copy with the Claude copy; add one')
 
     def test_copies_have_the_same_files(self):
         for name, host, claude, folder in self.pairs():
@@ -154,24 +158,30 @@ class HostCopyTests(unittest.TestCase):
                                                             f'({UNMATCHED[key]})')
                         continue
                     self.assertEqual(
-                        found, allowed,
-                        'the copies differ in lines that HOST_LINES does not list (only in the first set), or '
-                        'HOST_LINES lists lines that no longer differ (only in the second set). Make the change '
+                        sorted(found.elements()), sorted(allowed.elements()),
+                        'the copies differ in lines that HOST_LINES does not list (- in the diff below), or '
+                        'HOST_LINES lists lines that no longer differ (+ in the diff below). Make the change '
                         'in every copy; list only host-specific lines.')
 
     def test_allowlist_entries_name_existing_copies(self):
         names = {relative(folder) for hosts in self.copies.values() for folder in hosts.values()}
-        for key in [*HOST_FILES, *INVOCATION_EXCEPTIONS]:
+        host_copies = {name for name, *_ in self.pairs()}
+        for key in INVOCATION_EXCEPTIONS:
             with self.subTest(entry=key):
                 self.assertTrue(key in names, 'no copy has this folder')
+        for key in HOST_FILES:
+            with self.subTest(entry=key):
+                self.assertTrue(key in host_copies, 'no Codex or Antigravity copy has this folder')
         for key in [*HOST_LINES, *UNMATCHED]:
             with self.subTest(entry=key):
-                self.assertTrue('/'.join(key.split('/')[:3]) in names, 'no copy has this folder')
+                self.assertTrue('/'.join(key.split('/')[:3]) in host_copies,
+                                'no Codex or Antigravity copy has this folder')
                 self.assertTrue((ROOT / key).is_file(), 'no file has this path')
         for key, entry in HOST_LINES.items():
             with self.subTest(entry=key):
                 self.assertEqual([line for line in entry.splitlines() if line and line[0] not in '-+#'], [],
                                  'start each line with -, +, or #')
+                self.assertTrue(allowed_lines(key), 'list at least one - or + line')
         for key, reason in [*UNMATCHED.items(), *INVOCATION_EXCEPTIONS.items()]:
             with self.subTest(entry=key):
                 self.assertRegex(reason, r'#\d+', 'name the repair issue')
@@ -182,7 +192,7 @@ class HostCopyTests(unittest.TestCase):
                 fields, _ = split_skill(skill)
                 with self.subTest(copy=relative(skill.parent)):
                     self.assertEqual(fields.get('name'), skill.parent.name, 'name the skill as its folder')
-                    allowed = KEYS.get(package.host)
+                    allowed = ALLOWED_KEYS.get(package.host)
                     if allowed is not None:
                         self.assertLessEqual(set(fields), allowed,
                                              f'{package.host} copies carry only {sorted(allowed)}')
