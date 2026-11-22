@@ -590,6 +590,11 @@ class CodexCriticTest(unittest.TestCase):
         starter.communicate(timeout=scaled(10))
         self.assertEqual(self.run_runner("kickoff"), (1, f"exit=2 model={CRITIC_MODEL} status=error:busy"))
         resume.touch()
+        # The supervisor releases the start lock only after it wrote call.json; wait needs call.json.
+        self.assertTrue(wait_for(lambda: not self.lock_held("start.lock")), "the supervisor kept the start lock")
+        call_json = self.workdir / "call.json"
+        self.assertTrue(call_json.exists(), "call.json is missing after the supervisor released the start lock")
+        self.assertEqual(json.loads(call_json.read_text(encoding="utf-8"))["pid"], supervisor)
         self.assertEqual(self.wait_until_final(), (0, f"exit=0 model={CRITIC_MODEL} status=ok"))
         self.assertEqual(self.call()["ppid"], supervisor)
         self.assertEqual((self.workdir / "msg.txt").read_text(encoding="utf-8"), "first reply")
