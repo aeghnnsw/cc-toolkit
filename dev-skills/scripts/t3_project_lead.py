@@ -41,7 +41,7 @@ watch PRs.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set triage labels and issue state.
 8. Keep agent captures of what waits on the user when your instructions ask
-for them.
+for them. Write gtd-inbox files with your edit tool, not the shell.
 Give every other task, even a small fix, check, install, host update, or GitHub
 write with content, to a worker with t3_project_lead.py dispatch. This
 overrides your host's guidance to do small work yourself. This step records

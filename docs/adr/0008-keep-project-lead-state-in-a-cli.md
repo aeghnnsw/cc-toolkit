@@ -103,6 +103,7 @@ Consequences:
   the state commands, after the plugin update.
 - The close-out brief names the history file, so the retrospective reads real
   times. `finish` deletes the history with the lead folder.
-- GTD agent captures from a lead session wait for
-  [#531](https://github.com/aeghnnsw/cc-toolkit/issues/531): the hook blocks
-  the commands that a capture needs.
+- Since [#531](https://github.com/aeghnnsw/cc-toolkit/issues/531), the hook
+  passes the calls of a gtd-inbox capture; read
+  [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
+  in ADR 0007. The script still reads and writes no GTD data.
