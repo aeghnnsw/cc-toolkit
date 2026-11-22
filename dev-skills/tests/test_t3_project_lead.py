@@ -30,8 +30,7 @@ STATE_COMMANDS = ("init", "show", "waiting", "finish", "outcome", "criteria", "w
                   "decision")
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
-# An agent reads a whole step after each wake, so each step stays short. The
-# gtd-inbox file line of `start` (#531) took the limit from 200 to 210.
+# An agent reads a whole step after each wake, so each step stays short.
 STEP_WORD_LIMIT = 210
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")

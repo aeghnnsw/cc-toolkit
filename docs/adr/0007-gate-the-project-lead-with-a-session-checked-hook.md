@@ -3,12 +3,16 @@
 > **Superseded in part (2026-11-22, issue #530).** The step script now also
 > keeps the lead state, so it no longer only prints. In a recorded session,
 > the hook allows only the step script's commands and reads of T3
-> attachments: the lead may no longer read, list, or remove its lead folder.
+> attachments (superseded in part by #531; read
+> [GTD agent captures](#gtd-agent-captures)): the lead may no longer read,
+> list, or remove its lead folder.
 > Read [Lead state commands](#lead-state-commands) and
 > [ADR 0008](0008-keep-project-lead-state-in-a-cli.md).
 >
-> **Extended (2026-11-22, issue #531).** In a recorded session, the hook also
-> passes the calls of a gtd-inbox capture. Read
+> **Superseded in part (2026-11-22, issue #531).** In a recorded session, the
+> hook also passes the calls of a gtd-inbox capture: reads of the GTD binding
+> and of the installed Productivity Skills plugin, the `gtd_sql.py` renderer,
+> and whole-file writes of GTD JSON files outside every Git work tree. Read
 > [GTD agent captures](#gtd-agent-captures).
 
 A project lead must give every task except its own lead actions to a worker
@@ -86,7 +90,8 @@ So in a recorded session, the hook allows only
 `python3 "<script>" <subcommand> [arguments...]` as one simple command, and
 reads of T3 attachments. It blocks every other shell command, every other
 file read, and every file edit, so it also blocks reads, edits, and `rm` of
-the lead folder. A direct edit would go around the life cycle that the script
+the lead folder. (Superseded in part: the hook also passes the calls of a
+gtd-inbox capture; read [GTD agent captures](#gtd-agent-captures).) A direct edit would go around the life cycle that the script
 enforces. The lead needs no direct read, because `start`, `show`, and
 `waiting` print the state. It also no longer needs to list or remove the
 folder: the script finds it, and `finish` deletes it. As before, only a
@@ -111,14 +116,19 @@ passed.
 So in a recorded session, the hook also passes exactly these calls:
 
 - A read of the GTD binding, or of a file in an installed Productivity Skills
-  copy: a folder with `scripts/gtd_sql.py` and `references/gtd-cloud.md`
-  outside every Git work tree, as an installed plugin is.
-- `uv run [uv options] python <copy>/scripts/gtd_sql.py [arguments...]` as one
-  simple command. Only `--no-project`, `--python`, `--no-cache`, `--offline`,
-  `-q`, and `--quiet` can come before `python`.
-- A whole-file write with the file edit tool of a `.json` file outside every
-  Git work tree. Its content is a GTD binding or a GTD request, and the file is
-  new or holds one already. A write of the GTD binding itself stays blocked.
+  plugin: a folder with `scripts/gtd_sql.py` and `references/gtd-cloud.md`
+  outside every Git work tree.
+- `uv run --no-project [uv options] python <plugin>/scripts/gtd_sql.py
+  [arguments...]` as one simple command. Only `--python <version>`,
+  `--no-cache`, `--offline`, `-q`, and `--quiet` can also come before
+  `python`. Without `--no-project`, uv creates an environment in a project
+  folder, and a `--python` value other than a version can name any program.
+- A whole-file write with the file edit tool of a `.json` file at an absolute
+  path outside every Git work tree. Its content is a GTD binding or a GTD
+  request, and the file is new or holds one already. A write in the folder of
+  the GTD binding stays blocked, because only gtd-setup changes the binding. A
+  relative path, `~`, or a `..` that a host can resolve in another way also
+  stays blocked.
 
 The renderer reads files only to validate them and writes none, so it gives
 the lead no other read or write. The lead follows gtd-inbox as written, and

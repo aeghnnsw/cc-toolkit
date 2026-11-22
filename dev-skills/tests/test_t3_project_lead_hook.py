@@ -544,6 +544,12 @@ class GtdInboxTests(HookCase):
         (cls.private / "held.json").write_text(REQUEST, encoding="utf-8")
         (cls.private / "notes.json").write_text('{"a": 1}', encoding="utf-8")
         (cls.private / "link.json").symlink_to(cls.main / "notes.json")
+        # A link to a folder outside Git: `<link>/../main/r.json` is outside Git
+        # when the link is followed first, and in the main work tree after a
+        # host tool removes `..` first, as Node.js does.
+        (cls.private / "deep").mkdir()
+        cls.link_dir = cls.temp / "link-dir"
+        cls.link_dir.symlink_to(cls.private / "deep")
 
     @staticmethod
     def make_copy(root):
@@ -594,6 +600,12 @@ class GtdInboxTests(HookCase):
                    ("codex", "exec_command", {"cmd": f"bash -lc \"{prefix} {self.script} receipt x\""}),
                    ("antigravity", "run_command", {"CommandLine": f"{prefix} {self.script} read"}))
         blocked = (("claude", "Bash", {"command": f"uv run --with requests --no-project python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run --python '>=3.11' python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run --no-project --python /usr/bin/env python {self.script} "
+                                                  "read"}),
+                   ("codex", "Bash", {"command": f"uv run --no-project --python={self.script} python {self.script} "
+                                                 "read"}),
                    ("claude", "Bash", {"command": f"{prefix} {self.dev_copy}/scripts/gtd_sql.py read"}),
                    ("claude", "Bash", {"command": f"{prefix} {self.partial}/scripts/gtd_sql.py read"}),
                    ("claude", "Bash", {"command": f"{prefix} {self.copy}/references/gtd_sql.py read"}),
@@ -631,7 +643,12 @@ class GtdInboxTests(HookCase):
                       ("claude", "Write", {"file_path": str(self.private / "link.json"), "content": REQUEST}),
                       ("claude", "Write", {"file_path": str(self.private), "content": REQUEST}),
                       ("claude", "Write", {"file_path": str(self.binding), "content": BINDING}),
+                      ("claude", "Write", {"file_path": str(self.binding.parent / "GTD.json"), "content": BINDING}),
+                      ("claude", "Write", {"file_path": str(self.binding.parent / "r.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": f"{self.private}/../main/r.json", "content": REQUEST}),
+                      ("claude", "Write", {"file_path": f"{self.link_dir}/../main/r.json", "content": REQUEST}),
                       ("claude", "Write", {"file_path": "request.json", "content": REQUEST}),
+                      ("claude", "Write", {"file_path": "~/r.json", "content": REQUEST}),
                       ("claude", "Edit", {"file_path": str(self.private / "held.json"), "old_string": "a",
                                           "new_string": "b"}),
                       ("codex", "apply_patch", {"command": add_file_patch(self.private / "a.json", REQUEST)["command"]
@@ -639,13 +656,33 @@ class GtdInboxTests(HookCase):
                       ("codex", "apply_patch", {"command": add_file_patch(self.private / "a.json", REQUEST)["command"]
                                                 .replace("*** End Patch", "*** Delete File: notes.md\n*** End Patch")}),
                       ("codex", "apply_patch", add_file_patch(self.main / "r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch("~/r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch("r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch(self.private / "x.json", '{"a": 1}')),
+                      ("codex", "apply_patch", add_file_patch(self.private / "notes.json", REQUEST)),
+                      ("antigravity", "write_file", {"Path": str(self.main / "r.json"), "Content": REQUEST}),
+                      ("antigravity", "write_file", {"Path": str(self.private / "x.json"), "Content": "[]"}),
+                      ("antigravity", "write_to_file", {"TargetFile": str(self.private / "notes.json"),
+                                                        "CodeContent": REQUEST}),
                       ("antigravity", "write_file", {"Path": str(self.private / "held.json"), "Content": REQUEST,
                                                      "Append": True}),
                       ("antigravity", "edit_file", {"Path": str(self.private / "held.json"), "Target": "a",
                                                     "Replacement": "b"})])
         self.check_gtd(allowed, blocked)
         self.assertEqual(sorted(path.name for path in self.private.iterdir()),
-                         ["held.json", "link.json", "notes.json"])
+                         ["deep", "held.json", "link.json", "notes.json"])
+
+    def test_a_failed_git_check_blocks_and_the_locale_does_not_matter(self):
+        write = tool_payload("claude", "Write", {"file_path": str(self.private / "r.json"), "content": REQUEST},
+                             self.main)
+        read = tool_payload("claude", "Read", {"file_path": str(self.copy / "references" / "gtd-cloud.md")},
+                            self.main)
+        for payload in (write, read):
+            with self.subTest(payload=payload):
+                self.assert_blocks(self.run_hook("claude", payload, {"HOME": str(self.home), "PATH": "/nonexistent"}))
+                self.assert_passes(self.run_hook("claude", payload, {"HOME": str(self.home),
+                                                                     "LC_ALL": "de_DE.UTF-8"}))
+
 
 def matcher_names(entry):
     return set(entry["matcher"].split("|"))

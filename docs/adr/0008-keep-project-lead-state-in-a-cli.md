@@ -1,5 +1,10 @@
 # Keep the lead state in the step script
 
+> **Superseded in part (2026-11-22, issue #531).** In a recorded session, the
+> hook also passes the calls of a gtd-inbox capture. Read
+> [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
+> in ADR 0007.
+
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
 state, not history". That rule existed only as text, and under load the lead
@@ -57,7 +62,9 @@ In a recorded session, the hook of ADR 0007 now allows only
 `python3 "<script>" <subcommand> [arguments...]` as one simple command, and
 reads of T3 attachments, also through one simple read command such as `cat`.
 It blocks every other shell command, every other file read, and every file
-edit, so it also blocks reads, edits, and `rm` of the lead folder. So the
+edit, so it also blocks reads, edits, and `rm` of the lead folder.
+(Superseded in part by #531: the hook also passes the calls of a gtd-inbox
+capture.) So the
 lead state changes only through the script. Only a three-word
 `python3 "<script>" start` records a session.
 
@@ -103,7 +110,10 @@ Consequences:
   the state commands, after the plugin update.
 - The close-out brief names the history file, so the retrospective reads real
   times. `finish` deletes the history with the lead folder.
-- Since [#531](https://github.com/aeghnnsw/cc-toolkit/issues/531), the hook
-  passes the calls of a gtd-inbox capture; read
+- GTD agent captures from a lead session wait for
+  [#531](https://github.com/aeghnnsw/cc-toolkit/issues/531): the hook blocks
+  the commands that a capture needs. (Superseded: the hook now passes the
+  calls of a gtd-inbox capture, and the script still reads and writes no GTD
+  data; read
   [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
-  in ADR 0007. The script still reads and writes no GTD data.
+  in ADR 0007.)

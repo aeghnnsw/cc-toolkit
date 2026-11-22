@@ -23,12 +23,13 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   state. MCP tools and other tools pass. A blocked call exits 2 with the
   reason on stderr. A call that the hook cannot check also exits 2.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
-  reads of the GTD binding and of an installed Productivity Skills copy
-  outside every Git work tree; one simple command `uv run [uv options]
-  python <copy>/scripts/gtd_sql.py [arguments...]`; and a whole-file write,
-  with the file edit tool, of a `.json` file outside every Git work tree
-  whose content is a GTD binding or a GTD request. The written file must be
-  new or hold a GTD binding or request already.
+  reads of the GTD binding and of an installed Productivity Skills plugin
+  outside every Git work tree; one simple command `uv run --no-project
+  [uv options] python <plugin>/scripts/gtd_sql.py [arguments...]`; and a
+  whole-file write, with the file edit tool, of a `.json` file at an
+  absolute path outside every Git work tree and outside the binding's
+  folder, whose content is a GTD binding or a GTD request. The written file
+  must be new or hold a GTD binding or request already.
 - Reminder: on a user message in a recorded session, Claude Code and Codex
   get additional context that tells the lead to run `start` first.
 
@@ -51,14 +52,14 @@ ALLOWED = {
     "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; uv run '
               "--no-project --python '>=3.11' python <installed Productivity Skills>/scripts/gtd_sql.py "
               "[arguments]; one cat, head, tail, wc, ls, grep, or sed -n of T3 attachments, the GTD "
-              "binding, or an installed Productivity Skills copy. Each is one simple command: no pipe, "
-              "redirect, list, or substitution. Write a gtd-inbox file with the file edit tool. Quote "
-              "text with single quotes."),
-    "read": ("Allowed reads: T3 attachments, the GTD binding, and an installed Productivity Skills "
-             "copy. Print the lead state with t3_project_lead.py show."),
-    "edit": ("No file edits, except a whole-file write of a new gtd-inbox .json file (a GTD binding "
-             "copy or request) outside every Git work tree. Change the lead state with "
-             "t3_project_lead.py commands."),
+              "binding, or the installed Productivity Skills plugin. Each is one simple command: no "
+              "pipe, redirect, list, or substitution. Write a gtd-inbox file with the file edit tool. "
+              "Quote text with single quotes."),
+    "read": ("Allowed reads: T3 attachments, the GTD binding, and the installed Productivity Skills "
+             "plugin. Print the lead state with t3_project_lead.py show."),
+    "edit": ("No file edits, except a whole-file write of a gtd-inbox .json file (a GTD binding copy "
+             "or request, new or replacing one) at an absolute path outside every Git work tree. "
+             "Change the lead state with t3_project_lead.py commands."),
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
@@ -76,10 +77,14 @@ AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
 WRAPPER_SHELLS = frozenset({"bash", "sh", "zsh"})
-# gtd-inbox (issue #531): the renderer, its uv options, and the whole-file
-# write tools with their path and content arguments.
+# gtd-inbox (issue #531): the renderer, its contract, the uv options that
+# may come with the required --no-project, and the whole-file write tools with
+# their path and content arguments. The contract is
+# productivity-skills/references/gtd-cloud.md; the GTD JSON checks below
+# follow the validation of productivity-skills/scripts/gtd_sql.py.
 GTD_SCRIPT = "gtd_sql.py"
-UV_OPTIONS = frozenset({"--no-project", "--no-cache", "--offline", "-q", "--quiet"})
+GTD_CONTRACT = "gtd-cloud.md"
+UV_OPTIONS = frozenset({"--no-cache", "--offline", "-q", "--quiet"})
 WRITE_TOOLS = {"Write": ("file_path", "content"), "write_file": ("Path", "Content"),
                "write_to_file": ("TargetFile", "CodeContent")}
 
@@ -247,18 +252,23 @@ def tool_paths(arguments, default):
 
 def check_reads(paths, cwd):
     """Raise Blocked unless `paths` is not empty and each path is in T3
-    attachments, is the GTD binding, or is in an installed Productivity Skills copy."""
+    attachments, is the GTD binding, or is in an installed Productivity Skills plugin."""
     if not paths:
         raise Blocked("read")
     for path in paths:
         resolved = resolve(path, cwd)
         if resolved is None or not (in_attachments(resolved) or resolved == gtd_binding()
-                                    or gtd_copy(resolved) is not None):
+                                    or productivity_root(resolved) is not None):
             raise Blocked("read")
 
 
 def resolve(path, cwd):
-    """Return the real absolute path of `path`, or None when it cannot be resolved."""
+    """Return the real absolute path of `path`, or None when it cannot be resolved.
+
+    A `..` after a symbolic link can lead to one file when the system follows
+    the link first and to another when a host tool removes `..` first, as
+    Node.js does. When the two differ, the path cannot be resolved.
+    """
     if not isinstance(path, str) or not path or "\0" in path:
         return None
     path = os.path.expanduser(path)
@@ -266,7 +276,8 @@ def resolve(path, cwd):
         if cwd is None:
             return None
         path = os.path.join(cwd, path)
-    return os.path.realpath(path)
+    real = os.path.realpath(path)
+    return real if os.path.realpath(os.path.normpath(path)) == real else None
 
 
 def in_attachments(path):
@@ -280,16 +291,24 @@ def gtd_binding():
     return os.path.realpath(os.path.join(os.path.expanduser("~"), ".config", "cc-toolkit", "gtd.json"))
 
 
-def gtd_copy(path):
-    """Return the root of the installed Productivity Skills copy that holds `path`, or None.
+def in_binding_folder(path):
+    """Return whether `path` is in the folder of the GTD binding, under any spelling of its name."""
+    try:
+        return os.path.samefile(os.path.dirname(path), os.path.dirname(gtd_binding()))
+    except OSError:
+        return False
+
+
+def productivity_root(path):
+    """Return the root of the installed Productivity Skills plugin that holds `path`, or None.
 
     A root holds scripts/gtd_sql.py and references/gtd-cloud.md and is outside
-    every Git work tree, as a plugin cache is; a developer's checkout is not.
+    every Git work tree, as an installed plugin is; a developer's checkout is not.
     """
     folder = path
     while True:
         if (os.path.isfile(os.path.join(folder, "scripts", GTD_SCRIPT))
-                and os.path.isfile(os.path.join(folder, "references", "gtd-cloud.md"))):
+                and os.path.isfile(os.path.join(folder, "references", GTD_CONTRACT))):
             return folder if outside_work_trees(folder) else None
         parent = os.path.dirname(folder)
         if parent == folder:
@@ -301,43 +320,38 @@ def outside_work_trees(path):
     """Return whether the nearest existing folder of `path` is in no Git repository.
 
     Git must report "not a git repository"; any other result, such as a Git
-    folder or a failed run, counts as inside, so that the check fails closed.
+    folder, counts as inside. A Git run that fails raises, and the hook blocks.
     """
-    import subprocess
-
     folder = path
     while not os.path.isdir(folder):
         folder = os.path.dirname(folder)
-    env = {key: value for key, value in os.environ.items()
-           if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
-    result = subprocess.run(["git", "-C", folder, "rev-parse", "--is-inside-work-tree"],
-                            capture_output=True, text=True, env=env, timeout=10, check=False)
+    result = git_run(folder, "rev-parse", "--is-inside-work-tree")
     return result.returncode != 0 and "not a git repository" in result.stderr
 
 
-def gtd_kind(text):
-    """Return "binding" or "request" when `text` is that GTD JSON object, else None."""
+def is_gtd_json(text):
+    """Return whether `text` is a GTD binding or a GTD request, as gtd_sql.py reads them."""
     import json
 
     try:
         value = json.loads(text)
     except ValueError:
-        return None
+        return False
     if not isinstance(value, dict):
-        return None
-    if set(value) == {"project_id", "owner_id"} and all(isinstance(item, str) for item in value.values()):
-        return "binding"
-    if set(value) == {"request_id", "operations"} and isinstance(value["operations"], list):
-        return "request"
-    return None
+        return False
+    if set(value) == {"project_id", "owner_id"}:
+        return all(isinstance(item, str) for item in value.values())
+    return set(value) == {"request_id", "operations"} and isinstance(value["operations"], list)
 
 
 def check_gtd_write(name, arguments, cwd):
     """Return when the call writes one whole gtd-inbox file; raise Blocked otherwise.
 
-    The file is a .json file outside every Git work tree, and not the GTD
-    binding. The new content is a GTD binding or request, and the file is new
-    or holds one already.
+    The file is a .json file at an absolute path, outside every Git work tree
+    and outside the folder of the GTD binding, which changes only through
+    gtd-setup. A host can resolve a relative path or `~` in its own way, so
+    neither passes. The new content is a GTD binding or request, and the file
+    is new or holds one already.
     """
     if not isinstance(arguments, dict):
         raise Blocked("edit")
@@ -348,18 +362,20 @@ def check_gtd_write(name, arguments, cwd):
         target = arguments.get(path_key), arguments.get(content_key)
     else:
         target = None
-    if target is None or not isinstance(target[1], str):
+    if target is None:
         raise Blocked("edit")
-    resolved = resolve(target[0], cwd)
-    # The GTD binding itself changes only through gtd-setup.
-    if (resolved is None or not resolved.endswith(".json") or resolved == gtd_binding()
-            or gtd_kind(target[1]) is None or not outside_work_trees(resolved)):
+    path, content = target
+    if not isinstance(path, str) or not os.path.isabs(path) or not isinstance(content, str):
+        raise Blocked("edit")
+    resolved = resolve(path, cwd)
+    if (resolved is None or not resolved.endswith(".json") or in_binding_folder(resolved)
+            or not is_gtd_json(content) or not outside_work_trees(resolved)):
         raise Blocked("edit")
     if os.path.lexists(resolved):
         if not os.path.isfile(resolved):
             raise Blocked("edit")
         with open(resolved, encoding="utf-8") as existing:
-            if gtd_kind(existing.read(1_000_000)) is None:
+            if not is_gtd_json(existing.read(1_000_000)):
                 raise Blocked("edit")
 
 
@@ -376,14 +392,24 @@ def patch_file(command):
     return header[len("*** Add File: "):].strip(), "".join(line[1:] + "\n" for line in body)
 
 
-def git(cwd, *args):
-    """Return the stripped stdout of a git command in `cwd`, or "" on failure."""
+def git_run(cwd, *args):
+    """Run a git command in `cwd` and return the completed process.
+
+    The caller's Git variables are removed, and the C locale keeps Git's
+    messages in English.
+    """
     import subprocess
 
     env = {key: value for key, value in os.environ.items()
            if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
-    result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, env=env,
-                            timeout=10, check=False)
+    env["LC_ALL"] = "C"
+    return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, env=env,
+                          timeout=10, check=False)
+
+
+def git(cwd, *args):
+    """Return the stripped stdout of a git command in `cwd`, or "" on failure."""
+    result = git_run(cwd, *args)
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
@@ -411,9 +437,9 @@ def write_record(folder, session):
 def check_shell(arguments, key, cwd, folder, session):
     """Return when the shell command is a lead action; raise Blocked otherwise.
 
-    The command is `python3|python <script> <subcommand> [arguments...]`, or
-    one read command of T3 attachments. Only an exact
-    `python3|python <script> start` refreshes the record.
+    The command is `python3|python <script> <subcommand> [arguments...]`, the
+    gtd-inbox renderer, or one read command of the files that check_reads
+    allows. Only an exact `python3|python <script> start` refreshes the record.
     """
     words, cwd = shell_words(arguments, key, cwd)
     if not words:
@@ -423,7 +449,7 @@ def check_shell(arguments, key, cwd, folder, session):
             raise Blocked("shell")
         return
     if words[0] not in ("python3", "python"):
-        # One read command of T3 attachments, for a host whose reads go through the shell.
+        # One read command, for a host whose reads go through the shell.
         paths = read_paths(words[0], words[1:])
         if paths is None:
             raise Blocked("shell")
@@ -442,17 +468,31 @@ def check_shell(arguments, key, cwd, folder, session):
 
 
 def renderer_command(words, cwd):
-    """Return whether `words` run gtd_sql.py of an installed Productivity Skills
-    copy: `uv run [uv options] python|python3 <script> [arguments...]`."""
+    """Return whether `words` run gtd_sql.py of an installed Productivity Skills plugin:
+    `uv run --no-project [uv options] python|python3 <script> [arguments...]`.
+
+    Without --no-project, uv would create an environment in a project folder,
+    and a --python value other than a version could name any program.
+    """
+    import re
+
     if words[:2] != ["uv", "run"]:
         return False
-    index = 2
+    index, options = 2, []
     while index < len(words) and words[index].startswith("-"):
         if words[index] == "--python" and index + 1 < len(words):
+            options.append("--python=" + words[index + 1])
             index += 2
-        elif words[index].startswith("--python=") or words[index] in UV_OPTIONS:
-            index += 1
         else:
+            options.append(words[index])
+            index += 1
+    if "--no-project" not in options:
+        return False
+    for option in options:
+        if option.startswith("--python="):
+            if re.fullmatch(r"(?:>=|<=|==|~=|>|<)?\d+(?:\.\d+){0,2}", option[len("--python="):]) is None:
+                return False
+        elif option != "--no-project" and option not in UV_OPTIONS:
             return False
     if index + 1 >= len(words) or words[index] not in ("python", "python3"):
         return False
@@ -460,7 +500,7 @@ def renderer_command(words, cwd):
     if path is None or os.path.basename(path) != GTD_SCRIPT:
         return False
     root = os.path.dirname(os.path.dirname(path))
-    return os.path.basename(os.path.dirname(path)) == "scripts" and gtd_copy(path) == root
+    return os.path.basename(os.path.dirname(path)) == "scripts" and productivity_root(path) == root
 
 
 def shell_words(arguments, key, cwd):
