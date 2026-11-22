@@ -13,6 +13,51 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "safety_guard.py"
 CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
 
+ENV_REASON = "prints every environment variable"
+HOME_RM = "rm -rf " + "~"
+# Forms that the guard allowed before #479 although a shell runs a blocked
+# command in them. Each item: the issue case, the command, and the block
+# reason. `test_guard_harness.py` runs them in bash and zsh. Case 6 needs a
+# real `git`, so no shell runs its blocked command in the helper.
+ISSUE_479_CASES = (
+    # An apostrophe in a body inside `"$(...)"` stopped the substitution scan.
+    (1, "gh pr create --title t --body \"$(cat <<'EOF'\nit's\nEOF\n)\""
+        " --label \"$(env)\"", ENV_REASON),
+    (1, "git commit -m \"$(cat <<'EOF'\nit's done\nEOF\n)\" && echo \"$(env)\"",
+        ENV_REASON),
+    # An apostrophe in an unquoted body hid a later substitution.
+    (2, "cat > notes.md <<EOF\nIt's here\n`env`\nEOF", ENV_REASON),
+    # A shell or `eval` reads the body as code.
+    (3, "bash <<'EOF'\nenv\nEOF", ENV_REASON),
+    (3, "eval \"$(cat <<'EOF'\nenv\nEOF\n)\"", ENV_REASON),
+    (3, "cat <<'EOF' | bash\nenv\nEOF", ENV_REASON),
+    (3, f"sh <<'EOF'\n{HOME_RM}\nEOF", "home directory target"),
+    (3, "cat > f.sh <<'EOF'\nenv\nEOF\nbash f.sh", ENV_REASON),
+    (3, "bash -c 'env'", ENV_REASON),
+    (3, "eval env", ENV_REASON),
+    # Bash 3.2 ends a substitution at a body `)` and runs the text after it.
+    (3, "echo $(cat <<'EOF'\na ) ; env\nEOF\n)", ENV_REASON),
+    # A `#` line of an unquoted body is text, and a `#` right after a
+    # substitution is part of the same word.
+    (4, "cat > notes.md <<EOF\n# $(env)\nEOF", ENV_REASON),
+    (4, "echo $(true)#$(env)", ENV_REASON),
+    (4, "echo `true`#`env`", ENV_REASON),
+    (4, f"echo $(true)#$({HOME_RM})", "home directory target"),
+    # A partly quoted delimiter word ends at the word without its quotes.
+    (5, "cat <<'E'OF > notes.md\nhello\nEOF\nenv", ENV_REASON),
+    (5, "cat <<'E'OF > notes.md\nhello\nEOF\nrm -rf /var/log/example",
+        "protected system path /var"),
+    (5, "cat <<E\"O\"F > notes.md\nhello\nEOF\nenv", ENV_REASON),
+    (5, "cat <<$'EOF' > notes.md\nhello\nEOF\nenv", ENV_REASON),
+    # A command beside an allowed form writes a file, such as `.git/config`.
+    (6, "git log -1 --format='[core]%n editor = sh' > .git/config && "
+        "git commit -e -F - <<'EOF2'\n`env`\nEOF2", ENV_REASON),
+    (6, "git log -1 --format='[core]%n editor = sh' --output=.git/config && "
+        "git commit -e -F - <<'EOF2'\n`env`\nEOF2", ENV_REASON),
+    (6, "git commit -F - <<'EOF' && git log -1 > out.txt\n`env`\nEOF",
+        ENV_REASON),
+)
+
 
 def run_hook(payload, env=None):
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -632,6 +677,37 @@ class SafetyGuardTests(unittest.TestCase):
                 result = self.run_command(command, tool_name="Bash")
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn(reason, result.stderr)
+
+    # --- #479: heredoc and comment forms that hid a blocked command ---
+
+    def test_blocks_issue_479_forms(self):
+        for case, command, reason in ISSUE_479_CASES:
+            with self.subTest(case=case, command=command):
+                result = self.run_command(command, tool_name="Bash")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(reason, result.stderr)
+
+    def test_allows_heredoc_and_comment_forms_without_a_blocked_command(self):
+        commands = (
+            "git commit -m \"$(cat <<'EOF'\nDon't break it\nEOF\n)\"",
+            "git add -A && git commit -m \"$(cat <<'EOF'\nIt's fixed\nEOF\n)\""
+            " && git push",
+            "gh pr create --title 'T (#1)' --body \"$(cat <<'EOF'\n## Summary\n"
+            "It's (mostly) done.\nEOF\n)\"",
+            "python3 - <<'PY'\nimport os\nprint(\"it's\")\nPY",
+            # No command runs the script that `cat` writes.
+            "cat > script.sh <<'EOF'\n#!/bin/bash\nenv\nEOF\nchmod +x script.sh",
+            "cat > notes.md <<EOF\nIt's $(date) now\nEOF",
+            "echo \"$(date)#x\"",
+            "x=$(git rev-parse HEAD) # it's the head\necho $x",
+            "x=$(git log -1 # it's\n)\necho done",
+            # A `#` after a subshell starts a comment.
+            "(true)#$(env)",
+            "bash -c env | cut -d= -f1",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assert_allowed(command, tool_name="Bash")
 
     def test_blocks_malformed_rm_shell_text(self):
         self.assert_blocked(
