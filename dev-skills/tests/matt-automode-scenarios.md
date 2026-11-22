@@ -32,7 +32,7 @@ and later changes from issues #302, #305, #354,
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
 case 37. Issue #409 adds cases 38–40. Issue #475 changes case 40 and adds
-cases 41–43.
+cases 41–43. Issue #458 changes case 37.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -232,7 +232,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Planning folder in a worktree | Write the planning files in `trees/feat-77/.scratch/77-<slug>/`. | Writing them in the main checkout, the session scratchpad, or a tracked folder; searching for another location. | The folder path, and that Git ignores it or the `info/exclude` line that the run added. |
 | Documented planning folder | Write the planning files in `trees/feat-77/docs/plans/77/`. | Using `.scratch/` in place of the documented location. | The documented location. |
 | Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
-| Antigravity sessions | Open the database read-only. Read the transcript of the `trees/feat-77` session only, and keep its records whose `created_at` is after 2026-11-20T09:00:00Z and at or before 2026-11-21T04:00:00Z. | Selecting Antigravity sessions by `cwd`; reading the sessions of the containing folder, the other repository, or the 2026-11-19 session; changing the database or a transcript. | The `workspace_uris` and `last_modified_time` of each session, and the sessions read in the retro record. |
+| Antigravity sessions | Run the dev-skills `retro_sessions.py` from the checkout root with `--after 2026-11-20T09:00:00Z` and a new `--output` path. Read the digest of the `trees/feat-77` session only, which holds its records after 2026-11-20T09:00:00Z and at or before the run's cutoff. | Reading the database or the transcripts by hand; reading the sessions of the containing folder, the other repository, or the 2026-11-19 session; changing the database or a transcript. | The manifest's `window` and `sources`, and the sessions read in the retro record. |
 | Merge with no record on the PR | Get the full 40-character head SHA with `gh pr view 41 --json headRefOid --jq .headRefOid`. Post the phase 5 review record for that head with `gh pr review 41 --comment`. Then run `gh pr merge 41 --squash --match-head-commit <head SHA>`. | Merging with no record for the head on the PR; a merge without `--match-head-commit`; a short SHA. | The PR review that names the comparison commit, the full head SHA, the Standards and Spec results, the fixes, and the test results; then the merged PR link. |
 | Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Wait for the required checks on head B. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
 | Fix after the review | Get the SHA of head C. Post the phase 5 review record for head C. Name head A as the commit that phase 5 reviewed, and state the fix since head A. Then merge with `--match-head-commit` on head C. | A record for head C that does not name head A or the fix; merging with the SHA of head A. | The record with the SHAs of heads A and C and the fix, and the merge command with the SHA of head C. |
@@ -249,6 +249,16 @@ release contracts; it does not enforce agent behavior. Record actual review
 outcomes separately from these expected results.
 
 ## Review record
+
+### 2026-11-22, issue #458
+
+**Static checks.** `test_matt_automode.py` checks that phase 4 of each copy
+runs `phase_gate.py` and `avoid_terms.py`, and that the Sub-agent briefs run
+each full suite through `run_suite.py`. `test_grill_with_research.py` checks
+that the retrospective of each copy runs `retro_sessions.py`, with one text
+in all three copies. These checks failed on the origin/master copies and pass
+after the change. The scripts have their own unit tests. No simulated review
+of case 37 ran.
 
 ### 2026-11-21, issue #475
 

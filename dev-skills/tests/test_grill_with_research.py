@@ -39,13 +39,10 @@ USER_INVOKED_SETTING = {
     "antigravity-skills": "`disable-model-invocation: true`",
 }
 RETRO_HEADING = "## Navigation retrospective"
-ANTIGRAVITY_SESSION_FACTS = (
-    "`~/.gemini/antigravity-cli`",
-    "`~/.gemini/antigravity`",
-    "`conversation_summaries.db`",
-    "`workspace_uris`",
-    "`brain/<conversation_id>/.system_generated/logs/transcript_full.jsonl`",
-)
+# Issue #458: the retrospective reads the sessions of every host, including
+# Antigravity, with the session script that dev-skills ships.
+SESSION_COMMAND = ('`python3 "<plugin-root>/scripts/retro_sessions.py" --repo . '
+                   '--after <cutoff> --output <new-dir>`')
 
 
 def split_skill(path: Path) -> tuple[dict[str, str], str]:
@@ -162,14 +159,14 @@ class AntigravityCopiesTest(unittest.TestCase):
         self.assertIn("Markdown task list", text)
         self.assertIn("task artifact, never in a tracked file", text)
 
-    def test_every_retrospective_reads_antigravity_sessions_with_one_text(self) -> None:
+    def test_every_retrospective_runs_the_session_script_with_one_text(self) -> None:
         # The plugin root is the one host-specific part of the retrospective (#446).
         retros = {host: sections(automode(host))[RETRO_HEADING].replace(
             "${CLAUDE_PLUGIN_ROOT}", "<plugin-root>") for host in HOSTS}
         for host in HOSTS:
             with self.subTest(host=host):
-                for fact in ANTIGRAVITY_SESSION_FACTS:
-                    self.assertIn(fact, retros[host])
+                self.assertIn(SESSION_COMMAND, retros[host])
+                self.assertNotIn("conversation_summaries.db", retros[host])
                 self.assertEqual(retros[host], retros["skills"])
 
 

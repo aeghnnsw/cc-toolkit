@@ -17,16 +17,21 @@ choose.
    Use that cutoff. On exit status 1, its message tells whether no record
    exists or `gh` failed. When `gh` failed, post no record and report the
    retrospective as blocked.
-2. Run the [session helper](../../scripts/retro_sessions.py) from the
-   checkout root with Python 3.11 or newer. Replace the example cutoff with
-   the one from step 1, or omit `--after` when no earlier record exists. The
-   output subdirectory must be new.
+2. Run the [session script](../../dev-skills/scripts/retro_sessions.py)
+   that dev-skills ships, from the checkout root. matt-automode runs the same
+   script. Replace the example cutoff with the one from step 1, or omit
+   `--after` when no earlier record exists. The output subdirectory must be
+   new.
 
    ```sh
    retro_tmp=$(mktemp -d "${TMPDIR:-/tmp}/retro.XXXXXX")
-   uv run --no-project --python '>=3.11' python scripts/retro_sessions.py \
+   python3 dev-skills/scripts/retro_sessions.py \
      --repo . --after 2026-11-07T21:01:06.000Z --output "$retro_tmp/retro"
    ```
+
+   `--after` accepts a cutoff in each form that records use, such as
+   `2026-10-27T15:02:52.722Z`, `` `2026-11-09T00:22:55.226+00:00` ``, and
+   `2026-11-21T05:16:55Z`.
 
    For each host without a root option, the helper reads the default roots
    of that host:
@@ -67,7 +72,9 @@ choose.
    the **Reviewed through** cutoff (`window.through`), the sessions read and
    history limits, and each finding with its session and time and its issue
    link or "no fix". A run that merges no PR skips the retrospective; the
-   next one reads its sessions.
+   next one reads its sessions. Write the cutoff as
+   `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, in UTC and truncated to
+   whole seconds.
 6. Remove the temporary directory by its exact path.
 
 A proposal issue states the finding, its session and time, and the proposed

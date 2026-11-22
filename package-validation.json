@@ -120,6 +120,10 @@
         {"path": "scripts/cleanup_plan.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/open_closing_issues.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/find_retrospective_cutoff.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/retro_sessions.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/phase_gate.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/avoid_terms.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/run_suite.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/t3_project_lead.py", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },

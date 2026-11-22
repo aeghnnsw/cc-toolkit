@@ -33,23 +33,30 @@ CODEX_AUXILIARY = (
 # Antigravity step types with a fixed event kind. Other step types become
 # their lowercase name, for example "generic".
 ANTIGRAVITY_KINDS = {"USER_INPUT": "user", "PLANNER_RESPONSE": "assistant"}
+# An ISO 8601 time: date, T or space, hours and minutes, optional seconds and
+# fraction digits, then Z or an offset with or without a colon. The pattern
+# reads the same forms on every Python version.
+TIMESTAMP = re.compile(r"(\d{4}-\d\d-\d\d[Tt ]\d\d:\d\d(?::\d\d)?)(?:[.,](\d+))?"
+                       r"(?:(Z)|([+-]\d\d)(?::?(\d\d))?)?", re.ASCII)
 
 
 def timestamp(value):
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.utcoffset() is None:
+    """Return the instant of an aware ISO 8601 time as exact seconds since 1970.
+
+    The time can be in backticks, as in a retrospective record. Every fraction
+    digit counts, so an explicit cutoff never shifts the interval.
+    """
+    match = TIMESTAMP.fullmatch(value[1:-1] if value[:1] == value[-1:] == "`" else value)
+    if not match:
+        raise ValueError(f"invalid ISO 8601 time: {value!r}")
+    clock, digits, utc, hours, minutes = match.groups()
+    if not (utc or hours):
         raise ValueError("timestamps must include a timezone")
+    # Python 3.9 and 3.10 read an offset only with a colon, and a fraction only
+    # with 3 or 6 digits, so the fraction is added separately.
+    parsed = datetime.fromisoformat(f"{clock}{hours or '+00'}:{minutes or '00'}")
     delta = parsed - datetime(1970, 1, 1, tzinfo=timezone.utc)
-    instant = Fraction((delta.days * 86400 + delta.seconds) * 1000000 + delta.microseconds, 1000000)
-    # datetime truncates precision after microseconds. Retain the remaining
-    # fractional seconds so an explicit cutoff never shifts the interval.
-    fraction = re.search(r"[Tt ]\d{2}:?\d{2}(?::?\d{2})?[.,](\d+)", value)
-    offset = re.search(r"([+-])\d{2}(?::?\d{2})?(?::?\d{2})?[.,](\d+)$", value)
-    for digits, sign in ((fraction[1] if fraction else "", 1),
-                         (offset[2] if offset else "", -1 if offset and offset[1] == "+" else 1)):
-        if len(digits) > 6:
-            instant += sign * Fraction(int(digits[6:]), 10 ** len(digits))
-    return instant
+    return delta.days * 86400 + delta.seconds + Fraction(int(digits or "0"), 10 ** len(digits or ""))
 
 
 def write_json(path, value):
@@ -398,8 +405,13 @@ def main(argv=None):
         "Originals remain unchanged."))
     parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
     parser.add_argument("--output", required=True, type=Path, help="new directory outside transcript roots")
-    parser.add_argument("--through", help="inclusive aware ISO cutoff (default: now, before discovery)")
-    parser.add_argument("--after", help="exclusive aware ISO cutoff (default: no lower bound)")
+    parser.add_argument("--through", help=(
+        "inclusive cutoff: an ISO 8601 time with Z or an offset, in backticks or not, such as "
+        "2026-11-21T05:16:55Z, 2026-10-27T15:02:52.722Z, or `2026-11-09T00:22:55.226+00:00` "
+        "(default: now, before discovery)"))
+    parser.add_argument("--after", help=(
+        "exclusive cutoff in the forms of --through, such as a Reviewed through cutoff "
+        "copied from a retrospective record (default: no lower bound)"))
     parser.add_argument("--max-events", type=int, default=60, help="head/tail events per digest (default: 60)")
     parser.add_argument("--max-text", type=int, default=300, help="characters per displayed text field (default: 300)")
     parser.add_argument("--claude-root", action="append", type=Path, default=[],

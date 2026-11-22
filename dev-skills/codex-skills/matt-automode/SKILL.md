@@ -83,10 +83,16 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    using Python 3.9 or newer; record the directory and SHA-256 values.
 4. **Implement — `mattpocock-skills:implement`.** Start coding or coding
    delegation only after phases 1–3 pass and every blocking ticket's PR merges.
-   Follow the testing workflow and commit the changes. Before committing,
-   search new prose for glossary `_Avoid_` terms and report helpers imported
-   from other modules. Complete when the ticket's tests pass and edits are
-   committed for review.
+   When the tracker is GitHub, first run
+   `python3 "<plugin-root>/scripts/phase_gate.py" --ticket <N>`. On exit status 1,
+   do not start: each `FAIL` line names the missing issue or the blocker
+   without a merged PR. Follow the testing workflow and commit the changes.
+   Before committing, run
+   `python3 "<plugin-root>/scripts/avoid_terms.py" --base <comparison commit>`.
+   It lists each added Markdown line that uses a glossary `_Avoid_` term; use
+   the glossary term where the line names its concept. Report helpers
+   imported from other modules. Complete when the ticket's tests pass and
+   edits are committed for review.
 5. **Review — `mattpocock-skills:code-review`.** Run one full review against
    the ticket spec and a recorded comparison commit. This fulfills
    `implement`'s review step. Only these findings block: a regression that a
@@ -167,22 +173,16 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    the retro as blocked. Set this run's cutoff before reading sessions.
 2. Read the sessions of this repository and its worktrees after the previous
    cutoff, or this run's sessions when no record exists. Use the repository's
-   session-discovery guidance when it has some. Otherwise read the JSONL logs:
-   Claude Code under `projects/` in `~/.claude` or `$CLAUDE_CONFIG_DIR`, and
-   Codex under `sessions/` in `~/.codex` or `$CODEX_HOME`. Select these
-   sessions by their recorded `cwd`. Antigravity sessions are under
-   `~/.gemini/antigravity-cli` for the CLI and `~/.gemini/antigravity` for the
-   app, and their records carry no `cwd`. In each folder, open
-   `conversation_summaries.db` read-only and read its `conversation_summaries`
-   table. Its `workspace_uris` column is a JSON list of `file://` URIs of the
-   folders where a session started. A session belongs to this repository when
-   one of these paths, with symbolic links resolved, is the root of the
-   repository or of one of its worktrees, or a folder inside one. Skip a
-   session whose `last_modified_time` (UTC) is before the previous cutoff. For
-   each remaining session, read
-   `brain/<conversation_id>/.system_generated/logs/transcript_full.jsonl`;
-   the `created_at` of each record is in UTC. Leave the original logs
-   unchanged.
+   session-discovery guidance when it has some. Otherwise run this command
+   from the checkout root, with the cutoff of step 1, or without `--after`
+   when no record exists. `<new-dir>` must not exist yet:
+   `python3 "<plugin-root>/scripts/retro_sessions.py" --repo . --after <cutoff> --output <new-dir>`.
+   It copies the Claude Code, Codex, and Antigravity sessions of the
+   repository and its worktrees, and leaves the original logs unchanged;
+   `--help` names the session folders that it reads. Read the digests that
+   `<new-dir>/manifest.json` lists, and check each finding against its copied
+   source lines. Keep the copies out of Git and PR content, and remove
+   `<new-dir>` after step 6.
 3. Keep findings that cost the run significant time or work, such as a long
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.
@@ -220,7 +220,12 @@ or a one-off lesson to a steering file.
 
 Give each agent a self-contained task, owned files, and relevant planning-file
 sections by path and line. Keep plan and task-list tools in this session.
-Allow only one full test suite at a time; other agents can run focused tests.
+Run each full test suite through
+`python3 "<plugin-root>/scripts/run_suite.py" -- <suite command>`, and put that
+command in each brief that runs one. It runs one full suite at a time, reports
+a pass recorded for the same clean tree instead of a new run, and prints the
+failing tests and the exit status last; do not pipe it into `tail`. Focused
+tests do not need it.
 State the repository search rules in reviewer briefs, including excluded paths.
 Require measured evidence for claims about external tool behavior.
 

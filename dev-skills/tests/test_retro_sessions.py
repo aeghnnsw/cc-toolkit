@@ -467,6 +467,23 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(selected[0]["diagnostics"][0]["lines"], [4, 5, 6])
         self.assertEqual(selected[0]["diagnostics"][0]["count"], 3)
 
+    def test_timestamp_reads_one_time_in_each_accepted_form_as_one_instant(self):
+        timestamp = runpy.run_path(str(SCRIPT))["timestamp"]
+        # The first three forms are the cutoff forms of retrospective records.
+        forms = ["2026-11-21T05:16:55Z", "2026-11-21T05:16:55.000Z",
+                 "`2026-11-21T05:16:55.000+00:00`", "2026-11-21T00:16:55-0500"]
+        expected = datetime(2026, 11, 21, 5, 16, 55, tzinfo=timezone.utc).timestamp()
+        self.assertEqual([timestamp(form) for form in forms], [expected] * len(forms))
+
+    def test_after_accepts_a_cutoff_copied_from_a_record_in_backticks(self):
+        self.transcript(self.claude, "session.jsonl", [
+            self.claude_message("at the cutoff", timestamp="2026-11-09T00:22:55.226Z"),
+            self.claude_message("after the cutoff", timestamp="2026-11-09T00:22:55.227Z")])
+        _, _, _, digests = self.artifacts(self.run_cli(
+            "--after", "`2026-11-09T00:22:55.226+00:00`", "--through", "2026-11-21T05:16:55Z"))
+        self.assertEqual([event["text"] for digest in digests for event in digest["events"]],
+                         ["after the cutoff"])
+
     def test_unknown_json_shapes_and_unreadable_sources_do_not_abort_available_evidence(self):
         denied = self.transcript(self.claude, "denied.jsonl", [self.claude_message("unreadable")])
         self.transcript(self.codex, "shapes.jsonl", [

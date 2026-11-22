@@ -10,10 +10,19 @@ cutoff and its pull request, for example:
 
     2026-11-21T05:16:55Z PR #444
 
-The field can be bold or not, and the cutoff can be in backticks. The cutoff
-is a UTC time with "Z" or "+00:00" and optional fractional seconds. Only the
-time right after the label counts. The script prints the cutoff as written,
-with "+00:00" changed to "Z".
+The field can be bold or not. The cutoff is a UTC time with "Z" or "+00:00",
+with or without fractional seconds, in backticks or not. The records use these
+forms:
+
+    2026-10-27T15:02:52.722Z
+    `2026-11-09T00:22:55.226+00:00`
+    2026-11-21T05:16:55Z
+
+Only the time right after the label counts. A time that does not exist, such
+as 2026-11-31T00:00:00Z, does not count. The script compares the cutoffs as
+times with timestamp() from retro_sessions.py, which also reads the --after
+and --through options of that script. It prints the cutoff as written, with
+"+00:00" changed to "Z".
 
 matt-automode runs it from the checkout root before it reads the session logs
 of a retrospective, and again before it posts the record. A later cutoff in
@@ -31,9 +40,12 @@ import re
 import subprocess
 import sys
 
+# Python puts the folder of this script on sys.path, so the sibling module loads.
+from retro_sessions import timestamp
+
 HEADING = "Navigation retrospective"
 FIELD = re.compile(r"Reviewed through:(?:\*\*)?[ \t]*`?"
-                   r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?(?:Z|\+00:00)")
+                   r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?)(?:Z|\+00:00)")
 COMMENTS = "repos/{owner}/{repo}/issues/comments?per_page=100"
 # gh needs a limit; this one is greater than the number of pull requests.
 LIMIT = "100000"
@@ -71,17 +83,19 @@ def main() -> None:
         body = comment.get("body") or ""
         if HEADING in body:
             number = int(comment["issue_url"].rsplit("/", 1)[1])
-            found += [(match.group(1), float("0" + (match.group(2) or "")), number,
-                       match.group(1) + (match.group(2) or "") + "Z")
-                      for match in FIELD.finditer(body)]
+            for match in FIELD.finditer(body):
+                cutoff = match.group(1) + "Z"
+                try:
+                    found.append((timestamp(cutoff), number, cutoff))
+                except ValueError:
+                    continue  # The time does not exist.
     if found:
         merged = {pull["number"] for pull in gh("pr", "list", "--state", "merged",
                                                  "--limit", LIMIT, "--json", "number")}
-        found = [cutoff for cutoff in found if cutoff[2] in merged]
+        found = [item for item in found if item[1] in merged]
     if not found:
         sys.exit(f"No {HEADING} record with a Reviewed through cutoff on a merged pull request.")
-    # The times are all UTC, and the seconds part has one width, so it sorts as text.
-    _, _, number, cutoff = max(found)
+    _, number, cutoff = max(found)
     print(f"{cutoff} PR #{number}")
 
 

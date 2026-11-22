@@ -341,16 +341,10 @@ HOST_LINES = {
 +required checks finish.
 -Give each agent a self-contained task, owned files, and relevant planning-file
 -sections by path and line. Keep plan and task-list tools in this session.
--Allow only one full test suite at a time; other agents can run focused tests.
--State the repository search rules in reviewer briefs, including excluded paths.
--Require measured evidence for claims about external tool behavior.
 +Start each sub-agent with `invoke_subagent`: `TypeName: "self"`, a `Role`, and a
 +`Prompt`. Give each agent a self-contained task, owned files, and relevant
 +planning-file sections by path and line. Keep the task list in this session's
-+task artifact. Allow only one full test suite at a time; other agents can run
-+focused tests. State the repository search rules in reviewer briefs, including
-+excluded paths. Require measured evidence for claims about external tool
-+behavior.
++task artifact.
 ''',
     'dev-skills/antigravity-skills/pr-feedback/SKILL.md': r'''
 # Only this copy names a review skill; #453 makes both copies name the same one.
