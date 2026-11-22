@@ -12,8 +12,9 @@ Terms are defined in [GLOSSARY.md](../../GLOSSARY.md).
 Package validation checks the declared local contract of every registered
 plugin. Release validation checks plugin version increases for affected
 hosts and skill version increases for changed skills.
-Both checks run read-only on contributor machines before a pull request is
-merged. Contributors choose versions and make corrections. Deterministic
+Both checks run read-only on contributor machines, and in the
+[CI workflow](../../.github/workflows/ci.yml) on each pull request.
+Contributors choose versions and make corrections. Deterministic
 errors fail the command.
 
 Validation uses Python 3.11 or newer and the standard library. It inspects
@@ -182,8 +183,10 @@ A skill can also carry a `version` in its `SKILL.md` frontmatter. Claude Code
 copies usually do; Codex and Antigravity copies do not. A skill changes when
 an affected path of its existing registration is in the skill directory, so
 the same ownership rules and exemptions apply. Each changed skill needs a
-frontmatter version greater than its base version. A new skill, a skill with
-no base version, and a skill with no current version need no increase. Skills
+frontmatter version greater than its base version. A new skill and a skill
+with no base version need no increase. A changed skill that has a base
+version and no current version fails, because a deleted `version` line would
+otherwise skip this check. Skills
 match by plugin identity, host, and skill directory name across the base and
 proposed layouts. A source move changes every path in the skill, so a
 versioned skill needs an increase. This check finds a skill version that a
@@ -203,6 +206,26 @@ Source moves match by plugin identity and host, so they preserve release
 history. Only changes since the selected merge base affect release checks.
 Historical omissions do not create retroactive version requirements.
 
+## CHANGELOG checks
+
+Release validation also checks the root `CHANGELOG.md`. A bullet is new when
+its exact text is not in the file at the merge base, so a moved bullet, such
+as one under a new dated heading, is not new, and an edited bullet is new.
+Existing bullets are not checked.
+
+Each new bullet must be under `## [Unreleased]` in `### Added`,
+`### Removed`, or `### Changed`, have at most 600 characters, and match the
+[entry form](../../CONTRIBUTING.md#changelog-entries): `Repository:` or a
+registered plugin name with hosts and versions, then the change, then one
+` See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).` link whose two
+numbers agree. A plugin bullet names the hosts in the order Claude Code,
+Codex, Antigravity, writes one version for adjacent hosts that ship the same
+version, gives each host its current manifest version, and names exactly the
+hosts whose version increased. A new host registration counts as an
+increase. Each plugin with an increased version needs a new bullet. When the
+base has `CHANGELOG.md` and the proposed tree does not, validation fails;
+when neither has it, the check is skipped.
+
 ## Adoption and verification
 
 The repository adopts validation for all current packages without an
@@ -216,7 +239,7 @@ and hooks-only packages; Antigravity registration and shadowing; invalid
 metadata; missing and escaped resources; skill headers; shared and
 host-specific changes; exemptions; unknown files; plugin and skill version
 rules; resource changes and source moves; registration lifecycle; missing
-history; and staged, unstaged, and new files.
+history; staged, unstaged, and new files; and new CHANGELOG bullets.
 
 The [skill link test](../../tests/test_skill_links.py) imports the
 validator module. It reuses registry loading, skill discovery, rule

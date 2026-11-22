@@ -4,6 +4,16 @@
 
 ### Added
 
+- Repository: add `.github/workflows/ci.yml`, one job that runs the package validator, the root tests, and the plugin test suites on each pull request. The validator checks new CHANGELOG bullets (form, placement, 600 characters, and versions), requires a bullet for each version increase, and fails when a changed skill loses its version. `tests/test_no_version_pins.py` fails on a release version in a test. Older entries move under `## 2026-11-22`. See [#456](https://github.com/aeghnnsw/cc-toolkit/issues/456).
+
+### Removed
+
+### Changed
+
+## 2026-11-22
+
+### Added
+
 - dev-skills (Claude Code 3.53.0, Codex 1.40.0, Antigravity 1.8.0): matt-automode runs scripts in place of four prose rules. Phase 4 runs `scripts/phase_gate.py --ticket <N>`, which reads the ticket, its parent spec, and its blockers with `gh api graphql` and exits 1 unless each exists and each blocker has a merged PR. Before a commit, phase 4 runs `scripts/avoid_terms.py --base <ref>`, which lists each added Markdown line that uses an `_Avoid_` term of a tracked `GLOSSARY.md` and exits 1 on a hit. Each full test suite runs through `scripts/run_suite.py -- <command>`: a lock in the Git common folder makes a second full suite wait, a pass recorded for the same clean tree is reported instead of a new run, and the failing tests and the exit status print last. Step 2 of the retrospective runs `scripts/retro_sessions.py`, which moves from the repository root into the plugin and runs on Python 3.9 or newer. Its `timestamp()` reads the three cutoff forms of the records, backticks included, and `find_retrospective_cutoff.py` orders the cutoffs with it. See [#458](https://github.com/aeghnnsw/cc-toolkit/issues/458).
 - Repository: `tests/test_retro_sessions.py` moves to `dev-skills/tests/`. New tests cover the four scripts, and `test_matt_automode.py` and `test_grill_with_research.py` check that each copy names them. `docs/agents/retro.md` runs the plugin script and states the record format in step 5. CONTRIBUTING lists the glossary term check in Verification and `run_suite.py` for full suites. No test scans all tracked steering files for `_Avoid_` terms: such a scan found 349 hits, mostly correct uses such as "block" and "Critic". See [#458](https://github.com/aeghnnsw/cc-toolkit/issues/458).
 - Repository: add `tests/test_host_copies.py`. For each skill with more than one host copy, it compares each copy with the Claude copy: the file list from Git, the `description` line, the body, and each shared file, line endings included. Each difference must be in the allowlist at the end of the test; an entry that no longer matches fails too. Drifted copies name their repair issue there (#453, #454, #465, #466). The test also checks the frontmatter keys of each host, fails when the invocation policy of a skill's copies disagrees, pins the policy of `gtd-setup`, `repo-cleanup`, and `grill-with-research`, and fails on a Claude Code or Codex tool name in a Markdown file of an Antigravity copy, and on a Claude Code tool name in a Codex copy. It replaces the per-skill copy checks in `creator-skills/tests/test_sci_slides.py` and in the lean-tests, sci-project-layout, t3-project-lead, project-eval, and grill-with-research tests. See [#452](https://github.com/aeghnnsw/cc-toolkit/issues/452).

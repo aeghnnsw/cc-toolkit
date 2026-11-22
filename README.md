@@ -22,7 +22,7 @@ Matt Pocock's development skills.
 cc-toolkit/
 ├── .claude-plugin/marketplace.json   # Claude Code plugin registry
 ├── .agents/plugins/marketplace.json  # Codex plugin registry
-├── .github/workflows/                # @claude automation and PR package validation
+├── .github/workflows/                # @claude automation and PR checks
 ├── .gitignore                        # Exclusions shared by all contributors
 ├── README.md                         # Overview and plugin catalog
 ├── CLAUDE.md                         # Shared contributor instructions
