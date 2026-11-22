@@ -200,7 +200,7 @@ plugin. See the [installation guide](pymol-skills/README.md).
 **Skills:**
 - **model-config**: Configure model, effort level, and auto-compact window
 - **statusline-setup**: Configure the Claude Code statusline
-- **claude-prompt-config**: Back up and replace the global Claude Code instruction file (`~/.claude/CLAUDE.md`) on this machine or a remote host
+- **claude-prompt-config**: Back up and replace the global Claude Code instruction file (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md`) on this machine or a remote host; show the lines that the new file drops and keep the GTD agent-capture section (user-invoked)
 
 ## Plugin System Benefits
 

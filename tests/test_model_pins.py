@@ -105,19 +105,23 @@ def check_cross_family_stops(root, allowed):
 
 
 def check_model_config(root, allowed):
-    """model-config names the Claude primary and fallback models in its model table and built-in model list."""
+    """model-config offers the current Claude models in Step 5a, in order, and has a table row for each.
+
+    The current list includes the Claude primary and fallback models.
+    """
     text = (root / MODEL_CONFIG).read_text(encoding='utf-8')
     rows = re.findall(r'^\|([^|\n]*)\|', section(text, 'Models and effort levels'), re.MULTILINE)
     table = {model for cell in rows for model in re.findall(r'`([^`]+)`', cell)}
     fence = FENCE.search(section(text, 'Step 5a: Select Base Model'))
-    offered = set(re.findall(r'^[ \t]*\d+\.[ \t]+(\S+)[ \t]*$', fence.group(2) if fence else '', re.MULTILINE))
-    problems = []
-    for role in ('primary', 'fallback'):
-        model = allowed['claude'][role]
-        if model not in table:
-            problems.append(f'{MODEL_CONFIG}: the "Models and effort levels" table has no {model!r} row')
-        if model not in offered:
-            problems.append(f'{MODEL_CONFIG}: the Step 5a built-in model list does not offer {model!r}')
+    offered = re.findall(r'^[ \t]*\d+\.[ \t]+(\S+)[ \t]*$', fence.group(2) if fence else '', re.MULTILINE)
+    current = allowed['claude']['current']
+    problems = [f'{ALLOWED_MODELS}: the claude current list has no {allowed["claude"][role]!r} ({role})'
+                for role in ('primary', 'fallback') if allowed['claude'][role] not in current]
+    if offered != current:
+        problems.append(f'{MODEL_CONFIG}: the Step 5a built-in model list is {offered}, not the current Claude '
+                        f'models {current}')
+    problems += [f'{MODEL_CONFIG}: the "Models and effort levels" table has no {model!r} row'
+                 for model in current if model not in table]
     return problems
 
 
@@ -131,7 +135,8 @@ def check_all(root):
 
 
 FIXTURE = {
-    ALLOWED_MODELS: json.dumps({'claude': {'primary': 'claude-opus-5-5', 'fallback': 'claude-sonnet-5-5'},
+    ALLOWED_MODELS: json.dumps({'claude': {'primary': 'claude-opus-5-5', 'fallback': 'claude-sonnet-5-5',
+                                           'current': ['claude-opus-5-5', 'claude-sonnet-5-5']},
                                 'gpt': {'primary': 'gpt-6-astra', 'fallback': 'gpt-6.1-sol'}}),
     '.claude-plugin/marketplace.json': json.dumps({'name': 'fixture', 'plugins': [
         {'name': 'demo', 'source': './demo'}]}),
@@ -213,6 +218,12 @@ class ModelPinTests(unittest.TestCase):
             (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('2. claude-sonnet-5-5\n', ''), 'claude-sonnet-5-5'),
             (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('| `claude-opus-5-5` | low, max |\n', ''),
              'claude-opus-5-5'),
+            (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('2. claude-sonnet-5-5\n',
+                                                         '2. claude-sonnet-5-5\n3. claude-fable-5-1\n'),
+             'claude-fable-5-1'),
+            (MODEL_CONFIG, FIXTURE[MODEL_CONFIG].replace('1. claude-opus-5-5\n2. claude-sonnet-5-5',
+                                                         '1. claude-sonnet-5-5\n2. claude-opus-5-5'),
+             'claude-sonnet-5-5'),
         ]
         for path, text, named in cases:
             with self.subTest(path=path, named=named):
@@ -221,6 +232,12 @@ class ModelPinTests(unittest.TestCase):
                 self.assertTrue(all(path in problem for problem in problems), problems)
                 self.assertTrue(any(re.search(rf'\b{re.escape(named)}\b(?![-.]\w)', problem) for problem in problems),
                                 problems)
+
+    def test_current_list_names_the_primary_and_fallback_models(self):
+        allowed = json.loads(FIXTURE[ALLOWED_MODELS])
+        allowed['claude']['current'] = ['claude-opus-5-5']
+        problems = check_model_config(self.fixture({ALLOWED_MODELS: json.dumps(allowed)}), allowed)
+        self.assertIn(f"{ALLOWED_MODELS}: the claude current list has no 'claude-sonnet-5-5' (fallback)", problems)
 
 
 if __name__ == '__main__':
