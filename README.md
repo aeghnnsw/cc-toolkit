@@ -185,7 +185,7 @@ plugin. See the [installation guide](pymol-skills/README.md).
 
 **Skills:**
 - **pymol-mcp**: Control PyMOL through natural language for protein visualization and structural analysis
-- **pymol-setup**: Installation instructions for the PyMOL socket plugin
+- **pymol-setup**: Set up the PyMOL socket plugin, or diagnose missing PyMOL MCP tools and connection failures
 
 **Codex skills:**
 - **pymol-mcp**

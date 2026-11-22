@@ -259,10 +259,6 @@ UNMATCHED = {
     'dev-skills/antigravity-skills/project-eval/SKILL.md': '#453: the rules and resume steps drift',
     'dev-skills/codex-skills/step-workflow/SKILL.md': '#453: the Claude copy drifts',
     'dev-skills/antigravity-skills/step-workflow/SKILL.md': '#453: the Claude copy drifts',
-    'pymol-skills/codex-skills/pymol-mcp/SKILL.md': '#454: the Claude copy predates the Codex rewrite',
-    'pymol-skills/antigravity-skills/pymol-mcp/SKILL.md': '#454: the Claude copy predates the Codex rewrite',
-    'pymol-skills/codex-skills/pymol-setup/SKILL.md': '#454: the Claude copy predates the Codex rewrite',
-    'pymol-skills/antigravity-skills/pymol-setup/SKILL.md': '#454: the Claude copy predates the Codex rewrite',
 }
 
 HOST_LINES = {
@@ -565,6 +561,95 @@ HOST_LINES = {
 +      this step when that file already has the server.
 +   2. Start a new Antigravity conversation.
 +   3. Sign in to Supabase when Antigravity asks.
+''',
+    'pymol-skills/codex-skills/pymol-mcp/SKILL.md': r'''
+-Find the tools by their exposed names; Claude Code can add a plugin namespace.
++Find the tools by their exposed names; Codex can add a plugin namespace.
+-  MCP client, including a Codex or Antigravity session, then reconnect from
+-  Claude Code.
++  MCP client, including a Claude Code session, then reconnect from Codex.
+-  that `uv` is available to the local Claude Code process.
++  that `uv` is available to the local Codex process.
+''',
+    'pymol-skills/antigravity-skills/pymol-mcp/SKILL.md': r'''
+-Find the tools by their exposed names; Claude Code can add a plugin namespace.
++Find the tools by their exposed names; Antigravity can add a plugin namespace.
+-  MCP client, including a Codex or Antigravity session, then reconnect from
+-  Claude Code.
++  MCP client, including a Claude Code or Codex session, then reconnect from
++  Antigravity.
+-  that `uv` is available to the local Claude Code process.
++  that `uv` is available to the local Antigravity process.
+''',
+    'pymol-skills/codex-skills/pymol-setup/SKILL.md': r'''
+-description: Set up the PyMOL socket plugin for Claude Code, or diagnose missing PyMOL MCP tools, connection failures, and listener configuration.
++description: Set up the PyMOL socket plugin for Codex, or diagnose missing PyMOL MCP tools, connection failures, and listener configuration.
+-# Set up PyMOL for Claude Code
++# Set up PyMOL for Codex
+-Use a local Claude Code session on the machine that runs PyMOL. Confirm
+-that PyMOL and `uv` are installed. The bundled server uses `uv` to provision
+-Python 3.10 or newer and its MCP dependency. The first launch needs access to
+-download missing dependencies. The Claude Code process must be able to find
+-`uv` on `PATH`.
++Use a local Codex session on the machine that runs PyMOL. Confirm that PyMOL
++and `uv` are installed. The bundled server uses `uv` to provision Python 3.10
++or newer and its MCP dependency. The first launch needs access to download
++missing dependencies. The Codex process must be able to find `uv` on `PATH`.
+-Install **PyMOL Skills** from the **cc-toolkit** marketplace if it is
++Install **PyMOL Skills** from the **cc-toolkit** Codex marketplace if it is
+-Start a new Claude Code session after installing the package to load its tools.
++Start a new Codex task after installing the package to load its tools.
+# Claude Code gives the plugin root as ${CLAUDE_PLUGIN_ROOT}; the other hosts find it from the skill folder.
+-Use the installed copy of this plugin, `<plugin-root>`, independent
+-of any Codex or Antigravity installation or source checkout.
++The plugin root, `<plugin-root>`, is two levels above the directory that
++holds this `SKILL.md`. Use that installed copy, independent of any Claude
++Code installation or source checkout.
+-- Missing tools: check that the Claude Code plugin is installed and
+-  enabled, then start a new session.
++- Missing tools: check that the Codex plugin is installed and enabled, then
++  start a new task.
+-  and ensure the Claude Code process can find it.
++  and ensure the Codex process can find it.
+-- Remote Claude Code session: run the integration locally on the PyMOL
+-  machine.
++- Remote Codex host: run the integration locally on the PyMOL machine.
+''',
+    'pymol-skills/antigravity-skills/pymol-setup/SKILL.md': r'''
+-description: Set up the PyMOL socket plugin for Claude Code, or diagnose missing PyMOL MCP tools, connection failures, and listener configuration.
++description: Set up the PyMOL socket plugin for Antigravity, or diagnose missing PyMOL MCP tools, connection failures, and listener configuration.
+-# Set up PyMOL for Claude Code
++# Set up PyMOL for Antigravity
+-Use a local Claude Code session on the machine that runs PyMOL. Confirm
++Use a local Antigravity conversation on the machine that runs PyMOL. Confirm
+-download missing dependencies. The Claude Code process must be able to find
++download missing dependencies. The Antigravity process must be able to find
+-Install **PyMOL Skills** from the **cc-toolkit** marketplace if it is
+-not installed. See the package [README](../../README.md) for installation.
+-Start a new Claude Code session after installing the package to load its tools.
++If **PyMOL Skills** is not installed, run this command, then start a new
++conversation to load its tools:
++
++```bash
++agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/pymol-skills
++```
++
++See the package [README](../../README.md) for installation.
+# Claude Code gives the plugin root as ${CLAUDE_PLUGIN_ROOT}; the other hosts find it from the skill folder.
+-Use the installed copy of this plugin, `<plugin-root>`, independent
+-of any Codex or Antigravity installation or source checkout.
++The plugin root, `<plugin-root>`, is two levels above the directory that
++holds this `SKILL.md`. Use that installed copy, independent of any Claude
++Code or Codex installation or source checkout.
+-- Missing tools: check that the Claude Code plugin is installed and
+-  enabled, then start a new session.
++- Missing tools: check that `agy plugin list` shows the plugin as enabled,
++  then start a new conversation.
+-  and ensure the Claude Code process can find it.
++  and ensure the Antigravity process can find it.
+-- Remote Claude Code session: run the integration locally on the PyMOL
+-  machine.
++- Remote agent: run the conversation locally on the PyMOL machine.
 ''',
 }
 

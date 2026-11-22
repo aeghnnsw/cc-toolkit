@@ -1,79 +1,64 @@
 ---
 name: pymol-mcp
-version: 1.0.0
-description: Control PyMOL molecular visualization software through natural language. This skill should be used when the user wants to visualize protein structures, create molecular representations, perform structural analysis, or generate publication-quality molecular images using PyMOL.
+version: 1.0.1
+description: Control PyMOL through MCP when the user wants to visualize molecular structures, align structures, measure geometry, or export molecular images.
 ---
 
-# PyMOL MCP Integration
+# PyMOL MCP
 
-## Overview
+Use the installed PyMOL MCP tools to operate the user's running PyMOL session.
+PyMOL and the MCP server must run on the same machine. The socket plugin must
+show **Listening on port 9876**. If setup is incomplete, follow
+[PyMOL setup](../pymol-setup/SKILL.md).
 
-Control PyMOL molecular visualization software directly from Claude using the Model Context Protocol (MCP). Execute PyMOL commands, create visualizations, and perform structural analysis through natural language.
+## Tools
 
-## When to Use This Skill
+Find the tools by their exposed names; Claude Code can add a plugin namespace.
 
-Use this skill when the user wants to:
-- Load and visualize protein/molecular structures (PDB, CIF, etc.)
-- Create molecular representations (cartoon, surface, sticks, etc.)
-- Color molecules by chain, secondary structure, or custom selections
-- Perform structural alignments and superpositions
-- Measure distances, angles, and dihedrals
-- Generate publication-quality images
+- `pymol_command(command)`: execute native PyMOL syntax, such as
+  `show cartoon, all` or `color red, chain A`.
+- `pymol_python_api(python_code)`: execute Python using the existing `cmd`
+  object, such as `cmd.align('mobile', 'target')`. Prefer this tool when
+  commands require multiple steps.
 
-## Prerequisites
+Act on the objects and selections the user requests. Preserve the current
+session unless the requested operation requires changing it. Use absolute
+paths when loading local structures or saving results. Those paths belong
+to the machine running PyMOL.
 
-Before using PyMOL commands, ensure:
-1. PyMOL is running with the socket plugin active
-2. The plugin shows "Listening on port 9876"
+For a new protein visualization, use the Python API:
 
-Run `/pymol-skills:setup` for installation instructions.
-
-## Available MCP Tools
-
-### pymol_command
-Execute direct PyMOL commands using native syntax.
-
-**Examples:**
-```
-fetch 1ubq              # Load structure from PDB
-show cartoon, all       # Display as cartoon
-color red, chain A      # Color chain A red
-bg_color white          # Set white background
-zoom all                # Zoom to fit all
-```
-
-### pymol_python_api
-Execute PyMOL Python API commands for complex operations.
-
-**Examples:**
 ```python
 cmd.fetch('1ubq')
-cmd.show('cartoon', 'all')
-cmd.color('red', 'chain A')
-cmd.align('mobile', 'target')
-cmd.select('active_site', 'resi 50-100')
+cmd.show('cartoon', '1ubq')
+cmd.color('cyan', '1ubq')
+cmd.zoom('1ubq')
 ```
 
-## Common Workflows
+To verify the connection without changing molecular objects or the view:
 
-### Load and Visualize a Protein
-1. Fetch structure: `fetch 1ubq`
-2. Set representation: `show cartoon`
-3. Color by chain: `color auto, all`
-4. Set background: `bg_color white`
+```python
+assert isinstance(cmd.get_names(), list)
+assert isinstance(cmd.count_atoms(), int)
+assert len(cmd.get_view()) == 18
+```
 
-### Compare Two Structures
-1. Fetch both: `fetch 1ubq` and `fetch 1ubi`
-2. Align: `align 1ubi, 1ubq`
-3. Color differently: `color green, 1ubq` and `color cyan, 1ubi`
+Read the returned text. The server reports connection errors and Python
+exceptions as ordinary text. It does not return what PyMOL prints: printed
+values and the errors of a `pymol_command` show only in PyMOL. A completed
+tool call alone does not prove success, and neither does
+`PyMOL returned no output`. To check a result, query it with
+`pymol_python_api` and an `assert`, such as
+`assert cmd.count_atoms('1ubq') > 0`; a failed check returns as an error.
+Generic success text, such as `Fetched structure: 1ubq`, comes from an
+outdated socket plugin; reinstall it as
+[PyMOL setup](../pymol-setup/SKILL.md) describes.
 
-### Highlight Active Site
-1. Select residues: `select active, resi 45-50`
-2. Show as sticks: `show sticks, active`
-3. Color highlight: `color yellow, active`
+## Connection recovery
 
-## Troubleshooting
-
-- **Connection refused**: Start PyMOL socket plugin before using commands
-- **Command not recognized**: Check PyMOL command syntax
-- **No output**: Some commands don't produce visible output
+- Connection refused: open PyMOL and start its socket listener on port 9876.
+- Timeout: the listener serves one client at a time. Disconnect the other
+  MCP client, including a Codex or Antigravity session, then reconnect from
+  Claude Code.
+- Missing tools or failed server launch: follow the setup skill and check
+  that `uv` is available to the local Claude Code process.

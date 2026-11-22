@@ -18,7 +18,7 @@ Find the tools by their exposed names; Antigravity can add a plugin namespace.
   `show cartoon, all` or `color red, chain A`.
 - `pymol_python_api(python_code)`: execute Python using the existing `cmd`
   object, such as `cmd.align('mobile', 'target')`. Prefer this tool when
-  commands contain quotes or require multiple steps.
+  commands require multiple steps.
 
 Act on the objects and selections the user requests. Preserve the current
 session unless the requested operation requires changing it. Use absolute
@@ -42,10 +42,16 @@ assert isinstance(cmd.count_atoms(), int)
 assert len(cmd.get_view()) == 18
 ```
 
-Read the returned text. The server can report execution or connection errors
-as ordinary text. A completed tool call alone does not prove success. The
-socket plugin may return a generic success message instead of Python values
-or printed output; report only what the response establishes.
+Read the returned text. The server reports connection errors and Python
+exceptions as ordinary text. It does not return what PyMOL prints: printed
+values and the errors of a `pymol_command` show only in PyMOL. A completed
+tool call alone does not prove success, and neither does
+`PyMOL returned no output`. To check a result, query it with
+`pymol_python_api` and an `assert`, such as
+`assert cmd.count_atoms('1ubq') > 0`; a failed check returns as an error.
+Generic success text, such as `Fetched structure: 1ubq`, comes from an
+outdated socket plugin; reinstall it as
+[PyMOL setup](../pymol-setup/SKILL.md) describes.
 
 ## Connection recovery
 
