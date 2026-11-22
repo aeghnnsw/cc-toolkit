@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.18.0
+version: 1.19.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -160,12 +160,11 @@ report the blocker and keep the work. Respect branch protection.
 The retro edits no tracked file. It proposes changes for a human to choose.
 
 1. Find the greatest **Reviewed through** UTC timestamp in earlier
-   "Navigation retrospective" records on merged PRs. When the repository has
-   `scripts/find-retrospective-cutoff.py`, run
-   `python3 scripts/find-retrospective-cutoff.py` from the checkout root to
-   find it. On exit status 1, its message tells whether no record exists or
-   `gh` failed; when `gh` failed, post no record and report the retro as
-   blocked. Set this run's cutoff before reading sessions.
+   "Navigation retrospective" records on merged PRs. Run
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/find_retrospective_cutoff.py"` from the
+   checkout root to find it. On exit status 1, its message tells whether no
+   record exists or `gh` failed; when `gh` failed, post no record and report
+   the retro as blocked. Set this run's cutoff before reading sessions.
 2. Read the sessions of this repository and its worktrees after the previous
    cutoff, or this run's sessions when no record exists. Use the repository's
    session-discovery guidance when it has some. Otherwise read the JSONL logs:
@@ -187,10 +186,10 @@ The retro edits no tracked file. It proposes changes for a human to choose.
 3. Keep findings that cost the run significant time or work, such as a long
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.
-4. With the script, when step 1 found a record, run the script again. A
-   cutoff later than its first output means that another retrospective read
-   the sessions up to that cutoff: drop the findings at or before it, and name
-   it in the record. Keep this run's cutoff as the record's cutoff.
+4. When step 1 found a record, run the script again. A cutoff later than its
+   first output means that another retrospective read the sessions up to that
+   cutoff: drop the findings at or before it, and name it in the record. Keep
+   this run's cutoff as the record's cutoff.
 5. Open or reuse a proposal issue only when a finding's fix is clean, worth
    its cost, and general. Prefer a tool fix or an automated check to new text
    in a steering file. Record each other finding as "no fix"; that result is
@@ -199,9 +198,8 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    the **Reviewed through** cutoff, the sessions read and history limits, and
    each finding with its session and time and its issue link or "no fix". A
    run that merges no PR skips the retro; the next run reads its sessions.
-   With the script, write the cutoff as
-   `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, truncated to whole seconds,
-   because the script reads only that form.
+   Write the cutoff as `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, truncated
+   to whole seconds.
 
 A leader is a session that starts parallel runs. When a leader runs the
 retrospective for its runs, it runs it once, after the runs finish, and posts

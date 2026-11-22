@@ -1,4 +1,4 @@
-"""A fake gh for the repo-cleanup script tests.
+"""A fake gh for the repo-cleanup and retrospective cutoff script tests.
 
 The tests put a `gh` wrapper that runs this file first on PATH. It answers only
 the read commands that the scripts use, from the JSON file that FAKE_GH_DATA
@@ -11,6 +11,10 @@ The data file has these optional keys:
 - "prs": merged PRs by head branch, for `gh pr list --head B --state merged`.
 - "pr_view": PRs by the argument of `gh pr view`.
 - "issues": issues by the argument of `gh issue view`, a number or a URL.
+- "comments": pages of repository comments, for
+  `gh api --paginate repos/{owner}/{repo}/issues/comments...`. Each page is a
+  list; the pages print one after another, with no separator.
+- "merged": merged PR numbers, for `gh pr list --state merged --json number`.
 """
 
 from __future__ import annotations
@@ -36,6 +40,14 @@ def main() -> int:
     merged_list = option(args, "--state") == "merged" and option(args, "--head")
     if args[:2] == ["pr", "list"] and merged_list:
         print(json.dumps(data.get("prs", {}).get(option(args, "--head"), [])))
+        return 0
+    merged_numbers = option(args, "--state") == "merged" and option(args, "--json") == "number"
+    if args[:2] == ["pr", "list"] and merged_numbers:
+        print(json.dumps([{"number": number} for number in data.get("merged", [])]))
+        return 0
+    comments = [arg for arg in args if arg.startswith("repos/{owner}/{repo}/issues/comments")]
+    if args[:1] == ["api"] and "--paginate" in args and comments:
+        sys.stdout.write("".join(json.dumps(page) for page in data.get("comments", [[]])))
         return 0
     if args[:2] == ["pr", "view"] and len(args) > 2:
         if args[2] in data.get("pr_view", {}):

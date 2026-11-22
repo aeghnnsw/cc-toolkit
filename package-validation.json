@@ -119,6 +119,7 @@
         {"path": "scripts/live_worktrees.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/cleanup_plan.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/open_closing_issues.py", "hosts": ["claude", "codex", "antigravity"]},
+        {"path": "scripts/find_retrospective_cutoff.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "scripts/t3_project_lead.py", "hosts": ["claude", "codex", "antigravity"]}
       ]
     },

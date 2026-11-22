@@ -163,7 +163,9 @@ class AntigravityCopiesTest(unittest.TestCase):
         self.assertIn("task artifact, never in a tracked file", text)
 
     def test_every_retrospective_reads_antigravity_sessions_with_one_text(self) -> None:
-        retros = {host: sections(automode(host))[RETRO_HEADING] for host in HOSTS}
+        # The plugin root is the one host-specific part of the retrospective (#446).
+        retros = {host: sections(automode(host))[RETRO_HEADING].replace(
+            "${CLAUDE_PLUGIN_ROOT}", "<plugin-root>") for host in HOSTS}
         for host in HOSTS:
             with self.subTest(host=host):
                 for fact in ANTIGRAVITY_SESSION_FACTS:
