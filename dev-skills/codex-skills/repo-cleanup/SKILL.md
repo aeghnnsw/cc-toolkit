@@ -9,18 +9,46 @@ Clean repository state against the Default Branch and its configured upstream
 remote. Reconcile completed issues associated with the work being cleaned.
 Proceed without confirmation within the requested scope.
 
-## Identify the work
+## Make the plan
 
-- Refresh remote state and inspect every local worktree plus local and remote
-  branches, including those that a calling workflow did not name. A user
-  request can limit this scope.
-- Establish that each non-default branch is merged, including squash merges.
-- Before deleting branches or worktrees, record their merged PRs, linked tickets,
-  and parent specs. Include references supplied by the calling workflow or user.
-  In standalone use, discover these from the verified merged work. Keep unrelated
-  backlog issues outside the cleanup scope unless the user includes them.
-  Report missing or ambiguous issue links instead of assuming reconciliation is
-  complete.
+Refresh remote state with `git fetch --prune` for the upstream remote. Then
+run this command from the checkout that the current session runs in.
+`<plugin-root>` is this plugin's root, two levels above the skill folder.
+
+```bash
+python3 "<plugin-root>/scripts/cleanup_plan.py"
+```
+
+The command prints the cleanup plan and removes nothing. Each line has four
+tab-separated fields: `KEEP` or `REMOVE`; the kind (`folder`, `worktree`,
+`branch`, or `remote-branch`); the path or branch name; and the reason. The
+plan covers every worktree, local branch, and remote branch, including those
+that a calling workflow did not name. A user request can limit this scope.
+
+- Add `--main-only` when the repository documents its planning folder
+  location in the main checkout. Add `--planning-location <folder>` when the
+  documented location is not `.scratch`. Otherwise the plan inspects
+  `.scratch/<issue>-<slug>/` in the main checkout, in the current worktree,
+  and in each worktree that it would otherwise remove.
+- Add `--remote <name>` when the upstream remote is not `origin`.
+- If the command fails, remove nothing and report the error.
+
+The plan keeps the current worktree and each worktree that another live
+session may use, with the evidence: a Git lock, a running process in the
+worktree, or a Claude Code or Codex session log of the last 60 minutes. It
+keeps a worktree with a detached HEAD or uncommitted changes. A branch is
+merged only when a merged PR of the branch has the branch tip as its head
+commit (`headRefOid`). The plan keeps a branch whose tip is in the Default
+Branch without such a PR: the branch has no commit of its own, and a session
+may have just started there. When a check cannot run, the plan keeps the item
+and gives the error as the reason.
+
+Before deleting anything, record the merged PRs that the plan names,
+including the PR of the current worktree, their linked tickets, and parent
+specs. Include references supplied by the calling workflow or user. Keep
+unrelated backlog issues outside the cleanup scope unless the user includes
+them. Report missing or ambiguous issue links instead of assuming
+reconciliation is complete.
 
 ## Reconcile issues
 
@@ -41,46 +69,35 @@ merged work, then verify its closed state. Preserve broader incomplete parents.
 Planning instructions to preserve parents during ticket publication do not
 prevent this final reconciliation after the full scope is complete.
 
+Then run this command with the merged PRs of the cleanup:
+
+```bash
+python3 "<plugin-root>/scripts/open_closing_issues.py" <pr>...
+```
+
+It prints each closing issue of each PR as `OPEN` or `CLOSED`, and each PR
+with no closing issue as `NONE`. It exits 1 when a closing issue is still
+open, and 2 when it cannot check. Report its output. For each `OPEN` line,
+close the issue when it is complete, or report the remaining work.
+
 If tracker access or closure fails, report the unresolved issue and reason.
 Continue independent safe Git cleanup. Never report issue reconciliation as
-complete while a required closure is unverified.
+complete while a required closure is unverified or the command exits nonzero.
 
 ## Clean Git state
 
-- Before removing a worktree, run this command from the repository. It lists
-  each worktree that another live session may use, with the evidence: a Git
-  lock, a running process in the worktree, or a Claude Code or Codex session
-  log of the last 60 minutes with a working directory in the worktree. It
-  leaves out the current session. `<plugin-root>` is this plugin's root, two
-  levels above the skill folder.
+Run the plan command again with the same options, because closures change
+the issue states that the plan reads. Act only on its `REMOVE` lines, in this
+order:
 
-  ```bash
-  python3 "<plugin-root>/scripts/live_worktrees.py"
-  ```
+1. Delete each `folder` by its exact path.
+2. Remove each `worktree` with `git worktree remove <path>`.
+3. Delete each `branch` with `git branch -D <name>`. A squash-merged branch
+   needs `-D`; the plan verified its merged PR.
+4. Delete each `remote-branch` `<remote>/<name>` from the upstream remote
+   with `git push <remote> --delete <name>`.
 
-- Keep these worktrees with their local and remote branches, and report each
-  with its reason:
-  - the worktree that the current session runs in;
-  - each worktree that the command lists;
-  - each worktree with no commit of its own: its branch tip or detached HEAD
-    is in the Default Branch, and no merged PR of its branch has that tip as
-    its head commit (`headRefOid`). A session may have just started there.
-    When PR state cannot be read, keep the worktree.
-
-  If the command fails, keep every worktree with its branches and report the
-  error.
-- Inspect each planning folder: the location that the repository documents,
-  or `.scratch/<issue>-<slug>/`. When the documented location is in the main
-  checkout, look only there. Otherwise look in the main checkout, in the
-  worktree that the current session runs in, and in each worktree that cleanup
-  would otherwise remove. When its issue is closed as completed, delete the
-  folder by exact path. Keep and report the folders of open or not-planned
-  issues and folders with no issue key, such as a date key. Keep each worktree
-  that holds a kept folder, with its local and remote branches.
-- Remove the other clean merged worktrees with their local branches. Delete
-  the other verified-merged branches from the upstream remote, and prune stale
-  remote-tracking references.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
-- Report what was cleaned and retained, with a reason for each retained item.
+- Report what was cleaned and retained: each `KEEP` line with its reason.
   Include issue and PR links, verified closures, and issues left open.

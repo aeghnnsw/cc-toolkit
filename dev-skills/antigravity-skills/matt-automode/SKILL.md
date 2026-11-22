@@ -115,7 +115,10 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 7. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
    the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
    and close the parent only when fully satisfied. Close tickets by hand only
-   after merge if the tracker did not close them.
+   after merge if the tracker did not close them. Then run
+   `python3 "<plugin-root>/scripts/open_closing_issues.py" <pr>...` with the
+   merged PRs and report its output. Report each `OPEN` issue with the reason
+   that it stays open.
 8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
    "Navigation retrospective" below once for the run. Complete when its record
    is posted. When the task says that a leader runs the retrospective for
