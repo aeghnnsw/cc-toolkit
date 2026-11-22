@@ -28,8 +28,8 @@ current state, not history: the script path, the starting agent's link, one
 line per task (worker, issue, branch, state), decisions, and items waiting on
 the user. Update task lines in place; delete answered items. For a
 scientific item, write only its link.
-Next: t3_project_lead.py plan for new work. For a worker that waits, finished,
-or failed: t3_project_lead.py answer, verify, or flag.
+Next: t3_project_lead.py plan for new work. For a worker that waits on the
+user, has finished, or has failed: t3_project_lead.py answer, verify, or flag.
 """,
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
@@ -46,7 +46,7 @@ Next: t3_project_lead.py dispatch.
 Start no second worker for work that already runs: check t3_thread_list with
 includeSubagents, and pull_request_list (or gh pr list).
 Start each worker with delegate_task and isolation "worktree". Start every
-task this way, research and review included. Never use your host's native
+task this way, research and review tasks included. Never use your host's native
 subagent tool.
 Write the brief as t3_project_lead.py brief says, with its quoted lines copied
 exactly. Then add the task, its success criteria, the approved outcome, and
@@ -83,9 +83,9 @@ Next: t3_project_lead.py dispatch.
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
 the user. Settle it only when the user cancels its task. Do not answer its
 questions.
-Put it on the list of what waits on the user at once, in this turn, with its
-link and its number of open decisions, if any. Write the item in lead.md, and
-delete it when the worker resumes or finishes.
+In this turn, put it on the list of what waits on the user, with its link and
+its number of decisions, if any. Write the item in lead.md, and delete the
+item when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes. For a non-scientific task,
 also give a one-line topic for each decision.
@@ -97,10 +97,10 @@ session (Claude Code), that content was flagged for a risk (Codex), or that
 the Antigravity quota is reached (how T3 shows a refusal).
 If it ran on another model and claude-sonnet-5-5 is available, start a new
 worker with delegate_task, isolation "worktree", and a Claude Code provider on
-claude-sonnet-5-5. Give it the same brief, line 1 in the Claude Code form, the
-branch, PR, and issue from lead.md and pull_request_list, and "Continue from
-this state." Do not read the flagged thread or give its link. Settle each
-flagged thread.
+claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude Code
+form, the branch, PR, and issue from lead.md and pull_request_list, and
+"Continue from this state." Do not read the flagged thread or give its link.
+Settle each flagged thread.
 Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
@@ -119,11 +119,12 @@ retrospective. Otherwise dispatch, or report.
 """,
     "retro": """
 Start one worker for the Navigation retrospective of the batch, as
-t3_project_lead.py dispatch says, with only line 1 of t3_project_lead.py brief
-for matt-automode. Then write: "Run only the Navigation retrospective of
-matt-automode, once, in place of the leader of these runs:", with this
-thread's link, the worker links, and the merged PRs in merge order. For a
-batch with a scientific task, add: "Reply in one line, with links."
+t3_project_lead.py dispatch says. From t3_project_lead.py brief, use only
+line 1 for matt-automode and the budget. Then write: "Run only the
+Navigation retrospective of matt-automode, once, in place of the leader of
+these runs:", with this thread's link, the worker links, and the merged PRs
+in merge order. For a batch with a scientific task, add: "Reply in one line,
+with links."
 Write its thread link in lead.md.
 Next: t3_project_lead.py report.
 """,

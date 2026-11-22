@@ -47,7 +47,7 @@ REQUIRED = {
     "plan": ["Write each task, its success criteria, and these decisions in lead.md."],
     "dispatch": ["Start no second worker for work that already runs",
                  'Start each worker with delegate_task and isolation "worktree".',
-                 "Start every task this way, research and review included. Never use your "
+                 "Start every task this way, research and review tasks included. Never use your "
                  "host's native subagent tool.",
                  '"You may start your own subagents. Keep your report short, and leave the '
                  'detail in this thread."',
@@ -65,9 +65,9 @@ REQUIRED = {
               "most one focused check."],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
-               "Put it on the list of what waits on the user at once, in this turn, with its "
-               "link and its number of open decisions, if any.",
-               "delete it when the worker resumes or finishes"],
+               "In this turn, put it on the list of what waits on the user, with its link and "
+               "its number of decisions, if any.",
+               "delete the item when the worker resumes or finishes"],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
              "Otherwise, or after a second flag, the task waits on the user."],
@@ -75,7 +75,8 @@ REQUIRED = {
                "not the report", "For a scientific task, read no artifact.",
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "never reuse one", "Give each other finding to one follow-up worker"],
-    "retro": ["with only line 1 of t3_project_lead.py brief"],
+    "retro": ["From t3_project_lead.py brief, use only line 1 for matt-automode and the "
+              "budget."],
     "report": ["Only when each task in lead.md is verified or cancelled, each merged batch has a "
                "retrospective, nothing waits on the user, and no worker runs: delete the lead "
                "folder, then settle this thread.",
