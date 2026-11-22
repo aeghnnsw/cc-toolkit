@@ -7,25 +7,28 @@ SHELL_COMMAND_KEYS = {
     "run_terminal_command": "command",
 }
 ANTIGRAVITY = "antigravity"
+CODEX = "codex"
 
 
 def block_status(host):
     """Return the exit status of a script that blocks a tool call on `host`.
 
-    In Antigravity mode, a script blocks with status 3. The root `hooks.json`
-    changes 3 to 2, the Antigravity block status, without its "hook failed"
-    line. `uv` also exits 2 when it cannot start a script, so the wrappers
-    must tell that failure from a block.
+    In Antigravity and Codex mode, a script blocks with status 3. The root
+    `hooks.json` and `hooks/hooks.codex.json` change 3 to 2, the block status
+    of both hosts, without their "hook failed" line. `uv` also exits 2 when
+    it cannot start a script, so the wrappers must tell that failure from a
+    block.
     """
-    return 3 if host == ANTIGRAVITY else 2
+    return 3 if host in (ANTIGRAVITY, CODEX) else 2
 
 
 def host_argument(argv):
     """Return the host that `--host <host>` in `argv` names, or None.
 
-    The root `hooks.json` passes `--host antigravity` to each script. The
-    Claude Code and Codex hook configurations pass no host to the scripts
-    that behave the same on both hosts.
+    The root `hooks.json` passes `--host antigravity` to each script.
+    `hooks/hooks.codex.json` passes `--host codex` to the scripts that can
+    block or that behave differently in Codex. The Claude Code hook
+    configuration passes `--host claude` only to the zsh trap script.
     """
     for index, argument in enumerate(argv[:-1]):
         if argument == "--host":

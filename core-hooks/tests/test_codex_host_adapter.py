@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -8,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
+# The shells that can run a hook command: the wrappers must work in both.
+SHELLS = ("/bin/sh", shutil.which("zsh")) if shutil.which("zsh") else ("/bin/sh",)
 
 
 def load_manifest():
@@ -53,6 +56,7 @@ class CodexHostAdapterTests(unittest.TestCase):
         env=None,
         missing_plugin=False,
         script_exit=None,
+        shell="/bin/sh",
     ):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -81,8 +85,7 @@ class CodexHostAdapterTests(unittest.TestCase):
             )
             process_env.update(env or {})
             return subprocess.run(
-                command,
-                shell=True,
+                [shell, "-c", command],
                 input=json.dumps(payload) if payload is not None else "{}",
                 text=True,
                 capture_output=True,
@@ -105,6 +108,8 @@ class CodexHostAdapterTests(unittest.TestCase):
                 self.assertNotIn("GROK_PLUGIN_ROOT", command)
                 self.assertNotIn("/.claude/", command)
                 self.assertNotIn("/.grok/", command)
+                # zsh reserves `status`, so the wrappers use another name.
+                self.assertNotIn("status=", command)
 
     def test_safety_hook_executes_from_codex_root_with_poisoned_foreign_root(self):
         result = self.run_configured_command(
@@ -158,55 +163,66 @@ class CodexHostAdapterTests(unittest.TestCase):
                 else:
                     self.assertEqual(output.get("permissionDecision"), "allow")
 
-    def test_safety_hooks_block_when_uv_is_unavailable(self):
-        for script_name in ("safety_guard.py", "pre_git_hook.py"):
-            with self.subTest(script_name=script_name):
-                result = self.run_configured_command(
-                    command_for(script_name), env={"PATH": ""}
-                )
-                self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertIn("BLOCKED", result.stderr)
-
-    def test_noncritical_hooks_warn_but_succeed_when_uv_is_unavailable(self):
-        for script_name in ("post_tool_use.py", "system_notification.py"):
-            with self.subTest(script_name=script_name):
-                result = self.run_configured_command(
-                    command_for(script_name), env={"PATH": ""}
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("WARNING", result.stderr)
+    def test_missing_uv_follows_each_hook_failure_policy(self):
+        for shell in SHELLS:
+            for script_name, expected_status, marker in POLICY_CASES:
+                with self.subTest(shell=shell, script_name=script_name):
+                    result = self.run_configured_command(
+                        command_for(script_name), env={"PATH": ""}, shell=shell
+                    )
+                    self.assertEqual(result.returncode, expected_status, result.stderr)
+                    self.assertIn(marker, result.stderr)
 
     def test_missing_scripts_follow_each_hook_failure_policy(self):
-        for script_name, expected_status, marker in POLICY_CASES:
-            with self.subTest(script_name=script_name):
-                result = self.run_configured_command(
-                    command_for(script_name), missing_plugin=True
-                )
-                self.assertEqual(result.returncode, expected_status, result.stderr)
-                self.assertIn(marker, result.stderr)
+        for shell in SHELLS:
+            for script_name, expected_status, marker in POLICY_CASES:
+                with self.subTest(shell=shell, script_name=script_name):
+                    result = self.run_configured_command(
+                        command_for(script_name), missing_plugin=True, shell=shell
+                    )
+                    self.assertEqual(result.returncode, expected_status, result.stderr)
+                    self.assertIn(marker, result.stderr)
 
     def test_generic_script_failures_follow_each_hook_failure_policy(self):
-        for script_name, expected_status, marker in POLICY_CASES:
-            with self.subTest(script_name=script_name):
-                result = self.run_configured_command(
-                    command_for(script_name), script_exit=7
-                )
-                self.assertEqual(result.returncode, expected_status, result.stderr)
-                self.assertIn(marker, result.stderr)
-                self.assertIn("exit 7", result.stderr)
+        # A script that exits 2 did not block: only exit 3 is a block.
+        for shell in SHELLS:
+            for script_exit in (2, 7):
+                for script_name, expected_status, marker in POLICY_CASES:
+                    with self.subTest(
+                        shell=shell, script_exit=script_exit, script_name=script_name
+                    ):
+                        result = self.run_configured_command(
+                            command_for(script_name),
+                            script_exit=script_exit,
+                            shell=shell,
+                        )
+                        self.assertEqual(
+                            result.returncode, expected_status, result.stderr
+                        )
+                        self.assertIn(marker, result.stderr)
+                        self.assertIn(f"exit {script_exit}", result.stderr)
 
-    def test_safety_hook_preserves_an_intentional_policy_rejection(self):
-        result = self.run_configured_command(
-            command_for("safety_guard.py"),
-            payload={
-                "hook_event_name": "PreToolUse",
-                "tool_name": "exec_command",
-                "tool_input": {"cmd": "rm -rf *"},
-            },
+    def test_policy_blocks_pass_through_each_wrapper_without_a_failure_line(self):
+        cases = (
+            ("safety_guard.py", "rm -rf *", "Reason: wildcard rm target"),
+            ("pre_git_hook.py", "git add .", "git add ."),
         )
-
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("Reason: wildcard rm target", result.stderr)
+        for shell in SHELLS:
+            for script_name, command, reason in cases:
+                with self.subTest(shell=shell, script_name=script_name):
+                    result = self.run_configured_command(
+                        command_for(script_name),
+                        payload={
+                            "hook_event_name": "PreToolUse",
+                            "tool_name": "exec_command",
+                            "tool_input": {"cmd": command},
+                        },
+                        shell=shell,
+                    )
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)
+                    self.assertIn(reason, result.stderr)
+                    self.assertNotIn("hook failed", result.stderr)
 
 
 if __name__ == "__main__":

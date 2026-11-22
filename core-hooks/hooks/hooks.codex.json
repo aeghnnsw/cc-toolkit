@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/safety_guard.py\" || { status=$?; printf 'BLOCKED: core-hooks safety hook failed (exit %s)\\n' \"$status\" >&2; exit 2; }"
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/safety_guard.py\" --host codex || { rc=$?; if [ \"$rc\" -eq 3 ]; then exit 2; fi; printf 'BLOCKED: core-hooks safety hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
           }
         ]
       },
@@ -15,11 +15,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/pre_git_hook.py\" || { status=$?; printf 'BLOCKED: core-hooks git policy hook failed (exit %s)\\n' \"$status\" >&2; exit 2; }"
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/pre_git_hook.py\" --host codex || { rc=$?; if [ \"$rc\" -eq 3 ]; then exit 2; fi; printf 'BLOCKED: core-hooks git policy hook failed (exit %s)\\n' \"$rc\" >&2; exit 2; }"
           },
           {
             "type": "command",
-            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/zsh_traps.py\" --host codex || { status=$?; printf 'WARNING: core-hooks zsh trap hook failed (exit %s)\\n' \"$status\" >&2; exit 0; }"
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/zsh_traps.py\" --host codex || { rc=$?; printf 'WARNING: core-hooks zsh trap hook failed (exit %s)\\n' \"$rc\" >&2; exit 0; }"
           }
         ]
       }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/post_tool_use.py\" || { status=$?; printf 'WARNING: core-hooks logging hook failed (exit %s)\\n' \"$status\" >&2; exit 0; }"
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/post_tool_use.py\" || { rc=$?; printf 'WARNING: core-hooks logging hook failed (exit %s)\\n' \"$rc\" >&2; exit 0; }"
           }
         ]
       }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/system_notification.py\" --success || { status=$?; printf 'WARNING: core-hooks notification hook failed (exit %s)\\n' \"$status\" >&2; exit 0; }"
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/system_notification.py\" --success || { rc=$?; printf 'WARNING: core-hooks notification hook failed (exit %s)\\n' \"$rc\" >&2; exit 0; }"
           }
         ]
       }

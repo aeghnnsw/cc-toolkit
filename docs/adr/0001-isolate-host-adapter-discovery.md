@@ -13,6 +13,14 @@ blocking result, and logging or notification failures to a warning with a
 successful exit. This policy covers failures seen by the hook's shell
 wrapper; it cannot cover the host failing to launch that shell or
 terminating the entire hook. Claude Code retains its own hook configuration.
+
+The Codex safety and git policy commands pass `--host codex`. In this mode,
+those scripts exit 3 for a block, and their wrappers change that status to 2
+without the failure line, because `uv` also exits 2 when it cannot start a
+script. Every other nonzero status of these two commands blocks with the
+failure line. The wrappers keep the status in `rc`, because zsh reserves
+`status` as a read-only variable
+([#442](https://github.com/aeghnnsw/cc-toolkit/issues/442)).
 A native Grok Build adapter is deferred; shared-script tests cover its
 payload format without guaranteeing host-level hook invocation.
 
