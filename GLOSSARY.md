@@ -403,14 +403,13 @@ _Avoid_: Re-review, second review
 
 **Blocking finding**:
 A review finding that stops the merge until a fix closes it: a regression that
-the reviewer shows at the head, a requirement of the ticket that the change
-misses, a repository rule that the reviewer cites and the change breaks, or
-shipped text that the change makes false. A problem that already exists at
-the comparison commit is a blocking finding only when the ticket requires its
-fix.
+a failing run or a reproducible case shows at the head, a missed ticket
+requirement, a broken cited rule, or shipped text that the change makes false.
+A problem present at the comparison commit is a blocking finding only when the
+ticket requires its fix.
 _Avoid_: Must-fix finding, critical finding
 
 **Safety check**:
 A check whose purpose is to stop an unsafe action, such as a hook that blocks
-a dangerous shell command. A safety check fails closed when it blocks the
-action in a case that it cannot decide.
+a dangerous shell command. A safety check fails closed when it blocks an
+action that it cannot decide.

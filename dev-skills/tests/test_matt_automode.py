@@ -31,7 +31,9 @@ RECORD_ITEMS = (
 )
 REVIEW_BOUND = (
     "Run one full review against the ticket spec and a recorded comparison commit.",
-    "Only these findings block: a regression that a failing run shows at the head,",
+    "Only these findings block: a regression that a failing run or a reproducible case shows "
+    "at the head, a missed ticket requirement, a broken cited rule, and shipped text that the "
+    "change makes false.",
     "A problem present at the comparison commit blocks only when the ticket requires its fix.",
     "List other findings with a reason in the review record.",
     "Open or reuse an issue only for a defect that a user can hit.",
@@ -42,7 +44,8 @@ REVIEW_BOUND = (
 )
 OLD_FIX_RULE = "code changes need review against the same comparison commit"
 FIX_RULE = "Give each fix one focused check of its diff and the failure that it fixes"
-SAFETY_RULE = "For a change to a safety check,"
+SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec states what the "
+               "check must block. Where the check cannot decide, it blocks: it fails closed.")
 
 
 def automode(host: str) -> str:
@@ -110,7 +113,6 @@ class PhaseSixPinsTheReviewedHeadTest(unittest.TestCase):
         self.assertIn("what changed since the last reviewed head", text)
 
 
-
 class ReviewLoopIsBoundedTest(unittest.TestCase):
     def test_phase_five_runs_one_full_review_and_one_focused_check(self) -> None:
         for host in HOSTS:
@@ -131,7 +133,6 @@ class ReviewLoopIsBoundedTest(unittest.TestCase):
             phase = between(host, "2. **Spec", "3. **Tickets")
             with self.subTest(host=host):
                 self.assertIn(SAFETY_RULE, phase)
-                self.assertIn("fails closed", phase)
 
 
 if __name__ == "__main__":

@@ -73,7 +73,7 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    publish and verify the spec with scope, decisions, and testing seams. Align
    any glossary entries added by this task with its decisions. For a change to
    a safety check, such as a command hook, the spec states what the check must
-   block, and the check fails closed where it cannot decide.
+   block. Where the check cannot decide, it blocks: it fails closed.
 3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
    verify tickets with acceptance criteria and blocking dependencies that cover
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
@@ -91,16 +91,16 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 5. **Review — `mattpocock-skills:code-review`.** Run one full review against
    the ticket spec and a recorded comparison commit. This fulfills
    `implement`'s review step. Only these findings block: a regression that a
-   failing run shows at the head, a missed ticket requirement, a broken cited
-   rule, and shipped text that the change makes false. A problem present at
-   the comparison commit blocks only when the ticket requires its fix. List
-   other findings with a reason in the review record. Open or reuse an issue
-   only for a defect that a user can hit. Fix the blocking findings, commit,
-   and pass affected checks. Then give one fresh reviewer only the fix diff
-   and the findings that it closes. Run no second full review. If this
-   focused check finds a blocking finding, stop the ticket without a merge,
-   keep the work, report the finding, and continue independent tickets.
-   Record the head SHA that the review covers.
+   failing run or a reproducible case shows at the head, a missed ticket
+   requirement, a broken cited rule, and shipped text that the change makes
+   false. A problem present at the comparison commit blocks only when the
+   ticket requires its fix. List other findings with a reason in the review
+   record. Open or reuse an issue only for a defect that a user can hit. Fix
+   the blocking findings, commit, and pass affected checks. Then give one
+   fresh reviewer only the fix diff and the findings that it closes. Run no
+   second full review. If this focused check finds a blocking finding, stop
+   the ticket without a merge, keep the work, report the finding, and
+   continue independent tickets. Record the head SHA that the review covers.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
