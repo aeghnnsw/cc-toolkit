@@ -509,6 +509,181 @@ class GateTests(HookCase):
                        allowed=expected)
 
 
+BINDING = '{"project_id": "abcdefghijklmnopqrst", "owner_id": "11111111-1111-4111-8111-111111111111"}'
+REQUEST = json.dumps({"request_id": "22222222-2222-4222-8222-222222222222", "operations": [{
+    "op": "create", "id": "33333333-3333-4333-8333-333333333333",
+    "data": {"kind": "inbox", "title": "Review the travel options"}}]}, indent=2)
+
+
+def add_file_patch(path, text):
+    """Return a Codex apply_patch input that adds one file."""
+    body = "".join(f"+{line}\n" for line in text.splitlines())
+    return {"command": f"*** Begin Patch\n*** Add File: {path}\n{body}*** End Patch\n"}
+
+
+class GtdInboxTests(HookCase):
+    """Issue #531: a recorded lead session can run the calls of a gtd-inbox capture."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.home = cls.temp / "gtd-home"
+        cls.binding = cls.home / ".config" / "cc-toolkit" / "gtd.json"
+        cls.binding.parent.mkdir(parents=True)
+        cls.binding.write_text(BINDING, encoding="utf-8")
+        (cls.binding.parent / "other.json").write_text("{}", encoding="utf-8")
+        cls.copy = cls.make_copy(cls.temp / "plugins" / "productivity-skills" / "installed")
+        cls.dev_copy = cls.make_copy(cls.dev / "productivity-skills")
+        cls.script = cls.copy / "scripts" / "gtd_sql.py"
+        # A folder with the renderer but not the contract is not a Productivity Skills copy.
+        cls.partial = cls.temp / "partial"
+        (cls.partial / "scripts").mkdir(parents=True)
+        (cls.partial / "scripts" / "gtd_sql.py").write_text("", encoding="utf-8")
+        cls.private = cls.temp / "private"
+        cls.private.mkdir()
+        (cls.private / "held.json").write_text(REQUEST, encoding="utf-8")
+        (cls.private / "notes.json").write_text('{"a": 1}', encoding="utf-8")
+        (cls.private / "link.json").symlink_to(cls.main / "notes.json")
+        # A link to a folder outside Git: `<link>/../main/r.json` is outside Git
+        # when the link is followed first, and in the main work tree after a
+        # host tool removes `..` first, as Node.js does.
+        (cls.private / "deep").mkdir()
+        cls.link_dir = cls.temp / "link-dir"
+        cls.link_dir.symlink_to(cls.private / "deep")
+
+    @staticmethod
+    def make_copy(root):
+        for relative in ("scripts/gtd_sql.py", "references/gtd-cloud.md", "references/gtd-planning.md",
+                         "skills/gtd-inbox/SKILL.md", "codex-skills/gtd-inbox/SKILL.md"):
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text("x\n", encoding="utf-8")
+        return root
+
+    def setUp(self):
+        super().setUp()
+        self.record()
+
+    def check_gtd(self, allowed, blocked):
+        env = {"HOME": str(self.home)}
+        for cases, expected in ((allowed, True), (blocked, False)):
+            self.check([(host, tool_payload(host, name, tool_input, self.main))
+                        for host, name, tool_input in cases], allowed=expected, env=env)
+
+    def test_reads_of_the_installed_copy_and_the_binding_pass(self):
+        cloud = self.copy / "references" / "gtd-cloud.md"
+        skill = self.copy / "codex-skills" / "gtd-inbox" / "SKILL.md"
+        allowed = (("claude", "Read", {"file_path": str(cloud)}),
+                   ("claude", "Read", {"file_path": str(self.binding)}),
+                   ("claude", "Grep", {"pattern": "binding", "path": str(self.copy / "references")}),
+                   ("codex", "Bash", {"command": f"cat {skill}"}),
+                   ("codex", "Bash", {"command": f"sed -n 1,80p {self.copy}/references/gtd-planning.md"}),
+                   ("codex", "Bash", {"command": "cat ~/.config/cc-toolkit/gtd.json"}),
+                   ("antigravity", "read_file", {"Path": str(self.copy / "skills" / "gtd-inbox" / "SKILL.md")}),
+                   ("antigravity", "view_file", {"AbsolutePath": str(cloud)}))
+        blocked = (("claude", "Read", {"file_path": str(self.binding.parent / "other.json")}),
+                   ("claude", "Read", {"file_path": str(self.dev_copy / "references" / "gtd-cloud.md")}),
+                   ("claude", "Read", {"file_path": str(self.partial / "scripts" / "gtd_sql.py")}),
+                   ("claude", "Read", {"file_path": f"{self.copy}/../../../notes.md"}),
+                   ("codex", "Bash", {"command": f"cat {cloud} | head"}),
+                   ("codex", "Bash", {"command": f"cp {self.binding} {self.private}/binding.json"}),
+                   ("antigravity", "read_file", {"Path": str(self.main / "notes.md")}))
+        self.check_gtd(allowed, blocked)
+
+    def test_the_renderer_of_an_installed_copy_passes(self):
+        prefix = "uv run --no-project --python '>=3.11' python"
+        allowed = (("claude", "Bash", {"command": f"{prefix} {self.script} --config {self.private}/b.json read "
+                                                  "--kind inbox --limit 50"}),
+                   ("claude", "Bash", {"command": f"uv run -q --no-cache --no-project --python=3.13 python3 "
+                                                  f"'{self.script}' apply {self.private}/held.json"}),
+                   ("codex", "Bash", {"command": f"uv run --offline --quiet --no-project --python '>=3.11' "
+                                                 f"python {self.script} get 33333333-3333-4333-8333-333333333333"}),
+                   ("codex", "exec_command", {"cmd": f"bash -lc \"{prefix} {self.script} receipt x\""}),
+                   ("antigravity", "run_command", {"CommandLine": f"{prefix} {self.script} read"}))
+        blocked = (("claude", "Bash", {"command": f"uv run --with requests --no-project python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run --python '>=3.11' python {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run --no-project --python /usr/bin/env python {self.script} "
+                                                  "read"}),
+                   ("codex", "Bash", {"command": f"uv run --no-project --python={self.script} python {self.script} "
+                                                 "read"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.dev_copy}/scripts/gtd_sql.py read"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.partial}/scripts/gtd_sql.py read"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.copy}/references/gtd_sql.py read"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.copy}/scripts/other.py read"}),
+                   ("claude", "Bash", {"command": f"{prefix} -c 'print(1)'"}),
+                   ("claude", "Bash", {"command": f"{prefix} -I {self.script} read"}),
+                   ("claude", "Bash", {"command": f"uv run --no-project --python '>=3.11' {self.script} read"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.script} read | head"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.script} read > {self.private}/out.json"}),
+                   ("claude", "Bash", {"command": f"UV_CACHE_DIR=/tmp/x {prefix} {self.script} read"}),
+                   ("codex", "Bash", {"command": "uv pip install requests"}),
+                   ("codex", "Bash", {"command": "uv run --no-project --python"}),
+                   ("antigravity", "run_command", {"CommandLine": f"{prefix} {self.script} read && ls"}))
+        self.check_gtd(allowed, blocked)
+
+    def test_a_whole_gtd_file_write_outside_git_passes(self):
+        allowed = (("claude", "Write", {"file_path": str(self.private / "binding.json"), "content": BINDING}),
+                   ("claude", "Write", {"file_path": str(self.private / "request.json"), "content": REQUEST}),
+                   ("claude", "Write", {"file_path": str(self.private / "new" / "r.json"), "content": REQUEST}),
+                   ("claude", "Write", {"file_path": str(self.private / "held.json"), "content": REQUEST}),
+                   ("codex", "apply_patch", add_file_patch(self.private / "request-2.json", REQUEST)),
+                   ("antigravity", "write_file", {"Path": str(self.private / "b.json"), "Content": BINDING,
+                                                  "Overwrite": False}),
+                   ("antigravity", "write_to_file", {"TargetFile": str(self.private / "r.json"),
+                                                     "CodeContent": REQUEST}))
+        not_gtd = (BINDING[:-1] + ', "x": "y"}', '{"request_id": "x", "operations": {}}', '{"a": 1}',
+                   "[1, 2]", "not json", "")
+        blocked = ([("claude", "Write", {"file_path": str(self.private / "x.json"), "content": text})
+                    for text in not_gtd]
+                   + [("claude", "Write", {"file_path": str(self.private / "request.txt"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.lead / "request.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.dev / "binding.json"), "content": BINDING}),
+                      ("claude", "Write", {"file_path": str(self.main / ".git" / "r.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.private / "notes.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.private / "link.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.private), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": str(self.binding), "content": BINDING}),
+                      ("claude", "Write", {"file_path": str(self.binding.parent / "GTD.json"), "content": BINDING}),
+                      ("claude", "Write", {"file_path": str(self.binding.parent / "r.json"), "content": REQUEST}),
+                      ("claude", "Write", {"file_path": f"{self.private}/../main/r.json", "content": REQUEST}),
+                      ("claude", "Write", {"file_path": f"{self.link_dir}/../main/r.json", "content": REQUEST}),
+                      ("claude", "Write", {"file_path": "request.json", "content": REQUEST}),
+                      ("claude", "Write", {"file_path": "~/r.json", "content": REQUEST}),
+                      ("claude", "Edit", {"file_path": str(self.private / "held.json"), "old_string": "a",
+                                          "new_string": "b"}),
+                      ("codex", "apply_patch", {"command": add_file_patch(self.private / "a.json", REQUEST)["command"]
+                                                .replace("*** Add File", "*** Update File")}),
+                      ("codex", "apply_patch", {"command": add_file_patch(self.private / "a.json", REQUEST)["command"]
+                                                .replace("*** End Patch", "*** Delete File: notes.md\n*** End Patch")}),
+                      ("codex", "apply_patch", add_file_patch(self.main / "r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch("~/r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch("r.json", REQUEST)),
+                      ("codex", "apply_patch", add_file_patch(self.private / "x.json", '{"a": 1}')),
+                      ("codex", "apply_patch", add_file_patch(self.private / "notes.json", REQUEST)),
+                      ("antigravity", "write_file", {"Path": str(self.main / "r.json"), "Content": REQUEST}),
+                      ("antigravity", "write_file", {"Path": str(self.private / "x.json"), "Content": "[]"}),
+                      ("antigravity", "write_to_file", {"TargetFile": str(self.private / "notes.json"),
+                                                        "CodeContent": REQUEST}),
+                      ("antigravity", "write_file", {"Path": str(self.private / "held.json"), "Content": REQUEST,
+                                                     "Append": True}),
+                      ("antigravity", "edit_file", {"Path": str(self.private / "held.json"), "Target": "a",
+                                                    "Replacement": "b"})])
+        self.check_gtd(allowed, blocked)
+        self.assertEqual(sorted(path.name for path in self.private.iterdir()),
+                         ["deep", "held.json", "link.json", "notes.json"])
+
+    def test_a_failed_git_check_blocks_and_the_locale_does_not_matter(self):
+        write = tool_payload("claude", "Write", {"file_path": str(self.private / "r.json"), "content": REQUEST},
+                             self.main)
+        read = tool_payload("claude", "Read", {"file_path": str(self.copy / "references" / "gtd-cloud.md")},
+                            self.main)
+        for payload in (write, read):
+            with self.subTest(payload=payload):
+                self.assert_blocks(self.run_hook("claude", payload, {"HOME": str(self.home), "PATH": "/nonexistent"}))
+                self.assert_passes(self.run_hook("claude", payload, {"HOME": str(self.home),
+                                                                     "LC_ALL": "de_DE.UTF-8"}))
+
+
 def matcher_names(entry):
     return set(entry["matcher"].split("|"))
 

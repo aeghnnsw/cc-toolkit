@@ -31,7 +31,7 @@ STATE_COMMANDS = ("init", "show", "waiting", "finish", "outcome", "criteria", "w
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
 # An agent reads a whole step after each wake, so each step stays short.
-STEP_WORD_LIMIT = 200
+STEP_WORD_LIMIT = 210
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -55,7 +55,8 @@ LEAD_ACTIONS = (
     "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
     "7. Set triage labels and issue state.",
-    "8. Keep agent captures of what waits on the user when your instructions ask for them.",
+    "8. Keep agent captures of what waits on the user when your instructions ask for them. "
+    "Write gtd-inbox files with your edit tool, not the shell.",
 )
 # Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, and #520.
 REQUIRED = {
