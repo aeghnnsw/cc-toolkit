@@ -15,10 +15,13 @@ import re
 import shlex
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 from hook_logs import append_log, host_log_dir
-from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argument
+from hook_payload import (
+    ANTIGRAVITY, CODEX, block_status, get_shell_command, host_argument,
+)
 
 
 SHELL_PUNCTUATION = ";&|()<>\n`"
@@ -1399,20 +1402,55 @@ def _log_error(text, host, input_data):
             f.write(text)
 
 
+# How to turn off the plugin on each host, so that a bug in the guard does
+# not leave the user with no way to run a command (#487).
+TURN_OFF_PLUGIN_STEPS = {
+    None: "run `claude plugin disable core-hooks@cc-toolkit` in a terminal",
+    CODEX: (
+        "set `enabled = false` in the `[plugins.\"core-hooks@cc-toolkit\"]` "
+        "table of `~/.codex/config.toml`"
+    ),
+    ANTIGRAVITY: "run `agy plugin disable core-hooks` in a terminal",
+}
+
+
 def error_status(host):
     """Return the exit status after a script error on `host`.
 
-    Claude Code and Codex allow the command. In Antigravity mode, the
-    status is 1, and the root `hooks.json` wrapper blocks the command,
-    because an Antigravity safety hook fails closed.
+    An error that `main()` catches blocks the tool call on every host,
+    because the guard cannot decide (#487). Claude Code blocks on status 2. In Codex and
+    Antigravity mode, the status is 1, and the `hooks/hooks.codex.json` and
+    root `hooks.json` wrappers block with their "hook failed" line.
     """
-    return 1 if host == ANTIGRAVITY else 0
+    return 1 if host in (ANTIGRAVITY, CODEX) else 2
+
+
+def block_on_error(error, host, input_data):
+    """Log `error`, then block the tool call with a message that names
+    `error` and tells how to turn off the plugin."""
+    description = f"{type(error).__name__}: {error}"
+    try:
+        _log_error(f"{description}\n{traceback.format_exc()}\n", host, input_data)
+    except Exception:
+        pass  # The block must not depend on the log.
+    print(
+        "BLOCKED: The core-hooks safety guard failed, so it cannot check this "
+        f"tool call. Error: {description}",
+        file=sys.stderr,
+    )
+    steps = TURN_OFF_PLUGIN_STEPS.get(host, TURN_OFF_PLUGIN_STEPS[None])
+    print(
+        f"To turn off the core-hooks plugin, {steps}, then start a new session.",
+        file=sys.stderr,
+    )
+    sys.exit(error_status(host))
 
 
 def main():
     # In Antigravity mode, stdout stays empty, because Antigravity reads text
-    # on stdout as a decision. A block is exit 3 with the reason on stderr,
-    # and the root hooks.json changes it to 2.
+    # on stdout as a decision. In Antigravity and Codex mode, a block is exit 3
+    # with the reason on stderr, and the root hooks.json and
+    # hooks/hooks.codex.json change it to 2.
     host = host_argument(sys.argv[1:])
     input_data = None
     try:
@@ -1429,7 +1467,8 @@ def main():
             print("BLOCKED: Potentially dangerous rm command detected", file=sys.stderr)
             print(f"Reason: {reason}", file=sys.stderr)
             print("Safe explicit removals like 'rm -rf specific_folder' are allowed", file=sys.stderr)
-            sys.exit(block_status(host))  # The root hooks.json maps 3 to 2.
+            # The root hooks.json and hooks/hooks.codex.json map 3 to 2.
+            sys.exit(block_status(host))
 
         if command and prints_environment(command):
             print(
@@ -1449,13 +1488,8 @@ def main():
 
         sys.exit(0)
 
-    except json.JSONDecodeError as e:
-        _log_error(f"JSONDecodeError: {e}\n", host, input_data)
-        sys.exit(error_status(host))
-    except Exception as e:
-        import traceback
-        _log_error(f"Exception: {e}\n{traceback.format_exc()}\n", host, input_data)
-        sys.exit(error_status(host))
+    except Exception as error:
+        block_on_error(error, host, input_data)
 
 if __name__ == '__main__':
     main()

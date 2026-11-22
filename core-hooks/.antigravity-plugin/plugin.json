@@ -1,7 +1,7 @@
 {
   "name": "core-hooks",
   "displayName": "Core Hooks",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Block dangerous rm commands, environment dumps, Git policy violations, and zsh traps before a shell command runs, and log tool calls.",
   "author": {
     "name": "Steven",

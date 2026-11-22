@@ -1,5 +1,9 @@
 # Isolate host adapter discovery
 
+> **Superseded in part (2026-11-22, issue #487).** An error that the
+> safety script catches blocks the tool call in Claude Code and Codex too,
+> not only in Antigravity. Read [Safety script errors](#safety-script-errors).
+
 Core Hooks ships host-specific manifests and hook configurations alongside
 shared scripts so each host can load its own installed copy independently.
 Claude Code and Codex use their native plugin-root locators; neither adapter
@@ -49,7 +53,8 @@ a warning to stderr and exits 0. `uv` also exits 2 when it cannot start a
 script. So the safety, git policy, and zsh trap scripts exit 3 for a block,
 and their wrappers change that status to 2 without the failure line. An
 Antigravity safety script error exits 1, so its wrapper blocks; in Claude
-Code and Codex, a safety script error still allows the command. The wrappers
+Code and Codex, a safety script error still allows the command. (Superseded
+in part; read [Safety script errors](#safety-script-errors).) The wrappers
 keep the status in `rc`, because zsh reserves `status` as a read-only
 variable.
 
@@ -63,3 +68,23 @@ command. No measured Antigravity contract changes the command, so the zsh
 rewrite becomes a block that names the corrected command. See
 [ADR 0006](0006-antigravity-plugin-layout.md#hook-failure-policy) and the
 [Antigravity adapter tests](../../core-hooks/tests/test_antigravity_host_adapter.py).
+
+## Safety script errors
+
+Added on 2026-11-22 for
+[#487](https://github.com/aeghnnsw/cc-toolkit/issues/487).
+
+An error that the safety script catches blocks the tool call in Claude
+Code, Codex, and Antigravity. Examples are unreadable input and a failed log
+write. Where a safety check cannot decide, it blocks, and an error is such a
+case. The script writes the error and the host's way to turn off Core Hooks
+to stderr, so that a bug in the guard does not leave the user with no way to
+run a command. It exits 2 in Claude Code, which blocks on 2. In Codex and
+Antigravity mode, it exits 1, and the wrapper blocks with the failure line.
+
+The script catches the errors after it starts. A failure before that, such
+as an import error or a missing `uv`, gets no message from the script. The
+Codex and Antigravity wrappers block it. The Claude Code configuration has
+no wrapper, so Claude Code lets the tool call run unless the status is 2.
+The git policy script is unchanged: an error exits 1, so Codex and
+Antigravity block, and Claude Code lets the tool call run.
