@@ -242,12 +242,12 @@ tickets, link the ticket.
 
 The package validator checks each new bullet: a bullet whose text is not in
 `CHANGELOG.md` at the merge base. An edited bullet is new; a moved bullet is
-not. A new bullet uses the form above, has at most 600 characters, and is
-under `## [Unreleased]` in one of the three sections. Put more detail in the
-pull request. A plugin bullet uses the registered plugin name and names each
+not. A new bullet is one line that uses the form above, has at most 600
+characters, and is under `## [Unreleased]` in one of the three sections. Put
+more detail in the pull request. A plugin bullet uses the registered plugin name and names each
 host whose manifest version increased, at its current manifest version.
-Each plugin whose manifest version increases needs a new bullet. Entries
-merged before 2026-11-22 are under `## 2026-11-22` and are not checked.
+Each plugin whose manifest version increases needs a new bullet. Older
+entries are under `## 2026-11-22`.
 
 When a rebase makes `CHANGELOG.md` conflict, keep both entries, and put
 the entry of the rebased branch first.

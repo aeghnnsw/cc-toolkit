@@ -211,14 +211,15 @@ Historical omissions do not create retroactive version requirements.
 Release validation also checks the root `CHANGELOG.md`. A bullet is new when
 its exact text is not in the file at the merge base, so a moved bullet, such
 as one under a new dated heading, is not new, and an edited bullet is new.
-Existing bullets are not checked.
+Existing bullets are not checked. Each other new line must be blank or a
+heading, so a continuation line or another list marker fails.
 
 Each new bullet must be under `## [Unreleased]` in `### Added`,
 `### Removed`, or `### Changed`, have at most 600 characters, and match the
 [entry form](../../CONTRIBUTING.md#changelog-entries): `Repository:` or a
 registered plugin name with hosts and versions, then the change, then one
 ` See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).` link whose two
-numbers agree. A plugin bullet names the hosts in the order Claude Code,
+numbers agree. The change text holds no other ` See [#`. A plugin bullet names the hosts in the order Claude Code,
 Codex, Antigravity, writes one version for adjacent hosts that ship the same
 version, gives each host its current manifest version, and names exactly the
 hosts whose version increased. A new host registration counts as an

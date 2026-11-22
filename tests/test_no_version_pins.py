@@ -15,13 +15,14 @@ from package_support import ROOT, frontmatter, git_files
 TEST_FILE = re.compile(r'(?:[^/]+/)?tests/[^/]+\.py')
 SELF = 'tests/test_no_version_pins.py'  # its version strings are the list below
 MANIFEST = re.compile(r'[^/]+/\.[a-z]+-plugin/plugin\.json')
-VERSION = re.compile(r'(?<![\w.])\d+\.\d+\.\d+(?![\w.])')
+VERSION = re.compile(r'(?<![\d.])\d+\.\d+\.\d+(?!\.?\d)')
 SKILL_VERSION = re.compile(r'^version:\s*["\']?([^"\'\s]+)', re.MULTILINE)
 
 # The version strings that each test writes to a fixture or quotes from another tool. They are not releases of
 # this repository. A test that pins a release at one of these versions in the same file is not found.
 FIXTURE_VERSIONS = {
     'core-hooks/tests/test_antigravity_host_adapter.py': {'1.5.13'},  # the agy version that sent the payloads
+    'core-hooks/tests/test_pre_git_hook.py': {'1.2.0'},  # the tag v1.2.0 in a git worktree command
     'dev-skills/tests/test_resolve_skill.py': {'1.0.0', '1.9.0', '1.10.0'},  # installed fixture plugin versions
     'dev-skills/tests/test_sci_project_layout.py': {'1.2.5'},  # a fixture tool version in a run record
     'tests/test_agent_fields.py': {'1.0.0'},

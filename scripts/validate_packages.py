@@ -435,7 +435,7 @@ HOST_LABELS = {'claude': 'Claude Code', 'codex': 'Codex', 'antigravity': 'Antigr
 CHANGELOG_FORM = ('- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).'
                   ' or - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
 CHANGELOG_BULLET = re.compile(
-    r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): .+'
+    r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): (?:(?! See \[#).)+'
     r' See \[#(?P<issue>\d+)\]\(https://github\.com/aeghnnsw/cc-toolkit/issues/(?P=issue)\)\.')
 HOST_NAME = '(?:Claude Code|Codex|Antigravity)'
 HOST_GROUP = re.compile(rf'(?P<hosts>{HOST_NAME}(?:(?:, and |, | and ){HOST_NAME})*) (?P<version>\d+\.\d+\.\d+)')
@@ -481,9 +481,11 @@ def check_changelog(text, old_text, packages, previous):
             heading, section = line, None
         elif line.startswith('### '):
             section = line
-        if not line.startswith('- ') or line in old_lines:
+        if not line.strip() or line.startswith('#') or line in old_lines:
             continue
         where = f'{CHANGELOG_PATH}:{number}'
+        if not line.startswith('- '):
+            raise InvalidPackage(f'{where}: a new line must be a one-line bullet that starts with "- "')
         if heading != '## [Unreleased]' or section not in CHANGELOG_SECTIONS:
             raise InvalidPackage(f'{where}: put the new bullet under ## [Unreleased] in ### Added, ### Removed, or ### Changed')
         if len(line) > CHANGELOG_LIMIT:

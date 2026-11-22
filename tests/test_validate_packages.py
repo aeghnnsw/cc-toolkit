@@ -476,6 +476,7 @@ class PackageValidationTests(unittest.TestCase):
              '[#3](https://github.com/aeghnnsw/cc-toolkit/issues/3).', None),
             ('- Repository: a wrong link. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/3).', None),
             ('- Repository: no link.', None),
+            ('- Repository: two links. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).', 3),
             ('- Repository (Claude Code 1.0.0): a version.', 2),
             ('- Demo (Claude Code 1.0.1): a display name.', 2),
         ]:
@@ -483,6 +484,11 @@ class PackageValidationTests(unittest.TestCase):
                 self.reset_changelog()
                 self.add_bullet(bullet, issue)
                 self.assert_failure('CHANGELOG.md:9: the new bullet breaks the entry form')
+        for bullet in ['* Repository: another marker.', '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n  ' + 'y' * 600]:
+            with self.subTest(bullet=bullet[:30]):
+                self.reset_changelog()
+                self.add_bullet(bullet, None)
+                self.assert_failure('a new line must be a one-line bullet that starts with "- "')
 
     def test_new_plugin_bullet_names_each_increased_host_at_its_version(self):
         self.add_codex()
