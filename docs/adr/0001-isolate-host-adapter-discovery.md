@@ -58,7 +58,8 @@ PreToolUse hook cannot warn without blocking. So the adapter drops the git
 policy reminders and the branch-prefix message, and each zsh trap blocks.
 The adapter skips the unmatched-glob check. That check reads the files
 before the command runs, so it can block a command that creates them
-first. No measured Antigravity contract changes the command, so the zsh
+first. The adapter also skips the pipefail warning, which must not block a
+command. No measured Antigravity contract changes the command, so the zsh
 rewrite becomes a block that names the corrected command. See
 [ADR 0006](0006-antigravity-plugin-layout.md#hook-failure-policy) and the
 [Antigravity adapter tests](../../core-hooks/tests/test_antigravity_host_adapter.py).

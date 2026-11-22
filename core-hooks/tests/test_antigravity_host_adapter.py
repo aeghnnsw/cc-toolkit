@@ -262,7 +262,8 @@ class AntigravityHostAdapterTests(unittest.TestCase):
             ),
             ("pre_git_hook.py", 'gh pr edit 1 --body "## Test plan"', "Test plan"),
             ("zsh_traps.py", "echo =====CODEX", "echo '=====CODEX'"),
-            ("zsh_traps.py", "echo ok; echo =====", "Quote the word"),
+            ("zsh_traps.py", "echo ok; echo =====", "echo ok; echo '====='"),
+            ("zsh_traps.py", "echo ok; echo ===== | cat", "Quote the word"),
         )
         for script_name, command, reason in cases:
             with self.subTest(command=command):
@@ -271,6 +272,13 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                 self.assertEqual(result.stdout, "")
                 self.assertIn(reason, result.stderr)
                 self.assertNotIn("hook failed", result.stderr)
+
+    def test_pipefail_warning_does_not_block(self):
+        result = self.run_shell_hook("zsh_traps.py", "pytest -q | tail -20")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
 
     def test_unmatched_glob_is_allowed_because_files_can_appear_first(self):
         result = self.run_shell_hook("zsh_traps.py", "touch a.md && ls *.md")

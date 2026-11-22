@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Check a shell command for five zsh traps before it runs.
+"""Check a shell command for six zsh traps before it runs.
 
 1. zsh replaces an unquoted word `=name` with the path of the command
    `name` (`=ls` gives `/bin/ls`). For `=====` or `==`, no such command
@@ -19,19 +19,28 @@
    `rm` operations, also when the command has no `rm`.
 5. zsh can read a letter after `$NAME:` as a modifier of the variable:
    `$C:AGENTS.md` gives the absolute path of `$C` and then `GENTS.md`.
+6. zsh gives a pipeline the exit status of its last command. Without the
+   `pipefail` option, `pytest | tail` exits 0 when the tests fail, because
+   `tail` succeeds. The check covers `pytest`, `python -m unittest`, and
+   the package validator `validate_packages.py` when their output goes
+   through a pipe to `tail` or `head`.
 
 The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
 `--host claude` or `--host codex`, it quotes missing-command separators in
-a simple `echo` command. Normal host permissions still apply. It denies
-other commands when an `=name` word names no command on `PATH`, because zsh
-would stop the command line there. With `--host claude`, it denies a
+each simple `echo` command of a list that `;`, `&&`, `||`, or newlines
+join, such as `cat a; echo =====; cat b`. Normal host permissions still
+apply. It denies other commands when an `=name` word names no command on
+`PATH`, because zsh would stop the command line there. With
+`--host claude`, it denies a
 parameter flag, so that the agent reads how to replace it. For each other
 trap, it gives the agent a warning. It reads the command as shell words, so
 single-quoted text, heredoc bodies, and comments give no finding. Traps 1
 to 3 also skip double-quoted text, `[[ ... ]]` tests, and `(( ... ))`
 arithmetic; zsh expands traps 4 and 5 in double quotes and tests too. This
 is a heuristic, not a full zsh parser. The rewrite uses a separate strict
-recognizer for the complete command.
+recognizer for each `echo` command. It changes nothing in a command with a
+heredoc, or with a quote, backslash, backtick, `$`, or `#` before the end
+of the last `echo` command that it would change.
 
 An Antigravity PreToolUse hook cannot warn without blocking the command,
 and no measured Antigravity contract changes the command. So with
@@ -40,7 +49,8 @@ command that the rewrite fixes, with a reason on stderr that names the
 corrected command, and it blocks a command with any other trap, with the
 trap messages on stderr. It skips the glob check: the check reads the
 files before the command runs, so it can block a command that first
-creates the files, and no warning can replace the block.
+creates the files, and no warning can replace the block. It also skips
+the pipefail check, which must not block a command.
 """
 
 import glob
@@ -133,6 +143,35 @@ REWRITE_DENIAL = (
     "line at this word. Run this corrected command, which quotes the "
     "word:\n{command}"
 )
+# A simple `echo` command that the rewrite accepts: an optional -n, then
+# ASCII label words and separators. A separator starts with at least two
+# equals signs and can hold a label and trailing equals signs.
+ECHO_COMMAND_RE = re.compile(
+    r"[ \t]*echo(?:[ \t]+-n)?"
+    r"(?:[ \t]+(?:[A-Za-z0-9_]+|={2,}(?:[A-Za-z0-9_]+=*)?))+[ \t]*"
+)
+SEPARATOR_RE = re.compile(r"={2,}[A-Za-z0-9_]*=*")
+# Operators that join the commands of a list; None is an edge of the command.
+LIST_OPERATORS = {None, ";", "&&", "||", "\n"}
+# A heredoc redirection, such as `<<` or `<<-`, but not a `<<<` string.
+HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)")
+# Quotes, escapes, expansions, and comments, which the tokenizer can read
+# wrongly. With none of them, it splits a command at the right operators.
+UNSAFE_SPLIT_RE = re.compile(r"""['"\\`$#]""")
+PIPEFAIL_WARNING = (
+    "zsh trap: the output of `{test}` goes through a pipe to `{pager}`. zsh "
+    "gives a pipeline the exit status of its last command, so the pipeline "
+    "can exit 0 when `{test}` fails. Start the command with "
+    "`set -o pipefail;`."
+)
+# Programs that print part of their input.
+PAGER_COMMANDS = {"head", "tail"}
+# Test and validator programs, and the test modules of `python -m`.
+TEST_PROGRAMS = {"py.test", "pytest", "validate_packages.py"}
+TEST_MODULES = {"pytest", "unittest"}
+# Words after which a test program is a command, as in `uv run pytest`.
+RUN_WORDS = {"run", "uvx"}
+PYTHON_RE = re.compile(r"python[0-9.]*")
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
@@ -165,6 +204,11 @@ class Findings:
         self.flags = []
         # (name, letter) of each `$NAME:` followed by a letter.
         self.modifiers = []
+        # True after a `set` or `setopt` command that turns on `pipefail`.
+        self.pipefail = False
+        # (test, pager) of each test command whose output goes through a
+        # pipe to `tail` or `head` while `pipefail` is off.
+        self.hidden_statuses = []
 
 
 def _double_quote_end(text, index, bodies):
@@ -299,13 +343,15 @@ def _read_word(text, index, bodies):
     return Word(text[start:index], quoted_space), index
 
 
-def _tokens(text, bodies):
-    """Yield ("word", Word), ("operator", text), ("redirection", text), or
-    ("arithmetic", text) tokens of `text`.
+def _spanned_tokens(text, bodies):
+    """Yield (kind, token, start, end) for each token of `text`.
+
+    The kind and token are as in `_tokens`; `text[start:end]` is the token.
     """
     index = 0
     while index < len(text):
         character = text[index]
+        start = index
         if character in " \t":
             index += 1
         elif text.startswith("\\\n", index):
@@ -315,23 +361,30 @@ def _tokens(text, bodies):
             index = len(text) if end < 0 else end
         elif text.startswith("((", index):
             end = _find_substitution_end(text, index + 1)
-            end = len(text) if end is None else end + 1
-            yield "arithmetic", text[index:end]
-            index = end
+            index = len(text) if end is None else end + 1
+            yield "arithmetic", text[start:index], start, index
         elif character in "<>" and text.startswith("(", index + 1):
             word, index = _read_word(text, index, bodies)
-            yield "word", word
+            yield "word", word, start, index
         elif REDIRECTION_RE.match(text, index):
             match = REDIRECTION_RE.match(text, index)
-            yield "redirection", match.group()
             index = match.end()
+            yield "redirection", match.group(), start, index
         elif OPERATOR_RE.match(text, index):
             match = OPERATOR_RE.match(text, index)
-            yield "operator", match.group()
             index = match.end()
+            yield "operator", match.group(), start, index
         else:
             word, index = _read_word(text, index, bodies)
-            yield "word", word
+            yield "word", word, start, index
+
+
+def _tokens(text, bodies):
+    """Yield ("word", Word), ("operator", text), ("redirection", text), or
+    ("arithmetic", text) tokens of `text`.
+    """
+    for kind, token, _, _ in _spanned_tokens(text, bodies):
+        yield kind, token
 
 
 def _starts_with_equals(text):
@@ -405,6 +458,61 @@ def _record_assignment(word, findings):
         findings.assignments[match.group(1)] = kind
 
 
+def _command_words(words):
+    """Return `words` from the command name on, without prefixes such as
+    `time` and without assignments."""
+    index = 0
+    while index < len(words) and (
+        words[index] in COMMAND_PREFIXES or ASSIGNMENT_RE.match(words[index])
+    ):
+        index += 1
+    return words[index:]
+
+
+def _test_command(words):
+    """Return the test or validator word of one command, or None.
+
+    The word is the command name, such as `pytest`; the module of
+    `-m pytest` or `-m unittest`; a test program after `run` or `uvx`, as
+    in `uv run pytest`; or the first argument of a Python interpreter, as
+    in `python3 scripts/validate_packages.py`.
+    """
+    words = _command_words(words)
+    for index, word in enumerate(words):
+        module = words[index + 1] if word == "-m" and index + 1 < len(words) else word[2:]
+        if word.startswith("-m") and module in TEST_MODULES:
+            return module
+    python = bool(words) and PYTHON_RE.fullmatch(os.path.basename(words[0]))
+    for index, word in enumerate(words):
+        if os.path.basename(word) not in TEST_PROGRAMS:
+            continue
+        if index == 0 or RUN_WORDS.intersection(words[:index]):
+            return word
+        if python and all(option.startswith("-") for option in words[1:index]):
+            return word
+    return None
+
+
+def _end_command(words, operator, piped_test, findings):
+    """Record the pipefail findings of one command that ends at `operator`.
+
+    `piped_test` is the test word of an earlier command of the pipeline.
+    Returns the test word that the next command of the pipeline reads, or
+    None.
+    """
+    words = _command_words(words)
+    name = os.path.basename(words[0]) if words else ""
+    if name in ("set", "setopt", "unsetopt"):
+        for previous, word in zip(words, words[1:]):
+            if word.lower().replace("_", "") == "pipefail":
+                findings.pipefail = name != "unsetopt" and not previous.startswith("+")
+    if piped_test and name in PAGER_COMMANDS and not findings.pipefail:
+        findings.hidden_statuses.append((piped_test, name))
+    if operator in ("|", "|&"):
+        return piped_test or _test_command(words)
+    return None
+
+
 def _analyze(text, findings, depth):
     """Add the traps of `text` and its command substitutions to `findings`."""
     if depth > MAX_NESTED_SHELL_DEPTH:
@@ -420,6 +528,10 @@ def _analyze(text, findings, depth):
     split_words = None
     # True between `case` and `esac`, where words are patterns.
     in_case = False
+    # The words of the current command, without redirection targets.
+    words = []
+    # The test word of an earlier command of the current pipeline.
+    piped_test = None
     for kind, token in _tokens(strip_heredoc_bodies(text), bodies):
         if kind == "word":
             _record_expansions(token.text, findings)
@@ -427,6 +539,8 @@ def _analyze(text, findings, depth):
             in_condition = not (kind == "word" and token.text == "]]")
             continue
         if kind == "operator":
+            piped_test = _end_command(words, token, piped_test, findings)
+            words = []
             command_start, command_word = True, None
             for_state = split_words = None
             continue
@@ -442,6 +556,7 @@ def _analyze(text, findings, depth):
             if _starts_with_equals(word):
                 findings.equals_words.append(word)
             continue
+        words.append(word)
         if for_state == "name":
             for_state = "in"
             continue
@@ -486,6 +601,7 @@ def _analyze(text, findings, depth):
         # `eval` reads its arguments again as shell code, so it splits them.
         if _variable_name(word) and command_word != "eval":
             findings.variable_words.append(word)
+    _end_command(words, None, piped_test, findings)
     for body in bodies:
         _analyze(body, findings, depth + 1)
 
@@ -497,22 +613,45 @@ def _names_no_command(word):
 
 
 def _quote_echo_separators(command):
-    """Quote missing-command separators in a complete, simple echo command.
+    """Quote missing-command separators in the simple echo commands of a list.
 
-    Accept only spaces, tabs, an optional -n, and ASCII label words. A
-    separator starts with at least two equals signs and can hold a label
-    and trailing equals signs. Other syntax keeps the existing decision.
+    A list joins commands with `;`, `&&`, `||`, or newlines; one command is
+    a list too. An echo command must match `ECHO_COMMAND_RE`, with a list
+    operator or an edge of the command on each side. Operators inside a
+    `[[ ... ]]` test do not split it. Other commands stay as they are.
+
+    The tokenizer is a heuristic, so the text up to the end of the last
+    rewritten echo command must hold no quote, backslash, backtick, `$`, or
+    `#`. A command with a heredoc anywhere also keeps the existing
+    decision.
     """
-    if not re.fullmatch(
-        r"[ \t]*echo(?:[ \t]+-n)?"
-        r"(?:[ \t]+(?:[A-Za-z0-9_]+|={2,}(?:[A-Za-z0-9_]+=*)?))+[ \t]*",
-        command,
-    ):
+    if HEREDOC_RE.search(command):
         return None
-    # These spans come from the strict command grammar, not the heuristic
-    # trap scanner. Every equals word must qualify before any edit is made.
-    separators = list(re.finditer(r"={2,}[A-Za-z0-9_]*=*", command))
+    edges = [(None, 0, 0)]
+    # Operators inside a `[[ ... ]]` test join conditions, not commands.
+    condition = False
+    for kind, token, start, end in _spanned_tokens(command, []):
+        if kind == "word" and token.text in ("[[", "]]"):
+            condition = token.text == "[["
+        elif kind == "operator" and not condition:
+            edges.append((token, start, end))
+    edges.append((None, len(command), len(command)))
+    separators = []
+    # The end of the last echo command with a separator.
+    last_end = 0
+    for (left, _, start), (right, end, _) in zip(edges, edges[1:]):
+        if (
+            left in LIST_OPERATORS and right in LIST_OPERATORS
+            and ECHO_COMMAND_RE.fullmatch(command, start, end)
+        ):
+            words = list(SEPARATOR_RE.finditer(command, start, end))
+            if words:
+                separators.extend(words)
+                last_end = end
+    # Every equals word must qualify before any edit is made.
     if not separators or any(not _names_no_command(word.group()) for word in separators):
+        return None
+    if UNSAFE_SPLIT_RE.search(command, 0, last_end):
         return None
     parts = []
     end = 0
@@ -547,9 +686,10 @@ def zsh_traps(command, cwd=None, host=None):
     as `PY="uv run python"`, or when it is the only word of a `set` command
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
     `cwd` is the directory where the command runs. The glob check uses it
-    unless the command changes the directory, and it does not run when
-    `host` is "antigravity". A parameter flag is a trap only when `host` is
-    "claude", because only the Claude Code safety check rejects it.
+    unless the command changes the directory. The glob and pipefail checks
+    do not run when `host` is "antigravity". A parameter flag is a trap only
+    when `host` is "claude", because only the Claude Code safety check
+    rejects it.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -582,6 +722,9 @@ def zsh_traps(command, cwd=None, host=None):
     if findings.modifiers:
         name, letter = findings.modifiers[0]
         traps.append(Trap(MODIFIER_WARNING.format(name=name, letter=letter), False))
+    if findings.hidden_statuses and host != ANTIGRAVITY:
+        test, pager = findings.hidden_statuses[0]
+        traps.append(Trap(PIPEFAIL_WARNING.format(test=test, pager=pager), False))
     return traps
 
 
