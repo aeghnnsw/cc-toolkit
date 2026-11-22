@@ -25,13 +25,7 @@ import unittest
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-HOST_SKILLS = {
-    "claude": PLUGIN_ROOT / "skills" / "lean-tests",
-    "codex": PLUGIN_ROOT / "codex-skills" / "lean-tests",
-    "antigravity": PLUGIN_ROOT / "antigravity-skills" / "lean-tests",
-}
-OTHER_HOSTS = [host for host in HOST_SKILLS if host != "claude"]
-SCRIPT = HOST_SKILLS["claude"] / "scripts" / "lean_tests.py"
+SCRIPT = PLUGIN_ROOT / "skills" / "lean-tests" / "scripts" / "lean_tests.py"
 UV_COMMAND = (
     "uv run --no-project --python '>=3.11' --with pytest --with pytest-cov "
     "python -m unittest discover -s dev-skills/tests -p 'test_lean_tests*.py'"
@@ -2073,56 +2067,6 @@ class ScriptSyntaxTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path), feature_version=(3, 9))
                 self.assertEqual(runtime_unions(tree), [])
-
-
-def split_skill(path: Path) -> tuple[dict[str, str], str]:
-    _, header, body = path.read_text(encoding="utf-8").split("---\n", 2)
-    fields = {}
-    for line in header.splitlines():
-        key, sep, value = line.partition(":")
-        if sep:
-            fields[key.strip()] = value.strip()
-    return fields, body
-
-
-def supporting_files(skill_dir: Path) -> dict[str, bytes]:
-    return {
-        path.relative_to(skill_dir).as_posix(): path.read_bytes()
-        for path in sorted(skill_dir.rglob("*"))
-        if path.is_file()
-        and path.name != "SKILL.md"
-        and not path.name.startswith(".")
-        and "__pycache__" not in path.parts
-        and "logs" not in path.relative_to(skill_dir).parts
-    }
-
-
-class HostParityTest(unittest.TestCase):
-    def test_bodies_match(self) -> None:
-        bodies = {host: split_skill(d / "SKILL.md")[1] for host, d in HOST_SKILLS.items()}
-        for host in OTHER_HOSTS:
-            self.assertEqual(bodies["claude"], bodies[host], f"the {host} body differs")
-
-    def test_frontmatter_differs_only_by_version(self) -> None:
-        fields = {host: split_skill(d / "SKILL.md")[0] for host, d in HOST_SKILLS.items()}
-        for host in OTHER_HOSTS:
-            self.assertEqual(fields[host]["name"], "lean-tests", host)
-            self.assertEqual(set(fields[host]), {"name", "description"}, host)
-            self.assertEqual({k: v for k, v in fields["claude"].items() if k != "version"}, fields[host], host)
-
-    def test_references_and_scripts_match(self) -> None:
-        claude = supporting_files(HOST_SKILLS["claude"])
-        self.assertIn("references/check.md", sorted(claude))
-        self.assertIn("references/speed.md", sorted(claude))
-        self.assertIn("references/review.md", sorted(claude))
-        self.assertIn("scripts/lt_gate.py", sorted(claude))
-        self.assertIn("scripts/lt_pin.py", sorted(claude))
-        self.assertIn("scripts/lean_tests.py", sorted(claude))
-        for host in OTHER_HOSTS:
-            copy = supporting_files(HOST_SKILLS[host])
-            self.assertEqual(sorted(claude), sorted(copy), f"the {host} file list differs")
-            for name in claude:
-                self.assertEqual(claude[name], copy[name], f"{name} differs between claude and {host}")
 
 
 if __name__ == "__main__":

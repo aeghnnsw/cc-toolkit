@@ -1,8 +1,9 @@
-"""The Antigravity project-eval copy keeps the text of the Claude Code copy.
+"""The Antigravity project-eval references keep the text of the Claude Code agents.
 
 The Antigravity copy has no plugin agents, so its evaluator and verifier
 instructions are skill-local copies of the Claude Code agent bodies. Each
 comparison allows only the listed host-specific substitutions.
+tests/test_host_copies.py compares the files that both skill copies have.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import unittest
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-CLAUDE_SKILL = PLUGIN_ROOT / "skills" / "project-eval"
 ANTIGRAVITY_SKILL = PLUGIN_ROOT / "antigravity-skills" / "project-eval"
 AGENTS = PLUGIN_ROOT / "claude-agents"
 
@@ -28,14 +28,6 @@ REFERENCES = {
     )),
     "verifier.md": ("finding-verifier.md", COMMON_SUBSTITUTIONS),
 }
-DIMENSION_SUBSTITUTIONS = (
-    ("Use WebSearch to check", "Search the web to check"),
-    ("but WebSearch catches", "but a web search catches"),
-    ("(WebSearch-detected)", "(web-search-detected)"),
-    ("WebSearch confirmed the CVE", "A web search confirmed the CVE"),
-    ("`project-rules` — CLAUDE.md compliance,",
-     "`project-rules` — Compliance with GEMINI.md, AGENTS.md, or CLAUDE.md,"),
-)
 
 
 def words(text: str) -> str:
@@ -59,17 +51,6 @@ def translated(text: str, substitutions) -> str:
 
 
 class ProjectEvalCopiesTest(unittest.TestCase):
-    def test_report_format_is_byte_identical(self) -> None:
-        name = "references/report-format.md"
-        self.assertEqual((CLAUDE_SKILL / name).read_bytes(), (ANTIGRAVITY_SKILL / name).read_bytes())
-
-    def test_dimensions_differ_only_in_host_wording(self) -> None:
-        name = "references/dimensions.md"
-        self.assertEqual(
-            translated((CLAUDE_SKILL / name).read_text(), DIMENSION_SUBSTITUTIONS),
-            words((ANTIGRAVITY_SKILL / name).read_text()),
-        )
-
     def test_references_keep_the_claude_agent_bodies(self) -> None:
         for reference, (agent, substitutions) in REFERENCES.items():
             with self.subTest(reference=reference):
