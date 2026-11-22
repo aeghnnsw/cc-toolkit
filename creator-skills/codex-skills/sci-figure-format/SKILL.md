@@ -11,14 +11,17 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 
 ## Universal Standards (All Major Journals)
 
+This table gives the one value of each rule. The other sections refer to it.
+
 | Element | Requirement |
 |---------|-------------|
 | **Colors** | Okabe-Ito palette (colorblind-safe) |
-| **Font** | Helvetica or Arial, 6-8 pt |
-| **Resolution** | 600 DPI minimum |
-| **Format** | PDF (graphs) or TIFF (images) |
-| **Width** | 3.5" (single column) or 7" (double column) |
-| **Line weight** | ≥0.5 pt |
+| **Font** | Helvetica or Arial; 6-8 pt target, 5 pt hard minimum (Nature/ACS requirement); panel labels (a, b, c) 8-10 pt bold |
+| **Resolution** | At the final print size: 300 DPI minimum for photos; 600 DPI minimum for line art and for combination figures (photos with lines or text). Some journals ask for 1200 DPI for line art |
+| **Format** | PDF (vector, preferred) or EPS for graphs; TIFF for photos and other raster images; no JPEG (lossy compression) |
+| **Width** | 3.5" (9 cm, single column) or 7" (18 cm, double column) |
+| **Height** | ≤10" |
+| **Line weight** | ≥0.5 pt; 1-1.5 pt preferred |
 
 ---
 
@@ -129,30 +132,18 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 
 ## 2. Typography
 
-**Font:** Helvetica or Arial (sans-serif only)
+**Font and size limits:** the Font row of [Universal Standards](#universal-standards-all-major-journals). Use sans-serif fonts only.
 
 **Sizes:**
 - Axis labels: 8 pt
 - Tick labels: 7 pt
 - Legend: 7 pt
-- Panel labels (a,b,c): 8-10 pt bold
-
-**Minimum:** 5 pt (Nature/ACS requirement)
-**Recommended:** 6-8 pt for readability
 
 ---
 
 ## 3. Resolution & File Formats
 
-**Resolution:**
-- Default: 600 DPI (exceeds all journal minimums)
-- Color images: 300-600 DPI
-- Line art: 600-1200 DPI
-
-**File Formats:**
-- **Graphs/charts:** PDF (vector, preferred) or EPS
-- **Photos/images:** TIFF or PNG
-- **Avoid:** JPEG (lossy compression)
+**Resolution and file formats:** the Resolution and Format rows of [Universal Standards](#universal-standards-all-major-journals).
 
 **Key principle:** Use vector formats (PDF/EPS) for graphs - they scale without quality loss
 
@@ -160,10 +151,7 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 
 ## 4. Figure Dimensions
 
-**Standard widths:**
-- **Single column:** 3.5 inches (9 cm)
-- **Double column:** 7 inches (18 cm)
-- **Height:** ≤10 inches
+**Standard width and height:** the Width and Height rows of [Universal Standards](#universal-standards-all-major-journals).
 
 **Journal-specific widths:**
 - Nature: 90mm / 180mm
@@ -182,32 +170,33 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 - Use clear axis labels with units (e.g., "Time (s)")
 - Remove unnecessary gridlines
 - Maintain consistency across all figures
-- Ensure line thickness ≥0.5 pt (prefer 1-1.5 pt)
+- Keep line weights within the Line weight row of [Universal Standards](#universal-standards-all-major-journals)
 
 **Avoid:**
 - Red-green color combinations
 - Rainbow colormaps
-- Font sizes <5 pt
+- Text below the minimum of the Font row
 - 3D effects
 - Serif fonts
-- JPEG for graphs
+- JPEG files
 
 ---
 
 ## 6. Pre-Submission Checklist
 
+Each row that an item names is a row of [Universal Standards](#universal-standards-all-major-journals).
+
 **Format:**
-- [ ] 600 DPI minimum resolution
+- [ ] Resolution meets the Resolution row
+- [ ] File format meets the Format row
 - [ ] Vector format with editable text
 
 **Typography:**
-- [ ] Helvetica or Arial used
-- [ ] Font size ≥6 pt
+- [ ] Font and sizes meet the Font row
 - [ ] Consistent font across all figures
 
 **Dimensions:**
-- [ ] Width: 3.5" (single) or 7" (double)
-- [ ] Height ≤10 inches
+- [ ] Width and height meet the Width and Height rows
 - [ ] Designed at final size
 
 **Colors:**
@@ -217,7 +206,7 @@ Guidelines for creating publication-quality figures that meet standards of Natur
 
 **Design:**
 - [ ] Clear axis labels with units
-- [ ] Line thickness ≥0.5 pt
+- [ ] Line weights meet the Line weight row
 - [ ] No unnecessary decoration
 - [ ] Consistent style
 ---
@@ -232,14 +221,9 @@ When helping users format figures:
    - 9-12 categories → Set3
    - Diverging data → PiYG or BuRd
    - 2 colors → Blue-Orange
-2. **Apply standards:**
-   - Font: Helvetica/Arial, 6-8 pt
-   - Resolution: 600 DPI
-   - Width: 3.5" or 7"
-   - Format: PDF (graphs) or TIFF (images)
+2. **Apply standards:** apply each row of [Universal Standards](#universal-standards-all-major-journals): font, resolution, format, width, height, and line weight.
 3. **Verify design:**
    - Simple, clear layout
    - Labels with units
-   - Line weights ≥0.5 pt
 
 ---
