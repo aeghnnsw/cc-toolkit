@@ -527,6 +527,112 @@ class SafetyGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_blocked(command, "protected system path /var")
 
+    # --- #445: quoted heredoc bodies of the allowed whole-command forms ---
+
+    QUOTED_BODY = "Run `env` only with a command.\nNever run `rm -rf ~`.\n"
+
+    def test_allows_quoted_body_of_allowed_forms(self):
+        body = self.QUOTED_BODY
+        commands = (
+            f"cat > notes.md <<'EOF'\n{body}EOF",
+            f'cat > notes.md <<"EOF"\n{body}EOF\n',
+            f"cat > notes.md <<\\EOF\n{body}EOF",
+            f"cat <<'EOF' >> notes.md\n{body}EOF",
+            f"cd /tmp/work && mkdir -p drafts && cat > drafts/n.md <<'EOF'\n{body}EOF",
+            f"git commit -q -F - <<'EOF'\n{body}EOF",
+            "git add a.py && git commit -q -F - <<'MSG' && git log --oneline -1\n"
+            f"{body}MSG",
+            f"cd /tmp/repo; git -C sub commit -F - <<'EOF'\n{body}EOF",
+            f"git commit -m \"$(cat <<'EOF'\nFix the guard\n\n{body}EOF\n)\"",
+            'gh pr create --title "Fix the guard (#445)" --body '
+            f"\"$(cat <<'EOF'\n{body}EOF\n)\"\n",
+            f"gh issue comment 445 --body-file - <<'EOF'\n{body}EOF",
+            "cd /tmp/repo && gh issue create --title 'A title' --body "
+            f"\"$(cat <<'EOF'\n{body}EOF\n  )\"",
+        )
+        for command in commands:
+            for tool_name in ("Bash", "exec_command"):
+                with self.subTest(command=command, tool_name=tool_name):
+                    self.assert_allowed(command, tool_name=tool_name)
+
+    def test_blocks_quoted_body_outside_allowed_forms(self):
+        env = "prints every environment variable"
+        cases = (
+            # Programs that run the body as code, or are not on the list.
+            ("python3 - <<'PY'\ntext = \"in `args`, `cwd`, and `env`.\"\nPY", env),
+            ("bash <<'EOF'\n`env`\nEOF", env),
+            ("sh <<'EOF'\necho `env`\nEOF", env),
+            ("ssh host <<'EOF'\n`env`\nEOF", env),
+            ("uv run python - <<'PY'\n`env`\nPY", env),
+            ("tee notes.md <<'EOF'\n`env`\nEOF", env),
+            ("eval \"$(cat <<'EOF'\n`env`\nEOF\n)\"", env),
+            ("bash -c \"$(cat <<'EOF'\n`rm -rf ~`\nEOF\n)\"", "home directory target"),
+            ("cat \"$(cat <<'EOF'\n`env`\nEOF\n)\"", env),
+            # Another command can reach the body.
+            ("cat <<'EOF' | bash\n`env`\nEOF", env),
+            ("cat > f.sh <<'EOF' && bash f.sh\n`env`\nEOF", env),
+            ("cat > f.sh <<'EOF'\n`env`\nEOF\nbash f.sh", env),
+            ("git commit -F - <<'EOF'\n`env`\nEOF\ngit log -1", env),
+            ("git commit -m \"$(cat <<'EOF'\n`env`\nEOF\n)\" | sh", env),
+            ("export A=1 && git commit -F - <<'EOF'\n`env`\nEOF", env),
+            (
+                "git config core.editor sh && git commit -e -F - <<'EOF'\n`env`\nEOF",
+                env,
+            ),
+            ("git -c core.editor=sh commit -e -F - <<'EOF'\n`env`\nEOF", env),
+            ("FOO=1 git commit -F - <<'EOF'\n`env`\nEOF", env),
+            # The shell expands an unquoted body (issue case s23).
+            ("cat > notes.md <<EOF\nUse `env` here.\nEOF", env),
+            # Bash 3.2 ends the substitution at a body `)` and runs the rest.
+            ("git commit -m \"$(cat <<'EOF'\nFix (#445) ) `env`\nEOF\n)\"", env),
+            ("git commit -m \"$(cat <<'EOF'\na ) `rm -rf ~`\nEOF\n)\"", "home directory target"),
+            # A body line that starts with the delimiter word.
+            ("cat > notes.md <<'EOF'\nEOF)\n`env`\nEOF", env),
+            ("git commit -F - <<'EOF'\n  EOF\n`env`\nEOF", env),
+            # A control character in the body.
+            ("git commit -m \"$(cat <<'EOF'\n\x01`env`\nEOF\n)\"", env),
+            ("cat > notes.md <<'EOF'\n\x85`env`\nEOF", env),
+            # Bash 3.2 deletes a backslash-newline and expands `$'...'` in
+            # the substitution before it reads the heredoc.
+            ("git commit -m \"$(cat <<'EOF'\nEO\\\nF\n`env`\nEOF\n)\"", env),
+            (
+                "gh pr create --title t --body \"$(cat <<'EOF'\nE\\\nOF\n"
+                "`rm -rf ~`\nEOF\n)\"",
+                "home directory target",
+            ),
+            ("git commit -m \"$(cat <<'EOF'\n$'\\nEOF\\n'' #'\n`env`\nEOF\n)\"", env),
+            ("git commit -m \"$(cat <<'EOF'\nCost: $'5'\n`env`\nEOF\n)\"", env),
+            # Another command can reach the body.
+            ("cat > f.sh <<'EOF' && git add f.sh\n`env`\nEOF", env),
+            ("git status | git commit -F - <<'EOF'\n`env`\nEOF", env),
+            ("git commit -F - <<'EOF'\n`env`\nEOF\n\xa0", env),
+            # A redirection target or an empty unquoted parameter is not a
+            # program word: the shell runs `git -c 'alias.x=!sh' x`.
+            ("git > commit -c 'alias.x=!sh' x <<'EOF'\n`env`\nEOF", env),
+            ("git > commit -c 'alias.x=!sh -c' x \"$(cat <<'EOF'\n`env`\nEOF\n)\"", env),
+            (
+                "git > status config core.editor sh && git commit -e -F - <<'EOF'\n"
+                "`env`\nEOF",
+                env,
+            ),
+            (
+                "mkdir -p commit && git -C $REPLY commit -c 'alias.x=!sh' x <<'EOF'\n"
+                "`rm -rf ~`\nEOF",
+                "home directory target",
+            ),
+            # Blocked text on the first line.
+            ("gh pr create --title \"$(env)\" --body \"$(cat <<'EOF'\nok\nEOF\n)\"", env),
+            # A substitution on the first line holds the heredoc, so the shell
+            # reads the next lines inside it and runs the backtick after it.
+            ("git commit -m \"$(cat <<'X' \" <<'EOF'\n\")\"; `env`\nEOF", env),
+            ("git commit -m \"`cat <<'X' \" <<'EOF'\n\"`\"; `env`\nEOF", env),
+        )
+        for command, reason in cases:
+            with self.subTest(command=command):
+                result = self.run_command(command, tool_name="Bash")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(reason, result.stderr)
+
     def test_blocks_malformed_rm_shell_text(self):
         self.assert_blocked(
             'rm "/var/log/example',
