@@ -29,6 +29,13 @@ class GuardHarnessTests(unittest.TestCase):
                 result = guard_harness.run_shell(shell, "git commit -m x; gh pr list")
                 self.assertEqual(result["calls"], ["git commit -m x", "gh pr list"])
 
+    def test_runs_no_shell_for_a_program_that_no_stub_replaces(self):
+        for command in ("/bin/rm -f x", "command -p rm -f x", "/usr/bin/env"):
+            with self.subTest(command=command):
+                result = guard_harness.run_shell(SHELLS[0], command)
+                self.assertTrue(result["skipped"])
+                self.assertEqual(result["status"], None)
+
     def test_calls_read_no_input_and_time_out(self):
         shell = SHELLS[0]
         start = time.monotonic()

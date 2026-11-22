@@ -16,27 +16,37 @@ CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
 ENV_REASON = "prints every environment variable"
 HOME_RM = "rm -rf " + "~"
 # Forms that the guard allowed before #479 although a shell runs a blocked
-# command in them. Each item: the issue case, the command, and the block
-# reason. `test_guard_harness.py` runs them in bash and zsh. Case 6 needs a
-# real `git`, so no shell runs its blocked command in the helper.
+# command in them: the cases of the issue and close variants that the helper
+# found. Each item: the issue case, the command, and the block reason.
+# `test_guard_harness.py` runs them in bash and zsh. Case 6 needs a real
+# `git`, so no shell runs its blocked command in the helper.
 ISSUE_479_CASES = (
     # An apostrophe in a body inside `"$(...)"` stopped the substitution scan.
     (1, "gh pr create --title t --body \"$(cat <<'EOF'\nit's\nEOF\n)\""
         " --label \"$(env)\"", ENV_REASON),
     (1, "git commit -m \"$(cat <<'EOF'\nit's done\nEOF\n)\" && echo \"$(env)\"",
         ENV_REASON),
-    # An apostrophe in an unquoted body hid a later substitution.
+    # An apostrophe in an unquoted body hid a later substitution, and the
+    # shell removes a backslash-newline there.
     (2, "cat > notes.md <<EOF\nIt's here\n`env`\nEOF", ENV_REASON),
-    # A shell or `eval` reads the body as code.
+    (2, "cat > notes.md <<EOF\nit's $\\\n(env)\nEOF", ENV_REASON),
+    # A shell, `eval`, or a script that the command writes reads the body or
+    # a here string as code, also when the body does not tokenize.
     (3, "bash <<'EOF'\nenv\nEOF", ENV_REASON),
     (3, "eval \"$(cat <<'EOF'\nenv\nEOF\n)\"", ENV_REASON),
     (3, "cat <<'EOF' | bash\nenv\nEOF", ENV_REASON),
     (3, f"sh <<'EOF'\n{HOME_RM}\nEOF", "home directory target"),
     (3, "cat > f.sh <<'EOF'\nenv\nEOF\nbash f.sh", ENV_REASON),
+    (3, "cat > f.sh <<'EOF'\n#!/bin/sh\nenv\nEOF\nchmod +x f.sh && ./f.sh",
+        ENV_REASON),
+    (3, f"bash <<< '{HOME_RM}'", "home directory target"),
+    (3, "bash <<'EOF'\necho $'it\\'s'\nenv\nEOF", ENV_REASON),
     (3, "bash -c 'env'", ENV_REASON),
     (3, "eval env", ENV_REASON),
-    # Bash 3.2 ends a substitution at a body `)` and runs the text after it.
+    # Bash 3.2 ends a substitution at an unbalanced body `)` and runs the
+    # text after it.
     (3, "echo $(cat <<'EOF'\na ) ; env\nEOF\n)", ENV_REASON),
+    (3, f"cat <(cat <<'EOF'\na ) ; {HOME_RM}\nEOF\n)", "home directory target"),
     # A `#` line of an unquoted body is text, and a `#` right after a
     # substitution is part of the same word.
     (4, "cat > notes.md <<EOF\n# $(env)\nEOF", ENV_REASON),
@@ -49,13 +59,16 @@ ISSUE_479_CASES = (
         "protected system path /var"),
     (5, "cat <<E\"O\"F > notes.md\nhello\nEOF\nenv", ENV_REASON),
     (5, "cat <<$'EOF' > notes.md\nhello\nEOF\nenv", ENV_REASON),
-    # A command beside an allowed form writes a file, such as `.git/config`.
+    (5, "cat <<$'E\\x4fF' > notes.md\nhello\nEOF\nenv", ENV_REASON),
+    # A misread operator whose body never ends, and an operator line that
+    # continues on the next line, leave the next commands under inspection.
+    (5, "echo ${x//<</y}\nenv", ENV_REASON),
+    (5, "cat <<EOF\\\n > notes.md\nhello\nEOF\nenv", ENV_REASON),
+    # A command before an allowed form writes a file, such as `.git/config`.
     (6, "git log -1 --format='[core]%n editor = sh' > .git/config && "
         "git commit -e -F - <<'EOF2'\n`env`\nEOF2", ENV_REASON),
     (6, "git log -1 --format='[core]%n editor = sh' --output=.git/config && "
         "git commit -e -F - <<'EOF2'\n`env`\nEOF2", ENV_REASON),
-    (6, "git commit -F - <<'EOF' && git log -1 > out.txt\n`env`\nEOF",
-        ENV_REASON),
 )
 
 
@@ -487,7 +500,7 @@ class SafetyGuardTests(unittest.TestCase):
             "rm /tmp/candidate.json > /var/log/safety-guard-output"
         )
 
-    # --- #236 regressions: heredoc bodies are data, not shell code ---
+    # --- #236 regressions: a heredoc body that no shell reads is data ---
 
     def test_allows_heredoc_body_with_apostrophe(self):
         self.assert_allowed(
@@ -685,6 +698,7 @@ class SafetyGuardTests(unittest.TestCase):
             with self.subTest(case=case, command=command):
                 result = self.run_command(command, tool_name="Bash")
                 self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("BLOCKED", result.stderr)
                 self.assertIn(reason, result.stderr)
 
     def test_allows_heredoc_and_comment_forms_without_a_blocked_command(self):
@@ -694,6 +708,13 @@ class SafetyGuardTests(unittest.TestCase):
             " && git push",
             "gh pr create --title 'T (#1)' --body \"$(cat <<'EOF'\n## Summary\n"
             "It's (mostly) done.\nEOF\n)\"",
+            # Balanced parentheses do not end the substitution in bash 3.2.
+            "git commit -m \"$(cat <<'EOF'\nFix (#1)\nDon't rm it\nEOF\n)\"",
+            # A command after an allowed form cannot change how its program
+            # reads the body.
+            "git commit -F - <<'EOF' && git log -1 > out.txt\nUse `env` here.\nEOF",
+            # A duplication such as `2>&1` writes no file.
+            "git add a.py 2>&1 && git commit -F - <<'EOF'\nUse `env` here.\nEOF",
             "python3 - <<'PY'\nimport os\nprint(\"it's\")\nPY",
             # No command runs the script that `cat` writes.
             "cat > script.sh <<'EOF'\n#!/bin/bash\nenv\nEOF\nchmod +x script.sh",

@@ -1,13 +1,16 @@
 """Run shell payloads through two safety guards and two real shells (#479).
 
-Use this helper, not a probe script, to see what a payload does. Each run
-uses a new temporary folder as the working directory and `HOME`. Stubs on
-`PATH` replace `env`, `printenv`, `rm`, `git`, `gh`, `ssh`, `sudo`, `uv`,
-and `curl`: each stub only writes its name and arguments to a marker file.
-The `env` and `printenv` stubs also print the canary variable when they would
-print every variable, as the real programs do. The shell builtins `set`,
-`export`, `declare`, and `typeset` print the real canary. Each call reads
-`/dev/null` as stdin and has a timeout.
+Use this helper, not a probe script, to see what a payload does. A payload
+is the text of one shell command. Each shell run uses a new temporary folder
+as the working directory and `HOME`. Stubs on `PATH` replace `env`,
+`printenv`, `rm`, `git`, `gh`, `ssh`, `sudo`, `uv`, and `curl`: each stub
+only writes its name and arguments to a marker file. The `env` and
+`printenv` stubs also print the canary variable when they would print every
+variable, as the real programs do. The shell builtins `set`, `export`,
+`declare`, and `typeset` print the real canary. A stub cannot replace a
+program named by its path or run with `command -p`, so the helper runs no
+shell for a payload that does either. Each call reads `/dev/null` as stdin
+and has a timeout.
 
     python3 core-hooks/tests/guard_harness.py --old origin/master FILE
 
@@ -21,8 +24,8 @@ guard allows.
 import argparse
 import json
 import os
+import re
 import secrets
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -39,6 +42,10 @@ STUBS = ("env", "printenv", "rm", "git", "gh", "ssh", "sudo", "uv", "curl")
 CANARY_NAME = "GUARD_HARNESS_CANARY"
 SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 TIMEOUT = 10
+# A stubbed program named by its path, or `command -p`, runs the real program.
+UNSTUBBED_RE = re.compile(
+    rf"/(?:{'|'.join(STUBS)})(?![\w.-])|\bcommand[ \t]+-[A-Za-z]*p"
+)
 
 # `env` and `printenv` print every variable when each argument is an option
 # or, for `env`, an assignment.
@@ -75,26 +82,29 @@ def old_guard(revision, folder):
     return folder / "safety_guard.py"
 
 
-def run_guard(script, command, tool_name="Bash"):
-    """Return "blocked", "allowed", or "error <status>" for `command`."""
-    input_key = "cmd" if tool_name == "exec_command" else "command"
-    payload = {
+def run_guard(script, command):
+    """Return "blocked", "allowed", "timeout", or "error <status>" for
+    `command` as a Claude Code `Bash` call."""
+    hook_input = {
         "hook_event_name": "PreToolUse",
-        "tool_name": tool_name,
-        "tool_input": {input_key: command},
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
     }
     with tempfile.TemporaryDirectory() as folder:
         environment = dict(os.environ, CLAUDE_PROJECT_DIR=folder)
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=folder,
-            env=environment,
-            timeout=TIMEOUT,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, str(script)],
+                input=json.dumps(hook_input),
+                capture_output=True,
+                text=True,
+                cwd=folder,
+                env=environment,
+                timeout=TIMEOUT,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return "timeout"
     if result.returncode == 2 and result.stderr.startswith("BLOCKED"):
         return "blocked"
     if result.returncode == 0:
@@ -118,8 +128,13 @@ def run_shell(shell, command, timeout=TIMEOUT):
     Return a dict: `ran` lists the blocked commands that ran ("env" when the
     canary value reached the output, a file, or the arguments of a stub, and
     "rm <arguments>" for each `rm` call); `calls` lists every stub call;
-    `timed_out` and `status` tell how the shell ended.
+    `timed_out` and `status` tell how the shell ended. `skipped` is True
+    when no shell ran, because the payload names a stubbed program by its
+    path or uses `command -p`.
     """
+    if UNSTUBBED_RE.search(command):
+        return {"ran": [], "calls": [], "timed_out": False, "status": None,
+                "skipped": True}
     with tempfile.TemporaryDirectory() as root:
         root = Path(root).resolve()
         stubs = root / "stubs"
@@ -166,19 +181,20 @@ def run_shell(shell, command, timeout=TIMEOUT):
     ran = (["env"] if printed else []) + [
         call for call in calls if call.split(" ", 1)[0] == "rm"
     ]
-    return {"ran": ran, "calls": calls, "timed_out": timed_out, "status": status}
+    return {"ran": ran, "calls": calls, "timed_out": timed_out, "status": status,
+            "skipped": False}
 
 
-def compare(command, old_script, new_script=NEW_GUARD, shells=SHELLS):
+def compare(command, old_script):
     """Run `command` through both guards and each shell that exists."""
     row = {
         "old": run_guard(old_script, command) if old_script else None,
-        "new": run_guard(new_script, command),
+        "new": run_guard(NEW_GUARD, command),
     }
+    shells = [Path(shell) for shell in SHELLS if Path(shell).exists()]
     for shell in shells:
-        if Path(shell).exists():
-            row[Path(shell).name] = run_shell(shell, command)
-    ran = any(row[Path(shell).name]["ran"] for shell in shells if Path(shell).name in row)
+        row[shell.name] = run_shell(str(shell), command)
+    ran = any(row[shell.name]["ran"] for shell in shells)
     row["miss"] = ran and row["new"] != "blocked"
     return row
 
@@ -197,6 +213,7 @@ def _payloads(arguments):
 
 def _describe(name, row):
     shells = " ".join(
+        f"{key}=skipped" if row[key]["skipped"] else
         f"{key}={','.join(row[key]['ran']) or '-'}"
         + (" (timeout)" if row[key]["timed_out"] else "")
         for key in ("bash", "zsh")

@@ -9,6 +9,7 @@ example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
 `CONTROL_PREFIXES`.
 """
 
+import codecs
 import json
 import os
 import re
@@ -124,8 +125,18 @@ HEREDOC_OPERATOR_RE = re.compile(
     r"(?P<word>(?:'[^'\n]*'|\"[^\"\n]*\"|\\.|[^\s'\"<>|&;()`\\])+)"
 )
 HEREDOC_WORD_PART_RE = re.compile(r"'([^']*)'|\"([^\"]*)\"|\\(.)|([^'\"\\]+)")
+ANSI_C_STRING_RE = re.compile(r"\$'((?:[^'\\]|\\.)*)'")
+# `<<< WORD`: a here string, whose word a shell reads as code (#479).
+HERE_STRING_RE = re.compile(
+    r"<<<[ \t]*('[^']*'|\"(?:[^\"\\]|\\.)*\"|(?:\\.|[^\s;&|()<>'\"])+)"
+)
 # Programs that read a heredoc body or a substitution as shell code (#479).
 CODE_READERS = SHELL_PROGRAMS | {"eval", "source", "."}
+# Text that the tokenizer rejects can still print every variable.
+VARIABLE_LISTING_MENTION_RE = re.compile(
+    r"(?<![\w./$-])(?:env|printenv)(?![\w./=-])"
+    r"|(?:^|[\n;&|(`])[ \t]*(?:export|declare|typeset|set)[ \t]*(?:$|[\n;&|)`])"
+)
 # Whole-command forms whose quoted heredoc body is data (#445). The first
 # line uses a strict grammar, so the shell ends it in top-level state and
 # reads each word as one argument: words of plain characters, `'...'`
@@ -152,7 +163,8 @@ GH_DATA_SUBCOMMANDS = {
     "pr": {"create", "edit", "comment", "review"},
     "issue": {"create", "edit", "comment"},
 }
-# Git subcommands that may share the first line with a form. None of them
+# Git subcommands that may share the first line with a form. Without a
+# redirection or `--output`, which `_is_shared_segment` refuses, none of them
 # changes how a later `git commit` reads its message.
 GIT_SEGMENT_SUBCOMMANDS = {"add", "diff", "log", "show", "status"}
 DATA_BODY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
@@ -436,6 +448,11 @@ def _heredoc_operators(line, state):
         if top == '"':
             index += 1
             continue
+        if character in "<>" and line.startswith("(", index + 1):
+            # A process substitution reads its text as a command, as `$(` does.
+            stack.append("$(")
+            index += 2
+            continue
         if character == "'":
             stack.append("'")
         elif character == "(":
@@ -553,14 +570,23 @@ def _heredoc_delimiter_words(match):
 
     The first word is the operator's word after quote removal, as in
     `<<'E'OF`, which ends at `EOF`. Bash 3.2 and zsh 5.9 end `<<$'EOF'` at
-    `EOF` too. The word with that `$` kept is a second candidate, so the body
-    ends at the earlier of the two lines.
+    `EOF` too. The other candidates are the word with that `$` kept, and the
+    word with the escapes of each `$'...'` part decoded, so the body ends at
+    the earliest of these lines.
     """
     word = match.group("word")
-    words = [_unquoted_heredoc_word(re.sub(r"\$(?=['\"])", "", word))]
-    with_dollar = _unquoted_heredoc_word(word)
-    if with_dollar != words[0]:
-        words.append(with_dollar)
+    candidates = [re.sub(r"\$(?=['\"])", "", word), word]
+    try:
+        candidates.append(ANSI_C_STRING_RE.sub(
+            lambda part: codecs.decode(part.group(1), "unicode_escape"), word
+        ))
+    except UnicodeDecodeError:
+        pass
+    words = []
+    for candidate in candidates:
+        unquoted = _unquoted_heredoc_word(candidate)
+        if unquoted not in words:
+            words.append(unquoted)
     return words
 
 
@@ -578,6 +604,22 @@ def _heredoc_parts(command):
     body is (text, nested), where `nested` tells whether its operator is
     inside a command substitution. Ending a body early keeps more text under
     inspection, so the delimiter comparison ignores surrounding whitespace.
+    See `_read_heredoc_lines` for the rules that fail closed.
+    """
+    return _read_heredoc_lines(command, _heredoc_operators)
+
+
+def _read_heredoc_lines(command, scan):
+    """Split `command` into its command lines and heredoc bodies.
+
+    `scan(line, state)` returns the operators of one line, each as (words
+    that can end its body, a flag), and the state for the next line. Return
+    (code, bodies), with each body as (text, flag).
+
+    The split fails closed (#479). An operator whose body never ends can be
+    a misread, as in `${x//<</y}`, so the rest of `command` stays code. An
+    operator line that ends in a line continuation opens no body here,
+    because the shell reads the body only after the next line.
     """
     lines = command.split("\n")
     kept = []
@@ -588,16 +630,19 @@ def _heredoc_parts(command):
         line = lines[index]
         index += 1
         kept.append(line)
-        operators, state = _heredoc_operators(line, state)
-        for delimiters, nested in operators:
-            body = []
-            while index < len(lines):
-                body_line = lines[index]
-                index += 1
-                if body_line.strip() in delimiters:
-                    break
-                body.append(body_line)
-            bodies.append(("\n".join(body), nested))
+        operators, state = scan(line, state)
+        if (len(line) - len(line.rstrip("\\"))) % 2:
+            operators = []
+        for words, flag in operators:
+            end = next(
+                (end for end in range(index, len(lines))
+                 if lines[end].strip() in words),
+                None,
+            )
+            if end is None:
+                break
+            bodies.append(("\n".join(lines[index:end]), flag))
+            index = end + 1
     return "\n".join(kept), bodies
 
 
@@ -613,22 +658,11 @@ def strip_heredoc_bodies(command):
     Ending a body early keeps more text under inspection, so the delimiter
     comparison ignores surrounding whitespace.
     """
-    lines = command.split("\n")
-    kept = []
-    quote = None
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        index += 1
-        kept.append(line)
+    def scan(line, quote):
         candidates, quote = _heredoc_delimiter_candidates(line, quote)
-        for words in candidates:
-            while index < len(lines):
-                body_line = lines[index]
-                index += 1
-                if body_line.strip() in words:
-                    break
-    return "\n".join(kept)
+        return [(words, False) for words in candidates], quote
+
+    return _read_heredoc_lines(command, scan)[0]
 
 
 def _data_form_segments(line):
@@ -697,15 +731,21 @@ def _data_form_program(words):
 def _is_shared_segment(segment, before_form):
     """Report whether a segment may share the first line with a form.
 
-    The segment writes no file, so it cannot change how the form's program
-    reads the body: it has no redirection, and no `--output` option of
-    `git diff`, `log`, or `show`. For example, `git log ... > .git/config`
-    can set the editor that `git commit -e` runs the body with (#479).
+    A segment before the form writes no file, so it cannot change how the
+    form's program reads the body: it has no redirection other than a
+    duplication such as `2>&1`, and no `--output` option of `git diff`,
+    `log`, or `show`. For example,
+    `git log ... > .git/config` can set the editor that `git commit -e` runs
+    the body with (#479).
     """
-    if any(kind != "word" for kind, _, _ in segment):
-        return False
     words = _segment_words(segment)
-    if any(re.sub(r"[\\'\"]", "", word).startswith("--out") for word in words):
+    if before_form and (
+        any(
+            kind == "redirection" and not re.fullmatch(r"[0-9]?>&[0-9]", text)
+            for kind, text, _ in segment
+        )
+        or any(re.sub(r"[\\'\"]", "", word).startswith("--out") for word in words)
+    ):
         return False
     if before_form and words[:1] in (["cd"], ["mkdir"]):
         return True
@@ -1426,8 +1466,9 @@ def _dangerous_rm_reason(command, depth):
         if reason:
             return reason
 
-    # Heredoc bodies are data. Strip them before tokenizing, and keep the
-    # stripped text for the fallback below so prose cannot decide the outcome.
+    # Strip heredoc bodies before tokenizing; `_nested_commands` reads the
+    # bodies that run as code. Keep the stripped text for the fallback below
+    # so prose cannot decide the outcome.
     executable_text = _executable_text(command)
     try:
         segments = _command_segments(_shell_tokens(executable_text))
@@ -1448,10 +1489,12 @@ def _body_substitutions(body):
     """Yield the command substitutions of a heredoc body.
 
     The shell expands `$(...)` and backticks in an unquoted body, and quotes
-    there are text, so an apostrophe hides nothing (#479). The guard reads
-    a quoted body outside an allowed form the same way, so it fails closed.
-    An unclosed substitution yields the rest of the body.
+    there are text, so an apostrophe hides nothing (#479). The shell also
+    removes each backslash-newline there. The guard reads a quoted body
+    outside an allowed form the same way, so it fails closed. An unclosed
+    substitution yields the rest of the body.
     """
+    body = body.replace("\\\n", "")
     index = 0
     while index < len(body):
         if body[index] == "\\":
@@ -1469,7 +1512,9 @@ def _body_substitutions(body):
 
 def _reads_code(code):
     """Report whether a command of `code` reads its input or an argument as
-    shell code: a shell, `eval`, `source`, or `.` (#479).
+    shell code: a shell, `eval`, `source`, `.`, or a program named by a
+    path, such as a script that the command writes and runs as `./f.sh`
+    (#479).
 
     Text that does not tokenize counts as code, so the check fails closed.
     """
@@ -1481,7 +1526,10 @@ def _reads_code(code):
         return True
     for segment in _command_segments(tokens):
         index = _command_index(segment)
-        if index < len(segment) and _program_name(segment[index]) in CODE_READERS:
+        if index < len(segment) and (
+            "/" in segment[index]
+            or _program_name(segment[index]) in CODE_READERS
+        ):
             return True
     return False
 
@@ -1491,10 +1539,10 @@ def _nested_commands(command):
     without repeats.
 
     This is each command substitution and each substitution in a heredoc
-    body. When a command reads code, each body is code too, as in
-    `bash <<'EOF'` or `eval "$(cat <<'EOF' ...)"`. Bash 3.2 ends a
-    substitution at the first `)` of a body inside it and runs the text
-    after that `)` (#479).
+    body. When a command reads code, each body and each here string is code
+    too, as in `bash <<'EOF'`, `eval "$(cat <<'EOF' ...)"`, or
+    `bash <<< WORD`. Bash 3.2 ends a substitution at the first unbalanced
+    `)` of a body inside it and runs the text after that `)` (#479).
     """
     code, bodies = _heredoc_parts(command)
     found = []
@@ -1504,13 +1552,20 @@ def _nested_commands(command):
         found.extend(_command_substitutions(
             _strip_shell_comments(_remove_line_continuations(text))
         ))
-    reads_code = bool(bodies) and _reads_code(code)
+    here_strings = [
+        word[1:-1] if word[0] in "'\"" else word
+        for word in HERE_STRING_RE.findall(code)
+    ]
+    reads_code = bool(bodies or here_strings) and _reads_code(code)
+    if reads_code:
+        found.extend(here_strings)
     for body, nested in bodies:
         found.extend(_body_substitutions(body))
         if reads_code:
             found.append(body)
-        if nested and ")" in body:
-            found.append(body.split(")", 1)[1])
+        end = _find_substitution_end(body, 0) if nested else None
+        if end is not None:
+            found.append(body[end + 1:])
     return list(dict.fromkeys(found))
 
 
@@ -1639,7 +1694,11 @@ def prints_environment(command, depth=0):
     try:
         segments = list(_bounded_segments(_shell_tokens(text)))
     except ValueError:
-        return False
+        # Fail closed as the rm check does: text that the tokenizer rejects,
+        # such as `$'it\'s'`, blocks when it names `env` or `printenv`, or
+        # `export`, `declare`, `typeset`, or `set` alone as a command (#479).
+        collapsed = re.sub(r"[\\'\"]", "", _remove_line_continuations(text))
+        return VARIABLE_LISTING_MENTION_RE.search(collapsed) is not None
     for index, (segment, boundary) in enumerate(segments):
         # `bash -c env`, `eval env`, and `env -S env` print too (#479).
         if not (
