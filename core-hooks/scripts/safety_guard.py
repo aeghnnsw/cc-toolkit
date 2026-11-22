@@ -122,25 +122,26 @@ HEREDOC_OPERATOR_RE = re.compile(
     r"|(?P<plain>(?:\\.|[^\s'\"<>|&;()`\n])+))"
 )
 # Whole-command forms whose quoted heredoc body is data (#445). The first
-# line uses a strict grammar, so the shell ends it in top-level state: words
-# of plain characters, `'...'` strings, `"..."` strings without expansions
-# other than `$NAME`, redirections, `&&`, `;`, and one heredoc
-# operator. A line outside this grammar is not a form.
+# line uses a strict grammar, so the shell ends it in top-level state and
+# reads each word as one argument: words of plain characters, `'...'`
+# strings, and `"..."` strings without expansions other than `$NAME`;
+# redirections with their targets; `&&`; `;`; and one heredoc operator. A
+# line outside this grammar is not an allowed form.
 _HEREDOC_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
 _PARAMETER = rf"\${_HEREDOC_NAME}|\$\{{{_HEREDOC_NAME}\}}"
 _QUOTED_DELIMITER = rf"'{_HEREDOC_NAME}'|\"{_HEREDOC_NAME}\"|\\{_HEREDOC_NAME}"
+_FORM_WORD = (
+    r"(?:[A-Za-z0-9_@%+=:,./~-]|'[^'\n]*'"
+    rf"|\"(?:[^\"$`\\!\n]|{_PARAMETER})*\")+"
+)
 DATA_FORM_TOKEN_RE = re.compile(
     r"(?:"
     rf"(?P<substitution>\"\$\(cat[ \t]+<<(?P<inner>{_QUOTED_DELIMITER})[ \t]*$)"
     rf"|(?P<heredoc><<(?P<outer>{_QUOTED_DELIMITER}))"
     r"|(?P<separator>&&|;)"
-    r"|(?P<redirection>[0-9]?>>?(?:&[0-9])?)"
-    r"|(?P<word>(?:[A-Za-z0-9_@%+=:,./~-]|'[^'\n]*'"
-    rf"|\"(?:[^\"$`\\!\n]|{_PARAMETER})*\"|{_PARAMETER})+)"
+    rf"|(?P<redirection>[0-9]?>&[0-9]|[0-9]?>>?[ \t]*{_FORM_WORD})"
+    rf"|(?P<word>{_FORM_WORD})"
     r")(?=[ \t;]|&&|$)"
-)
-DATA_FORM_TOKEN_KINDS = (
-    "substitution", "heredoc", "separator", "redirection", "word",
 )
 GH_DATA_SUBCOMMANDS = {
     "pr": {"create", "edit", "comment", "review"},
@@ -149,7 +150,7 @@ GH_DATA_SUBCOMMANDS = {
 # Git subcommands that may share the first line with a form. None of them
 # changes how a later `git commit` reads its message.
 GIT_SEGMENT_SUBCOMMANDS = {"add", "diff", "log", "show", "status"}
-DATA_BODY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+DATA_BODY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 RM_MENTION_RE = re.compile(r"\brm\b", re.IGNORECASE)
 PROTECTED_SYSTEM_PATHS = (
     "/usr",
@@ -438,7 +439,8 @@ def _data_form_segments(line):
 
     Return None when the line is outside the grammar of
     `DATA_FORM_TOKEN_RE` or has an empty segment. A heredoc token also
-    carries its delimiter word.
+    carries its delimiter word. A redirection token holds its target, so
+    the target is never read as a program word.
     """
     segments = [[]]
     index = len(line) - len(line.lstrip(" \t"))
@@ -446,10 +448,7 @@ def _data_form_segments(line):
         match = DATA_FORM_TOKEN_RE.match(line, index)
         if match is None:
             return None
-        kind = next(
-            name for name in DATA_FORM_TOKEN_KINDS
-            if match.group(name) is not None
-        )
+        kind = match.lastgroup
         if kind == "separator":
             segments.append([])
         else:
@@ -469,6 +468,16 @@ def _segment_words(segment):
     return [text for kind, text, _ in segment if kind == "word"]
 
 
+def _git_subcommand(words):
+    """Return the subcommand of `git [-C DIR] SUBCOMMAND ...`, or None."""
+    if words[:1] != ["git"]:
+        return None
+    rest = words[1:]
+    if rest[:1] == ["-C"] and len(rest) > 1:
+        rest = rest[2:]
+    return rest[0] if rest else None
+
+
 def _data_form_program(words):
     """Return the program of a form segment whose body is data, or None.
 
@@ -477,11 +486,8 @@ def _data_form_program(words):
     """
     if words[:1] == ["cat"]:
         return "cat"
-    if words[:1] == ["git"]:
-        rest = words[1:]
-        if rest[:1] == ["-C"] and len(rest) > 1:
-            rest = rest[2:]
-        return "git" if rest[:1] == ["commit"] else None
+    if _git_subcommand(words) == "commit":
+        return "git"
     if (
         words[:1] == ["gh"]
         and len(words) > 2
@@ -495,15 +501,10 @@ def _is_shared_segment(words, before_form):
     """Report whether a segment may share the first line with a form."""
     if before_form and words[:1] in (["cd"], ["mkdir"]):
         return True
-    if words[:1] != ["git"]:
-        return False
-    rest = words[1:]
-    if rest[:1] == ["-C"] and len(rest) > 1:
-        rest = rest[2:]
-    return rest[:1] != [] and rest[0] in GIT_SEGMENT_SUBCOMMANDS
+    return _git_subcommand(words) in GIT_SEGMENT_SUBCOMMANDS
 
 
-def _data_form_body_removed(command):
+def _command_without_form_body(command):
     """Return `command` without its body when it is one allowed form (#445).
 
     A quoted heredoc body is data, but the guard reads its backticks as
@@ -552,14 +553,17 @@ def _data_form_body_removed(command):
         return None
     rest = lines[end + 1:]
     if kind == "substitution":
-        # Bash 3.2 ends `"$(cat <<'EOF'` at the first `)` of the body and
-        # runs the text after it.
-        if any(")" in line for line in body):
+        # Bash 3.2 reads `"$(cat <<'EOF'` to the first `)` of the body and
+        # runs the text after it. Before it reads the heredoc, it also
+        # deletes a backslash-newline and expands `$'...'`, which can make a
+        # new terminator line. A body without `)`, a backslash, or `$`
+        # reaches the heredoc unchanged.
+        if any(character in line for line in body for character in ")\\$"):
             return None
         if not rest or not re.fullmatch(r"[ \t]*\)\"[ \t]*", rest[0]):
             return None
         rest = rest[1:]
-    if any(line.strip() for line in rest):
+    if any(line.strip(" \t") for line in rest):
         return None
     return "\n".join([lines[0]] + lines[end:])
 
@@ -571,7 +575,7 @@ def remove_data_heredoc_body(command):
     back unchanged, so the guard scans it in full.
     """
     try:
-        reduced = _data_form_body_removed(command)
+        reduced = _command_without_form_body(command)
     except Exception:
         return command
     return command if reduced is None else reduced

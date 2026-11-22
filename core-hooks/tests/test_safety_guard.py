@@ -529,10 +529,10 @@ class SafetyGuardTests(unittest.TestCase):
 
     # --- #445: quoted heredoc bodies of the allowed whole-command forms ---
 
-    BODY_445 = "Run `env` only with a command.\nNever run `rm -rf ~`.\n"
+    QUOTED_BODY = "Run `env` only with a command.\nNever run `rm -rf ~`.\n"
 
     def test_allows_quoted_body_of_allowed_forms(self):
-        body = self.BODY_445
+        body = self.QUOTED_BODY
         commands = (
             f"cat > notes.md <<'EOF'\n{body}EOF",
             f'cat > notes.md <<"EOF"\n{body}EOF\n',
@@ -591,8 +591,35 @@ class SafetyGuardTests(unittest.TestCase):
             ("git commit -F - <<'EOF'\n  EOF\n`env`\nEOF", env),
             # A control character in the body.
             ("git commit -m \"$(cat <<'EOF'\n\x01`env`\nEOF\n)\"", env),
+            ("cat > notes.md <<'EOF'\n\x85`env`\nEOF", env),
+            # Bash 3.2 deletes a backslash-newline and expands `$'...'` in
+            # the substitution before it reads the heredoc.
+            ("git commit -m \"$(cat <<'EOF'\nEO\\\nF\n`env`\nEOF\n)\"", env),
+            (
+                "gh pr create --title t --body \"$(cat <<'EOF'\nE\\\nOF\n"
+                "`rm -rf ~`\nEOF\n)\"",
+                "home directory target",
+            ),
+            ("git commit -m \"$(cat <<'EOF'\n$'\\nEOF\\n'' #'\n`env`\nEOF\n)\"", env),
+            ("git commit -m \"$(cat <<'EOF'\nCost: $'5'\n`env`\nEOF\n)\"", env),
+            # Another command can reach the body.
             ("cat > f.sh <<'EOF' && git add f.sh\n`env`\nEOF", env),
             ("git status | git commit -F - <<'EOF'\n`env`\nEOF", env),
+            ("git commit -F - <<'EOF'\n`env`\nEOF\n\xa0", env),
+            # A redirection target or an empty unquoted parameter is not a
+            # program word: the shell runs `git -c 'alias.x=!sh' x`.
+            ("git > commit -c 'alias.x=!sh' x <<'EOF'\n`env`\nEOF", env),
+            ("git > commit -c 'alias.x=!sh -c' x \"$(cat <<'EOF'\n`env`\nEOF\n)\"", env),
+            (
+                "git > status config core.editor sh && git commit -e -F - <<'EOF'\n"
+                "`env`\nEOF",
+                env,
+            ),
+            (
+                "mkdir -p commit && git -C $REPLY commit -c 'alias.x=!sh' x <<'EOF'\n"
+                "`rm -rf ~`\nEOF",
+                "home directory target",
+            ),
             # Blocked text on the first line.
             ("gh pr create --title \"$(env)\" --body \"$(cat <<'EOF'\nok\nEOF\n)\"", env),
             # A substitution on the first line holds the heredoc, so the shell
