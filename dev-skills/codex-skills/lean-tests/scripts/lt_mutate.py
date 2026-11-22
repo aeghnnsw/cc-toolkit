@@ -30,8 +30,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lt_common import (
-    EXAMPLES, PARSE_ERRORS, UsageError, import_root, is_string_statement, load_json, node_file, parse_failure,
-    ran_tests, read_node_ids, rel, suite_node_ids, tail,
+    EXAMPLES, PARSE_ERRORS, UsageError, git, import_root, is_string_statement, load_json, node_file,
+    parse_failure, ran_tests, read_node_ids, rel, suite_node_ids, tail,
 )
 from lt_coverage import changed_lines, lines_by_test, product_files, unmeasured_tests
 from lt_scan import function_id
@@ -1060,14 +1060,33 @@ def load_scan(path: str, scope: int) -> dict:
     return scan
 
 
-def load_previous(path: str, matrix: str) -> set:
-    """The removed tests of the passed killed-set check of an earlier batch of the same matrix."""
+def head_commit(project: Path) -> str | None:
+    """The commit at HEAD of the project's Git work tree, or None when Git cannot tell."""
+    result = git(project, "rev-parse", "--verify", "HEAD")
+    return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+
+
+def load_previous(path: str, matrix: str, project: Path) -> set:
+    """The removed tests of the passed killed-set check of an earlier, committed batch of the same matrix.
+
+    The batch of that check is committed only when HEAD has moved past the
+    commit that the check recorded. When Git cannot show this, the check fails
+    closed, so two uncommitted batches cannot pass as one.
+    """
     previous = load_json(path, "killed-set check output")
     summary = previous.get("summary") or {}
     if summary.get("mode") != "recheck" or previous.get("matrix") != matrix:
         raise UsageError(f"{path} is not a killed-set check of the matrix {matrix}")
     if summary.get("passed") is not True:
         raise UsageError(f"the killed-set check {path} did not pass, so it is not the check of a committed batch")
+    before, now = previous.get("head"), head_commit(project)
+    committed = (
+        isinstance(before, str) and now is not None and before != now
+        and git(project, "merge-base", "--is-ancestor", before, now).returncode == 0
+    )
+    if not committed:
+        raise UsageError(f"HEAD has no commit after the killed-set check {path}, so its batch is not committed; "
+                         "commit that batch, or leave out --previous")
     return {entry["nodeid"] for entry in previous.get("removed", [])}
 
 
@@ -1170,7 +1189,7 @@ def recheck(args, extra: list[str]) -> dict:
             raise UsageError(f"the product module {path} changed after the matrix run; run mutate again")
     in_matrix = {t["nodeid"] for t in before.get("tests", [])}
     scan = load_scan(args.scan, len(in_matrix | {e["nodeid"] for e in before.get("excluded", [])}))
-    earlier = load_previous(args.previous, matrix_path) if args.previous else set()
+    earlier = load_previous(args.previous, matrix_path, project) if args.previous else set()
     limits = removal_check(before, collected, scan, earlier)
     keys = ("id", "path", "line", "operator", "before", "after", "splices")
     killed = [m for m in before.get("mutants", []) if m.get("status") == "killed"]
@@ -1220,6 +1239,7 @@ def recheck(args, extra: list[str]) -> dict:
         "summary": result_summary,
         "project": str(project),
         "matrix": matrix_path,
+        "head": head_commit(project),
         "sanity": evidence.sanity,
         "excluded": evidence.excluded,
         "broken": broken,

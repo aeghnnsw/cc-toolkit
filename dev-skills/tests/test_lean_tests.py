@@ -1628,19 +1628,38 @@ class RemovalCheckTest(unittest.TestCase):
 
     def test_previous_check_must_be_a_passed_check_of_the_same_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "recheck-1.json"
+            tmp_path = Path(tmp).resolve()
+            project, path = tmp_path / "project", tmp_path / "recheck-1.json"
+            project.mkdir()
+            env = git_env(tmp_path)
 
-            def write(passed: bool, matrix: str) -> None:
+            def commit() -> str:
+                subprocess.run(["git", "-C", str(project), "commit", "-q", "--allow-empty", "-m", "batch"],
+                               env=env, check=True)
+                return subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"], env=env, check=True,
+                                      capture_output=True, text=True).stdout.strip()
+
+            def write(passed: bool, matrix: str, head) -> None:
                 path.write_text(json.dumps({
-                    "summary": {"mode": "recheck", "passed": passed}, "matrix": matrix, "removed": [{"nodeid": "t1"}],
+                    "summary": {"mode": "recheck", "passed": passed}, "matrix": matrix, "head": head,
+                    "removed": [{"nodeid": "t1"}],
                 }), encoding="utf-8")
 
-            write(True, "/w/matrix.json")
-            self.assertEqual(self.load_previous(str(path), "/w/matrix.json"), {"t1"})
-            for passed, matrix in ((False, "/w/matrix.json"), (True, "/w/other.json")):
-                write(passed, matrix)
-                with self.subTest(passed=passed, matrix=matrix), self.assertRaises(self.usage_error):
-                    self.load_previous(str(path), "/w/matrix.json")
+            subprocess.run(["git", "init", "-q", str(project)], env=env, check=True)
+            checked = commit()
+            write(True, "/w/matrix.json", checked)
+            with self.subTest("no commit after the check"), self.assertRaises(self.usage_error):
+                self.load_previous(str(path), "/w/matrix.json", project)
+            commit()
+            self.assertEqual(self.load_previous(str(path), "/w/matrix.json", project), {"t1"})
+            for passed, matrix, head in ((False, "/w/matrix.json", checked), (True, "/w/other.json", checked),
+                                         (True, "/w/matrix.json", None), (True, "/w/matrix.json", "0" * 40)):
+                write(passed, matrix, head)
+                with self.subTest(passed=passed, matrix=matrix, head=head), self.assertRaises(self.usage_error):
+                    self.load_previous(str(path), "/w/matrix.json", project)
+            write(True, "/w/matrix.json", checked)
+            with self.subTest("not a Git work tree"), self.assertRaises(self.usage_error):
+                self.load_previous(str(path), "/w/matrix.json", tmp_path / "elsewhere")
 
 
 SCORE_A1, SCORE_A2 = "tests/test_a.py::test_a1", "tests/test_a.py::test_a2"

@@ -46,8 +46,8 @@ pins the model, enforces the time limits, and prints one status line.
   (`error:timeout`). Both report exit code 124. The preflight smoke call has
   60 seconds for both limits.
 - Waiting: each call runs in a detached process, so a shell limit does not
-  stop it. A runner command waits for the result for at most 90 seconds,
-  then prints `status=running`; then run `wait` (see
+  stop it. A runner command waits for the result for one wait step, 90
+  seconds by default, then prints `status=running`; then run `wait` (see
   [Status line](#status-line)). A runner command can move to the background
   after at most 10 seconds. Then wait for its completion message, which gives
   the exit code and the output. Read the status line in that output before

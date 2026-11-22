@@ -278,7 +278,8 @@ changes of one module and keeps to the batch size of
    matrix is already committed, add
    `--previous <work-dir>/recheck-<m>.json`, where `<m>` is the last
    committed batch. The tests that it removed then do not count toward
-   the batch size.
+   the batch size. The check records the commit at HEAD, and `--previous`
+   fails with exit status 2 when HEAD has no commit after that check.
 
    A removed test is a matrix test that the batch did not collect. A
    matrix test whose function the batch collects with more cases than
