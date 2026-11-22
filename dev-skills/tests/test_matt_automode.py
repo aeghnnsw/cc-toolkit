@@ -6,6 +6,8 @@ After a push changes the head, the run posts a new record before the merge.
 Issue #475: phase 5 runs one full review and one focused check of the fixes,
 only blocking findings block, and a blocking finding in a focused check stops
 the ticket. A fix for a failing check gets a focused check, not a full review.
+Issue #446: the retrospective runs the cutoff script that dev-skills ships, in
+every repository.
 Agent behavior is checked by the scenario review in
 matt-automode-scenarios.md.
 """
@@ -44,6 +46,8 @@ REVIEW_BOUND = (
 )
 OLD_FIX_RULE = "code changes need review against the same comparison commit"
 FIX_RULE = "Give each fix one focused check of its diff and the failure that it fixes"
+PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
+                     "antigravity-skills": "<plugin-root>"}
 SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec states what the "
                "check must block. Where the check cannot decide, it blocks: it fails closed.")
 
@@ -133,6 +137,19 @@ class ReviewLoopIsBoundedTest(unittest.TestCase):
             phase = between(host, "2. **Spec", "3. **Tickets")
             with self.subTest(host=host):
                 self.assertIn(SAFETY_RULE, phase)
+
+
+class RetrospectiveRunsTheShippedCutoffScriptTest(unittest.TestCase):
+    def test_steps_one_and_four_run_the_shipped_script(self) -> None:
+        for host in HOSTS:
+            steps = between(host, "## Navigation retrospective", "A leader is a session")
+            run = (f'Run `python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/find_retrospective_cutoff.py"` '
+                   "from the checkout root")
+            with self.subTest(host=host):
+                self.assertIn(run, steps)
+                self.assertIn("4. When step 1 found a record, run the script again.", steps)
+                self.assertNotIn("scripts/find-retrospective-cutoff.py", steps)
+                self.assertNotIn("When the repository has", steps)
 
 
 if __name__ == "__main__":

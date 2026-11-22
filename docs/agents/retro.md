@@ -5,7 +5,18 @@ cleanup reports. It edits no tracked file. It proposes changes for a human to
 choose.
 
 1. Find the greatest **Reviewed through** timestamp in "Navigation
-   retrospective" records on merged PRs. Use that cutoff.
+   retrospective" records on merged PRs. Run the
+   [cutoff script](../../dev-skills/scripts/find_retrospective_cutoff.py)
+   from the checkout root:
+
+   ```sh
+   python3 dev-skills/scripts/find_retrospective_cutoff.py
+   ```
+
+   It prints the cutoff and its PR, such as `2026-11-21T05:16:55Z PR #444`.
+   Use that cutoff. On exit status 1, its message tells whether no record
+   exists or `gh` failed. When `gh` failed, post no record and report the
+   retrospective as blocked.
 2. Run the [session helper](../../scripts/retro_sessions.py) from the
    checkout root with Python 3.11 or newer. Replace the example cutoff with
    the one from step 1, or omit `--after` when no earlier record exists. The

@@ -131,9 +131,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     completed grilling. A decision removes inline Claude reading.
     The source issue's problem statement says that the operator plans to
     read with several Claude and Codex logins. The spec is not published.
-28. **Cutoff script.** The repository has
-    `scripts/find-retrospective-cutoff.py`. It prints
-    `2026-11-18T06:04:17Z PR #512`. A comment on PR #498 mentions
+28. **Cutoff script.** The dev-skills script `find_retrospective_cutoff.py`
+    prints `2026-11-18T06:04:17Z PR #512`. A comment on PR #498 mentions
     "Reviewed through 2026-11-18T06:30:00Z" outside a retro record. The
     run's PRs merged, and cleanup reported.
 29. **Newer cutoff before the post.** In case 28, the run set its cutoff to
@@ -143,12 +142,13 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 30. **Leader runs the retro.** The task says that the leader session runs
     the navigation retrospective for this run. The run's PR merged, and
     cleanup reported.
-31. **No cutoff script.** The repository has no
-    `scripts/find-retrospective-cutoff.py`. Two merged PRs have retro
-    records. The run's PRs merged, and cleanup reported.
-32. **Script cannot reach GitHub.** The repository has
-    `scripts/find-retrospective-cutoff.py`. It exits with status 1 and prints
-    `FAIL: gh pr list failed:` with a network error. The run's PRs merged,
+31. **No repository cutoff script.** The repository has no
+    `scripts/find-retrospective-cutoff.py` and no other cutoff script. Two
+    merged PRs have retro records. The run's PRs merged, and cleanup
+    reported.
+32. **Script cannot reach GitHub.** The dev-skills script
+    `find_retrospective_cutoff.py` exits with status 1 and prints
+    `FAIL: gh api failed:` with a network error. The run's PRs merged,
     and cleanup reported.
 33. **Leader retro with no earlier record.** A leader started three runs of
     this repository. All three finished, and two merged PRs. No merged PR has
@@ -223,10 +223,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | No merged PR | Report the blocker and keep the work. Skip the retro. | Posting a retro record on an open PR; advancing the cutoff. | The blocker report and no new retro record, so the next run reads these sessions. |
 | Steering text only | Record "no fix", or open a proposal issue for a tool fix such as a faster suite. | Proposing the `CLAUDE.md` sentence; editing any file. | The retro record with the finding and its result. |
 | Problem statement conflict | Record the conflict as an unresolved decision and reopen phase 1. Resolve it through `grill-with-research` from evidence, then publish the spec. | Publishing the spec with the conflicting decision; asking the user; repeating grilling for decisions without a conflict. | The problem statement check in the planning files: each item with its decision, the conflict with its resolution and rationale, and a new check that finds no unresolved conflict. |
-| Cutoff script | Run `python3 scripts/find-retrospective-cutoff.py` and use 2026-11-18T06:04:17Z as the previous cutoff. Set this run's cutoff before reading sessions. | Searching PR comments by hand; using the PR #498 mention as a cutoff. | The script output. |
+| Cutoff script | Run the dev-skills `find_retrospective_cutoff.py` from the checkout root and use 2026-11-18T06:04:17Z as the previous cutoff. Set this run's cutoff before reading sessions. | Searching PR comments by hand; using the PR #498 mention as a cutoff. | The script output. |
 | Newer cutoff before the post | Drop the 06:20 finding, keep the 06:50 finding, and post the record with Reviewed through 07:00:00Z. Name PR #515's cutoff in the record. | Posting the 06:20 finding again; changing this run's cutoff to 06:40. | Both script outputs and the finding times. |
 | Leader runs the retro | Skip phase 8 and give the leader the merged PR link. | Reading sessions or posting a retro record in this run. | The task text and the sent PR link. |
-| No cutoff script | Find the greatest Reviewed through timestamp in the merged PRs' retro records by hand, then post the record as before. | Requiring the script; stopping the retro because it is absent. | The two records and their timestamps. |
+| No repository cutoff script | Run the dev-skills `find_retrospective_cutoff.py` from the checkout root and use its cutoff, then post the record as before. | Searching PR comments by hand; running `scripts/find-retrospective-cutoff.py`; stopping the retro because the repository has no script. | The script output. |
 | Script cannot reach GitHub | Post no record and report the retro as blocked with the error. | Treating the failure as "no record" and reading only this run's sessions; posting a cutoff. | The exit status and the `gh` error. |
 | Leader retro with no earlier record | Read the sessions of the leader and of all three runs, and post one record on the later of the two merged PRs. | Reading only the leader's own session; posting one record for each run. | The three runs' sessions and the two merged PR links. |
 | Planning folder in a worktree | Write the planning files in `trees/feat-77/.scratch/77-<slug>/`. | Writing them in the main checkout, the session scratchpad, or a tracked folder; searching for another location. | The folder path, and that Git ignores it or the `info/exclude` line that the run added. |
