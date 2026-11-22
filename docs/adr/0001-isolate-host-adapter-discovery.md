@@ -13,6 +13,8 @@ blocking result, and logging or notification failures to a warning with a
 successful exit. This policy covers failures seen by the hook's shell
 wrapper; it cannot cover the host failing to launch that shell or
 terminating the entire hook. Claude Code retains its own hook configuration.
+A native Grok Build adapter is deferred; shared-script tests cover its
+payload format without guaranteeing host-level hook invocation.
 
 The Codex safety and git policy commands pass `--host codex`. In this mode,
 those scripts exit 3 for a block, and their wrappers change that status to 2
@@ -21,8 +23,6 @@ script. Every other nonzero status of these two commands blocks with the
 failure line. The wrappers keep the status in `rc`, because zsh reserves
 `status` as a read-only variable
 ([#442](https://github.com/aeghnnsw/cc-toolkit/issues/442)).
-A native Grok Build adapter is deferred; shared-script tests cover its
-payload format without guaranteeing host-level hook invocation.
 
 See the [host-isolation design](https://github.com/aeghnnsw/cc-toolkit/blob/4be3c4bf74dd07eb08bde12da95f0c26f24980b6/docs/superpowers/specs/2026-08-18-core-hooks-codex-host-isolation-design.md)
 and the [Codex adapter tests](../../core-hooks/tests/test_codex_host_adapter.py)

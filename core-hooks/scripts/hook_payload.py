@@ -13,11 +13,12 @@ CODEX = "codex"
 def block_status(host):
     """Return the exit status of a script that blocks a tool call on `host`.
 
-    In Antigravity and Codex mode, a script blocks with status 3. The root
-    `hooks.json` and `hooks/hooks.codex.json` change 3 to 2, the block status
-    of both hosts, without their "hook failed" line. `uv` also exits 2 when
-    it cannot start a script, so the wrappers must tell that failure from a
-    block.
+    In Antigravity mode, a script blocks with status 3. In Codex mode, the
+    safety and git policy scripts block with status 3; the zsh trap script
+    denies through JSON on stdout. The root `hooks.json` and
+    `hooks/hooks.codex.json` change 3 to 2, the block status of both hosts,
+    without their "hook failed" line. `uv` also exits 2 when it cannot start
+    a script, so the wrappers must tell that failure from a block.
     """
     return 3 if host in (ANTIGRAVITY, CODEX) else 2
 
