@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Glob|Write|Edit|MultiEdit|NotebookEdit|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" ] || exit 0; python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" --host claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" ] || exit 0; python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" --host claude"
+          }
+        ]
+      }
+    ]
+  }
+}

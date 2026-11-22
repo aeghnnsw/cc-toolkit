@@ -48,9 +48,15 @@
     },
     "dev-skills": {
       "ownership": [
-        {"path": "antigravity-skills/", "hosts": ["antigravity"]}
+        {"path": "antigravity-skills/", "hosts": ["antigravity"]},
+        {"path": "hooks/hooks.json", "hosts": ["claude"]},
+        {"path": "hooks/hooks.codex.json", "hosts": ["codex"]},
+        {"path": "hooks.json", "hosts": ["antigravity"]}
       ],
       "resources": [
+        {"path": "hooks/hooks.json", "hosts": ["claude"]},
+        {"path": "hooks.json", "hosts": ["antigravity"]},
+        {"path": "scripts/t3_project_lead_hook.py", "hosts": ["claude", "codex", "antigravity"]},
         {"path": "claude-agents/finding-verifier.md", "hosts": ["claude"]},
         {"path": "claude-agents/project-evaluator.md", "hosts": ["claude"]},
         {"path": "skills/lean-tests/references/check.md", "hosts": ["claude"]},

@@ -1,6 +1,6 @@
 interface:
   display_name: "T3 Project Lead"
-  short_description: "Plan, dispatch, and verify T3 worker tasks"
+  short_description: "Plan and dispatch T3 worker tasks, and judge reports"
   default_prompt: "Use $dev-skills:t3-project-lead to lead this project in T3 Code."
 
 policy:

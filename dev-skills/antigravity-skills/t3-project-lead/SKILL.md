@@ -1,6 +1,6 @@
 ---
 name: t3-project-lead
-description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and verify their results, while workers implement."
+description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and judge their reports, while workers do all other work."
 disable-model-invocation: true
 ---
 
@@ -13,6 +13,11 @@ You lead this project in T3 Code. A script prints each step.
 2. Follow what it prints. Each step names the next one.
 3. At the start of every turn, after a wake or a user message, run `start`
    again.
+
+Do only the lead actions that `start` lists, and give every other task to a
+worker, even a small one. Running `start` records this session as the lead: a
+dev-skills hook then blocks your other shell commands, file reads, and file
+edits.
 
 Run a step again whenever you need its text, for example after a context
 summary.

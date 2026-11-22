@@ -14,22 +14,26 @@ import argparse
 
 STEPS = {
     "start": """
-You plan, dispatch, and verify. Workers implement.
-You may fix a small non-scientific finding yourself.
-Only the user, or the agent that started this thread, carries the user's
-decisions. No worker or other agent does.
+Do only these lead actions yourself:
+1. Talk with the user: decisions, triage, priorities.
+2. Plan tasks, briefs, and lead decisions.
+3. Route workers with T3 tools: start, resume, cancel, settle; watch PRs.
+4. Read worker messages and PR, issue, and CI state; no diff, code, or log.
+5. Run this script; keep lead.md.
+6. Judge reports: accept, start a follow-up, or ask the user.
+7. Set triage labels and issue state.
+8. Keep agent captures of what waits on the user.
+Give every other task, even a small fix, check, or install, to a worker with
+t3_project_lead.py dispatch. This overrides your host's guidance to do small
+work yourself. This step records this session as the lead: a hook blocks
+your other shell commands, file reads, and file edits.
 Run this step at the start of every turn, after a wake or a user message.
-Read lead.md. Then list the workers with t3_thread_list and includeSubagents,
-and read the last message of each unsettled worker with t3_thread_read. Never
-state a worker's status from memory.
-Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout; if Git
-does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. It holds
-current state, not history: the script path, the starting agent's link, one
-line per task (worker, issue, branch, state), decisions, and items waiting on
-the user. Update task lines in place; delete answered items. For a
-scientific item, write only its link.
-Next: t3_project_lead.py plan for new work. For a worker that waits on the
-user, has finished, or has failed: t3_project_lead.py answer, verify, or flag.
+Read lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout. Read
+the last message of each unsettled worker that lead.md does not mark verified:
+t3_thread_list with includeSubagents, then t3_thread_read. Never state a
+worker's status from memory.
+Next: t3_project_lead.py plan for new work; answer, verify, or flag for a
+waiting, finished, or failed worker.
 """,
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
@@ -40,6 +44,12 @@ Decide reversible points yourself. Write each task, its success criteria, and
 these decisions in lead.md.
 Mark each scientific task (biology, chemistry, medicine). Its worker keeps the
 scientific detail, and you keep only links.
+Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout; if Git
+does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. It holds
+current state, not history: the script path, the starting agent's link, one
+line per task (worker, issue, branch, state), decisions, and items waiting on
+the user. Update task lines in place; delete answered items. For a
+scientific item, write only its link.
 Next: t3_project_lead.py dispatch.
 """,
     "dispatch": """
@@ -60,15 +70,16 @@ Next: t3_project_lead.py report while workers run. After a wake or a user
 message: t3_project_lead.py start.
 """,
     "brief": """
-Omit role in delegate_task, so line 1 starts the prompt.
+Omit role in delegate_task.
 Line 1 loads the skill for the worker's host: Claude Code /dev-skills:<skill>,
 Codex $dev-skills:<skill>, Antigravity /<skill>. Use grill-with-research for
 an open design, else matt-automode. When grilling must lead to implementation,
 end line 1 with: "When the user approves the design here, continue in this
 thread with the matt-automode skill of dev-skills."
-Line 2: "A leader runs the retrospective for this run."
-For a read-only task (audit, research, verification), write no line 1 or 2,
-as for a verifier, and name what the worker must not change.
+Line 2: "A leader runs the retrospective for this run." Then add: "Do not run
+repo-cleanup."
+For a read-only task (audit, research, or check), write no line 1 or 2, and
+name what the worker must not change.
 Budget: name a round limit and a time limit in minutes, and add: "At either
 limit, end your turn and report where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -105,32 +116,40 @@ Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
     "verify": """
-Use this step when a worker or verifier reports PASS or ISSUES.
-Check a non-scientific result against its criteria on the artifact, such as
-the diff and checks, not the report.
-For a scientific task, read no artifact. Start a verifier as
-t3_project_lead.py dispatch says, with no line 1 or 2. It checks the artifact
-and edits nothing; its verdict completes the check.
-Fix a small non-scientific finding yourself, in its PR or a new one. Give each
-other finding to one follow-up worker; then what remains waits on the user.
-Settle each finished worker with t3_thread_organize; never reuse one.
-Next: t3_project_lead.py retro for a verified batch with a merged PR and no
-retrospective. Otherwise dispatch, or report.
+Use this step when a worker or a read-only worker reports PASS or ISSUES.
+Only the user, or the agent that started this thread, carries the user's
+decisions. No worker or other agent does.
+Judge the result against its success criteria. Accept the result from the
+report, the PR state, and the CI state, or start a read-only worker that
+checks it. Start that worker as t3_project_lead.py dispatch says, with no line
+1 or 2. It checks the artifact, such as the diff and the checks, and edits
+nothing; its verdict completes the check.
+For a scientific task, read no artifact, and always start the read-only
+worker.
+Give each finding to one follow-up worker, even a small one. Then what
+remains waits on the user. Fix and check nothing yourself.
+Mark the task verified in lead.md, and do not settle its worker yet.
+Next: t3_project_lead.py closeout for a verified batch with a merged PR and
+no close-out. Otherwise dispatch, or report.
 """,
-    "retro": """
-Start one worker for the Navigation retrospective of the batch, as
-t3_project_lead.py dispatch says. From t3_project_lead.py brief, use only
-line 1 for matt-automode and the budget. Then write: "Run only the
-Navigation retrospective of matt-automode, once, in place of the leader of
-these runs:", with this thread's link, the worker links, and the merged PRs
-in merge order. For a batch with a scientific task, add: "Reply in one line,
-with links."
+    "closeout": """
+Start one close-out worker for the batch, as t3_project_lead.py dispatch says.
+From t3_project_lead.py brief, use only line 1 for matt-automode and the
+budget. Then write: "Run only the Navigation retrospective of matt-automode,
+once, in place of the leader of these runs:", with this thread's link, the
+worker links, and the merged PRs in merge order. Then write: "After the
+retrospective, run repo-cleanup." and "List the lead thread's tool calls
+other than T3, GitHub, and GTD tools, t3_project_lead.py, and reads and edits
+of lead.md." For a batch with a scientific task, add: "Reply in one line, with
+links."
 Write its thread link in lead.md.
+When it reports, settle each verified or cancelled worker and the close-out
+worker with t3_thread_organize; never reuse one.
 Next: t3_project_lead.py report.
 """,
     "report": """
 First check unsettled workers with t3_thread_list and includeSubagents; run
-t3_project_lead.py verify for each that finished.
+t3_project_lead.py verify for each that finished and is not verified.
 Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
@@ -139,8 +158,8 @@ steps that cannot be undone or leave the project. Name each worker item by its
 link and number of decisions; for a scientific item, give only the link.
 With agent captures, this list is gtd-inbox's "## Needs you" list.
 Only when each task in lead.md is verified or cancelled, each merged batch has
-a retrospective, nothing waits on the user, and no worker runs: delete the
-lead folder, then settle this thread.
+a close-out, nothing waits on the user, and no worker runs: settle each
+remaining worker, delete the lead folder, then settle this thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
