@@ -465,18 +465,17 @@ HOST_LINES = {
 # Drift, repaired by #453: the description drops the workflow trigger.
 -description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 +description: Clean merged worktrees and branches, reconcile completed issues, delete their planning folders, and update the Default Branch.
--  leaves out the current session.
-+  leaves out the current session. `<plugin-root>` is this plugin's root, two
-+  levels above the skill folder.
+-run this command from the checkout that the current session runs in:
++run this command from the checkout that the current session runs in.
++`<plugin-root>` is this plugin's root, two levels above the skill folder.
 ''',
     'dev-skills/antigravity-skills/repo-cleanup/SKILL.md': r'''
--  log of the last 60 minutes with a working directory in the worktree. It
--  leaves out the current session.
-+  log of the last 60 minutes with a working directory in the worktree. The
-+  command does not read Antigravity transcripts, so it finds another
-+  Antigravity session only by its process or a Git lock. It leaves out the
-+  current session. `<plugin-root>` is this plugin's root, two levels above
-+  the skill folder.
+-run this command from the checkout that the current session runs in:
++run this command from the checkout that the current session runs in.
++`<plugin-root>` is this plugin's root, two levels above the skill folder.
++The plan does not read Antigravity transcripts, so it finds another
++Antigravity session only by its process or a Git lock.
++
 ''',
     'dev-skills/codex-skills/t3-project-lead/SKILL.md': r'''
 +   `<plugin-root>` is two levels above this folder.
