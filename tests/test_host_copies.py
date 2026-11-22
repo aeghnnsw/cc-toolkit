@@ -265,16 +265,6 @@ UNMATCHED = {
 }
 
 HOST_LINES = {
-    'creator-skills/codex-skills/sci-figure-format/SKILL.md': r'''
-# Drift, repaired by #466: the descriptions differ.
--description: Guide for creating publication-quality scientific figures that meet major journal standards (Nature, Science, ACS, RSC). Use this skill when users ask about scientific figure formatting, journal requirements, colorblind-safe palettes, resolution/DPI, file formats, fonts, or figure dimensions for publication.
-+description: Use when creating or reviewing scientific figures for publication, including journal dimensions, resolution, file formats, typography, line weights, colorblind-safe palettes, and Nature, Science, ACS, or RSC requirements.
-''',
-    'creator-skills/antigravity-skills/sci-figure-format/SKILL.md': r'''
-# Drift, repaired by #466: the descriptions differ.
--description: Guide for creating publication-quality scientific figures that meet major journal standards (Nature, Science, ACS, RSC). Use this skill when users ask about scientific figure formatting, journal requirements, colorblind-safe palettes, resolution/DPI, file formats, fonts, or figure dimensions for publication.
-+description: Use when creating or reviewing scientific figures for publication, including journal dimensions, resolution, file formats, typography, line weights, colorblind-safe palettes, and Nature, Science, ACS, or RSC requirements.
-''',
     'dev-skills/codex-skills/lean-tests/SKILL.md': r'''
 # Codex ships no project-eval (#313), so the description does not route to it.
 -description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.

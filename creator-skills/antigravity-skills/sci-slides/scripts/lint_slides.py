@@ -9,6 +9,8 @@ and a summary line on stderr.
 Exit status: 0 with no findings, 1 with findings, 2 on an error.
 
 Slide 1 is the title slide: the title and figure-source rules skip it.
+Content slides are the slides after slide 1 and before the first slide whose
+title starts with "Backup" or "Appendix"; --max-slides limits their count.
 Findings are advisory. The skill's slide-text and design references hold
 the rules; this script finds the mechanical cases.
 """
@@ -41,8 +43,10 @@ RULES = {
     "image-alt": "an image has no alt text, or a file name as alt text (not checked for Beamer)",
     "figure-source": "the slide shows a figure and no source line",
     "notes-words": "the notes have more than --max-note-words words",
+    "slide-budget": "the deck has more content slides than --max-slides",
 }
 
+BACKUP_TITLE = re.compile(r"(?:backup|appendix)\b", re.IGNORECASE)
 QUESTION = re.compile(r"\?\s*$")
 CONTRAST = re.compile(r"(?:[,;—–]|\s-)\s*not\s+\w", re.IGNORECASE)
 NUMBER = re.compile(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\w.]|,\d)")
@@ -83,6 +87,7 @@ class Limits:
     bullet_words: int = 10
     lines: int = 9
     note_words: int = 80
+    slides: int | None = None
 
 
 def clean(text: str) -> str:
@@ -767,6 +772,14 @@ def alt_problem(alt: str | None) -> str | None:
     return None
 
 
+def content_slide_count(slides: list[Slide]) -> int:
+    """Count the slides after slide 1 and before the first Backup or Appendix title."""
+    for number, slide in enumerate(slides[1:], start=2):
+        if BACKUP_TITLE.match(slide.title or ""):
+            return number - 2
+    return max(len(slides) - 1, 0)
+
+
 def lint(slides: list[Slide], limits: Limits, check_alt: bool) -> list[tuple[int, str, str]]:
     findings: list[tuple[int, str, str]] = []
     for number, slide in enumerate(slides, start=1):
@@ -809,6 +822,10 @@ def lint(slides: list[Slide], limits: Limits, check_alt: bool) -> list[tuple[int
         note_words = len(slide.notes.split())
         if note_words > limits.note_words:
             report("notes-words", f"{note_words} words (max {limits.note_words})")
+    content = content_slide_count(slides)
+    if limits.slides is not None and content > limits.slides:
+        findings.append((limits.slides + 2, "slide-budget", f"{content} content slides (max {limits.slides})"))
+        findings.sort(key=lambda finding: finding[0])
     return findings
 
 
@@ -827,12 +844,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-bullet-words", type=int, default=defaults.bullet_words, metavar="N")
     parser.add_argument("--max-lines", type=int, default=defaults.lines, metavar="N")
     parser.add_argument("--max-note-words", type=int, default=defaults.note_words, metavar="N")
+    parser.add_argument(
+        "--max-slides", type=int, metavar="N",
+        help="slide budget: the most content slides (not slide 1, and not the slides from the first "
+        "title that starts with Backup or Appendix)",
+    )
     options = parser.parse_args(argv)
 
     def fail(message: str) -> int:
         print(f"{parser.prog}: error: {message}", file=sys.stderr)
         return 2
 
+    if options.max_slides is not None and options.max_slides < 0:
+        return fail("--max-slides must be 0 or more")
     name = options.format or EXTENSIONS.get(options.deck.suffix.lower())
     if name is None:
         return fail(f"unknown deck format '{options.deck.suffix}'; pass --format")
@@ -852,11 +876,13 @@ def main(argv: list[str] | None = None) -> int:
         bullet_words=options.max_bullet_words,
         lines=options.max_lines,
         note_words=options.max_note_words,
+        slides=options.max_slides,
     )
     findings = lint(slides, limits, deck_format.check_alt)
     for number, rule, detail in findings:
         print(f"{options.deck}:{number}: {rule}: {detail}")
-    print(f"{len(slides)} slides, {len(findings)} findings", file=sys.stderr)
+    content = content_slide_count(slides)
+    print(f"{len(slides)} slides, {content} content slides, {len(findings)} findings", file=sys.stderr)
     return 1 if findings else 0
 
 

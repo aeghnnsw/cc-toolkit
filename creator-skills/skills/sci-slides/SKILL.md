@@ -1,6 +1,6 @@
 ---
 name: sci-slides
-version: 1.2.0
+version: 1.3.0
 description: Use when creating, revising, or reviewing slides for an academic or STEM talk (conference talk, lab meeting, thesis defence, or journal club), including the talk's story and length, slide titles, claims about data, reused figures, and slide design.
 ---
 
@@ -54,7 +54,9 @@ standing rules are loaded or saved.
 
 Set the slide budget to about one content slide per speaking minute. Speaking
 time is the slot minus Q&A; when the Q&A time is unknown, assume 20% of the
-slot. Title and backup slides do not count against the budget.
+slot. Title and backup slides do not count against the budget. Start the
+backup slides with a slide whose title starts with "Backup" or "Appendix", so
+that the lint counts the content slides before it.
 
 Write the slide list by the [story rules](references/slide-text.md#story), with
 a draft assertion title for each slide.
@@ -78,14 +80,18 @@ deck is reveal.js HTML, Markdown (Marp, Slidev, reveal.js, or Quarto), Beamer,
 or PPTX, first run the lint (Python 3.9 or newer, standard library only):
 
 ```bash
-python3 <skill-dir>/scripts/lint_slides.py <deck-file>
+python3 <skill-dir>/scripts/lint_slides.py --max-slides <budget> <deck-file>
 ```
 
-Here `<skill-dir>` is this skill's directory. Add a flag for each threshold
-that a standing rule changes; `--help` lists the flags. The lint finds
-mechanical faults only. Check each finding for the section's slides in the pass
-that covers its rule. When the lint exits with status 2 or cannot run, report
-the reason and run the passes without it.
+Here `<skill-dir>` is this skill's directory, and `<budget>` is the slide
+budget from step 2. The lint counts the content slides: the slides after
+slide 1 and before the first title that starts with "Backup" or "Appendix".
+Add a flag for each threshold that a standing rule changes; `--help` lists
+the flags. The lint finds mechanical faults only. Check each finding for the
+section's slides in the pass that covers its rule. For a `slide-budget`
+finding, cut or merge slides, or move them to the backup slides. When the lint
+exits with status 2 or cannot run, report the reason and run the passes
+without it.
 
 Read each slide as an audience member who sees only that slide and the slides
 before it. Run these passes on each slide, and record each finding with its
@@ -117,7 +123,9 @@ Repeat steps 3 and 4 until every section is drafted and reviewed.
 
 - **Story:** the deck follows the [story rules](references/slide-text.md#story),
   and each message has its evidence.
-- **Budget:** the content slide count is within the slide budget.
+- **Budget:** the lint, run on the whole deck as in step 4, reports no
+  `slide-budget` finding. When the lint cannot run, count the content slides
+  by hand.
 - **Terms:** each concept has one term across all sections, defined at its
   first use.
 - **Layout:** when a renderer is available, render the deck and inspect each

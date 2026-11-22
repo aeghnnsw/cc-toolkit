@@ -175,6 +175,24 @@ class LintSlidesHtmlTest(unittest.TestCase):
         code, findings, output, _ = run_lint("talk.html", precise, "--max-title-sig-figs", "4")
         self.assertEqual((code, findings), (0, set()), output)
 
+    def test_slide_budget(self) -> None:
+        content = [CLEAN_SLIDE] * 3
+        deck = html_deck(TITLE_SLIDE, *content, "<h2>Backup slides</h2>", CLEAN_SLIDE)
+        code, findings, output, _ = run_lint("talk.html", deck, "--max-slides", "3")
+        self.assertEqual((code, findings), (0, set()), output)
+        self.assertIn("3 content slides", output)
+        code, findings, output, _ = run_lint("talk.html", deck, "--max-slides", "2")
+        self.assertEqual((code, findings), (1, {(4, "slide-budget")}), output)
+        appendix = html_deck(TITLE_SLIDE, *content, "<h2>APPENDIX: docking settings</h2>", CLEAN_SLIDE)
+        code, findings, output, _ = run_lint("talk.html", appendix, "--max-slides", "3")
+        self.assertEqual((code, findings), (0, set()), output)
+        # Only a title that starts with Backup or Appendix ends the content slides.
+        mention = html_deck(
+            TITLE_SLIDE, CLEAN_SLIDE, "<h2>Docking needs a backup scoring function</h2><p>x</p>", CLEAN_SLIDE
+        )
+        code, findings, output, _ = run_lint("talk.html", mention, "--max-slides", "2")
+        self.assertEqual((code, findings), (1, {(4, "slide-budget")}), output)
+
     def test_inline_markup_stays_on_one_line(self) -> None:
         slide = (
             "<h2>Recall drops by 40% on unseen kinases</h2>"
@@ -511,6 +529,11 @@ class LintSlidesErrorTest(unittest.TestCase):
     def test_no_slides(self) -> None:
         code, _, output, _ = run_lint("talk.html", "<html><body><p>No sections</p></body></html>")
         self.assert_error(code, output)
+
+    def test_negative_slide_budget(self) -> None:
+        code, _, output, _ = run_lint("talk.html", html_deck(TITLE_SLIDE, CLEAN_SLIDE), "--max-slides", "-1")
+        self.assert_error(code, output)
+        self.assertIn("--max-slides must be 0 or more", output)
 
     def test_unreadable_pptx(self) -> None:
         code, _, output, _ = run_lint("talk.pptx", b"not a zip file")
