@@ -128,7 +128,7 @@ Scientific content creation for figures and presentations.
 
 ### Core Hooks (`core-hooks`)
 Safety guards and workflow enforcement hooks for Claude Code, Codex, and Antigravity.
-In Claude Code, `safety_guard.py`, `pre_git_hook.py`, and `zsh_traps.py` check the shell command of the `Bash` and `Monitor` tools. A `Monitor` call without a command, such as a WebSocket watch, has nothing to check.
+In Claude Code, `safety_guard.py`, `pre_git_hook.py`, and `zsh_traps.py` check the shell command of the `Bash` and `Monitor` tools. The `echo` quoting of `zsh_traps.py` applies only to a `Bash` command: for a `Monitor` command, the hook blocks the unquoted separator. A `Monitor` call without a command, such as its `ws` (WebSocket) form, is allowed.
 
 **Hooks:**
 - **safety_guard.py**: Blocks an `rm` of a wildcard target, `/`, `.`, a path with `..`, a `~` or `$HOME` path, the temporary directory root or `/tmp` itself, or a system path such as `/usr`, `/etc`, or `/var`. A named path inside `$TMPDIR` is allowed. Also blocks a command that prints every environment variable: `env` or `printenv` with no command, `export`, `declare`, or `typeset` with only options, and a bare `set`. `env | cut -d= -f1` and `env | awk -F= '{print $1}'` list the names only, and `--version` or `--help` prints no variable. The guard skips a quoted heredoc body only when the whole command is a `cat` file write, a `git commit` message, or a `gh` PR or issue body in one of the allowed forms (see [#445](https://github.com/aeghnnsw/cc-toolkit/issues/445)); it scans every other heredoc body. An error that the guard catches, such as unreadable input or a failed log write, blocks the tool call, and the message names the error and how to turn off the plugin
