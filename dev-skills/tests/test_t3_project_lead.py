@@ -5,24 +5,31 @@ matt-automode. Issues #468, #476, and #478 add the read-only brief, the dispatch
 rules for every task, the start of every turn, and the worker budget. Issue
 #504 sets the budget of a code change to one full review and one fix, then the
 merge. Issue #520 limits the lead to its own actions, lets it choose how to
-check a result, and adds the close-out worker and the lead hook. Agent behavior
+check a result, and adds the close-out worker and the lead hook. Issue #530
+moves the lead state into the script's commands and drops the time limit; the
+state commands have their own tests in test_t3_project_lead_state.py. Agent behavior
 is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
 its own tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
-import ast
 import functools
 import json
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
 STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "closeout", "report")
+# The commands that keep the lead state (#530), after the steps.
+STATE_COMMANDS = ("init", "show", "waiting", "finish", "outcome", "criteria", "wait", "done", "task",
+                  "decision")
+# A folder outside every Git work tree, so that no step finds a lead state.
+NO_STATE = tempfile.TemporaryDirectory()
 # An agent reads a whole step after each wake, so each step stays short.
 STEP_WORD_LIMIT = 200
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
@@ -45,10 +52,10 @@ LEAD_ACTIONS = (
     "2. Plan tasks, briefs, and lead decisions.",
     "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
     "4. Read worker messages and PR, issue, and CI state; no diff, code, or log.",
-    "5. Run this script; keep lead.md.",
+    "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
     "7. Set triage labels and issue state.",
-    "8. Keep agent captures of what waits on the user.",
+    "8. Keep agent captures of what waits on the user when your instructions ask for them.",
 )
 # Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, and #520.
 REQUIRED = {
@@ -59,14 +66,14 @@ REQUIRED = {
               "This step records this session as the lead: a hook blocks your other shell "
               "commands, file reads, and file edits.",
               "Run this step after each wake or user message.",
-              "Read lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout.",
-              "Read the last message of each unsettled worker that lead.md does not mark verified: "
+              "Read the last message of each worker of a running or pr-open task: "
               "t3_thread_list with includeSubagents, then t3_thread_read.",
               "Never state a worker's status from memory."],
-    "plan": ["Write each task, its success criteria, and these decisions in lead.md.",
-             "Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout",
-             "It holds current state, not history",
-             "Update task lines in place; delete answered items."],
+    "plan": ["A task is one brief for one worker; it can cover several issues.",
+             "Give a task that needs another task's result, or edits the same files, --after "
+             "that task.",
+             "Text is at most 200 characters",
+             "init <slug>, once, after the user approves the outcome"],
     "dispatch": ["Start no second worker for work that already runs",
                  'Start each worker with delegate_task and isolation "worktree".',
                  "Start every task this way, research and review tasks included. Never use your "
@@ -74,23 +81,23 @@ REQUIRED = {
                  '"You may start your own subagents. Keep your report short, and leave the '
                  'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
-                 "Write the worker's link and branch in its task line."],
+                 "Then run task start <name> <worker link> [--branch NAME]."],
     "brief": ["Omit role in delegate_task",
               "Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
               "When grilling must lead to implementation, end line 1 with:",
               'Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."',
               "For a read-only task (audit, research, or check), write no line 1, keep line 2, and "
               "name what the worker must not change.",
-              "Budget: name a round limit and a time limit in minutes",
-              '"At either limit, end your turn and report where you are, with links and what '
+              "Budget: name a round limit, and add:",
+              '"At the limit, end your turn and report where you are, with links and what '
               'remains."',
               "For a code change: one full review and one fix of any size, then merge. Only "
               "a blocking problem of matt-automode phase 5 stops the merge."],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
-               "In this turn, put it on the list of what waits on the user, with its link and "
-               "its number of decisions, if any.",
-               "delete the item when the worker resumes or finishes"],
+               "Keep no detail of them: lead the user to the worker's thread.",
+               "In this turn, run wait --task <name> --decisions <N>.",
+               "Run done <number> when the worker resumes or finishes."],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
              "Otherwise, or after a second flag, the task waits on the user."],
@@ -103,19 +110,21 @@ REQUIRED = {
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
                "Fix and check nothing yourself.",
-               "Mark the task verified in lead.md, and do not settle its worker yet."],
+               "Run task verified <name>. Settle its worker only when a due line lists it."],
     "closeout": ["From t3_project_lead.py brief, use only line 1 for matt-automode and the "
                  "budget.",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",
                  '"After the retrospective, run repo-cleanup."',
-                 "List the lead thread's tool calls other than T3, GitHub, and GTD tools, "
-                 "t3_project_lead.py, and reads and edits of lead.md.",
-                 "When it reports, settle each verified or cancelled worker and the close-out "
-                 "worker with t3_thread_organize; never reuse one."],
-    "report": ["Only when each task in lead.md is verified or cancelled, each merged batch has a "
-               "close-out, nothing waits on the user, and no worker runs: settle each remaining "
-               "worker, delete the lead folder, then settle this thread.",
+                 "List the lead thread's tool calls other than T3, GitHub, and GTD tools and "
+                 "t3_project_lead.py.",
+                 "When it reports, run task verified <name>; the batch's verified tasks are then "
+                 "closed out.",
+                 "Settle each worker that a due line lists with t3_thread_organize, and run task "
+                 "settled <name>; never reuse one."],
+    "report": ['End with the "Waiting on you" list below, copied as it is.',
+               "Name no detail of a worker's decisions.",
+               "When a due line says to run finish, run it, then settle this thread.",
                "Next: after a wake or a user message, t3_project_lead.py start.",
                "Make no promise that needs a signal from the middle of a worker's run."],
 }
@@ -123,9 +132,9 @@ REQUIRED = {
 FORBIDDEN_LINES = ("Fix a small non-scientific finding yourself",
                    "You may fix a small non-scientific finding yourself",
                    "Check a non-scientific result against its criteria on the artifact")
-# The script may print, and parse its argument; it reads and runs nothing.
-ALLOWED_IMPORTS = {"__future__", "argparse"}
-FORBIDDEN_CALLS = {"open", "exec", "eval", "compile", "__import__"}
+# Text that no step may print after #530: the lead state replaced lead.md, and a
+# brief names only a round limit.
+RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit")
 
 
 def words(text: str) -> str:
@@ -135,7 +144,7 @@ def words(text: str) -> str:
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True,
-                          check=False)
+                          cwd=NO_STATE.name, check=False)
 
 
 @functools.lru_cache(maxsize=None)
@@ -232,7 +241,17 @@ class StepTests(unittest.TestCase):
         self.assertNotIn(-1, positions, [a for a, p in zip(LEAD_ACTIONS, positions) if p < 0])
         self.assertEqual(positions, sorted(positions))
         self.assertLess(positions[-1], text.find("Give every other task"))
-        self.assertLess(text.find("Give every other task"), text.find("Read lead.md"))
+        self.assertLess(text.find("Give every other task"), text.find("Read the last message"))
+
+    def test_no_step_names_lead_md_or_a_time_limit(self) -> None:
+        for name in STEPS:
+            for retired in RETIRED_TEXT:
+                with self.subTest(step=name, text=retired):
+                    self.assertNotIn(retired, words(step(name)))
+
+    def test_start_without_a_lead_state_tells_how_to_create_one(self) -> None:
+        self.assertIn("No lead state in ", step("start"))
+        self.assertIn(f'run: python3 "{SCRIPT}" init <slug>', step("start"))
 
     def test_no_step_tells_the_lead_to_do_a_worker_task(self) -> None:
         for name in STEPS:
@@ -244,12 +263,13 @@ class StepTests(unittest.TestCase):
         text = words(step("closeout"))
         self.assertLess(text.find("Run only the Navigation retrospective"),
                         text.find("run repo-cleanup"))
-        self.assertLess(text.find("run repo-cleanup"), text.find("When it reports, settle"))
+        self.assertLess(text.find("run repo-cleanup"), text.find("When it reports, run task verified"))
 
-    def test_the_script_offers_exactly_the_steps(self) -> None:
+    def test_the_script_offers_exactly_the_steps_and_state_commands(self) -> None:
         choices = re.search(r"choose from (.*)\)", run("merge").stderr)
         self.assertIsNotNone(choices)
-        self.assertEqual(tuple(choice.strip(" '") for choice in choices.group(1).split(",")), STEPS)
+        self.assertEqual(tuple(choice.strip(" '") for choice in choices.group(1).split(",")),
+                         STEPS + STATE_COMMANDS)
 
     def test_each_step_starts_with_the_script_path(self) -> None:
         for name in STEPS:
@@ -263,9 +283,10 @@ class StepTests(unittest.TestCase):
                     self.assertIn(line, words(step(name)))
 
     def test_each_step_is_short(self) -> None:
+        # The step text ends at the first empty line; the lead state view follows it.
         for name in STEPS:
             with self.subTest(step=name):
-                self.assertLessEqual(len(step(name).split()), STEP_WORD_LIMIT)
+                self.assertLessEqual(len(step(name).split("\n\n")[0].split()), STEP_WORD_LIMIT)
 
     def test_each_step_ends_with_real_next_steps(self) -> None:
         for name in STEPS:
@@ -301,17 +322,6 @@ class StepTests(unittest.TestCase):
                 self.assertIn("When the task says that a leader runs the retrospective for this run",
                               words(text))
                 self.assertRegex(text, r"(?m)^## Navigation retrospective$")
-
-    def test_script_only_prints(self) -> None:
-        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
-        modules = {alias.name.split(".")[0] for node in ast.walk(tree)
-                   if isinstance(node, ast.Import) for alias in node.names}
-        modules |= {node.module.split(".")[0] for node in ast.walk(tree)
-                    if isinstance(node, ast.ImportFrom) and node.module}
-        calls = {node.func.id for node in ast.walk(tree)
-                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
-        self.assertLessEqual(modules, ALLOWED_IMPORTS)
-        self.assertFalse(calls & FORBIDDEN_CALLS, calls)
 
     def test_an_unknown_step_fails(self) -> None:
         result = run("merge")

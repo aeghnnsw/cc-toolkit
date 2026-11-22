@@ -1,5 +1,12 @@
 # Gate the project lead with a session-checked plugin hook
 
+> **Superseded in part (2026-11-22, issue #530).** The step script now also
+> keeps the lead state, so it no longer only prints. In a recorded session,
+> the hook allows only the step script's commands and reads of T3
+> attachments: the lead may no longer read, list, or remove its lead folder.
+> Read [Lead state commands](#lead-state-commands) and
+> [ADR 0008](0008-keep-project-lead-state-in-a-cli.md).
+
 A project lead must give every task except its own lead actions to a worker
 ([#520](https://github.com/aeghnnsw/cc-toolkit/issues/520)). Text alone did
 not hold this rule. The lead used native research agents (#476), and on
@@ -20,13 +27,17 @@ In every other session it exits at once and changes nothing.
 The lead may still read its lead folder and T3 attachments, which hold the
 files that the user sends. It may list the names in `.scratch`, to find its
 lead folder after a restart, and remove its lead folder when the project
-ends. It may not call T3 tools through a terminal command.
+ends. (Superseded: the lead may still read T3 attachments, but it may not
+read, list, or remove its lead folder; read
+[Lead state commands](#lead-state-commands).) It may not call T3 tools
+through a terminal command.
 
 The record is a file named by the session ID, in a per-user state folder
 outside every repository and settings file. The hook writes it, so the step
 script still only prints, and the record holds the same ID that the hook
-compares later. The ID stays the same after T3 restarts a session, so the
-hook works at once after a restart.
+compares later. (Superseded in part: the step script now also keeps the lead
+state; read [Lead state commands](#lead-state-commands).) The ID stays the
+same after T3 restarts a session, so the hook works at once after a restart.
 
 Rejected alternatives:
 
@@ -55,3 +66,28 @@ Consequences:
 - Where the hook cannot decide in a recorded session, such as a command with a
   pipe or a path that it cannot resolve, it blocks the call: it fails closed.
 - Antigravity has no prompt event, so it gets the block but not the reminder.
+
+## Lead state commands
+
+Added on 2026-11-22 for
+[#530](https://github.com/aeghnnsw/cc-toolkit/issues/530).
+
+The step script now keeps the lead state in the lead's working tree, as
+[ADR 0008](0008-keep-project-lead-state-in-a-cli.md) records. The lead had
+kept `lead.md` by hand, and in one batch those edits took 47 of 77 lead
+calls. Now the project lead changes its state only through the script's
+commands.
+
+So in a recorded session, the hook allows only
+`python3 "<script>" <subcommand> [arguments...]` as one simple command, and
+reads of T3 attachments. It blocks every other shell command, every other
+file read, and every file edit, so it also blocks reads, edits, and `rm` of
+the lead folder. A direct edit would go around the life cycle that the script
+enforces. The lead needs no direct read, because `start`, `show`, and
+`waiting` print the state. It also no longer needs to list or remove the
+folder: the script finds it, and `finish` deletes it. As before, only a
+three-word `python3 "<script>" start` records a session.
+
+The hook still writes the session record. The record stays in the per-user
+state folder, which a sandboxed shell command cannot write, and it holds the
+same ID that the hook compares later.

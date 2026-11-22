@@ -1,12 +1,13 @@
-"""Contract checks for the t3-project-lead hook (issue #520).
+"""Contract checks for the t3-project-lead hook (issues #520 and #530).
 
 The hook acts only in a session that ran `t3_project_lead.py start` from the
 hook's own copy or from a copy outside every Git work tree. In that session it
-blocks shell commands, file reads, file edits, and native subagent calls that
-are not lead actions, and it reminds the lead to run `start` on each user
-message. Each test runs the hook as a process with a JSON payload on stdin, as
-Claude Code, Codex, and Antigravity do, and checks the exit status, stdout,
-stderr, and the state folder.
+allows the step script with arguments as one simple shell command and file
+reads in T3 attachments. It blocks every other shell command, file read, file
+edit, and native subagent call, and it reminds the lead to run `start` on each
+user message. Each test runs the hook as a process with a JSON payload on
+stdin, as Claude Code, Codex, and Antigravity do, and checks the exit status,
+stdout, stderr, and the state folder.
 """
 from __future__ import annotations
 
@@ -128,10 +129,10 @@ class HookCase(unittest.TestCase):
         self.assertEqual(lines[0], BLOCK_LINE)
         self.assertEqual(len(lines), 2, result.stderr)
 
-    def check(self, jobs, *, allowed):
+    def check(self, jobs, *, allowed, env=None):
         """Run each (host, payload) job at once, then check that each passes or blocks."""
         with ThreadPoolExecutor(max_workers=8) as pool:
-            results = list(pool.map(lambda job: self.run_hook(*job), jobs))
+            results = list(pool.map(lambda job: self.run_hook(*job, env), jobs))
         for (host, payload), result in zip(jobs, results):
             with self.subTest(host=host, payload=payload, allowed=allowed):
                 if allowed:
@@ -227,6 +228,13 @@ class RecordTests(HookCase):
                     self.assert_passes(self.run_hook(host, shell_payload(host, command, self.dev)))
         self.assertFalse((self.state / SESSION).exists())
 
+    def test_start_with_more_words_records_nothing(self):
+        for host in HOSTS:
+            for command in (f"python3 {STEP_SCRIPT} start extra", f"python3 {self.installed} start --x 1"):
+                with self.subTest(host=host, command=command):
+                    self.assert_passes(self.run_hook(host, shell_payload(host, command, self.main)))
+        self.assertFalse((self.state / SESSION).exists())
+
     def test_an_invalid_session_id_records_nothing(self):
         payload = shell_payload("claude", f"python3 {STEP_SCRIPT} start", self.main, session="../escape")
         self.assert_passes(self.run_hook("claude", payload))
@@ -258,12 +266,37 @@ class GateTests(HookCase):
                           f"python3 {self.installed} report", f"python3 '{STEP_SCRIPT}' start"),
                          allowed=True)
 
+    def test_the_step_script_runs_with_arguments(self):
+        self.check_shell((f"python3 {STEP_SCRIPT} task add fix-503 'Triage #503 (lean-tests)' --batch 2",
+                          f'python3 "{STEP_SCRIPT}" show', f"python3 {STEP_SCRIPT} wait --task x --decisions 3",
+                          f"python {self.installed} outcome 'a | b; c > d'", f"python3 {STEP_SCRIPT} plan extra",
+                          f'python3 {STEP_SCRIPT} criteria "Tests pass (all)"'),
+                         allowed=True)
+
     def test_a_worktree_copy_of_the_step_script_is_blocked(self):
         self.check_shell((f"python3 {self.dev_script} plan", f"python3 -c 'print(1)' {STEP_SCRIPT} plan",
-                          f"python3 {STEP_SCRIPT} plan extra", f"/usr/bin/python3 {STEP_SCRIPT} plan"),
+                          f"python3 {self.dev_script} task add fix-503 'Triage #503' --batch 2",
+                          f"/usr/bin/python3 {STEP_SCRIPT} plan"),
                          allowed=False)
 
-    def test_a_simple_read_of_lead_files_runs(self):
+    def test_a_bad_subcommand_or_a_compound_step_command_is_blocked(self):
+        self.check_shell((f"python3 {STEP_SCRIPT} Task add", f"python3 {STEP_SCRIPT} --help",
+                          f"python3 {STEP_SCRIPT} show | cat", f"python3 {STEP_SCRIPT}",
+                          f"python3 {STEP_SCRIPT} task-add x", f"python3 {STEP_SCRIPT} '' show"),
+                         allowed=False)
+
+    def test_only_a_three_word_start_refreshes_the_record(self):
+        record = self.state / SESSION
+        stamp = int(time.time()) - DAY
+        os.utime(record, (stamp, stamp))
+        self.assert_passes(self.run_hook("claude", shell_payload("claude", f"python3 {STEP_SCRIPT} start extra",
+                                                                 self.main)))
+        self.assertEqual(record.stat().st_mtime, stamp)
+        self.assert_passes(self.run_hook("claude", shell_payload("claude", f"python3 {STEP_SCRIPT} start",
+                                                                 self.main)))
+        self.assertGreater(record.stat().st_mtime, stamp)
+
+    def test_shell_reads_of_lead_files_are_blocked(self):
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
         self.check_shell((f"cat {lead_md}", f"cat '{self.lead_md}'", f"head -n 5 {lead_md}",
                           f"tail -n +2 {lead_md}", f"tail -3 {lead_md}", f"wc -l {lead_md} .gitignore",
@@ -271,9 +304,8 @@ class GateTests(HookCase):
                           f"grep -n 'a|b' {lead_md}", f"grep -rn -e Lead .scratch/{LEAD_NAME}",
                           f"sed -n '1,5p' {lead_md}", f"sed -n '/^#/p;$p' {lead_md}",
                           f"cat {self.exclude}", "cat .gitignore"),
-                         allowed=True)
-        # From a linked worktree, the lead folder is in the main checkout.
-        self.check_shell((f"cat {self.lead_md}", f"cat {self.exclude}"), allowed=True, cwd=self.dev)
+                         allowed=False)
+        self.check_shell((f"cat {self.lead_md}", f"cat {self.exclude}"), allowed=False, cwd=self.dev)
 
     def test_other_shell_commands_are_blocked(self):
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
@@ -286,39 +318,43 @@ class GateTests(HookCase):
                           f"FOO=1 cat {lead_md}", f"cat {lead_md} # note"),
                          allowed=False)
 
-    def test_the_lead_can_list_names_in_scratch_but_read_no_other_folder(self):
-        # A lead that lost its folder name finds it from the names in .scratch.
+    def test_listings_of_scratch_are_blocked(self):
         scratch = self.main / ".scratch"
-        self.check_shell(("ls .scratch", f"ls -1 {scratch}/"), allowed=True)
-        self.check_shell(("grep -rn x .scratch", "cat .scratch/520-other/x.md", "ls .scratch/520-other"),
+        self.check_shell(("ls .scratch", f"ls -1 {scratch}/", "grep -rn x .scratch", "ls .scratch/520-other"),
                          allowed=False)
-        self.check_tools("claude", (("Glob", {"pattern": "*-lead-*/lead.md", "path": str(scratch)}),),
-                         (("Grep", {"pattern": "x", "path": str(scratch)}),
-                          ("Glob", {"pattern": "*", "path": str(scratch / "520-other")})))
-        self.check_tools("antigravity", (("list_dir", {"DirectoryPath": str(scratch)}),),
-                         (("grep_search", {"SearchPath": str(scratch), "Query": "x"}),))
+        self.check_tools("claude", (), (("Glob", {"pattern": "*-lead-*/lead.md", "path": str(scratch)}),
+                                        ("Grep", {"pattern": "x", "path": str(scratch)}),
+                                        ("Glob", {"pattern": "*", "path": str(scratch / "520-other")})))
+        self.check_tools("antigravity", (), (("list_dir", {"DirectoryPath": str(scratch)}),
+                                             ("grep_search", {"SearchPath": str(scratch), "Query": "x"})))
 
     def test_claude_monitor_is_a_shell_tool(self):
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
-        self.check_tools("claude", (("Monitor", {"command": f"cat {lead_md}", "description": "x"}),),
-                         (("Monitor", {"command": "ssh h1 'claude plugin update'", "description": "x"}),))
+        self.check_tools("claude", (("Monitor", {"command": f"python3 {STEP_SCRIPT} show", "description": "x"}),),
+                         (("Monitor", {"command": "ssh h1 'claude plugin update'", "description": "x"}),
+                          ("Monitor", {"command": f"cat {lead_md}", "description": "x"})))
 
     def test_pipes_redirects_lists_and_substitutions_are_blocked(self):
-        # In the lead folder each word names a lead file, so only the parser can block.
-        self.check_shell(("cat lead.md | sh", "cat lead.md|sh", "cat lead.md > lead.md", "cat < lead.md",
-                          "cat lead.md; sh", "cat lead.md && sh", "cat lead.md &", "cat $(echo lead.md)",
-                          "cat `echo lead.md`", "cat <(sh)", "cat lead.md\nsh", "cat 'lead.md", 'cat "lead.md',
-                          'cat "$(sh)"', 'cat "`sh`"', "cat {lead.md,sh}", "cat *.md", "cat lead.md # sh",
-                          "bash -lc 'cat lead.md | sh'", "(cat lead.md)", "cat $LEAD_TEST_UNSET"),
-                         allowed=False, cwd=self.lead)
-        self.check_shell(("cat lead.md", 'cat "lead.md"', "cat 'lead'.md", "cat lead\\.md"), allowed=True,
-                         cwd=self.lead)
+        # Each command runs the step script, so only the parser can block.
+        step = "python3 t3_project_lead.py"
+        self.check_shell((f"{step} show | sh", f"{step} show|sh", f"{step} show > out", f"{step} show < in",
+                          f"{step} show; sh", f"{step} show && sh", f"{step} show &", f"{step} outcome $(echo x)",
+                          f"{step} outcome `echo x`", f"{step} outcome <(sh)", f"{step} show\nsh",
+                          f"{step} outcome 'x", f'{step} outcome "x', f'{step} outcome "$(sh)"',
+                          f'{step} outcome "`sh`"', f"{step} outcome {{a,b}}", f"{step} outcome *.md",
+                          f"{step} show # sh", f"bash -lc '{step} show | sh'", f"({step} show)",
+                          f"{step} outcome $LEAD_TEST_UNSET", f"FOO=1 {step} show"),
+                         allowed=False, cwd=STEP_SCRIPT.parent)
+        self.check_shell((f"{step} show", 'python3 "t3_project_lead.py" show', "python3 't3_project'_lead.py show",
+                          "python3 t3_project_lead\\.py show", f"{step} outcome 'a | b; c > d'",
+                          f'{step} outcome "a (b) #c"'),
+                         allowed=True, cwd=STEP_SCRIPT.parent)
 
-    def test_rm_of_the_lead_folder_runs(self):
+    def test_rm_of_the_lead_folder_is_blocked(self):
         self.check_shell((f"rm -rf {self.lead}", f"rm -r .scratch/{LEAD_NAME}/",
                           f"rm -fr .scratch/{LEAD_NAME}", f"rm -f .scratch/{LEAD_NAME}/lead.md",
                           f"rm .scratch/{LEAD_NAME}/lead.md"),
-                         allowed=True)
+                         allowed=False)
         self.assertTrue(self.lead_md.exists())
 
     def test_rm_of_another_path_is_blocked(self):
@@ -328,79 +364,94 @@ class GateTests(HookCase):
                           f"rm -rf .scratch/{LEAD_NAME}/../520-other", "rm -rf /", "rm -rf ."),
                          allowed=False)
 
-    def test_claude_file_reads(self):
-        allowed = (("Read", {"file_path": str(self.lead_md)}), ("Read", {"file_path": str(self.main / ".gitignore")}),
+    def test_claude_file_reads_outside_attachments_are_blocked(self):
+        blocked = (("Read", {"file_path": str(self.lead_md)}), ("Read", {"file_path": str(self.main / ".gitignore")}),
                    ("Read", {"file_path": str(self.exclude)}),
                    ("Grep", {"pattern": "x", "path": str(self.lead)}),
-                   ("Glob", {"pattern": "*.md", "path": str(self.lead)}))
-        blocked = (("Read", {"file_path": str(self.main / "notes.md")}), ("Read", {}),
+                   ("Glob", {"pattern": "*.md", "path": str(self.lead)}),
+                   ("Read", {"file_path": str(self.main / "notes.md")}), ("Read", {}),
                    ("Grep", {"pattern": "x"}), ("Glob", {"pattern": "**/*.md"}),
                    ("Glob", {"pattern": "../../*", "path": str(self.lead)}),
                    ("Glob", {"pattern": "/etc/*", "path": str(self.lead)}),
                    ("Read", {"file_path": str(self.dev / ".gitignore")}))
-        self.check_tools("claude", allowed, blocked)
+        self.check_tools("claude", (), blocked)
 
     def test_t3_attachments_are_readable_not_editable(self):
         home = self.temp / "home"
-        shot = home / ".t3" / "userdata" / "attachments" / "shot.png"
+        attachments = home / ".t3" / "userdata" / "attachments"
+        shot = attachments / "shot.png"
         shot.parent.mkdir(parents=True, exist_ok=True)
         shot.write_bytes(b"png")
         env = {"HOME": str(home)}
-        self.assert_passes(self.run_hook("claude", tool_payload("claude", "Read", {"file_path": str(shot)},
-                                                                self.main), env))
-        self.assert_passes(self.run_hook("codex", shell_payload("codex", f"ls {shot.parent}", self.main), env))
-        self.assert_blocks(self.run_hook("claude", tool_payload("claude", "Write", {"file_path": str(shot),
-                                                                                  "content": "x"}, self.main), env))
+        allowed = [("claude", tool_payload("claude", "Read", {"file_path": str(shot)}, self.main)),
+                   ("claude", tool_payload("claude", "Grep", {"pattern": "x", "path": str(attachments)}, self.main)),
+                   ("claude", tool_payload("claude", "Glob", {"pattern": "*.png", "path": str(attachments)},
+                                           self.main)),
+                   ("antigravity", tool_payload("antigravity", "view_file", {"AbsolutePath": str(shot)}, self.main)),
+                   ("antigravity", tool_payload("antigravity", "list_dir", {"DirectoryPath": str(attachments)},
+                                                self.main))]
+        blocked = [("claude", tool_payload("claude", "Write", {"file_path": str(shot), "content": "x"}, self.main)),
+                   ("claude", tool_payload("claude", "Glob", {"pattern": "*.png"}, self.main)),
+                   ("claude", tool_payload("claude", "Glob", {"pattern": f"{attachments}/*"}, self.main)),
+                   ("claude", tool_payload("claude", "Read", {"file_path": f"{attachments}/../notes.md"}, self.main)),
+                   ("codex", shell_payload("codex", f"ls {attachments}", self.main)),
+                   ("codex", shell_payload("codex", f"cat {shot}", self.main))]
+        self.check(allowed, allowed=True, env=env)
+        self.check(blocked, allowed=False, env=env)
         self.assert_blocks(self.run_hook("claude", tool_payload("claude", "Read", {"file_path": str(shot)},
                                                                 self.main)))
 
-    def test_claude_file_edits(self):
-        allowed = (("Write", {"file_path": str(self.lead_md), "content": "x"}),
+    def test_claude_file_edits_are_blocked(self):
+        blocked = (("Write", {"file_path": str(self.lead_md), "content": "x"}),
                    ("Edit", {"file_path": str(self.lead / "new.md"), "old_string": "a", "new_string": "b"}),
                    ("MultiEdit", {"file_path": str(self.lead_md), "edits": []}),
-                   ("Edit", {"file_path": str(self.exclude), "old_string": "a", "new_string": "b"}))
-        blocked = (("Write", {"file_path": str(self.main / "notes.md"), "content": "x"}),
+                   ("Edit", {"file_path": str(self.exclude), "old_string": "a", "new_string": "b"}),
+                   ("Write", {"file_path": str(self.main / "notes.md"), "content": "x"}),
                    ("Edit", {"file_path": str(self.main / ".gitignore"), "old_string": "a", "new_string": "b"}),
                    ("Write", {"file_path": str(self.main / ".scratch" / "520-other" / "x.md"), "content": "x"}),
                    ("Write", {"file_path": f"{self.lead}/../../notes.md", "content": "x"}),
                    ("NotebookEdit", {"notebook_path": str(self.main / "n.ipynb"), "new_source": "x"}),
-                   ("Write", {"content": "x"}))
-        self.check_tools("claude", allowed, blocked)
+                   ("Write", {"content": "x"}), ("Write", "not a dict"))
+        self.check_tools("claude", (), blocked)
 
-    def test_codex_apply_patch_checks_every_path(self):
+    def test_codex_apply_patch_is_blocked(self):
         def patch(*headers):
             body = "".join(f"*** {header}\n+line\n" for header in headers)
             return {"command": f"*** Begin Patch\n{body}*** End Patch\n"}
 
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
-        allowed = (("apply_patch", patch(f"Update File: {lead_md}")),
+        blocked = (("apply_patch", patch(f"Update File: {lead_md}")),
                    ("apply_patch", patch(f"Add File: {self.lead}/new.md", f"Update File: {self.exclude}")),
-                   ("apply_patch", patch(f"Delete File: {lead_md}")))
-        blocked = (("apply_patch", patch(f"Update File: {lead_md}", "Update File: notes.md")),
-                   ("apply_patch", patch(f"Update File: {lead_md}", "Move to: notes.md")),
+                   ("apply_patch", patch(f"Delete File: {lead_md}")),
+                   ("apply_patch", patch(f"Update File: {lead_md}", "Update File: notes.md")),
                    ("apply_patch", patch("Add File: .scratch/520-other/x.md")),
                    ("apply_patch", {"command": "*** Begin Patch\n*** End Patch\n"}),
                    ("apply_patch", {}))
-        self.check_tools("codex", allowed, blocked)
+        self.check_tools("codex", (), blocked)
 
-    def test_codex_reads_through_a_shell_wrapper_or_workdir(self):
+    def test_codex_runs_the_step_script_through_a_shell_wrapper_or_workdir(self):
         lead_md = f".scratch/{LEAD_NAME}/lead.md"
-        allowed = (("exec_command", {"cmd": f"bash -lc 'cat {lead_md}'"}),
+        allowed = (("exec_command", {"cmd": f"bash -lc 'python3 {STEP_SCRIPT} show'"}),
+                   ("exec_command", {"cmd": "python3 t3_project_lead.py show", "workdir": str(STEP_SCRIPT.parent)}),
+                   ("shell", {"command": ["bash", "-lc", f"python3 {STEP_SCRIPT} outcome 'a b'"]}))
+        blocked = (("exec_command", {"cmd": f"bash -lc 'cat {lead_md}'"}),
                    ("exec_command", {"cmd": "cat lead.md", "workdir": str(self.lead)}),
-                   ("shell", {"command": ["bash", "-lc", f"sed -n 1,3p {lead_md}"]}))
-        blocked = (("exec_command", {"cmd": "cat notes.md"}),
-                   ("exec_command", {"cmd": "cat lead.md", "workdir": str(self.main)}),
+                   ("shell", {"command": ["bash", "-lc", f"sed -n 1,3p {lead_md}"]}),
+                   ("exec_command", {"cmd": "python3 t3_project_lead.py show", "workdir": str(self.main)}),
+                   ("exec_command", {"cmd": "cat notes.md"}),
                    ("exec_command", {"cmd": 7}))
         self.check_tools("codex", allowed, blocked)
 
     def test_antigravity_file_tools(self):
-        allowed = (("view_file", {"AbsolutePath": str(self.lead_md)}), ("read_file", {"Path": str(self.lead_md)}),
+        allowed = (("run_command", {"CommandLine": "python3 t3_project_lead.py show",
+                                    "Cwd": str(STEP_SCRIPT.parent)}),)
+        blocked = (("view_file", {"AbsolutePath": str(self.lead_md)}), ("read_file", {"Path": str(self.lead_md)}),
                    ("list_dir", {"DirectoryPath": str(self.lead)}),
                    ("grep_search", {"SearchPath": str(self.lead), "Query": "x"}),
                    ("write_to_file", {"TargetFile": str(self.lead / "new.md"), "CodeContent": "x"}),
                    ("replace_file_content", {"TargetFile": str(self.exclude), "ReplacementContent": "x"}),
-                   ("run_command", {"CommandLine": "cat lead.md", "Cwd": str(self.lead)}))
-        blocked = (("view_file", {"AbsolutePath": str(self.main / "notes.md")}), ("view_file", {}),
+                   ("run_command", {"CommandLine": "cat lead.md", "Cwd": str(self.lead)}),
+                   ("view_file", {"AbsolutePath": str(self.main / "notes.md")}), ("view_file", {}),
                    ("grep_search", {"SearchPath": str(self.main), "Query": "x"}),
                    ("multi_replace_file_content", {"TargetFile": str(self.main / "notes.md")}),
                    ("write_to_file", {"TargetFile": str(self.main / ".gitignore"), "CodeContent": "x"}),
@@ -420,12 +471,14 @@ class GateTests(HookCase):
         self.check([(host, tool_payload(host, name, {"x": 1}, self.main)) for host, name in cases], allowed=True)
 
     def test_a_malformed_call_is_blocked(self):
+        step = "python3 scripts/t3_project_lead.py show"
         cases = (("claude", tool_payload("claude", "Bash", "not a dict", self.main)),
                  ("claude", tool_payload("claude", "Bash", {"command": ["cat"]}, self.main)),
                  ("claude", tool_payload("claude", "Bash", {}, self.main)),
                  ("codex", {"session_id": SESSION, "hook_event_name": "PreToolUse", "cwd": str(self.main)}),
-                 ("claude", shell_payload("claude", f"cat .scratch/{LEAD_NAME}/lead.md", "relative/cwd")),
-                 ("claude", shell_payload("claude", f"cat .scratch/{LEAD_NAME}/lead.md", self.temp / "missing")),
+                 ("claude", shell_payload("claude", step, "relative/cwd")),
+                 ("claude", shell_payload("claude", step, self.temp / "missing")),
+                 ("claude", tool_payload("claude", "Read", {"file_path": "shot.png"}, "relative/cwd")),
                  ("antigravity", {"conversationId": SESSION, "hookEventName": "PreToolUse",
                                   "cwd": str(self.main)}),
                  ("antigravity", {"conversationId": SESSION, "hookEventName": "PreToolUse",
