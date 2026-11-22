@@ -80,8 +80,8 @@ When `pytest_exit_code` is 2 or more, read `<work-dir>/run1/pytest.log`
 and report the cause. Exit code 5 means that pytest collected no test.
 
 When `timed_out` is true, the suite is too slow to measure twice. Skip
-steps 3, 4, and 6, report their rows as "not measured: run 1 exceeded the
-check budget", and recommend the speed mode.
+steps 3, 4, and 6. The scorecard of step 9 then reports their rows as "not
+measured: run 1 exceeded the check budget", and recommends the speed mode.
 
 ## 3. Run 2: reversed order with coverage contexts
 
@@ -99,7 +99,9 @@ or newer, coverage.py records a line only for the first test that runs it.
 It removes the project's pytest-cov options, except `--cov-config`, from
 `addopts` and `PYTEST_ADDOPTS` for this run, so that no coverage report
 goes into the project. Coverage contexts slow a run, so the timeout is
-three times the budget.
+three times the budget. pytest-xdist does not keep the reversed order: when
+the project's pytest options or the arguments after `--` turn on
+pytest-xdist, the command adds `-n 0`, and `xdist_off` names their source.
 
 - When the command exits with status 2 and `package` is `pytest-cov`: under
   uv, run it again with
@@ -107,9 +109,6 @@ three times the budget.
   again without `--coverage-source`. The order check still
   works. Report per-test coverage, coverage subsets, unmeasured tests, and
   diff coverage as "not measured: needs pytest-cov".
-- When the project's pytest options turn on pytest-xdist (`-n`), add
-  `-- -n 0` at the end of the command. Under pytest-xdist, the order is not
-  reversed.
 
 ## 4. Compare the runs
 
@@ -128,12 +127,14 @@ three times the budget.
 
 ```bash
 <python> <skill-dir>/scripts/lean_tests.py scan --suite <work-dir>/run1.json \
-  --out <work-dir>/scan.json
+  --git-history --out <work-dir>/scan.json
 ```
 
 The scan reads the test functions of the node IDs that pytest collected.
-Each finding has a code, a node ID, a file, and a line. A finding is a
-candidate from the test source alone, not a verdict.
+With `--git-history`, it also reads the subject of the commit that added
+each test. Each finding has a code, a node ID, a file, and a line. A
+finding is a candidate from the test source and the commit subject, not a
+verdict.
 
 | Code | The test |
 | --- | --- |
@@ -144,7 +145,7 @@ candidate from the test source alone, not a verdict.
 | `change-detector` | checks only mock calls, their order, or their arguments |
 | `trivial-code` | only compares an imported constant with a literal |
 | `duplicate-shape` | equals other tests except for literals; `duplicate_groups` lists the groups |
-| `protected` | has a protection signal: an issue reference, or regression, characterization, security, compat, or perf in a name, marker, docstring, or comment |
+| `protected` | has a protection signal: an issue reference, or regression, characterization, security, compat, or perf in a name, marker, docstring, or comment; or an issue reference, or fix, bug, regression, characterization, security, compat, or perf in the subject of the commit that added it |
 | `input-class` | has a marker of a distinct input class: boundary, types, unicode, timezone, large-size, error-path, concurrency, locale, or platform |
 | `sleep` | calls `time.sleep` |
 
@@ -153,19 +154,17 @@ example a test inherited from another module, with the reason. A syntax
 error reason names the Python version that parsed the file. When that
 version is not the project's, run the scan again with `<python>`.
 
-The scan does not read Git history. The subject of the commit that added a
-test is also a protection signal. For each test in the no-assertion,
-tautology, self-comparison, duplicate-shape, and coverage-subset rows, read
-that subject:
+`--git-history` runs one `git log -G` for each test file. For each test,
+it reads the subject of the oldest commit whose diff adds or removes the
+`def` line of the test function. A `protected` finding from a commit
+subject has a detail that starts with `commit:`, and its `subject` gives
+the whole subject. `git_history` in the summary counts the files and the
+tests that no commit adds, such as uncommitted tests.
 
-```bash
-git -C <project> log --reverse --format=%s -G "def <test-name>\(" -- <file> | head -n 1
-```
-
-Here `<test-name>` is the function name without parameters, and `<file>`
-is the test file. Count the test as protected when the subject has an
-issue reference, or the words fix, bug, regression, characterization,
-security, compat, or perf, and add it to the Protected tests row.
+When the project is not a Git work tree, or the repository is a shallow
+clone, the scan exits with status 2. Then run it again without
+`--git-history`, and report the commit-subject signal as "not measured",
+with the `error`.
 
 ## 6. Read per-test coverage and diff coverage
 
@@ -196,73 +195,92 @@ Without a `<base>`, leave out `--base`.
 ## 7. Find agent instructions that force test growth
 
 ```bash
-git -C <project> grep -n -i -E 'even if (nobody|no one|not) asked|always (add|write) (new )?tests|add (or update )?tests for (every|each|all|any)|never (delete|remove) (a |any )?tests?|do not (delete|remove) (a |any )?tests?|coverage[^.]{0,40}[0-9]+ ?%|[0-9]+ ?% (test |line |branch )?coverage' -- '*CLAUDE.md' '*AGENTS.md' '*GEMINI.md' '.cursorrules' '.cursor/rules/*' '.github/copilot-instructions.md'
-git -C <project> grep -n -E 'fail[-_]under' -- '*.toml' '*.cfg' '*.ini' '.coveragerc' '*.yml' '*.yaml'
+git -C <project> grep -n -i -E 'even if (nobody|no one|not) asked|always (add|write) (new )?tests|add (or update )?tests for (every|each|all|any)|never (delete|remove) (a |any )?tests?|do not (delete|remove) (a |any )?tests?|coverage[^.]{0,40}[0-9]+ ?%|[0-9]+ ?% (test |line |branch )?coverage' -- '*CLAUDE.md' '*AGENTS.md' '*GEMINI.md' '.cursorrules' '.cursor/rules/*' '.github/copilot-instructions.md' | tee <work-dir>/growth.txt
+git -C <project> grep -n -E 'fail[-_]under' -- '*.toml' '*.cfg' '*.ini' '.coveragerc' '*.yml' '*.yaml' | tee -a <work-dir>/growth.txt
 ```
 
-Report each line that tells agents to add tests by default, forbids the
+`tee` keeps the lines in `<work-dir>/growth.txt` for the scorecard. Report
+each line that tells agents to add tests by default, forbids the
 deletion of tests, or sets a coverage percentage target. Together these
 rules make a suite that can only grow. Change them only when the user asks.
 
 ## 8. Check the end state
 
 ```bash
-git -C <project> status --porcelain --untracked-files=all | diff <work-dir>/status-before.txt -
-git -C <project> status --porcelain --untracked-files=normal --ignored=traditional | diff <work-dir>/ignored-before.txt -
+git -C <project> status --porcelain --untracked-files=all | diff <work-dir>/status-before.txt - | tee <work-dir>/end-state.txt
+git -C <project> status --porcelain --untracked-files=normal --ignored=traditional | diff <work-dir>/ignored-before.txt - | tee -a <work-dir>/end-state.txt
 ```
 
-Each difference is a file that the tests wrote. The `files_written` list
-of each run names the run that wrote it. Report these files, and ask the
-user before you remove one.
+`tee` keeps the differences in `<work-dir>/end-state.txt` for the
+scorecard. Each difference is a file that the tests wrote. The
+`files_written` list of each run names the run that wrote it. Report these
+files, and ask the user before you remove one.
 
-## 9. Write the scorecard
+## 9. Print the scorecard
 
-Write one table. Give each row a value with up to five examples, or "not
-measured" with the reason and the package that enables it.
+Build the scorecard from the files that steps 1 to 8 wrote to
+`<work-dir>`:
+
+```bash
+<python> <skill-dir>/scripts/lean_tests.py scorecard --work-dir <work-dir> \
+  --out <work-dir>/scorecard.json
+```
+
+When the user or the project names a hand-off budget other than 2
+minutes, add `--hand-off-budget <seconds>`.
+
+Print the lines of `markdown` in the printed summary verbatim, one line
+each. Do not copy a number by hand. They are one table and the next mode.
+The table gives each row a value with up to five examples, or "not
+measured" with the reason and, when one enables it, the package. A row
+whose file is missing or unreadable is "not measured"; `not_measured`
+lists these rows.
 
 | Row | Source |
 | --- | --- |
 | Tests collected | run 1 `collected` |
-| Outcomes | run 1 `counts` |
+| Outcomes | run 1 `counts`, with the failed tests |
 | Wall time and collection time | run 1 `wall_seconds`, `collection_seconds` |
-| Import cost | step 2 import time of each `<source>`, with its five largest imports |
+| Import cost | the `importtime-<source>.txt` files of step 2: the cumulative time of each `<source>`, with its five largest imports |
 | Slowest tests | run 1 `slowest.call` |
 | Slowest setup and teardown | run 1 `slowest.setup`, `slowest.teardown` |
-| Flaky or order-dependent | compare `changed` |
+| Flaky or order-dependent | compare `changed`, `missing`, `added` |
 | No assertion | scan `no-assertion` |
 | Tautology or self-comparison | scan `tautology`, `self-comparison` |
 | Weak oracle, change detector, trivial code | scan `weak-oracle`, `change-detector`, `trivial-code` |
 | Duplicate-shape groups | scan `duplicate_groups` |
 | Sleep calls | scan `sleep` |
-| Protected tests | scan `protected`, and the commit subjects of step 5 |
+| Protected tests | scan `protected`, with the commit subjects of `--git-history` |
 | Coverage-subset candidates | coverage `equal_groups`, `strict_subsets` |
 | Unmeasured tests | coverage `unmeasured` |
 | Diff coverage against `<base>` | coverage `diff`, with the missed `raise` and `except` lines |
-| Instructions that force test growth | step 7 |
-| Files the tests wrote | step 8 |
+| Instructions that force test growth | `growth.txt` of step 7 |
+| Files the tests wrote | `end-state.txt` of step 8, with the run whose `files_written` names the file |
 
-Then name exactly one next mode, with its reason. Use the first rule that
-applies:
+The command names exactly one next mode, with its reason, by the first
+rule that applies:
 
 1. **speed**, when run 1 exceeded the check budget, run 1 took longer than
    the hand-off budget (default 2 minutes; speed defines a hand-off tier
    that must fit it), or a test changed its outcome between the runs. speed fixes
-   order-dependent tests before it turns on parallel runs. Name the slowest
-   phases or the changed tests.
+   order-dependent tests before it turns on parallel runs. The reason names
+   the slowest phases or the changed tests.
 2. **review**, when no test executes some changed product lines, such as
    changed `raise` or `except` lines.
-3. **prune** of one path, when a test directory or file has unprotected
-   `no-assertion`, `tautology`, `self-comparison`, `duplicate-shape`, or
-   coverage-subset candidates. Name the path with the most candidates.
-4. **check** again after the next change, when no other rule applies. Say
-   that the suite needs no lean-tests work now.
+3. **prune** of one path, when a test file has unprotected `no-assertion`,
+   `tautology`, `self-comparison`, `duplicate-shape`, or coverage-subset
+   candidates. The reason names the file with the most candidates.
+4. **check** again after the next change, when no other rule applies. The
+   reason says that the suite needs no lean-tests work now. When a rule
+   could not use an input because it was not measured, the reason names
+   the input instead.
 
-When the next mode is speed, prune, or review, say that the user can ask
-for it, for example with "make the tests faster", "prune the tests in
+For speed, prune, or review, the last line says that the user can ask for
+the mode, for example with "make the tests faster", "prune the tests in
 <path>", or "review the tests in this change": these modes run only on
 request.
 
-When the scorecard is complete, remove the work directory:
+When the scorecard is printed, remove the work directory:
 
 ```bash
 rm -r <work-dir>

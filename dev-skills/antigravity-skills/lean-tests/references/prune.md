@@ -58,6 +58,15 @@ imports pytest-cov, and you have a new `<work-dir>`.
 
 ## 2. Run the scope with coverage contexts
 
+Record `<start>`, the commit before the first batch, for step 8. It is the
+commit that this command prints:
+
+```bash
+git -C <project> rev-parse HEAD
+```
+
+Then run the in-scope tests:
+
 ```bash
 <python> <skill-dir>/scripts/lean_tests.py suite --python "<python>" \
   --project <project> --work-dir <work-dir> --label scope \
@@ -65,34 +74,34 @@ imports pytest-cov, and you have a new `<work-dir>`.
 ```
 
 Repeat `--coverage-source` for each package. The arguments after `--` go
-to pytest, so the run collects only the in-scope tests. When the project's
-pytest options turn on pytest-xdist (`-n`), add `-n 0` after `<path>`,
-here and in each later command that takes pytest arguments. Report each
+to pytest, so the run collects only the in-scope tests. Report each
 test that does not pass: mutate leaves it out of the prune scope.
 
 When `pytest_exit_code` is 2 or more, read `<work-dir>/scope/pytest.log`,
 report the cause, and stop.
 
-Done when the command exits with status 0, `pytest_exit_code` is 0 or 1,
-and you have reported each in-scope test that did not pass.
+Done when you have `<start>`, the command exits with status 0,
+`pytest_exit_code` is 0 or 1, and you have reported each in-scope test
+that did not pass.
 
 ## 3. Scan the scope
 
 ```bash
 <python> <skill-dir>/scripts/lean_tests.py scan --suite <work-dir>/scope.json \
-  --out <work-dir>/scan.json
+  --git-history --out <work-dir>/scan.json
 ```
 
 The scan gives the `protected`, `input-class`, `no-assertion`,
 `tautology`, `self-comparison`, `weak-oracle`, and `change-detector`
 findings and the `duplicate_groups`, as
-[check step 5](check.md#5-scan-the-tests) describes. Also read the
-subject of the commit that added each in-scope test, with the command of
-check step 5. A test is protected when that subject has a protection
-signal.
+[check step 5](check.md#5-scan-the-tests) describes. With
+`--git-history`, a `protected` finding also comes from the subject of the
+commit that added the test. When the command exits with status 2, report
+the `error` and stop: without the commit subjects, prune cannot know which
+tests are protected.
 
-Done when you have the scan findings and know which in-scope tests are
-protected.
+Done when the scan exits with status 0, and you have the scan findings and
+know which in-scope tests are protected.
 
 ## 4. Build the kill matrix
 
@@ -192,7 +201,9 @@ redundant, do the first of these that applies:
    unprotected retained test, merge them into one parametrized test. The
    tests of such a group have equal abstract syntax trees (the parsed
    code) except for literals. Each literal becomes one case, so each
-   input stays.
+   input stays. Give the merged test the name of the retained test: the
+   killed-set check (step 7) counts each other test that is gone as
+   removed.
 2. **Move.** When the input class is covered but some checks are not, move
    each unmapped assertion into an unprotected retained test under
    equivalent inputs and setup, then delete the test.
@@ -221,7 +232,7 @@ Write one line for each changed test, in this format:
 
 ```text
 - remove <nodeid>: kills <none | a subset of <retained nodeid>>; input: <why the scenario is not a distinct input class>; checks: <check> -> <retained nodeid> line <n>[; <check> -> <retained nodeid> line <n>]
-- merge <nodeid>, <nodeid> into <new test name>: equal except for literals; cases: <literal>, <literal>
+- merge <nodeid>, <nodeid> into <retained test name>: equal except for literals; cases: <literal>, <literal>
 ```
 
 For a moved assertion, write `(moved)` after its target line. For a test
@@ -253,16 +264,37 @@ changes of one module and keeps to the batch size of
    ```
 
 3. Run the killed-set check. It reruns every mutant of the killed set of
-   step 4 against all remaining in-scope tests:
+   step 4 against all remaining in-scope tests, and checks the prune
+   limits of the batch against the matrix and the scan of step 3:
 
    ```bash
    <python> <skill-dir>/scripts/lean_tests.py mutate --python "<python>" \
      --suite <work-dir>/batch.json --recheck <work-dir>/matrix.json \
-     --work-dir <work-dir> --out <work-dir>/recheck.json
+     --scan <work-dir>/scan.json --work-dir <work-dir> \
+     --out <work-dir>/recheck-<n>.json
    ```
 
+   `<n>` is the number of the batch, from 1. When a batch of the same
+   matrix is already committed, add
+   `--previous <work-dir>/recheck-<m>.json`, where `<m>` is the last
+   committed batch. The tests that it removed then do not count toward
+   the batch size. The check records the commit at HEAD, and `--previous`
+   fails with exit status 2 when HEAD has no commit after that check.
+
+   A removed test is a matrix test that the batch did not collect. A
+   matrix test whose function the batch collects with more cases than
+   before, one of them new, is the retained test of a merge (`merged`).
    `passed` is true only when the evidence is complete, each mutant of
-   the killed set is still killed, and no test that passed before fails.
+   the killed set is still killed, no test that passed before fails, and
+   the batch keeps the prune limits:
+
+   - The batch removes at most 20 tests.
+   - Each removed test has the class `empty` or `subsumed`.
+   - No removed or merged test is in `excluded`, has a `protected` scan
+     finding, or is in the `unresolved` list of the scan.
+
+   `reasons` names each check that failed, and `examples` gives up to five
+   tests for each.
 4. When `passed` is false, or the command exits with status 2, revert the
    batch:
 
@@ -270,20 +302,25 @@ changes of one module and keeps to the batch size of
    git -C <project> restore -- <file>...
    ```
 
-   Name each file of the batch. Report the `lost` mutants and their
-   `killed_before_by` tests, and the `broken` tests. Keep the tests that
-   `killed_before_by` names. Then do the first of these that applies:
+   Name each file of the batch. Report the `reasons`, the `lost` mutants
+   and their `killed_before_by` tests, the `broken` tests, and the tests
+   that the `examples` of each reason name. Keep the tests that
+   `killed_before_by` names, and each removed test that a prune limit
+   names. Then do the first of these that applies:
 
    - When the exit status is 2 and the `error` says that a product module
      changed after the matrix run, run steps 2 to 6 again. Then continue
-     the batches with the new matrix.
+     the batches with the new matrix, without `--previous` for its first
+     batch.
    - When `complete` is false or the exit status is 2, stop.
-   - Make a new batch without the kept tests.
+   - Make a new batch without the kept tests. When the batch removed more
+     than 20 tests, split it.
 5. When `passed` is true, commit the batch. Stage each file by name. Write
    the commit message to `<work-dir>/batch-message.txt`, and run
    `git -C <project> commit -F <work-dir>/batch-message.txt`. Use the
-   project's style for the subject line. The body gives the check result
-   and one rationale line for each changed test:
+   project's style for the subject line. The body starts with the
+   `commit_line` of the summary, verbatim. Do not copy its numbers by
+   hand. Then give one rationale line for each changed test:
 
    ```text
    test: remove redundant tests from tests/test_shop.py
@@ -298,6 +335,19 @@ Done when each batch is committed after a passed killed-set check, or
 reverted and reported.
 
 ## 8. Report
+
+First check the files that the batches changed:
+
+```bash
+<python> <skill-dir>/scripts/lean_tests.py changed-files --project <project> \
+  --base <start> --path <path>
+```
+
+`passed` is false, and the exit status is 1, when a changed file is
+outside `<path>` or is a file that prune may not change
+([safety rule 7](../SKILL.md#safety-rules)). Then find the commit that
+changed each file of `failures`, revert or correct the change, and run the
+check again.
 
 Report:
 
@@ -326,4 +376,5 @@ Then remove the work directory:
 rm -r <work-dir>
 ```
 
-Done when the report is complete and the work directory is removed.
+Done when changed-files passes, the report is complete, and the work
+directory is removed.

@@ -16,6 +16,7 @@ import importlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,10 @@ UV_COMMAND = (
 )
 HAS_PYTEST = all(importlib.util.find_spec(name) for name in ("pytest", "pytest_cov"))
 needs_pytest = unittest.skipUnless(HAS_PYTEST, f"needs pytest and pytest-cov; run: {UV_COMMAND}")
+HAS_XDIST = importlib.util.find_spec("xdist") is not None
+needs_xdist = unittest.skipUnless(
+    HAS_PYTEST and HAS_XDIST, f"needs pytest, pytest-cov, and pytest-xdist; add --with pytest-xdist to: {UV_COMMAND}"
+)
 
 CORE_BASE = """\
 MAX_QTY = 100
@@ -420,6 +425,81 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(data, self.data)
 
 
+HISTORY_FILE = "tests/test_history.py"
+HISTORY_PLAIN = "def test_plain():\n    assert 1 + 1 == 2\n"
+HISTORY_NEGATIVE = "\n\ndef test_negative():\n    assert -1 < 0\n"
+
+
+class ScanGitHistoryTest(unittest.TestCase):
+    """scan --git-history reads the subject of the commit that added each test.
+
+    Commit "add tests" adds test_plain, commit "fix #12" adds test_negative,
+    and a later commit with a protection word changes the def line of
+    test_plain: the oldest commit decides.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(cls._tmp.name)
+        cls.root = tmp / "proj"
+        cls.env = git_env(tmp)
+        test_file = cls.root / HISTORY_FILE
+        test_file.parent.mkdir(parents=True)
+        git(cls.root, cls.env, "init", "-q")
+        steps = (
+            ("add tests", HISTORY_PLAIN),
+            ("fix #12", HISTORY_PLAIN + HISTORY_NEGATIVE),
+            ("fix a typing regression", (HISTORY_PLAIN + HISTORY_NEGATIVE).replace("test_plain()", "test_plain() -> None")),
+        )
+        for subject, text in steps:
+            test_file.write_text(text, encoding="utf-8")
+            git(cls.root, cls.env, "add", HISTORY_FILE)
+            git(cls.root, cls.env, "commit", "-q", "-m", subject)
+        cls.nodeids = tmp / "nodeids.txt"
+        cls.nodeids.write_text(f"{HISTORY_FILE}::test_plain\n{HISTORY_FILE}::test_negative\n", encoding="utf-8")
+        cls.scan = ("scan", "--project", str(cls.root), "--node-ids", str(cls.nodeids))
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_subject_of_the_commit_that_added_a_test_protects_it(self) -> None:
+        code, data, stderr = run_cli(*self.scan, "--git-history", env=self.env)
+        self.assertEqual(code, 0, stderr)
+        commit = [f for f in data["findings"] if f["detail"].startswith("commit: ")]
+        self.assertEqual(
+            {(f["nodeid"], f["code"], f["detail"], f["subject"]) for f in commit},
+            {
+                (f"{HISTORY_FILE}::test_negative", "protected", "commit: #12", "fix #12"),
+                (f"{HISTORY_FILE}::test_negative", "protected", "commit: fix", "fix #12"),
+            },
+        )
+        self.assertEqual(data["summary"]["git_history"], {"files": 1, "tests_not_in_history": 0})
+
+    def test_without_the_flag_the_scan_reads_no_history(self) -> None:
+        code, data, stderr = run_cli(*self.scan, env=self.env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual([f for f in data["findings"] if f["detail"].startswith("commit: ")], [])
+        self.assertIsNone(data["summary"]["git_history"])
+
+    def test_project_outside_a_git_work_tree_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proj"
+            shutil.copytree(self.root / "tests", root / "tests")
+            code, data, _ = run_cli(
+                "scan", "--project", str(root), "--node-ids", str(self.nodeids), "--git-history", env=git_env(Path(tmp))
+            )
+        self.assertEqual(code, 2)
+        self.assertIn("Git work tree", data["error"])
+
+    def test_missing_git_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as empty:
+            code, data, _ = run_cli(*self.scan, "--git-history", env={**self.env, "PATH": empty})
+        self.assertEqual(code, 2)
+        self.assertIn("cannot run git", data["error"])
+
+
 def git(root: Path, env: dict, *args: str) -> str:
     result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, env=env)
     assert result.returncode == 0, result.stderr
@@ -576,6 +656,113 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertTrue(data["summary"]["timed_out"])
         self.assertIsNone(data["summary"]["pytest_exit_code"])
+
+
+class XdistOptionTest(unittest.TestCase):
+    """suite and mutate find the pytest-xdist options that can start workers."""
+
+    def test_finds_each_option_shape_and_skips_options_that_start_no_worker(self) -> None:
+        has_xdist_option = import_script("lt_suite").has_xdist_option
+        cases = [
+            (["-n", "2"], True), (["-n4"], True), (["-n=auto"], True), (["--numprocesses", "auto"], True),
+            (["--numprocesses=2"], True), (["--dist", "loadscope"], True), (["-d", "--tx", "popen"], True),
+            (["--tx=2*popen"], True), (["-p", "xdist"], True), (["-pxdist"], True),
+            (["-n", "0"], False), (["-n0"], False), (["--numprocesses=0"], False), (["--dist=no"], False),
+            (["-p", "no:xdist"], False), (["-p", "no:randomly", "-q", "--strict-markers"], False), ([], False),
+        ]
+        for args, found in cases:
+            self.assertEqual(has_xdist_option(args), found, args)
+
+
+XDIST_FILES = {
+    "pyproject.toml": """\
+        [tool.pytest.ini_options]
+        addopts = "-n 2"
+        pythonpath = ["src"]
+        """,
+    "src/pkg/__init__.py": """\
+        def f(x):
+            return x + 1
+        """,
+    "tests/test_f.py": """\
+        import os
+
+        from pkg import f
+
+
+        def test_f():
+            assert f(1) == 2
+
+
+        def test_in_one_process():
+            assert "PYTEST_XDIST_WORKER" not in os.environ
+        """,
+}
+XDIST_TESTS = ["tests/test_f.py::test_f", "tests/test_f.py::test_in_one_process"]
+
+
+@needs_xdist
+class XdistTest(unittest.TestCase):
+    """A run whose order matters adds -n 0 when the project's pytest options start pytest-xdist workers.
+
+    The project's addopts set -n 2. test_in_one_process fails in a
+    pytest-xdist worker.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(cls._tmp.name)
+        cls.root = tmp / "proj"
+        cls.work = tmp / "work"
+        for name, text in XDIST_FILES.items():
+            path = cls.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(textwrap.dedent(text), encoding="utf-8")
+        cls.common = ("suite", "--python", sys.executable, "--project", str(cls.root), "--work-dir", str(cls.work))
+        cls.scope = cls.work / "scope.json"
+        cls.reversed = run_cli(
+            *cls.common, "--label", "scope", "--reverse", "--coverage-source", "pkg", "--out", str(cls.scope)
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_reversed_run_adds_n_0_and_names_the_source(self) -> None:
+        code, printed, stderr = self.reversed
+        self.assertEqual(code, 0, stderr)
+        data = json.loads(self.scope.read_text(encoding="utf-8"))
+        self.assertEqual(data["command"][-2:], ["-n", "0"])
+        self.assertEqual(printed["summary"]["xdist_off"], ["addopts"])
+        self.assertEqual(data["collected"], XDIST_TESTS[::-1])
+        self.assertEqual(data["summary"]["counts"]["passed"], 2, data["log_tail"])
+
+    def test_pytest_addopts_is_a_source_too(self) -> None:
+        env = {**os.environ, "PYTEST_ADDOPTS": "--dist load"}
+        code, data, stderr = run_cli(*self.common, "--label", "env", "--reverse", env=env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(data["summary"]["xdist_off"], ["addopts", "PYTEST_ADDOPTS"])
+        self.assertEqual(data["summary"]["counts"]["passed"], 2, data["log_tail"])
+
+    def test_file_order_run_keeps_the_project_workers(self) -> None:
+        code, data, stderr = run_cli(*self.common, "--label", "plain")
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(data["summary"]["xdist_off"], [])
+        self.assertNotEqual(data["command"][-2:], ["-n", "0"])
+        self.assertEqual(by_nodeid(data)["tests/test_f.py::test_in_one_process"]["outcome"], "failed")
+
+    def test_mutate_runs_each_copy_in_one_process(self) -> None:
+        code, data, stderr = run_cli(
+            "mutate", "--python", sys.executable, "--suite", str(self.scope), "--work-dir", str(self.work),
+            "--workers", "1",
+        )
+        self.assertEqual(code, 0, stderr)
+        summary = data["summary"]
+        self.assertEqual(summary["xdist_off"], ["addopts"])
+        # In a pytest-xdist worker, test_in_one_process would fail in the unchanged copy and be excluded.
+        self.assertEqual((summary["tests"], summary["excluded"]), (2, 0), data["excluded"])
+        self.assertTrue(summary["complete"], summary["incomplete_reason"])
 
 
 @needs_pytest
@@ -1250,14 +1437,27 @@ class MutateBudgetTest(unittest.TestCase):
 
 @needs_pytest
 class MutateRecheckTest(unittest.TestCase):
-    """The killed-set check reruns the killed set against the tests that remain after a removal batch."""
+    """The killed-set check reruns the killed set against the tests that remain after a removal batch.
 
-    def recheck(self, removed: str) -> dict:
-        m = Mutation.get()
+    It also checks the prune limits of the batch: the batch size, the class of
+    each removed test, and the excluded and protected tests.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.m = Mutation.get()
+        cls.scan = cls.m.tmp / "scope-scan.json"
+        if not cls.scan.is_file():
+            code, _, stderr = run_cli("scan", "--suite", str(cls.m.scope), "--out", str(cls.scan))
+            assert code == 0, stderr
+
+    def recheck(self, text: str, matrix: Path | None = None, scan: Path | None = None) -> dict:
+        """Run the scope with `text` as tests/test_shop.py, then the killed-set check of the matrix."""
+        m = self.m
         tmp = Path(tempfile.mkdtemp(dir=m.tmp))
         root = tmp / "shop"
         shutil.copytree(m.root, root)
-        (root / "tests" / "test_shop.py").write_text(without_test(MUTATE_TESTS, removed), encoding="utf-8")
+        (root / "tests" / "test_shop.py").write_text(text, encoding="utf-8")
         env = shop_env(root)
         after = tmp / "after.json"
         code, _, stderr = run_cli(
@@ -1266,14 +1466,21 @@ class MutateRecheckTest(unittest.TestCase):
         )
         self.assertEqual(code, 0, stderr)
         before = tree_state(root)
-        code, data, stderr = m.mutate("--recheck", str(m.matrix), suite=after, env=env)
+        code, data, stderr = m.mutate(
+            "--recheck", str(matrix or m.matrix), "--scan", str(scan or self.scan), suite=after, env=env
+        )
         self.assertEqual(code, 0, stderr)
         self.assertEqual(tree_state(root), before)
         return data
 
+    def edited(self, name: str, data: dict) -> Path:
+        path = Path(tempfile.mkdtemp(dir=self.m.tmp)) / name
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
     def test_removing_a_test_with_a_unique_kill_fails(self) -> None:
-        m = Mutation.get()
-        data = self.recheck("test_classify_zero")
+        m = self.m
+        data = self.recheck(without_test(MUTATE_TESTS, "test_classify_zero"))
         summary = data["summary"]
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertFalse(summary["passed"])
@@ -1284,15 +1491,354 @@ class MutateRecheckTest(unittest.TestCase):
         self.assertEqual(data["lost"][0]["killed_before_by"], [SHOP + "test_classify_zero"])
 
     def test_removing_a_true_duplicate_passes(self) -> None:
-        m = Mutation.get()
-        data = self.recheck("test_classify_negative_copy")
+        m = self.m
+        data = self.recheck(without_test(MUTATE_TESTS, "test_classify_negative_copy"))
         summary = data["summary"]
         self.assertTrue(summary["complete"], summary["incomplete_reason"])
         self.assertTrue(summary["passed"])
-        self.assertEqual(data["lost"], [])
-        self.assertEqual(summary["tests"], 9)
+        self.assertEqual((data["lost"], summary["reasons"]), ([], []))
+        self.assertEqual((summary["tests"], summary["removed"]), (9, 1))
         self.assertEqual(summary["still_killed"], summary["killed_set"])
         self.assertEqual(summary["killed_set"], m.data["summary"]["killed"])
+        count = summary["killed_set"]
+        self.assertEqual(summary["commit_line"], f"Killed-set check: {count} of {count} mutants still killed.")
+
+    def test_removing_a_test_of_a_keep_class_fails(self) -> None:
+        # test_cart_repr kills no mutant, so no mutant is lost, but it is unmeasured.
+        data = self.recheck(without_test(MUTATE_TESTS, "test_cart_repr"))
+        summary = data["summary"]
+        self.assertEqual(summary["lost"], 0)
+        self.assertFalse(summary["passed"])
+        self.assertIsNone(summary["commit_line"])
+        self.assertEqual(summary["reasons"], ["1 removed tests have a class other than empty or subsumed"])
+        self.assertEqual(summary["examples"]["keep_class"], [SHOP + "test_cart_repr (unmeasured)"])
+
+    def test_removing_an_excluded_test_fails(self) -> None:
+        tautology = SHOP + "test_total_tautology"
+        matrix = json.loads(self.m.matrix.read_text(encoding="utf-8"))
+        matrix["tests"] = [test for test in matrix["tests"] if test["nodeid"] != tautology]
+        matrix["excluded"].append({"nodeid": tautology, "run": "suite", "outcome": "failed"})
+        data = self.recheck(without_test(MUTATE_TESTS, "test_total_tautology"), matrix=self.edited("matrix.json", matrix))
+        summary = data["summary"]
+        self.assertFalse(summary["passed"])
+        self.assertEqual(summary["reasons"], ["1 removed or merged tests are in the excluded list of the matrix"])
+        self.assertEqual(summary["examples"]["excluded"], [tautology])
+
+    def test_removing_a_protected_test_fails(self) -> None:
+        tautology = SHOP + "test_total_tautology"
+        scan = json.loads(self.scan.read_text(encoding="utf-8"))
+        scan["findings"].append(
+            {"code": "protected", "nodeid": tautology, "file": "tests/test_shop.py", "line": 1, "detail": "fix #12"}
+        )
+        data = self.recheck(without_test(MUTATE_TESTS, "test_total_tautology"), scan=self.edited("scan.json", scan))
+        summary = data["summary"]
+        self.assertEqual(summary["lost"], 0)
+        self.assertFalse(summary["passed"])
+        self.assertEqual(summary["reasons"], ["1 removed or merged tests have a protected scan finding"])
+        self.assertEqual(summary["examples"]["protected"], [f"{tautology}: fix #12"])
+
+    def test_merging_a_test_into_its_retained_test_passes(self) -> None:
+        # The merged test keeps the name of the retained test, test_classify_zero, whose class is unique.
+        text = "import pytest\n" + without_test(MUTATE_TESTS, "test_classify_negative_copy").replace(
+            'def test_classify_zero():\n    assert classify(0) == "non-negative"',
+            '@pytest.mark.parametrize("n, expected", [(0, "non-negative"), (-1, "negative")])\n'
+            "def test_classify_zero(n, expected):\n    assert classify(n) == expected",
+        )
+        data = self.recheck(text)
+        summary = data["summary"]
+        self.assertTrue(summary["passed"], summary["reasons"])
+        self.assertEqual((summary["removed"], summary["merged"]), (1, 1))
+        [merged] = data["merged"]
+        self.assertEqual((merged["nodeid"], len(merged["into"])), (SHOP + "test_classify_zero", 2))
+        self.assertEqual([entry["nodeid"] for entry in data["removed"]], [SHOP + "test_classify_negative_copy"])
+
+    def test_recheck_needs_the_scan_of_the_prune_scope(self) -> None:
+        code, data, _ = self.m.mutate("--recheck", str(self.m.matrix))
+        self.assertEqual(code, 2)
+        self.assertIn("--scan", data["error"])
+        scan = json.loads(self.scan.read_text(encoding="utf-8"))
+        scan["summary"]["nodeids"] = 3
+        code, data, _ = self.m.mutate("--recheck", str(self.m.matrix), "--scan", str(self.edited("scan.json", scan)))
+        self.assertEqual(code, 2)
+        self.assertIn("scan the suite output of the prune scope", data["error"])
+
+
+class RemovalCheckTest(unittest.TestCase):
+    """The prune limits of a removal batch, from the matrix, the collected tests, and the scan of the scope."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        module = import_script("lt_mutate")
+        cls.check = staticmethod(module.removal_check)
+        cls.load_previous = staticmethod(module.load_previous)
+        cls.usage_error = import_script("lt_common").UsageError
+
+    def matrix(self, classes: dict, excluded: tuple = ()) -> dict:
+        return {
+            "tests": [{"nodeid": nodeid, "class": name} for nodeid, name in classes.items()],
+            "excluded": [{"nodeid": nodeid, "run": "suite", "outcome": "failed"} for nodeid in excluded],
+        }
+
+    def scan(self, protected: tuple = (), unresolved: tuple = ()) -> dict:
+        return {
+            "findings": [
+                {"code": "protected", "nodeid": n, "file": "tests/test_x.py", "line": 1, "detail": "issue #7"}
+                for n in protected
+            ],
+            "unresolved": [{"nodeid": n, "reason": "syntax error"} for n in unresolved],
+        }
+
+    def test_more_than_twenty_removed_tests_fail_and_a_committed_batch_does_not_count(self) -> None:
+        tests = [f"tests/test_x.py::test_{number}" for number in range(22)]
+        matrix = self.matrix(dict.fromkeys(tests, "empty"))
+        within = self.check(matrix, tests[20:], self.scan(), set())
+        self.assertEqual((len(within["batch"]), within["reasons"]), (20, []))
+        over = self.check(matrix, tests[21:], self.scan(), set())
+        self.assertEqual(over["reasons"], ["21 tests removed in this batch, more than the batch size of 20"])
+        self.assertEqual(over["examples"]["removed"], tests[:5])
+        # A committed batch of the same matrix removed the first 15 tests, so this batch removes 6.
+        later = self.check(matrix, tests[21:], self.scan(), set(tests[:15]))
+        self.assertEqual((later["batch"], later["reasons"]), (tests[15:21], []))
+
+    def test_a_merge_keeps_its_retained_test_and_each_other_missing_test_is_removed(self) -> None:
+        u, v, t = "tests/test_x.py::test_u", "tests/test_x.py::test_v", "tests/test_x.py::test_t"
+        matrix = self.matrix({u: "unique", v: "subsumed", f"{t}[1]": "union-only", f"{t}[2]": "union-only"})
+        merge = self.check(matrix, [f"{u}[a]", f"{u}[b]", f"{t}[1]", f"{t}[2]"], self.scan(), set())
+        self.assertEqual(([e["nodeid"] for e in merge["merged"]], merge["batch"], merge["reasons"]), ([u], [v], []))
+        cases = {
+            "a renamed test with no new case": ([f"{u}[a]", v, f"{t}[1]", f"{t}[2]"], [f"{u} (unique)"]),
+            "a removed case": ([u, v, f"{t}[1]"], [f"{t}[2] (union-only)"]),
+            "fewer cases with new IDs": ([u, v, f"{t}[x]"], [f"{t}[1] (union-only)", f"{t}[2] (union-only)"]),
+        }
+        for name, (collected, keep) in cases.items():
+            with self.subTest(name):
+                result = self.check(matrix, collected, self.scan(), set())
+                self.assertEqual(result["merged"], [])
+                self.assertEqual(result["examples"]["keep_class"], keep)
+
+    def test_excluded_protected_and_unresolved_tests_fail_also_when_merged(self) -> None:
+        a, b, c, d = (f"tests/test_x.py::test_{name}" for name in "abcd")
+        matrix = self.matrix({b: "empty", c: "empty", d: "unique"}, excluded=(a,))
+        result = self.check(matrix, [f"{d}[1]", f"{d}[2]"], self.scan(protected=(b, d), unresolved=(c,)), set())
+        self.assertEqual([e["nodeid"] for e in result["merged"]], [d])
+        self.assertEqual(result["examples"]["excluded"], [a])
+        self.assertEqual(result["examples"]["protected"], [f"{b}: issue #7", f"{d}: issue #7"])
+        self.assertEqual(result["examples"]["protection_unknown"], [f"{c}: syntax error"])
+        self.assertEqual((len(result["reasons"]), result["examples"]["keep_class"]), (3, []))
+
+    def test_previous_check_must_be_a_passed_check_of_the_same_matrix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp).resolve()
+            project, path = tmp_path / "project", tmp_path / "recheck-1.json"
+            project.mkdir()
+            env = git_env(tmp_path)
+
+            def commit() -> str:
+                subprocess.run(["git", "-C", str(project), "commit", "-q", "--allow-empty", "-m", "batch"],
+                               env=env, check=True)
+                return subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"], env=env, check=True,
+                                      capture_output=True, text=True).stdout.strip()
+
+            def write(passed: bool, matrix: str, head) -> None:
+                path.write_text(json.dumps({
+                    "summary": {"mode": "recheck", "passed": passed}, "matrix": matrix, "head": head,
+                    "removed": [{"nodeid": "t1"}],
+                }), encoding="utf-8")
+
+            subprocess.run(["git", "init", "-q", str(project)], env=env, check=True)
+            checked = commit()
+            write(True, "/w/matrix.json", checked)
+            with self.subTest("no commit after the check"), self.assertRaises(self.usage_error):
+                self.load_previous(str(path), "/w/matrix.json", project)
+            commit()
+            self.assertEqual(self.load_previous(str(path), "/w/matrix.json", project), {"t1"})
+            for passed, matrix, head in ((False, "/w/matrix.json", checked), (True, "/w/other.json", checked),
+                                         (True, "/w/matrix.json", None), (True, "/w/matrix.json", "0" * 40)):
+                write(passed, matrix, head)
+                with self.subTest(passed=passed, matrix=matrix, head=head), self.assertRaises(self.usage_error):
+                    self.load_previous(str(path), "/w/matrix.json", project)
+            write(True, "/w/matrix.json", checked)
+            with self.subTest("not a Git work tree"), self.assertRaises(self.usage_error):
+                self.load_previous(str(path), "/w/matrix.json", tmp_path / "elsewhere")
+
+
+SCORE_A1, SCORE_A2 = "tests/test_a.py::test_a1", "tests/test_a.py::test_a2"
+SCORE_B1, SCORE_B2 = "tests/test_b.py::test_b1", "tests/test_b.py::test_b2"
+IMPORT_TIMES = """\
+import time: self [us] | cumulative | imported package
+import time:       100 |        100 |   _io
+import time:      2000 |       5000 | site
+import time:      3000 |       3000 |     pkg.util
+import time:      4000 |       9000 |   pkg.core
+import time:      1000 |       1000 |   json
+import time:      2000 |      12000 | pkg
+"""
+
+
+def score_finding(code: str, nodeid: str) -> dict:
+    return {"code": code, "nodeid": nodeid, "file": nodeid.split("::")[0], "line": 1, "detail": ""}
+
+
+def score_inputs() -> dict:
+    """The check outputs of a fast, passing suite. tests/test_b.py has more candidates, but they are protected."""
+    run = {
+        "pytest_exit_code": 0, "timed_out": False, "wall_seconds": 3.5, "collection_seconds": 0.4, "collected": 4,
+        "counts": {"passed": 4, "failed": 0}, "files_written": [],
+        "slowest": {"call": [{"nodeid": SCORE_A1, "seconds": 1.5}], "setup": [], "teardown": []},
+    }
+    return {
+        "run1.json": {"summary": {**run, "label": "run1", "coverage": False}, "tests": []},
+        "run2.json": {"summary": {**run, "label": "run2", "coverage": True, "files_written": ["?? report.txt"]}},
+        "compare.json": {
+            "summary": {"missing": 0, "added": 0}, "changed": [], "missing": [], "added": [],
+            "not_run": {"first": [], "second": []},
+        },
+        "scan.json": {
+            "summary": {}, "duplicate_groups": [], "unresolved": [],
+            "findings": [
+                score_finding("no-assertion", SCORE_A1), score_finding("no-assertion", SCORE_B1),
+                score_finding("protected", SCORE_B1), score_finding("tautology", SCORE_B2),
+                score_finding("protected", SCORE_B2),
+            ],
+        },
+        "coverage.json": {
+            "summary": {}, "equal_groups": [], "unmeasured": [],
+            "strict_subsets": [{"test": SCORE_A2 + "[1]", "supersets": [SCORE_A1]}],
+            "diff": {
+                "base": "main", "executed": 4, "executable": 4, "missed": 0, "percent": 100.0, "files": [],
+                "unmeasured_files": [], "unparsed": [],
+            },
+        },
+        "growth.txt": "",
+        "end-state.txt": "0a1\n> ?? report.txt\n",
+    }
+
+
+class ScorecardTest(unittest.TestCase):
+    """scorecard builds the check scorecard and its one next mode from the files in a check work directory."""
+
+    def scorecard(self, inputs: dict, *args: str) -> tuple[dict, dict]:
+        """The scorecard output and its rows by name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, content in inputs.items():
+                text = content if isinstance(content, str) else json.dumps(content)
+                (Path(tmp) / name).write_text(text, encoding="utf-8")
+            code, data, stderr = run_cli("scorecard", "--work-dir", tmp, *args)
+        self.assertEqual(code, 0, stderr)
+        return data, {row["row"]: row["value"] for row in data["rows"]}
+
+    def test_missing_inputs_are_not_measured_and_no_rule_claims_a_clean_suite(self) -> None:
+        data, rows = self.scorecard({})
+        self.assertEqual(len(rows), 18)
+        self.assertEqual([name for name, value in rows.items() if not value.startswith("not measured")], [])
+        self.assertEqual(data["summary"]["not_measured"], list(rows))
+        mode = data["summary"]["next_mode"]
+        self.assertEqual(mode["mode"], "check")
+        self.assertIn("not measured: run 1, diff coverage, the scan", mode["reason"])
+        markdown = data["summary"]["markdown"]
+        self.assertEqual(markdown[:2], ["| Row | Value |", "| --- | --- |"])
+        self.assertEqual(markdown[-1], f"Next mode: check again after the next change. {mode['reason']}")
+
+    def test_next_mode_is_the_first_rule_that_applies(self) -> None:
+        def changed(**edits) -> dict:
+            inputs = json.loads(json.dumps(score_inputs()))
+            for path, value in edits.items():
+                name, *keys = path.split("__")
+                target = inputs[name + ".json"]
+                for key in keys[:-1]:
+                    target = target[key]
+                target[keys[-1]] = value
+            return inputs
+
+        missed = [{"path": "src/m.py", "missed": [3, 7], "raise": {"missed": [7]}, "except": {"missed": []}}]
+        cases = {
+            "unprotected candidates": (changed(), (), "prune", "tests/test_a.py has the most unprotected candidates: 2"),
+            "missed changed lines": (
+                changed(coverage__diff__missed=2, coverage__diff__files=missed), (), "review", "src/m.py:3, src/m.py:7",
+            ),
+            "a changed outcome": (
+                changed(compare__changed=[{"nodeid": SCORE_B1, "first": "passed", "second": "failed"}], **{
+                    "coverage__diff__missed": 2, "coverage__diff__files": missed,
+                }), (), "speed", f"1 tests changed their outcome between the runs: {SCORE_B1}",
+            ),
+            "a slow run 1": (changed(run1__summary__wall_seconds=200.0), (), "speed", "hand-off budget of 120 s"),
+            "a slow run 1 within a larger budget": (
+                changed(run1__summary__wall_seconds=200.0), ("--hand-off-budget", "300"), "prune", "tests/test_a.py",
+            ),
+            "only protected tests": (
+                changed(scan__findings=score_inputs()["scan.json"]["findings"][1:], coverage__strict_subsets=[]),
+                (), "check", "the suite needs no lean-tests work now",
+            ),
+        }
+        for name, (inputs, args, mode, reason) in cases.items():
+            with self.subTest(name):
+                data, _ = self.scorecard(inputs, *args)
+                found = data["summary"]["next_mode"]
+                self.assertEqual(found["mode"], mode, found["reason"])
+                self.assertIn(reason, found["reason"])
+        data, _ = self.scorecard(changed())
+        self.assertEqual(data["summary"]["next_mode"]["request"], "prune the tests in tests/test_a.py")
+        self.assertIn('ask, for example, "prune the tests in tests/test_a.py"', data["summary"]["markdown"][-1])
+
+    def test_a_timed_out_run_1_leaves_the_later_rows_not_measured(self) -> None:
+        inputs = score_inputs()
+        inputs["run1.json"]["summary"]["timed_out"] = True
+        for name in ("run2.json", "compare.json", "coverage.json"):
+            del inputs[name]
+        data, rows = self.scorecard(inputs)
+        self.assertEqual(data["summary"]["next_mode"]["mode"], "speed")
+        for name in ("Flaky or order-dependent", "Coverage-subset candidates", "Diff coverage against `<base>`"):
+            self.assertEqual(rows[name], "not measured: run 1 exceeded the check budget", name)
+
+    def test_rows_give_values_examples_and_missing_packages(self) -> None:
+        inputs = score_inputs()
+        inputs["run2.json"]["summary"]["coverage"] = False
+        del inputs["coverage.json"]
+        inputs["importtime-pkg.txt"] = IMPORT_TIMES
+        inputs["importtime-broken.txt"] = "Traceback (most recent call last):\nModuleNotFoundError: No module named 'broken'\n"
+        _, rows = self.scorecard(inputs)
+        self.assertEqual(rows["Tests collected"], "4")
+        self.assertEqual(rows["Import cost"], (
+            "broken not measured: the import failed: ModuleNotFoundError: No module named 'broken'; "
+            "pkg 12 ms; largest imports: pkg.core 9 ms, pkg.util 3 ms, json 1 ms"
+        ))
+        self.assertEqual(rows["No assertion"], f"2 tests: {SCORE_A1}, {SCORE_B1}")
+        self.assertEqual(rows["Unmeasured tests"], "not measured: run 2 has no coverage contexts; needs pytest-cov")
+        self.assertEqual(rows["Instructions that force test growth"], "none")
+        self.assertEqual(rows["Files the tests wrote"], "1 lines: > ?? report.txt (run2)")
+
+
+@needs_pytest
+class ScorecardRunTest(unittest.TestCase):
+    """scorecard reads the outputs that suite, compare, scan, and coverage write."""
+
+    def test_scorecard_of_the_fixture_runs_recommends_speed_for_the_order_dependent_test(self) -> None:
+        runs = Runs.get()
+        contexts = runs.run2[1]["files"]["coverage_json"]
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            for label in ("run1", "run2"):
+                shutil.copy(runs.output(label), work / f"{label}.json")
+            for args in (
+                ("compare", runs.output("run1"), runs.output("run2")),
+                ("scan", "--suite", runs.output("run1")),
+                ("coverage", "--contexts", contexts, "--suite", runs.output("run2"), "--base", "HEAD~1"),
+            ):
+                code, _, stderr = run_cli(*args, "--out", str(work / f"{args[0]}.json"))
+                self.assertEqual(code, 0, stderr)
+            code, data, stderr = run_cli("scorecard", "--work-dir", tmp)
+        self.assertEqual(code, 0, stderr)
+        rows = {row["row"]: row["value"] for row in data["rows"]}
+        order = "tests/test_order.py::test_order_second_reads"
+        self.assertEqual(rows["Tests collected"], str(len(NODEIDS)))
+        self.assertIn(f"{order} (passed -> failed)", rows["Flaky or order-dependent"])
+        self.assertIn("2 missed, 1 raise and 1 except lines among them", rows["Diff coverage against `<base>`"])
+        self.assertEqual(
+            data["summary"]["not_measured"], ["Import cost", "Instructions that force test growth", "Files the tests wrote"]
+        )
+        mode = data["summary"]["next_mode"]
+        self.assertEqual(mode["mode"], "speed")
+        self.assertIn(order, mode["reason"])
 
 
 class MutantFinderTest(unittest.TestCase):
@@ -1438,9 +1984,11 @@ class MutateUsageTest(unittest.TestCase):
                 "tests": [], "mutants": [],
             }), encoding="utf-8")
             suite = write_suite(Path(tmp), project)
+            scan = Path(tmp) / "scan.json"
+            scan.write_text(json.dumps({"summary": {"nodeids": 0}, "findings": [], "unresolved": []}), encoding="utf-8")
             code, data, _ = run_cli(
                 "mutate", "--python", sys.executable, "--suite", str(suite), "--recheck", str(matrix),
-                "--work-dir", str(Path(tmp) / "work"),
+                "--scan", str(scan), "--work-dir", str(Path(tmp) / "work"),
             )
         self.assertEqual(code, 2)
         self.assertIn("src/m.py", data["error"])
@@ -2032,6 +2580,138 @@ class PinTest(unittest.TestCase):
         code, data, _ = run_cli("pin", "--check", str(self.record))
         self.assertEqual(code, 1)
         self.assertEqual(data["summary"]["changed"], ["issue"])
+
+
+CHANGED_PYPROJECT = """\
+[project]
+name = "pkg"
+version = "1.0"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+"""
+CHANGED_BASE = {
+    "pyproject.toml": CHANGED_PYPROJECT,
+    "uv.lock": "version = 1\n",
+    "CLAUDE.md": "# Project\n",
+    "tox.ini": "[tox]\nenv_list = py\n",
+    "README.md": "# pkg\n",
+    ".github/workflows/tests.yml": "on: push\n",
+    "src/pkg/__init__.py": "def f(x):\n    return x + 1\n",
+    "tests/test_f.py": "from pkg import f\n\n\ndef test_f():\n    assert f(1) == 2\n",
+    "tests/test_g.py": "def test_g():\n    assert True\n",
+}
+# Each step is one commit: the changes that speed may make, then changes that it may not make.
+CHANGED_STEPS = {
+    "speed": {
+        "tests/test_f.py": CHANGED_BASE["tests/test_f.py"] + "\n\ndef test_f_zero():\n    assert f(0) == 1\n",
+        "tests/conftest.py": "import pytest\n",
+        "pyproject.toml": CHANGED_PYPROJECT.replace('["pytest"]', '["pytest", "pytest-xdist"]')
+        + 'addopts = "--strict-markers"\n\n[tool.uv]\npackage = false\n',
+        "uv.lock": "version = 1\n# pytest-xdist\n",
+        "CLAUDE.md": "# Project\n\n## Tests\n\nRun `uv run pytest -n auto`.\n",
+        "tox.ini": "[tox]\nenv_list = py\n\n[testenv]\nset_env = COVERAGE_CORE=sysmon\n",
+    },
+    "workflow": {
+        ".github/workflows/tests.yml": "on: [push, pull_request]\n",
+        ".github/workflows/test_matrix.yml": "on: push\n",
+    },
+    # setUpClass also changes the version in pyproject.toml.
+    "product": {"src/pkg/__init__.py": "def f(x):\n    return x + 2\n", "README.md": "# pkg\n\nMore text.\n"},
+    "other-test": {"tests/test_g.py": "def test_g():\n    assert 1\n"},
+}
+
+
+class ChangedFilesTest(unittest.TestCase):
+    """changed-files fails on a changed file that a speed or prune run may not change."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(cls._tmp.name)
+        cls.root = tmp / "proj"
+        cls.env = git_env(tmp)
+        git(cls.root.parent, cls.env, "init", "-q", str(cls.root))
+        cls.commits = {"base": cls.commit("base", CHANGED_BASE)}
+        for step, files in CHANGED_STEPS.items():
+            if step == "product":
+                pyproject = (cls.root / "pyproject.toml").read_text(encoding="utf-8")
+                files = {**files, "pyproject.toml": pyproject.replace('version = "1.0"', 'version = "1.1"')}
+            cls.commits[step] = cls.commit(step, files)
+
+    @classmethod
+    def commit(cls, subject: str, files: dict) -> str:
+        for name, text in files.items():
+            path = cls.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        git(cls.root, cls.env, "add", *files)
+        git(cls.root, cls.env, "commit", "-q", "-m", subject)
+        return git(cls.root, cls.env, "rev-parse", "HEAD").strip()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def check(self, base: str, head: str, *args: str) -> tuple[int, dict, dict]:
+        code, data, stderr = run_cli(
+            "changed-files", "--project", str(self.root), "--base", self.commits[base], "--head", self.commits[head],
+            *args, env=self.env,
+        )
+        self.assertIn(code, (0, 1), stderr)
+        return code, data, {entry["path"]: entry["class"] for entry in data["files"]}
+
+    def test_changes_that_speed_may_make_pass(self) -> None:
+        code, data, classes = self.check("base", "speed")
+        self.assertEqual(code, 0, data["failures"])
+        self.assertTrue(data["summary"]["passed"])
+        self.assertEqual(classes, {
+            "tests/test_f.py": "test", "tests/conftest.py": "test", "pyproject.toml": "allowed",
+            "uv.lock": "allowed", "CLAUDE.md": "allowed", "tox.ini": "allowed",
+        })
+
+    def test_workflow_files_fail_also_with_a_test_file_name(self) -> None:
+        code, data, classes = self.check("speed", "workflow")
+        self.assertEqual(code, 1)
+        self.assertFalse(data["summary"]["passed"])
+        self.assertEqual(classes, {".github/workflows/tests.yml": "ci", ".github/workflows/test_matrix.yml": "ci"})
+
+    def test_product_changes_fail_with_the_changed_section_of_a_mixed_file(self) -> None:
+        code, data, classes = self.check("workflow", "product")
+        self.assertEqual(code, 1)
+        self.assertEqual(classes, {"src/pkg/__init__.py": "product", "pyproject.toml": "product", "README.md": "product"})
+        [pyproject] = [entry for entry in data["failures"] if entry["path"] == "pyproject.toml"]
+        self.assertEqual(pyproject["detail"], "changed sections: [project]")
+
+    def test_path_fails_on_a_changed_file_outside_it(self) -> None:
+        code, data, classes = self.check("product", "other-test", "--path", "tests/test_f.py")
+        self.assertEqual(code, 1)
+        self.assertEqual(classes, {"tests/test_g.py": "outside-path"})
+        code, data, _ = self.check("product", "other-test", "--path", "tests")
+        self.assertEqual(code, 0, data["failures"])
+
+    def test_project_outside_a_git_work_tree_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, data, _ = run_cli("changed-files", "--project", tmp, "--base", "HEAD", env=git_env(Path(tmp)))
+        self.assertEqual(code, 2)
+        self.assertIn("Git work tree", data["error"])
+
+
+class CiWordTest(unittest.TestCase):
+    """lean-tests names CI only in safety rule 7, so that no mode suggests a change to it."""
+
+    def test_ci_appears_only_in_safety_rule_7(self) -> None:
+        for host in ("skills", "codex-skills", "antigravity-skills"):
+            skill = PLUGIN_ROOT / host / "lean-tests"
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            rule = re.search(r"^7\. Leave the CI .*?(?=\n\n)", text, re.MULTILINE | re.DOTALL)
+            self.assertIsNotNone(rule, host)
+            self.assertNotRegex(text[:rule.start()] + text[rule.end():], r"\bCI\b", host)
+            for reference in sorted((skill / "references").glob("*.md")):
+                self.assertNotRegex(reference.read_text(encoding="utf-8"), r"\bCI\b", str(reference))
 
 
 def runtime_unions(tree: ast.Module) -> list[int]:

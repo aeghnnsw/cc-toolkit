@@ -5,6 +5,11 @@ Flags block, or both, each in a new shell as the agent runs them, and reads the 
 file in the work directory. The blocks come from SKILL.md, so the checks cover the text
 that an agent runs. The expected models come from allowed-models.json. The Antigravity
 main agent can run a GPT-family model, so its copy must stop before setup (issue #433).
+
+The Codex copy runs its Claude critic through a critic() shell function in SKILL.md. A
+check runs its Setup, kickoff, and later-round blocks with a fake `claude` that records its
+argv, working directory, and environment. Text checks make every stop name one ending
+condition and keep the same ending conditions in every copy (issue #460).
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +37,28 @@ SHELLS = {"bash": ["bash", "-c"], "zsh": ["zsh", "-f", "-c"]}  # -f: no user sta
 CASES = [(copy, shell, ALLOWED_MODELS[family]) for copy, (_, family) in COPIES.items() for shell in SHELLS]
 BASH_FENCE = re.compile(r"^[ \t]*```bash[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
 WORKDIR_LINE = re.compile(r"^workdir: (.+)$", re.MULTILINE)
+# A stop instruction: "— stop.", "**STOP** and report", or "stop and report".
+STOP = re.compile(r"—\s*stop\.|\bstop\b\** and report\b", re.IGNORECASE)
+NAMED_ENDING = re.compile(r'ending condition is\s+"([^"]+)"')
+ITEM_START = re.compile(r"^\s*(?:[-*]|\d+\.)\s")
+LOOP_ENDINGS = {"converged", "round cap"}  # the review loop ends with these; no stop instruction names them
+# A fake Claude CLI: it appends its argv, working directory, environment, and stdin to the
+# file in FAKE_CLAUDE_RECORD, and prints the stream-json events of a reply from the model in --model.
+FAKE_CLAUDE = """\
+import json, os, sys
+argv = sys.argv[1:]
+record = os.environ["FAKE_CLAUDE_RECORD"]
+with open(record, "a", encoding="utf-8") as calls:
+    calls.write(json.dumps({"argv": argv, "cwd": os.getcwd(), "env": dict(os.environ),
+                            "stdin": sys.stdin.read()}) + "\\n")
+with open(record, encoding="utf-8") as calls:
+    reply = f"objection {len(calls.readlines())}"
+message = {"model": argv[argv.index("--model") + 1], "content": [{"type": "text", "text": reply}],
+           "stop_reason": "end_turn"}
+print(json.dumps({"type": "assistant", "message": message}))
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": reply,
+                  "stop_reason": "end_turn", "safety_stops": 0}))
+"""
 
 
 def section(text: str, title: str) -> str:
@@ -48,6 +76,32 @@ def first_block(text: str, title: str) -> str:
     return match.group(1) if match else ""
 
 
+def items(text: str) -> list[str]:
+    """Return each paragraph, list item, and heading outside code fences as one line of text."""
+    found, current, fenced = [], [], False
+    for line in text.splitlines():
+        fence = line.lstrip().startswith("```")
+        if fence or not line.strip() or ITEM_START.match(line) or line.startswith("#"):
+            if current:
+                found.append(" ".join(current))
+            current = []
+        if fence:
+            fenced = not fenced
+        elif not fenced and line.strip():
+            current.append(line.strip())
+    if current:
+        found.append(" ".join(current))
+    return found
+
+
+def ending_conditions(text: str) -> list[str]:
+    """Return the ending conditions in the "ending condition:" item of the conclusion section."""
+    prefix = "- ending condition:"
+    conclusion = section(text, "Step 3") or section(text, "Conclusion")
+    entry = next((item for item in items(conclusion) if item.startswith(prefix)), prefix)
+    return [name for name in re.split(r",\s*(?:or\s+)?|\s+or\s+", entry[len(prefix):].strip()) if name]
+
+
 class CriticModelBlockTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -61,9 +115,13 @@ class CriticModelBlockTests(unittest.TestCase):
         if shutil.which(shell) is None:
             self.skipTest(f"{shell} is not installed")
 
-    def run_block(self, shell: str, block: str, workdir: str = "") -> subprocess.CompletedProcess[str]:
-        """Run one block in a new shell and return the result; fail on a non-zero exit."""
-        result = subprocess.run([*SHELLS[shell], block.replace("<workdir>", workdir)], cwd=self.temp,
+    def run_block(self, shell: str, block: str, workdir: str = "",
+                  cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+        """Run one block in a new shell, from cwd or the temporary directory, and return the result.
+
+        Fail on a non-zero exit.
+        """
+        result = subprocess.run([*SHELLS[shell], block.replace("<workdir>", workdir)], cwd=cwd or self.temp,
                                 env=self.env, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
@@ -113,6 +171,71 @@ class CriticModelBlockTests(unittest.TestCase):
                     text, workdir = self.start_pressure_test(copy, shell, start)
                     self.run_named_block(copy, text, shell, "Flags", workdir)
                     self.assertEqual(self.critic_model(workdir), models[other])
+
+    def test_codex_critic_runs_claude_read_only_from_the_repo_on_the_current_model(self):
+        root = Path(self.temp)
+        fake_bin, elsewhere, record = root / "bin", root / "elsewhere", root / "claude-calls.jsonl"
+        fake_bin.mkdir()
+        elsewhere.mkdir()  # the blocks run from here, so only critic() can move the call to $REPO
+        (fake_bin / "claude").write_text(f"#!{sys.executable}\n{FAKE_CLAUDE}", encoding="utf-8")
+        (fake_bin / "claude").chmod(0o755)
+        self.env.pop("CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK", None)
+        self.env.update(PATH=f"{fake_bin}{os.pathsep}{self.env.get('PATH', '')}", FAKE_CLAUDE_RECORD=str(record))
+        model = ALLOWED_MODELS["claude"]["fallback"]  # from $DIR/model; $PRIMARY_MODEL names the other model
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                self.require_shell(shell)
+                record.unlink(missing_ok=True)
+                text, workdir = self.start_pressure_test("codex", shell, "fallback")
+                repo = re.search(r'^REPO="(.*)"$', (workdir / "env.sh").read_text(encoding="utf-8"), re.MULTILINE)
+                self.assertIsNotNone(repo, "Setup wrote no REPO to env.sh")
+                kickoff, later = BASH_FENCE.findall(section(text, "Calling The Critic"))[:2]
+                outputs = [self.run_block(shell, block, str(workdir), cwd=str(elsewhere)).stdout
+                           for block in (kickoff, later)]
+                session = (workdir / "session_id").read_text(encoding="utf-8").strip()
+                calls = [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(len(calls), 2)
+                for number, (call, flags, output) in enumerate(
+                        zip(calls, (["--session-id", session], ["--resume", session]), outputs), 1):
+                    self.assertEqual(call["argv"], [
+                        "-p", "--model", model, "--effort", "xhigh", *flags, "--output-format", "stream-json",
+                        "--verbose", "--tools", "Read,Grep,Glob", "--permission-mode", "dontAsk",
+                        "--strict-mcp-config", "--disable-slash-commands", "--add-dir", str(workdir),
+                    ])
+                    self.assertEqual(os.path.realpath(call["cwd"]), os.path.realpath(repo.group(1)))
+                    self.assertNotEqual(os.path.realpath(call["cwd"]), os.path.realpath(elsewhere))
+                    self.assertEqual(call["env"].get("CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"), "1")
+                    self.assertTrue(call["stdin"].endswith((workdir / "critic.txt").read_text(encoding="utf-8")))
+                    self.assertRegex(output,
+                                     rf"\Aexit=0 model={re.escape(model)} seconds=\d+\nok\nobjection {number}\n?\Z")
+                # replies.md keeps both replies after the later round replaced msg.txt.
+                self.assertRegex((workdir / "replies.md").read_text(encoding="utf-8"), "".join(
+                    rf"## critic call\n\nexit=0 model={re.escape(model)} seconds=\d+\nok\n\nobjection {number}\n\n"
+                    for number in (1, 2)) + r"\Z")
+
+
+class EndingConditionTests(unittest.TestCase):
+    def test_every_stop_names_one_ending_condition_from_the_list_that_all_copies_share(self):
+        """Every stop needs a conclusion with an ending condition, and the copies list the same ones (#460)."""
+        expected = ending_conditions(COPIES["claude-code"][0].read_text(encoding="utf-8"))
+        self.assertIn("cut short", expected)
+        for copy, (path, _) in COPIES.items():
+            with self.subTest(copy=copy):
+                text = path.read_text(encoding="utf-8")
+                found = ending_conditions(text)
+                extra = {NO_CRITIC} if copy == "antigravity" else set()  # the only host-specific ending
+                self.assertEqual(len(found), len(set(found)), f"{copy}: an ending condition is listed twice")
+                self.assertEqual(set(found), set(expected) | extra)
+                listed = set(found)
+                stops = [item for item in items(text) if STOP.search(item)]
+                self.assertTrue(stops, f"{copy}: no stop instruction found")
+                for item in stops:
+                    named = set(NAMED_ENDING.findall(item))
+                    self.assertEqual(len(named), 1, f"{copy}: a stop names {sorted(named)} ending conditions: {item}")
+                    self.assertLessEqual(named, listed, f"{copy}: a stop names an unlisted ending condition: {item}")
+                named_anywhere = set(NAMED_ENDING.findall(" ".join(items(text))))
+                self.assertEqual(named_anywhere, listed - LOOP_ENDINGS,
+                                 f"{copy}: each listed ending condition outside the loop needs a rule that names it")
 
 
 class CrossFamilyStopTests(unittest.TestCase):

@@ -2,18 +2,20 @@
 """lean-tests command-line entry: measure and inspect a pytest suite.
 
 Each subcommand prints one JSON object to stdout. Exit status 0 means
-success; 1 means that the gate failed, or that pin --check found a changed
-source or no source with the quote; 2 means a usage or environment error,
-and the JSON then has an "error" key. Python 3.9 or newer, standard library
-only.
+success; 1 means that the gate failed, that pin --check found a changed
+source or no source with the quote, or that changed-files found a file that
+the run may not change; 2 means a usage or environment error, and the JSON
+then has an "error" key. Python 3.9 or newer, standard library only.
 
   suite     run pytest with one outcome record per test phase
   compare   compare two suite outputs
   scan      find weak, duplicate, and protected tests in the test files
   coverage  read per-test coverage contexts and diff coverage
   mutate    build the kill matrix of a prune or review scope, or recheck its killed set
+  scorecard the check scorecard and its next mode, from a check work directory
   gate      the weakening gate between two Git refs, with the labels of the new tests
   pin       pin requirement sources with SHA-256 hashes, or check a pin record
+  changed-files  fail on a changed file that a speed or prune run may not change
 
 Run `lean_tests.py <subcommand> --help` for the options.
 """
@@ -34,11 +36,13 @@ sys.dont_write_bytecode = True
 import argparse  # noqa: E402
 from typing import Optional  # noqa: E402
 
+import lt_changed  # noqa: E402
 import lt_coverage  # noqa: E402
 import lt_gate  # noqa: E402
 import lt_mutate  # noqa: E402
 import lt_pin  # noqa: E402
 import lt_scan  # noqa: E402
+import lt_scorecard  # noqa: E402
 import lt_suite  # noqa: E402
 from lt_common import UsageError  # noqa: E402
 
@@ -100,6 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
     source = scan.add_mutually_exclusive_group(required=True)
     source.add_argument("--suite", help="suite output JSON; scan its collected node IDs")
     source.add_argument("--node-ids", help="file with one node ID per line, relative to --project")
+    scan.add_argument(
+        "--git-history", action="store_true",
+        help="also read the subject of the commit that added each test (git log -G); needs the full Git history",
+    )
 
     coverage = sub.add_parser("coverage", parents=[output], help="per-test coverage, subsets, unmeasured tests, diff coverage")
     coverage.add_argument("--contexts", required=True, help="output of `coverage json --show-contexts`")
@@ -125,7 +133,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mutate.add_argument("--work-dir", required=True, help="directory outside the project for the copies and records")
     mutate.add_argument(
-        "--recheck", metavar="MATRIX", help="rerun the killed set of this mutate output against the tests of --suite"
+        "--recheck", metavar="MATRIX",
+        help="rerun the killed set of this mutate output against the tests of --suite, and check the prune limits "
+        f"of the removal batch: at most {lt_mutate.BATCH_LIMIT} removed tests, each of class empty or subsumed, "
+        "and no removed or merged test that is excluded or protected",
+    )
+    mutate.add_argument(
+        "--scan", metavar="SCAN", help="the scan output of the prune scope; goes with --recheck, which needs it"
+    )
+    mutate.add_argument(
+        "--previous", metavar="RECHECK",
+        help="the passed --recheck output of the last committed batch of the same matrix; the tests that it "
+        "removed do not count toward the batch size (goes with --recheck)",
     )
     mutate.add_argument(
         "--base",
@@ -142,6 +161,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mutate.add_argument(
         "--workers", type=int, default=lt_mutate.DEFAULT_WORKERS, help="parallel copies (default: CPU count minus 1)"
+    )
+
+    scorecard = sub.add_parser(
+        "scorecard",
+        parents=[output],
+        help="the check scorecard and its next mode, from the outputs in a check work directory",
+        description=(
+            "Build the check scorecard rows and the one recommended next mode from run1.json, run2.json, "
+            "compare.json, scan.json, coverage.json, the importtime-<source>.txt files, growth.txt, and "
+            "end-state.txt in the work directory. A missing file makes its rows \"not measured\". "
+            "summary.markdown holds the lines to print."
+        ),
+    )
+    scorecard.add_argument("--work-dir", required=True, help="the work directory of a check run")
+    scorecard.add_argument(
+        "--hand-off-budget", type=float, default=lt_scorecard.DEFAULT_HAND_OFF_BUDGET,
+        help="seconds; the next mode is speed when run 1 took longer (default: %(default)g)",
     )
 
     gate = sub.add_parser(
@@ -197,6 +233,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="text that a pinned requirement source must contain (goes with --check); "
         "white space matches any white space",
     )
+
+    changed = sub.add_parser(
+        "changed-files",
+        parents=[output],
+        help="fail on a changed file that a speed or prune run may not change",
+        description=(
+            "Classify each file that changed from BASE to HEAD. Exit status 1 means that a changed file is "
+            "continuous integration configuration, product code, outside the project, or outside --path. "
+            "Test-side files, dependency and lock files, tox and nox files, task-runner files, agent "
+            "instruction files, and the pytest and development dependency sections of pyproject.toml and "
+            "setup.cfg pass."
+        ),
+    )
+    changed.add_argument("--project", default=".", help="project directory in a Git work tree (default: .)")
+    changed.add_argument("--base", required=True, help="the commit where the run started")
+    changed.add_argument("--head", default="HEAD", help="head Git ref (default: HEAD)")
+    changed.add_argument("--path", help="also fail on each changed file outside this path, relative to --project")
     return parser
 
 
@@ -219,10 +272,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             result = lt_scan.scan_command(args)
         elif args.command == "mutate":
             result = lt_mutate.mutate_command(args, extra)
+        elif args.command == "scorecard":
+            result = lt_scorecard.scorecard_command(args)
         elif args.command == "gate":
             result = lt_gate.gate_command(args, extra)
         elif args.command == "pin":
             result = lt_pin.pin_command(args)
+        elif args.command == "changed-files":
+            result = lt_changed.changed_files_command(args)
         else:
             result = lt_coverage.coverage_command(args)
     except UsageError as error:
@@ -244,7 +301,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(result, indent=1))
     if "error" in result:
         return 2
-    failed = args.command in ("gate", "pin") and result["summary"].get("passed") is False
+    failed = args.command in ("gate", "pin", "changed-files") and result["summary"].get("passed") is False
     return 1 if failed else 0
 
 

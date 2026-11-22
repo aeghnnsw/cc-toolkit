@@ -29,6 +29,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 - Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell, edit, or write tool. `--permission-mode dontAsk` denies anything that is not pre-approved. `--strict-mcp-config` loads no MCP servers, and `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the critic read evidence files in the work directory.
 - Critic session: the kickoff starts a session with a new `--session-id`; later rounds pass `--resume` with that ID. Run every call from `$REPO`, because Claude Code stores sessions per project directory.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`
+- `REPLIES_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-replies.md`
 - `CONCLUSION_PATH = docs/pressure-test/YYYY-MM-DD-topic-slug-conclusion.md`
 - An explicit direction from the user or from a calling skill overrides the corresponding output path.
 - One goal per critic session. A new goal starts a new pressure test with its own setup. Send no critic call after convergence or the round cap.
@@ -37,7 +38,7 @@ Do not use for a routine edit that has no judgment call. This skill changes no p
 
 ## Shell Access
 
-- The `claude` CLI needs network access and write access to `~/.claude`. If the Codex sandbox blocks either, run each `claude` command with escalated permissions. If escalation is unavailable or denied, stop and report that the critic could not run.
+- The `claude` CLI needs network access and write access to `~/.claude`. If the Codex sandbox blocks either, run each `claude` command with escalated permissions. If escalation is unavailable or denied, stop and report that the critic could not run. Write a short conclusion; the ending condition is "critic unavailable".
 - Each shell command starts a new shell. Setup writes the shared settings to `env.sh` and prints its directory. Start every later command with `source "<workdir>/env.sh"`, where `<workdir>` is that printed directory.
 - Give each critic command a shell timeout above `CALL_TIMEOUT`, for example 1860000 ms, or poll the command until it exits.
 - Write each prompt with the quoted heredoc shown below. The quotes keep backticks, `$`, and quotes in the packet literal.
@@ -61,19 +62,22 @@ export CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
 # One read-only critic call. The prompt comes from stdin. limit_call.py stops
 # the call at the time limit and exits 124 only after the CLI has ended. Prints
 # the exit code, the model, and the call time in seconds, then one status from
-# critic_status.py, and writes the reply to $DIR/msg.txt. Only the current
+# critic_status.py, and writes the reply to $DIR/msg.txt. Appends both lines and
+# the reply to $DIR/replies.md, which keeps every reply. Only the current
 # critic model may answer; any other model is wrong_model.
 critic() {                              # usage: critic <seconds> <effort> [session flags] < prompt
-  local s="$1" effort="$2" start="$SECONDS" rc; shift 2
+  local s="$1" effort="$2" start="$SECONDS" rc line verdict; shift 2
   (cd "$REPO" && python3 "$SKILL_DIR/scripts/limit_call.py" "$s" \
     claude -p --model "$(cat "$DIR/model")" --effort "$effort" "$@" \
     --output-format stream-json --verbose --tools "Read,Grep,Glob" \
     --permission-mode dontAsk --strict-mcp-config --disable-slash-commands \
     --add-dir "$DIR") > "$DIR/events.jsonl" 2> "$DIR/err.log"
   rc=$?
-  echo "exit=$rc model=$(cat "$DIR/model") seconds=$((SECONDS - start))"
-  python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
-    "$(cat "$DIR/model")"
+  line="exit=$rc model=$(cat "$DIR/model") seconds=$((SECONDS - start))"
+  verdict="$(python3 "$SKILL_DIR/scripts/critic_status.py" "$DIR/events.jsonl" "$DIR/msg.txt" \
+    "$(cat "$DIR/model")")"
+  printf '%s\n%s\n' "$line" "$verdict"
+  printf '## critic call\n\n%s\n%s\n\n%s\n\n' "$line" "$verdict" "$(cat "$DIR/msg.txt")" >> "$DIR/replies.md"
 }
 
 new_session() { python3 -c 'import uuid; print(uuid.uuid4())' > "$DIR/session_id"; }
@@ -220,11 +224,11 @@ Act on the status line:
 
 - `ok` — read the objections in `$DIR/msg.txt`.
 - `flagged` — follow [Flags](#flags).
-- `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply.
+- `wrong_model:<ids>` — stop. Report that a model other than the current critic model answered, and do not use the reply. Make no retry. Write a partial conclusion with the last stable position; the ending condition is "cut short".
 - Exit code 124 — the call reached `CALL_TIMEOUT`. Make one [narrow retry](#narrow-retry).
 - `error:<detail>`, or another non-zero exit code — follow [Failure Behavior](#failure-behavior).
 
-Record every call's `exit=` line and status in the session record.
+Record every call's `exit=` line and status in the session record. `critic` also appends both lines and the reply to `$DIR/replies.md`, because the next call overwrites `msg.txt`.
 
 ## Narrow Retry
 
@@ -313,7 +317,7 @@ An ID is reviewed when the critic has assessed some version of its answer. It is
 
 ## Conclusion
 
-Write the conclusion to `CONCLUSION_PATH`.
+Write the conclusion to `CONCLUSION_PATH`. When `$DIR/replies.md` exists, copy it to `REPLIES_PATH` first. It keeps the critic's exact replies, so a reader can check the conclusion against them.
 
 Include:
 
@@ -325,6 +329,7 @@ Include:
 - failed and retried critic calls, with their `exit=` lines and statuses
 - ending condition: converged, round cap, critic unavailable, critic flagged, or cut short
 - the critic model or models that took part
+- a link to `REPLIES_PATH`, when you copied the replies
 
 Present the same conclusion in chat. When another skill called this skill, that skill reads the conclusion and continues its own work; do not wait for the user.
 

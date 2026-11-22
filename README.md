@@ -95,6 +95,8 @@ Development workflows, repository hygiene, documentation, and review.
 - **step-workflow**
 - **t3-project-lead**
 
+project-eval has no Codex copy by decision ([#313](https://github.com/aeghnnsw/cc-toolkit/issues/313)).
+
 **Antigravity skills:**
 - **doc-update**
 - **goal-rubric**

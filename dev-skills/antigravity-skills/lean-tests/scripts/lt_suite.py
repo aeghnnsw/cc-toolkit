@@ -29,7 +29,7 @@ CHECK_FAILURES = frozenset({"AssertionError", "Failed"})
 PROBE = """\
 import json
 found = {}
-for name in ("pytest", "pytest_cov"):
+for name in ("pytest", "pytest_cov", "xdist"):
     try:
         found[name] = getattr(__import__(name), "__version__", "unknown")
     except Exception:
@@ -68,9 +68,14 @@ def probe(python: list[str], project: Path, env: dict) -> dict:
         ) from error
 
 
-def ini_addopts(python: list[str], project: Path, env: dict, path: Path) -> list[str]:
-    """The addopts of the project's pytest configuration, from a pytest run that exits before collection."""
-    cmd = [*python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "lean_tests_report", "--no-cov"]
+def ini_addopts(python: list[str], project: Path, env: dict, path: Path, no_cov: bool = True) -> list[str]:
+    """The addopts of the project's pytest configuration, from a pytest run that exits before collection.
+
+    `no_cov` adds --no-cov; only an interpreter with pytest-cov knows the option.
+    """
+    cmd = [*python, "-m", "pytest", "-p", "no:cacheprovider", "-p", "lean_tests_report"]
+    if no_cov:
+        cmd.append("--no-cov")
     try:
         result = subprocess.run(
             cmd, cwd=project, env={**env, "LEAN_TESTS_ADDOPTS": str(path)},
@@ -105,6 +110,45 @@ def without_cov(args: list[str]) -> list[str]:
         elif arg == "--cov" and index < len(args) and not args[index].startswith("-"):
             index += 1  # --cov takes an optional value
     return kept
+
+
+def has_xdist_option(args: list[str]) -> bool:
+    """True when `args` hold a pytest-xdist option that can start workers.
+
+    The options are -n and --numprocesses with a value other than 0, --dist
+    with a value other than no, -d, --tx, and -p xdist.
+    """
+    for index, arg in enumerate(args):
+        name, equals, value = arg.partition("=")
+        if not equals:
+            value = args[index + 1] if index + 1 < len(args) else ""
+        if name in ("-n", "--numprocesses"):
+            found = value != "0"
+        elif name.startswith("-n") and not name.startswith("--"):
+            found = name[2:] != "0"  # -n4
+        elif name == "--dist":
+            found = value != "no"
+        elif name.startswith("-p") and not name.startswith("--"):
+            found = (value if name == "-p" else name[2:]) == "xdist"  # -p xdist, -pxdist
+        else:
+            found = name in ("-d", "--tx")
+        if found:
+            return True
+    return False
+
+
+def xdist_sources(addopts: list[str], env: dict, extra: list[str]) -> list[str]:
+    """The sources of pytest arguments that hold a pytest-xdist option: addopts, PYTEST_ADDOPTS, or the extra arguments.
+
+    Under pytest-xdist the tests run in parallel, in no fixed order.
+    """
+    found = []
+    for source, args in (
+        ("addopts", addopts), ("PYTEST_ADDOPTS", shlex.split(env.get("PYTEST_ADDOPTS", ""))), ("arguments", extra),
+    ):
+        if has_xdist_option(args):
+            found.append(source)
+    return found
 
 
 def version_tuple(version: str) -> tuple[int, ...]:
@@ -241,10 +285,9 @@ def final_outcome(phases: dict) -> str:
     return "xpassed" if call["xfail"] else "passed"
 
 
-def coverage_options(sources: list[str], python: list[str], project: Path, env: dict, work: Path) -> list[str]:
+def coverage_options(sources: list[str], addopts: list[str], env: dict) -> list[str]:
     """The pytest options of a coverage run with per-test contexts. They also change `env`."""
     # pytest-cov keeps a report or source that addopts requests, so the run leaves out those options.
-    addopts = ini_addopts(python, project, env, work / "addopts.json")
     options = ["-o", "addopts=" + shlex.join(without_cov(addopts))]
     if "PYTEST_ADDOPTS" in env:
         env["PYTEST_ADDOPTS"] = shlex.join(without_cov(shlex.split(env["PYTEST_ADDOPTS"])))
@@ -335,9 +378,18 @@ def run_suite(args, extra: list[str]) -> dict:
         raise UsageError("the target interpreter cannot import pytest_cov", package="pytest-cov")
 
     before = git_status(project)
-    options = coverage_options(args.coverage_source, python, project, env, work) if coverage else None
+    # Only an interpreter that can import pytest-xdist can run a pytest-xdist option.
+    order_matters = args.reverse and bool(versions.get("xdist"))
+    addopts = []
+    if coverage or order_matters:
+        addopts = ini_addopts(python, project, env, work / "addopts.json", bool(versions.get("pytest_cov")))
+    # pytest-xdist does not keep the reversed order; -n 0 runs the tests in one process.
+    xdist_off = xdist_sources(addopts, env, extra) if order_matters else []
+    options = coverage_options(args.coverage_source, addopts, env) if coverage else None
     nodeids = read_node_ids(args.node_ids) if args.node_ids else []
     cmd = pytest_command(python, versions, nodeids, work / "node-ids.txt", options) + extra
+    if xdist_off:
+        cmd += ["-n", "0"]
     start = time.perf_counter()
     exit_code, timed_out = run_pytest(cmd, project, env, log, args.timeout)
     wall = time.perf_counter() - start
@@ -378,6 +430,7 @@ def run_suite(args, extra: list[str]) -> dict:
             "slowest": slowest(tests),
             "files_written": None if before is None or after is None else sorted(after - before),
             "reverse": bool(args.reverse),
+            "xdist_off": xdist_off,
             "coverage": coverage,
         },
         "command": cmd,
