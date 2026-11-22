@@ -206,6 +206,7 @@ class CodexHostAdapterTests(unittest.TestCase):
         cases = (
             ("safety_guard.py", "rm -rf *", "Reason: wildcard rm target"),
             ("pre_git_hook.py", "git add .", "git add ."),
+            ("pre_git_hook.py", "gh pr merge 1 --squash", "--match-head-commit"),
         )
         for shell in SHELLS:
             for script_name, command, reason in cases:

@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-version: 3.3.0
+version: 3.3.1
 description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 ---
 
@@ -124,8 +124,10 @@ When no new issues are found, summarize the overall PR state:
 Merge the PR directly:
 
 ```bash
-gh pr merge --squash
+gh pr merge --squash --match-head-commit "$(git rev-parse HEAD)"
 ```
+
+`--match-head-commit` merges only when the PR head is the reviewed local commit.
 
 After successful merge, inform the user to clean up their worktree and local branch if applicable.
 
@@ -134,4 +136,4 @@ After successful merge, inform the user to clean up their worktree and local bra
 Ask the user: "PR feedback cycle complete. No new issues found. What would you like to do?"
 - Options: "Merge the PR", "I'll handle it manually"
 
-If merge requested, run `gh pr merge --squash`. After successful merge, inform the user to clean up their worktree and local branch if applicable.
+If merge requested, run `gh pr merge --squash --match-head-commit "$(git rev-parse HEAD)"`. After successful merge, inform the user to clean up their worktree and local branch if applicable.

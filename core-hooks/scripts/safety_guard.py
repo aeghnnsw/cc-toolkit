@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Block dangerous `rm` commands, and `env` or `printenv` with no command.
+"""Block dangerous `rm` commands, and commands that print every variable.
 
 This module also owns shell-parsing code that other hooks import. For
 example, `pre_git_hook.py` imports `strip_heredoc_bodies` and
@@ -1245,12 +1245,38 @@ def _executable_text(command):
     )
 
 
-def _prints_environment(segment):
-    """Report whether `segment` runs `env` or `printenv` with no command.
+VARIABLE_LISTING_BUILTINS = {"declare", "export", "typeset"}
+HELP_OR_VERSION_OPTIONS = {"--help", "--version"}
+AWK_NAMES_ONLY_PROGRAM = r"\{\s*print\s+\$1\s*\}"
+AWK_NAMES_ONLY_RE = re.compile(AWK_NAMES_ONLY_PROGRAM)
+QUOTED_AWK_NAMES_ONLY_RE = re.compile(f"'{AWK_NAMES_ONLY_PROGRAM}'")
 
-    `env` with only options and assignments, and `printenv` with no
-    variable name, print every environment variable. `env -S` runs a
-    command, and `command -v env` only looks the command up.
+
+def _shows_help_or_version(segment, start, value_options):
+    """Report whether an option word from `segment[start]` on is `--help`
+    or `--version`, which print no variable.
+
+    A word counts only where the `_skip_wrapper_options` scan would stop
+    at a plain word, so the value of an option before it, as in
+    `env -u --help`, does not count.
+    """
+    return any(
+        segment[index] in HELP_OR_VERSION_OPTIONS
+        and _skip_wrapper_options(
+            segment[:index] + ["word"], start, value_options
+        ) == index
+        for index in range(start, len(segment))
+    )
+
+
+def _prints_environment(segment):
+    """Report whether `segment` prints every environment variable.
+
+    These forms print every value: `env` with only options and
+    assignments, `printenv` with no variable name, `export`, `declare`, or
+    `typeset` with only option words, and `set` with no argument. `env -S`
+    runs a command, `--help` and `--version` print no variable, and
+    `command -v env` only looks the command up.
     """
     positions, index = _command_analysis(segment)
     if any(
@@ -1261,24 +1287,53 @@ def _prints_environment(segment):
     ):
         return False
     if index < len(segment):
-        return _program_name(segment[index]) == "printenv" and all(
-            argument.startswith("-") for argument in segment[index + 1:]
+        program = _program_name(segment[index])
+        arguments = segment[index + 1:]
+        if program == "set":
+            return not arguments
+        if program in VARIABLE_LISTING_BUILTINS:
+            return all(
+                argument.startswith(("-", "+")) for argument in arguments
+            )
+        return (
+            program == "printenv"
+            and all(argument.startswith("-") for argument in arguments)
+            and not _shows_help_or_version(segment, index + 1, set())
         )
     return (
         bool(positions)
         and _program_name(segment[positions[-1]]) == "env"
         and next(_env_split_invocations(segment), None) is None
+        and not _shows_help_or_version(
+            segment, positions[-1] + 1, ENV_VALUE_OPTIONS
+        )
     )
 
 
-def _keeps_names_only(segment):
-    """Report whether `segment` is `cut -d= -f1`, in any option form, which
-    keeps only the name before the first `=` of each line."""
+def _keeps_names_only(segment, text):
+    """Report whether `segment` keeps only the name before the first `=` of
+    each line: `cut -d= -f1` in any option form, or `awk -F= '{print $1}'`.
+
+    Tokens lose their quotes, so the awk form counts only when each `$1` in
+    the command `text` is in a single-quoted `{print $1}`. The shell
+    expands `$1` in other text, usually to nothing, and awk then prints
+    each whole line.
+    """
     index = _command_index(segment)
-    if index >= len(segment) or _program_name(segment[index]) != "cut":
+    if index >= len(segment):
+        return False
+    program = _program_name(segment[index])
+    arguments = segment[index + 1:]
+    if program == "awk":
+        return (
+            arguments[:-1] in (["-F="], ["-F", "="])
+            and AWK_NAMES_ONLY_RE.fullmatch(arguments[-1]) is not None
+            and text.count("$1") == len(QUOTED_AWK_NAMES_ONLY_RE.findall(text))
+        )
+    if program != "cut":
         return False
     options = {}
-    words = iter(segment[index + 1:])
+    words = iter(arguments)
     for word in words:
         if word.startswith("--"):
             name, equals, value = word.partition("=")
@@ -1293,9 +1348,9 @@ def _keeps_names_only(segment):
 def prints_environment(command, depth=0):
     """Report whether `command` prints every environment variable (#391).
 
-    A value can be a token. Output piped straight into `cut -d= -f1` is
-    allowed, because it keeps the names only. Command substitutions are
-    checked too, also inside double quotes.
+    A value can be a token. Output piped straight into `cut -d= -f1` or
+    `awk -F= '{print $1}'` is allowed, because it keeps the names only.
+    Command substitutions are checked too, also inside double quotes.
     """
     if depth > MAX_NESTED_SHELL_DEPTH:
         return False
@@ -1304,8 +1359,9 @@ def prints_environment(command, depth=0):
     )
     if any(prints_environment(nested, depth + 1) for nested in substitutions):
         return True
+    text = _executable_text(command)
     try:
-        segments = list(_bounded_segments(_shell_tokens(_executable_text(command))))
+        segments = list(_bounded_segments(_shell_tokens(text)))
     except ValueError:
         return False
     for index, (segment, boundary) in enumerate(segments):
@@ -1314,7 +1370,7 @@ def prints_environment(command, depth=0):
         if (
             boundary in ("|", "|&")
             and index + 1 < len(segments)
-            and _keeps_names_only(segments[index + 1][0])
+            and _keeps_names_only(segments[index + 1][0], text)
         ):
             continue
         return True
@@ -1377,10 +1433,12 @@ def main():
 
         if command and prints_environment(command):
             print(
-                "BLOCKED: `env` or `printenv` with no command prints every "
-                "environment variable, and a value can be a token. To list "
-                "the names only, run `env | cut -d= -f1`. To read one "
-                "variable, run `printenv NAME`.",
+                "BLOCKED: The command prints every environment variable, and "
+                "a value can be a token. This applies to `env` or `printenv` "
+                "with no command, `export`, `declare`, or `typeset` with no "
+                "name, and `set` with no argument. To list the names only, "
+                "run `env | cut -d= -f1`. To read one variable, run "
+                "`printenv NAME`.",
                 file=sys.stderr,
             )
             sys.exit(block_status(host))

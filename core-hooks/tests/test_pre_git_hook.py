@@ -2,6 +2,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pre_git_hook.py"
 CODEX_HOOKS = ROOT / "hooks" / "hooks.codex.json"
+# A full head SHA for `gh pr merge --match-head-commit`.
+SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def load_hook_module():
@@ -437,7 +440,7 @@ class PreGitHookTests(unittest.TestCase):
 
     def test_merge_without_squash_gets_a_reminder(self):
         response = run_hook(
-            {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 1 --merge"}}
+            {"tool_name": "Bash", "tool_input": {"command": f"gh pr merge 1 --merge --match-head-commit {SHA}"}}
         )
         self.assertReminds(response, "Merge Strategy")
 
@@ -452,7 +455,7 @@ class PreGitHookTests(unittest.TestCase):
 
     def test_squash_merge_gets_no_reminder(self):
         result = run_hook_raw(
-            {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 1 --squash"}}
+            {"tool_name": "Bash", "tool_input": {"command": f"gh pr merge 1 --squash --match-head-commit {SHA}"}}
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "")
@@ -569,6 +572,14 @@ class PreGitHookTests(unittest.TestCase):
             "for f in a; do git add .; done",
             "! git add --all",
             "time git add -A",
+            # W3-25 g16 and g17: git global options, `--`, and other forms.
+            "git -C trees/doc-x add .",
+            "git add -- .",
+            "git add :/",
+            'git add "."',
+            "git -C trees/doc-x add -A",
+            "git add -Av",
+            "GIT_DIR=.git git add .",
         ]:
             with self.subTest(command=command):
                 result = run_blocked_hook(
@@ -581,8 +592,16 @@ class PreGitHookTests(unittest.TestCase):
         result = run_blocked_hook(codex_payload("git status && git add -A"))
         self.assertIn("Bulk git add operations are prohibited", result.stderr)
 
-    def test_allows_named_files_that_start_with_a_dot(self):
-        for command in ["git add .gitignore", "git add ./src/file.py", "git add -- README.md"]:
+    def test_allows_named_files_and_scoped_adds(self):
+        for command in [
+            "git add .gitignore",
+            "git add ./src/file.py",
+            "git add -- README.md",
+            # W3-25 g15: `-A` with a pathspec stages no more than the pathspec.
+            "git add -A docs/",
+            "git add --all -- docs/",
+            "git -C trees/doc-x add README.md",
+        ]:
             with self.subTest(command=command):
                 run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
 
@@ -1050,6 +1069,122 @@ class PreGitHookTests(unittest.TestCase):
                     result = run_hook_process(payload)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertNotIn("git grep -E", result.stderr)
+
+    # --- #455: contribution commands, body files, and pinned merges ---
+
+    def test_allows_attribution_text_outside_a_contribution_command(self):
+        # W3-04 g11 and x11: a search or a script that only mentions a commit
+        # and a trailer commits nothing.
+        for command in [
+            "git grep -n -E 'git commit.*Co-Authored-By: Claude' -- '*.md'",
+            "python3 - <<'EOF'\nprint(\"git commit -m 'x' -m 'Co-Authored-By: Claude'\")\nEOF",
+        ]:
+            with self.subTest(command=command):
+                run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}})
+
+    def test_blocks_attribution_in_each_contribution_command(self):
+        trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        link = "Generated with [Claude Code](https://claude.com/claude-code)"
+        for command in [
+            f"git commit -F - <<'EOF'\nFix typo\n\n{trailer}\nEOF",
+            f'git -C trees/doc-x commit -m "Fix typo" -m "{trailer}"',
+            f'GIT_AUTHOR_DATE=now git commit -m "Fix typo" -m "{trailer}"',
+            f'MSG="{trailer}"; git commit -m "$MSG"',
+            f"bash -c 'git commit -m \"Fix typo\" -m \"{trailer}\"'",
+            # W3-15 g18 and g19: issue text and the squash commit message.
+            f'gh issue create --title "Fix typo" --body "{link}"',
+            f'gh issue comment 1 --body "{link}"',
+            f'gh issue edit 1 --body "{link}"',
+            f'gh pr merge 12 --squash --match-head-commit {SHA} --body "{trailer}"',
+            f'gh pr merge 12 --squash --match-head-commit {SHA} --subject "{link}"',
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("AI tool attribution detected", result.stderr)
+
+    def test_reads_body_files_against_the_payload_cwd(self):
+        # W3-08 g26 and g27: the form that the repository recommends.
+        with tempfile.TemporaryDirectory() as cwd:
+            Path(cwd, "sub").mkdir()
+            Path(cwd, "bad.md").write_text("Fix typo\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n")
+            Path(cwd, "sub", "bad.md").write_text("Generated with Claude Code\n")
+            Path(cwd, "clean.md").write_text("Fix typo\n\nCo-Authored-By: Jamie Doe <jamie@example.invalid>\n")
+            Path(cwd, "plan.md").write_text("## Summary\n\nFix.\n\n## Test plan\n\n- Run it.\n")
+            for command, reason in [
+                ("gh pr create --title x --body-file bad.md", "AI tool attribution"),
+                ("gh pr comment 1 -F bad.md", "AI tool attribution"),
+                ("gh issue create --title x --body-file=bad.md", "AI tool attribution"),
+                ("git commit -F bad.md", "AI tool attribution"),
+                ("git commit --file=bad.md", "AI tool attribution"),
+                ("git -C sub commit -F bad.md", "AI tool attribution"),
+                ("gh pr create --title x --body-file plan.md", "Test plan"),
+            ]:
+                for payload in (
+                    {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd},
+                    dict(codex_payload(command), cwd=cwd),
+                ):
+                    with self.subTest(command=command, tool=payload["tool_name"]):
+                        result = run_blocked_hook(payload)
+                        self.assertIn(reason, result.stderr)
+            for command in [
+                "gh pr create --title x --body-file clean.md",
+                "git commit -F clean.md",
+                # A missing file can be one that the same command writes.
+                "git commit -F missing.md",
+                "git commit -F -",
+            ]:
+                with self.subTest(command=command):
+                    run_hook_raw({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
+
+    def test_blocks_a_test_plan_heading_in_a_pull_request_body(self):
+        # W3-16 g20.
+        for command in [
+            'gh pr create --title x --body "## Summary\nFix.\n\n## Test plan\n- Run it."',
+            'gh pr edit 1 --body "### Test Plan\n- Run it."',
+            "gh pr create --title x --body-file - <<'EOF'\nFix.\n\n## Test plan\nEOF",
+        ]:
+            with self.subTest(command=command):
+                result = run_blocked_hook(
+                    {"tool_name": "Bash", "tool_input": {"command": command}}
+                )
+                self.assertIn("Test plan", result.stderr)
+        response = run_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": 'gh pr create --title x --body "No test plan is needed for a typo."'},
+            }
+        )
+        self.assertReminds(response, "Contribution Guidelines")
+
+    def test_blocks_a_merge_that_is_not_pinned_to_the_full_head_sha(self):
+        # W1-04: a merge must name the reviewed head.
+        for command in [
+            "gh pr merge 1 --squash",
+            "gh pr merge 1 --squash --match-head-commit abc1234",
+            "gh -R owner/repo pr merge 1 --squash",
+            "cd repo && gh pr merge 1 --squash",
+        ]:
+            for payload in (
+                {"tool_name": "Bash", "tool_input": {"command": command}},
+                codex_payload(command),
+            ):
+                with self.subTest(command=command, tool=payload["tool_name"]):
+                    result = run_blocked_hook(payload)
+                    self.assertIn("--match-head-commit", result.stderr)
+
+    def test_allows_a_merge_pinned_to_the_head_sha(self):
+        for command in [
+            f"gh pr merge 1 --squash --match-head-commit {SHA}",
+            f"gh pr merge 1 --squash --match-head-commit={SHA}",
+            'gh pr merge 1 --squash --match-head-commit "$sha"',
+            # It turns auto-merge off and merges nothing.
+            "gh pr merge 1 --disable-auto",
+        ]:
+            with self.subTest(command=command):
+                result = run_hook_process({"tool_name": "Bash", "tool_input": {"command": command}})
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

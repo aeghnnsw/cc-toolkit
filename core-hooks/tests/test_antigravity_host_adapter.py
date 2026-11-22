@@ -250,8 +250,17 @@ class AntigravityHostAdapterTests(unittest.TestCase):
         cases = (
             ("safety_guard.py", "rm -rf ~", "Reason: home directory target"),
             ("safety_guard.py", "env", "env | cut -d= -f1"),
+            ("safety_guard.py", "export -p", "env | cut -d= -f1"),
             ("pre_git_hook.py", "git add .", "Use specific file names"),
             ("pre_git_hook.py", "git checkout -b wip", "Branch name 'wip' is invalid"),
+            ("pre_git_hook.py", "git add -- .", "Use specific file names"),
+            ("pre_git_hook.py", "gh pr merge 1 --squash", "--match-head-commit"),
+            (
+                "pre_git_hook.py",
+                'gh issue create --title x --body "Generated with Claude Code"',
+                "AI tool attribution detected",
+            ),
+            ("pre_git_hook.py", 'gh pr edit 1 --body "## Test plan"', "Test plan"),
             ("zsh_traps.py", "echo =====CODEX", "echo '=====CODEX'"),
             ("zsh_traps.py", "echo ok; echo =====", "Quote the word"),
         )
@@ -294,7 +303,7 @@ class AntigravityHostAdapterTests(unittest.TestCase):
 
     def test_git_reminders_have_no_channel_and_print_nothing(self):
         for command in (
-            "gh pr merge 123",
+            "gh pr merge 123 --match-head-commit 0123456789abcdef0123456789abcdef01234567",
             'git commit -m "Fix the typo"',
             "git checkout -b feat-430-antigravity",
         ):

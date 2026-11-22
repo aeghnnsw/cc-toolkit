@@ -48,18 +48,17 @@ ATTRIBUTION_PATTERNS = [
     r'noreply@openai\.com',
 ]
 
-# gh subcommands that introduce a PR body/comment where attribution can appear.
-# [^;&|\n]* tolerates global flags (e.g. `gh -R owner/repo pr edit`) and extra
-# spaces between tokens, while the excluded chars stop it from matching across
-# chained (; && ||), piped, or newline-separated commands.
-#
-# As with the attribution trailer, the match starts after one of those
-# separators (or at the start) and skips to the first `gh` word, so a failed
-# search takes linear time (#280).
-PR_CONTRIBUTION_RE = re.compile(
-    r'(?:\A|(?<=[;&|\n]))(?:(?!\bgh\b)[^;&|\n])*'
-    r'\bgh\b[^;&|\n]*\bpr[ \t]+(?:create|edit|comment|review)\b'
-)
+# gh subcommands whose text can carry attribution: a PR or issue body or
+# comment, or the squash commit message of `gh pr merge` (#455).
+GH_CONTRIBUTIONS = {
+    'pr': {'create', 'edit', 'comment', 'review', 'merge'},
+    'issue': {'create', 'edit', 'comment'},
+}
+# A Markdown heading of a test-plan section, at a line start or at the start
+# of a quoted body (#455).
+TEST_PLAN_HEADING_RE = re.compile(r'(?im)(?:^|(?<=["\']))#{1,6}[ \t]*test plan\b')
+# The most that the hook reads of one body file.
+MAX_BODY_FILE_BYTES = 1 << 20
 
 # Shell syntax that can come before the command word of one command segment
 # (see split_commands): a subshell `(`, a control prefix, or `time`, e.g.
@@ -69,10 +68,8 @@ SEGMENT_START = (
     r'(?:\(\s*|(?:' + '|'.join(re.escape(p) for p in COMMAND_PREFIXES) + r')\s+)*'
 )
 
-# A bulk `git add` at the start of one command segment.
-BULK_ADD_RE = re.compile(
-    SEGMENT_START + r'git\s+add\s+(?:-A|--all|\.(?=[\s)<>]|$)|\./(?=[\s)<>]|$))'
-)
+# Git options of one kind: short option letters and long option names.
+GitOptions = namedtuple('GitOptions', 'letters names')
 
 # The words of a segment for option parsing: a redirection operator such as
 # `>`, `2>&`, or `<`, or a shell word, which can contain quoted text.
@@ -92,7 +89,32 @@ GIT_GLOBAL_OPTION = (
     r'(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+(?!-)' + SHELL_WORD
     + r'|--?[A-Za-z][\w-]*(?:=' + SHELL_WORD + r')?'
 )
-GIT_COMMAND = SEGMENT_START + r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t]+'
+GIT_WORDS = r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t]+'
+GIT_COMMAND = SEGMENT_START + GIT_WORDS
+# `NAME=value` assignments before a command word, e.g. `GH_REPO=x gh pr edit`.
+ASSIGNMENTS = r'(?:[A-Za-z_]\w*=(?:' + SHELL_WORD + r')?[ \t]+)*'
+
+# Commands at the start of one segment that the bulk-add and contribution
+# rules read (#455). They also allow leading assignments.
+GIT_ADD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'add(?=[ \t]|$)')
+GIT_COMMIT_RE = re.compile(SEGMENT_START + ASSIGNMENTS + GIT_WORDS + r'commit(?=[ \t]|$)')
+GH_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'gh(?=[ \t]|$)')
+COMMAND_WORD_RE = re.compile(SEGMENT_START + ASSIGNMENTS + r'(?P<word>' + SHELL_WORD + r')')
+# Pathspecs that name the whole working tree.
+BULK_PATHSPECS = {'.', './', ':/'}
+# Programs that run another command, which the segment rules do not read.
+INDIRECT_PROGRAMS = {
+    'bash', 'builtin', 'command', 'dash', 'env', 'eval', 'exec', 'fish', 'ksh',
+    'nohup', 'sh', 'sudo', 'xargs', 'zsh',
+}
+# A mention of a contribution command anywhere in the text.
+CONTRIBUTION_MENTION_RE = re.compile(
+    r'\b(?:commit|pr[ \t]+(?:create|edit|comment|review|merge)'
+    r'|issue[ \t]+(?:create|edit|comment))\b'
+)
+# Options that name a file with the message or body.
+COMMIT_FILE_OPTIONS = GitOptions(set('F'), {'--file'})
+GH_BODY_FILE_OPTIONS = GitOptions(set('F'), {'--body-file'})
 
 # A git subcommand that can create a branch, at the start of one command
 # segment. Its arguments are read as shell words (see shell_words). A segment
@@ -101,9 +123,6 @@ GIT_COMMAND = SEGMENT_START + r'git(?:[ \t]+(?:' + GIT_GLOBAL_OPTION + r'))*[ \t
 GIT_SUBCOMMAND_RE = re.compile(
     GIT_COMMAND + r'(?P<subcommand>checkout|switch|branch|worktree[ \t]+add)(?=[ \t]|$)'
 )
-
-# Git options of one kind: short option letters and long option names.
-GitOptions = namedtuple('GitOptions', 'letters names')
 
 # Options that name the branch that checkout, switch, or `worktree add`
 # creates (#281). Each takes the branch name as its value.
@@ -451,9 +470,147 @@ def plain_grep_escape(segment):
     return None
 
 
+def is_bulk_add(segment):
+    """Report whether `segment` is a `git add` of the whole working tree.
+
+    A pathspec of `.`, `./`, or `:/` names the whole tree, and so does
+    `-A`/`--all` with no pathspec (#455). `-A <path>` is allowed: since Git
+    2.0, `git add <path>` stages removals under the path too.
+    """
+    match = GIT_ADD_RE.match(segment)
+    if not match:
+        return False
+    words = shell_words(segment[match.end():])
+    add_all = False
+    pathspecs = []
+    for word in words:
+        if word == '--':
+            pathspecs.extend(words)
+        elif word.startswith('--'):
+            name, equals, value = word.partition('=')
+            add_all = add_all or name == '--all'
+            if name == '--pathspec-from-file':
+                pathspecs.append(value if equals else next(words, ''))
+        elif word.startswith('-') and word != '-':
+            add_all = add_all or 'A' in short_option_letters(word)
+        else:
+            pathspecs.append(word)
+    if any(pathspec in BULK_PATHSPECS for pathspec in pathspecs):
+        return True
+    return add_all and not pathspecs
+
+
 def has_bulk_add(command):
-    """Report whether a segment of `command` starts with a bulk `git add`."""
-    return any(BULK_ADD_RE.match(segment) for segment in command_segments(command))
+    """Report whether a segment of `command` is a bulk `git add`."""
+    return any(is_bulk_add(segment) for segment in command_segments(command))
+
+
+def contribution_kind(segment):
+    """Return the contribution command that `segment` starts with, or None.
+
+    The kinds are 'commit' for `git commit`, and 'pr <subcommand>' or
+    'issue <subcommand>' for the gh subcommands in GH_CONTRIBUTIONS. As for
+    the branch rule, the command must start the segment, so text that only
+    mentions it, such as a `git grep` pattern, does not count (#455).
+    """
+    if GIT_COMMIT_RE.match(segment):
+        return 'commit'
+    match = GH_RE.match(segment)
+    if not match:
+        return None
+    words = list(shell_words(segment[match.end():]))
+    for index, word in enumerate(words[:-1]):
+        if word in GH_CONTRIBUTIONS:
+            subcommand = words[index + 1]
+            if subcommand in GH_CONTRIBUTIONS[word]:
+                return f'{word} {subcommand}'
+            return None
+    return None
+
+
+def runs_indirect_command(segment):
+    """Report whether `segment` starts with a program that runs another
+    command, such as `bash -c` or `sudo`."""
+    match = COMMAND_WORD_RE.match(segment)
+    if not match:
+        return False
+    return os.path.basename(received_word(match.group('word'))) in INDIRECT_PROGRAMS
+
+
+def git_directory(segment, cwd):
+    """Return the folder where the git command of `segment` runs: `cwd`
+    after each `git -C <dir>` option."""
+    words = shell_words(segment)
+    for word in words:
+        if word == 'git':
+            break
+    for word in words:
+        if word == '-C':
+            cwd = os.path.join(cwd, os.path.expanduser(next(words, '')))
+        elif not word.startswith('-'):
+            break
+        elif word in ('-c', '--git-dir', '--work-tree', '--namespace', '--config-env'):
+            next(words, None)  # skip the option value
+    return cwd
+
+
+def read_body_file(path):
+    """Return the start of the regular file at `path`, or '' when it cannot
+    be read. A FIFO or device is not read, so the hook cannot hang."""
+    try:
+        if not os.path.isfile(path):
+            return ''
+        with open(path, encoding='utf-8', errors='replace') as body_file:
+            return body_file.read(MAX_BODY_FILE_BYTES)
+    except OSError:
+        return ''
+
+
+def body_file_texts(segment, kind, cwd):
+    """Yield the text of each file that a contribution segment reads its
+    message or body from (#455).
+
+    A path resolves against `cwd`, and for git after `-C`. `-` reads
+    standard input, whose heredoc is in the command text. A missing file can
+    be one that the same command writes, so it is skipped.
+    """
+    if kind == 'commit':
+        options = COMMIT_FILE_OPTIONS
+        cwd = git_directory(segment, cwd)
+        words = shell_words(segment[GIT_COMMIT_RE.match(segment).end():])
+    else:
+        options = GH_BODY_FILE_OPTIONS
+        words = shell_words(segment[GH_RE.match(segment).end():])
+    for word in words:
+        if word == '--':
+            return
+        path = option_value(word, words, options)
+        if path and path != '-':
+            yield read_body_file(os.path.join(cwd, os.path.expanduser(path)))
+
+
+def pinned_merge(segment):
+    """Report whether a `gh pr merge` segment pins the merge to a head SHA.
+
+    The value of `--match-head-commit` must be a full 40-digit SHA, or a `$`
+    expansion that the hook cannot read. `--disable-auto` merges nothing.
+    """
+    words = shell_words(segment[GH_RE.match(segment).end():])
+    for word in words:
+        if word == '--disable-auto':
+            return True
+        name, equals, value = word.partition('=')
+        if name == '--match-head-commit':
+            value = value if equals else next(words, '')
+            if re.fullmatch(r'[0-9a-fA-F]{40}', value) or '$' in value:
+                return True
+    return False
+
+
+def payload_cwd(input_data):
+    """Return the `cwd` of the hook payload, or the process cwd."""
+    cwd = input_data.get('cwd') if isinstance(input_data, dict) else None
+    return cwd if isinstance(cwd, str) and cwd else os.getcwd()
 
 
 def check_branch_names(command):
@@ -502,16 +659,56 @@ def main():
         # AI attribution is a hard block. Check it before the advisory handlers
         # below so a compound command (e.g. `gh pr edit ... && gh pr merge`)
         # cannot short-circuit the deny via an earlier advisory exit.
-        is_contribution_cmd = bool("git commit" in command or PR_CONTRIBUTION_RE.search(command))
+        #
+        # Once a segment runs a contribution command, the whole command is
+        # searched, heredoc bodies included, so a message built in an earlier
+        # segment is checked too. A program that runs another command, such
+        # as `bash -c`, counts when the text mentions one (#455).
+        segments = command_segments(command)
+        contributions = []
+        for segment in segments:
+            kind = contribution_kind(segment)
+            if kind:
+                contributions.append((segment, kind))
+        is_contribution_cmd = bool(contributions) or (
+            bool(CONTRIBUTION_MENTION_RE.search(command))
+            and any(runs_indirect_command(segment) for segment in segments)
+        )
+        cwd = payload_cwd(input_data)
+        texts = [command]
+        pull_request_texts = [command]
+        for segment, kind in contributions:
+            for text in body_file_texts(segment, kind, cwd):
+                texts.append(text)
+                if kind in ('pr create', 'pr edit'):
+                    pull_request_texts.append(text)
         if is_contribution_cmd:
             for pattern in ATTRIBUTION_PATTERNS:
-                if re.search(pattern, command, re.IGNORECASE):
+                if any(re.search(pattern, text, re.IGNORECASE) for text in texts):
                     block(
                         "AI tool attribution detected in git operation. "
-                        "Remove AI contribution messages from commit messages and "
-                        "PR descriptions/comments.",
+                        "Remove AI contribution messages from commit messages, "
+                        "issues, and PR descriptions/comments.",
                         host,
                     )
+
+        if any(kind in ('pr create', 'pr edit') for _, kind in contributions) and any(
+            TEST_PLAN_HEADING_RE.search(text) for text in pull_request_texts
+        ):
+            block(
+                "Test plan section detected in a PR description. This repository's "
+                "PR descriptions have no test plan; drop the section.",
+                host,
+            )
+
+        for segment, kind in contributions:
+            if kind == 'pr merge' and not pinned_merge(segment):
+                block(
+                    "`gh pr merge` needs `--match-head-commit <full head SHA>`, so "
+                    "that it merges only the reviewed head. Get the 40-character "
+                    "SHA with `gh pr view <PR> --json headRefOid --jq .headRefOid`.",
+                    host,
+                )
 
         invalid_branch, saw_valid_branch = check_branch_names(command)
         if invalid_branch:
@@ -535,10 +732,12 @@ def main():
         if "gh pr merge" in command and "--squash" not in command:
             remind("Merge Strategy: Prefer --squash when merging PRs to keep history clean.", host)
 
-        if is_contribution_cmd:
+        # A merge alone writes no new text in most cases, so it gets no reminder.
+        merges_only = contributions and all(kind == 'pr merge' for _, kind in contributions)
+        if is_contribution_cmd and not merges_only:
             remind(
                 "Contribution Guidelines: Keep messages concise and accurate. "
-                "Avoid AI attribution in commit messages or PR descriptions/comments.",
+                "Avoid AI attribution in commit messages, issues, or PR descriptions/comments.",
                 host,
             )
 
