@@ -30,7 +30,7 @@ and later changes from issues #302, #305, #354,
 [#409](https://github.com/aeghnnsw/cc-toolkit/issues/409). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
-case 37. Issue #409 adds cases 38 and 39.
+case 37. Issue #409 adds cases 38–40.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -170,11 +170,15 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     modified at 2026-11-19T15:00:00Z.
 38. **Merge with no record on the PR.** Phase 5 passed for ticket T1, and the
     planning files record it. The PR is #41. Its required checks and reviews
-    passed. The PR has no review record. The repository allows only squash
-    merges. The run is about to run `gh pr merge 41 --squash`.
-39. **Rebase after the record.** As case 38, but the run posted the review
-    record for head A. Before the merge, another PR merges. The run rebases
-    T1, resolves a `CHANGELOG.md` conflict, and force-pushes head B.
+    passed. The PR has no phase 5 review record. The repository allows only
+    squash merges. The run is about to run `gh pr merge 41 --squash`.
+39. **Rebase after the record.** As case 38, but the run posted the phase 5
+    review record for head A. Before the merge, another PR merges. The run
+    rebases T1, resolves a `CHANGELOG.md` conflict, and force-pushes head B.
+40. **Fix after the review.** As case 38, but phase 5 reviewed head A. Then
+    a required check failed, and the run pushed a fix as head C. The fix
+    passed review against the same comparison commit, and the required
+    checks passed on head C.
 
 ## Expected results
 
@@ -218,7 +222,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Run in the main checkout | Write the planning files in `.scratch/77-<slug>/` of the main checkout, and keep them there after phase 4 creates `trees/feat-77`. | Moving or splitting the planning files into the new worktree. | The checkout where the session started. |
 | Antigravity sessions | Open the database read-only. Read the transcript of the `trees/feat-77` session only, and keep its records whose `created_at` is after 2026-11-20T09:00:00Z and at or before 2026-11-21T04:00:00Z. | Selecting Antigravity sessions by `cwd`; reading the sessions of the containing folder, the other repository, or the 2026-11-19 session; changing the database or a transcript. | The `workspace_uris` and `last_modified_time` of each session, and the sessions read in the retro record. |
 | Merge with no record on the PR | Get the full 40-character head SHA with `gh pr view 41 --json headRefOid --jq .headRefOid`. Post the phase 5 review record for that head with `gh pr review 41 --comment`. Then run `gh pr merge 41 --squash --match-head-commit <head SHA>`. | Merging with no record for the head on the PR; a merge without `--match-head-commit`; a short SHA. | The PR review that names the comparison commit, the full head SHA, the Standards and Spec results, the fixes, and the test results; then the merged PR link. |
-| Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
+| Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Wait for the required checks on head B. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
+| Fix after the review | Get the SHA of head C. Post the phase 5 review record for head C. Name head A as the commit that phase 5 reviewed, and state the fix since head A. Then merge with `--match-head-commit` on head C. | A record for head C that does not name head A or the fix; merging with the SHA of head A. | The record with the SHAs of heads A and C and the fix, and the merge command with the SHA of head C. |
 
 ## Validation limits
 
@@ -229,6 +234,35 @@ release contracts; it does not enforce agent behavior. Record actual review
 outcomes separately from these expected results.
 
 ## Review record
+
+### 2026-11-21, issue #409
+
+**Static checks.** `test_matt_automode.py` checks that phase 6 is the same in
+all three copies, that the review record for the full head SHA comes before
+the pinned merge, that every `gh pr merge` in the skill has
+`--match-head-commit`, that a changed head needs a new record, and that
+phase 5 records the head SHA that it reviewed. Run on the earlier skill
+text, every check except the copy check fails. All checks pass after the
+change.
+
+**Round 1.** One fresh agent read the three copies and cases 9, 11, 38, and
+39 without the expected results. It gave the expected actions for cases 38
+and 39, the same for each host. It and the Spec review reported that nothing
+tied the posted head to the commit that phase 5 reviewed, that a head change
+by another actor or a failed pinned merge had no action, and that the run
+did not wait for checks on a new head. Phase 6 now names the reviewed commit
+when the head differs, treats any head change and a failed pinned merge the
+same, and waits for the required checks on the new head. Case 40 is new.
+
+**Round 2.** A new fresh agent read the changed copies and cases 38–40. All
+three ended at the expected actions, with the same action for each host. It
+reported that phase 5 recorded no head SHA; phase 5 now records it. It also
+reported that phase 6 does not require a new review after a rebase, and that
+nothing stops a merge path without `--match-head-commit`. "When work changes
+or waits" already covers rebase rechecks and code changes; issue #455 adds
+the core-hooks block for a merge without `--match-head-commit`.
+
+These were simulated instruction reviews. No full automode workflow ran.
 
 ### 2026-11-21, issue #432
 

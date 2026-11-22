@@ -89,23 +89,29 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 5. **Review — `mattpocock-skills:code-review`.** Review against the ticket spec
    and a recorded comparison commit. This fulfills `implement`'s review step.
    Fix actionable Standards and Spec findings, commit, and pass affected checks.
+   Record the head SHA that the review covers.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
    to the final integration PR for stacked work. After required checks and
    reviews pass, merge under repository rules:
    1. Get the full 40-character head SHA with
-      `gh pr view <PR> --json headRefOid --jq .headRefOid`. A short SHA fails.
+      `gh pr view <PR> --json headRefOid --jq .headRefOid`.
+      `--match-head-commit` rejects a short SHA.
    2. Post the phase 5 review record for that head with
       `gh pr review <PR> --comment --body-file <file>`. Name the comparison
       commit, the head SHA, the Standards and Spec results, the fixes, and the
-      test results.
+      test results. When the head is not the commit that phase 5 reviewed,
+      name that commit and state what changed since it.
    3. Merge with `gh pr merge <PR> --match-head-commit <head SHA>` and the
       merge method that the repository requires, such as `--squash`.
+   4. Record the merged PR link.
 
-   If a push changes the head, such as a fix, a rebase, or a conflict
-   resolution, do steps 1 and 2 again before step 3. State in the new record
-   what changed since the last reviewed head. Record the merged PR link.
+   When the head changes after step 1, such as after a fix, a rebase, or a
+   conflict resolution, or when step 3 fails because the head changed, wait
+   for the required checks on the new head. Then do steps 1 and 2 again
+   before step 3. State in the new review record what changed since the last
+   reviewed head.
 7. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
    the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
    and close the parent only when fully satisfied. Close tickets by hand only
