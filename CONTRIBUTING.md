@@ -294,8 +294,8 @@ the repository root:
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | A plugin with an Antigravity manifest, when `agy` is installed | `agy plugin validate <plugin>` |
-| `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
-| Code or a test in `cc-customize`, `core-hooks`, `creator-skills`, `dev-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
+| `allowed-models.json`, a `pressure-test` `SKILL.md`, or code or a test in `dev-skills` | `uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
+| Code or a test in `cc-customize`, `core-hooks`, `creator-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
 | Code or a test in `productivity-skills` | `uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'` |
 | Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
@@ -364,9 +364,10 @@ The table in [Verification](#verification) gives the command for each suite.
 The `productivity-skills` suite needs `uv` and PostgreSQL tools (`initdb`,
 `pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
 
-The `dev-skills` suite takes about 3 to 4 minutes on an idle machine. When
-other test runs share the machine, it can take up to 8 minutes. More than
-half of the time is in `dev-skills/tests/test_codex_critic.py`.
+The `dev-skills` suite takes about 5 minutes on an idle machine, and
+longer when other test runs share the machine. Of this time,
+`dev-skills/tests/test_codex_critic.py` takes about 1.5 minutes, and
+`dev-skills/tests/test_lean_tests.py` about 1 minute.
 
 To run a full suite, put `python3 dev-skills/scripts/run_suite.py --` before
 its command. The script lets one full suite run at a time in all worktrees
@@ -375,8 +376,10 @@ instead of a new run, and it prints the failing tests and the exit status
 last.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
-pytest need pytest and pytest-cov. Under a `python3` without them, these
-checks skip; their skip reason, which `-v` shows, gives the command.
+pytest need pytest and pytest-cov, which the `dev-skills` command
+supplies. Under a `python3` without them, these checks skip; their skip
+reason, which `-v` shows, gives the command. The checks that also need
+pytest-xdist skip unless you add `--with pytest-xdist`.
 
 The PyMOL startup suite requires `uv` and access to download missing script
 dependencies. It checks MCP initialization and tool discovery without changing

@@ -1,6 +1,6 @@
 ---
 name: lean-tests
-version: 1.6.0
+version: 1.6.1
 description: This skill should be used when the user asks to "check the test suite", "audit the tests", "find out why the tests are slow", "make the tests faster", "remove redundant tests", or "review the tests in this change", or asks which pytest tests are flaky, order-dependent, redundant, or check nothing. It measures a Python pytest suite without changing a file and prints a scorecard with one recommended next mode; on request, it makes the suite faster without deleting a test, removes redundant tests under one path with killed-mutant evidence, or reviews the new and changed tests of a change with a weakening gate. To write a test first, use tdd; for bugs in a diff, use /code-review; for a broad evaluation of a project, use project-eval.
 ---
 

@@ -69,8 +69,8 @@ jobs:
 
       - name: Dev Skills tests
         if: ${{ !cancelled() }}
-        # Without pytest, the lean-tests checks that need it skip, as in a local run. #498 tracks adding it.
-        run: python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'
+        # pytest and pytest-cov let the lean-tests checks that run pytest run instead of skip.
+        run: uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'
 
       - name: PyMOL Skills tests
         if: ${{ !cancelled() }}
