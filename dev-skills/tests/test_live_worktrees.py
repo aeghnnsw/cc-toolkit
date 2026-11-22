@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +31,12 @@ def write_log(path: Path, records: list[dict], age_minutes: float = 0) -> Path:
     stamp = time.time() - age_minutes * 60
     os.utime(path, (stamp, stamp))
     return path
+
+
+def agy_time(age_minutes: float) -> str:
+    """Return a last_modified_time value age_minutes ago, in the form that Antigravity writes."""
+    stamp = datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
+    return f"{stamp:%Y-%m-%d %H:%M:%S}.{stamp.microsecond:06d}"[:-1] + "+00:00"  # A 5-digit fraction.
 
 
 @unittest.skipUnless(shutil.which("lsof") and shutil.which("git"), "needs lsof and git")
@@ -146,6 +155,100 @@ class LiveWorktreesTests(unittest.TestCase):
 
         self.assertIn(f"session log {rollout.resolve()}", listed[self.listed_path(worktree)])
         self.assertNotIn(self.listed_path(old), listed)
+
+    def agy_database(self, folder: Path, rows: list[tuple]) -> Path:
+        """Write conversation_summaries.db with the rows kept in the write-ahead log, as in a live database."""
+        folder.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(folder / "conversation_summaries.db")
+        self.addCleanup(connection.close)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+        connection.execute("CREATE TABLE conversation_summaries (conversation_id text, "
+                           "last_modified_time datetime NOT NULL, workspace_uris text NOT NULL)")
+        connection.executemany("INSERT INTO conversation_summaries VALUES (?, ?, ?)", rows)
+        connection.commit()
+        return folder
+
+    def test_lists_a_worktree_from_a_recent_antigravity_conversation_and_skips_an_old_one(self):
+        cli = self.add_worktree("agy-cli", parent=self.tmp / "with space")  # The file URI holds %20.
+        t3 = self.add_worktree("agy-t3")
+        old = self.add_worktree("agy-old")
+        cli_dir = self.agy_database(self.home / ".gemini" / "antigravity-cli", [
+            ("conv-cli", agy_time(5), json.dumps([(cli / "src").as_uri(), "vscode-remote://host/x"])),
+            ("conv-old", agy_time(90), json.dumps([old.as_uri()])),
+            ("conv-main", agy_time(1), json.dumps([self.repo.as_uri()])),
+        ])
+        profile_dir = self.agy_database(
+            self.home / ".t3" / "userdata" / "providers" / "antigravity" / "0f3a" / "antigravity-acp",
+            [("conv-t3", agy_time(2).replace(" ", "T").replace("+00:00", "Z"), json.dumps([t3.as_uri()]))])
+        originals = {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                     for folder in (cli_dir, profile_dir) for path in folder.iterdir()}
+        self.assertIn(cli_dir / "conversation_summaries.db-wal", originals)
+
+        listed = self.run_script()
+
+        self.assertRegex(listed[self.listed_path(cli)],
+                         rf"^Antigravity conversation conv-cli in {re.escape(str(cli_dir))} \([45] min ago\)$")
+        self.assertRegex(listed[self.listed_path(t3)],
+                         rf"^Antigravity conversation conv-t3 in {re.escape(str(profile_dir))} \([12] min ago\)$")
+        self.assertNotIn(self.listed_path(old), listed)
+        self.assertEqual(set(listed), {self.listed_path(cli), self.listed_path(t3)})
+        self.assertEqual({path: (path.read_bytes(), path.stat().st_mtime_ns) for path in originals}, originals)
+
+    def test_antigravity_time_that_cannot_be_read_lists_the_worktree(self):
+        worktree = self.add_worktree("agy-unknown")
+        self.agy_database(self.home / ".gemini" / "antigravity", [
+            ("conv-x", "yesterday", json.dumps([worktree.as_uri()])),
+            ("conv-bad-old", agy_time(120), "not json"),  # Outside the window, so never parsed.
+        ])
+
+        listed = self.run_script()
+
+        self.assertIn("Antigravity conversation conv-x", listed[self.listed_path(worktree)])
+        self.assertIn("(time unknown)", listed[self.listed_path(worktree)])
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores folder permissions")
+    def test_fails_when_antigravity_data_cannot_be_read(self):
+        worktree = self.add_worktree("agy-fail")
+        uri = json.dumps([worktree.as_uri()])
+
+        def garbage(home):
+            folder = home / ".gemini" / "antigravity-cli"
+            folder.mkdir(parents=True)
+            (folder / "conversation_summaries.db").write_bytes(b"not a database")
+
+        def locked(folder):
+            folder.chmod(0)
+            self.addCleanup(folder.chmod, 0o755)
+
+        cases = [
+            ("cannot read the Antigravity database", garbage),
+            # A live conversation in a folder that cannot be searched is not skipped.
+            ("cannot read the Antigravity database", lambda home: locked(
+                self.agy_database(home / ".gemini" / "antigravity-cli", [("conv-1", agy_time(3), uri)]))),
+            ("cannot list the T3 Code Antigravity profiles", lambda home: locked(
+                (self.agy_database(home / ".t3" / "userdata" / "providers" / "antigravity" / "0f3a" / "antigravity-acp",
+                                   [("conv-2", agy_time(3), uri)])).parents[1])),
+            ("cannot read workspace_uris of Antigravity conversation conv-3", lambda home: self.agy_database(
+                home / ".gemini" / "antigravity", [("conv-3", agy_time(3), "not json")])),
+            ("cannot read workspace_uris of Antigravity conversation conv-4", lambda home: self.agy_database(
+                home / ".gemini" / "antigravity", [("conv-4", agy_time(3), json.dumps([{"uri": worktree.as_uri()}]))])),
+            ("cannot read workspace_uris of Antigravity conversation conv-5", lambda home: self.agy_database(
+                home / ".gemini" / "antigravity", [("conv-5", agy_time(3), json.dumps([str(worktree)]))])),
+        ]
+        for index, (message, make) in enumerate(cases):
+            with self.subTest(index=index, message=message):
+                home = self.tmp / f"home-{index}"  # Each case has its own home folder.
+                make(home)
+
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "--repo", str(self.repo)],
+                    env=dict(self.env, HOME=str(home)), capture_output=True, text=True,
+                )
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(f"live_worktrees: {message}", result.stderr)
+                self.assertEqual(result.stdout, "")
 
     def test_reads_the_config_folder_of_another_running_session(self):
         worktree = self.add_worktree("other-config")

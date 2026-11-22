@@ -39,8 +39,8 @@ class ResolverCase(unittest.TestCase):
     def run_resolver(
         self, *args: str, cwd: Path | None = None, extra_env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess:
-        # A T3 Code session sets CLAUDE_CODE_PLUGIN_CACHE_DIR; never read the real plugin folder.
-        inherited = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_PLUGIN_CACHE_DIR"}
+        # A T3 Code session sets CLAUDE_CODE_PLUGIN_CACHE_DIR or GEMINI_HOME; never read the real plugin folder.
+        inherited = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_CODE_PLUGIN_CACHE_DIR", "GEMINI_HOME")}
         # HOME keeps the Antigravity lookup away from the real ~/.gemini.
         env = {
             **inherited,
@@ -505,7 +505,7 @@ class CodexResolveTest(ResolverCase):
 
 
 class AntigravityResolveTest(ResolverCase):
-    """Workspace plugins in .agents/plugins/, then global plugins in ~/.gemini/config/plugins/."""
+    """Workspace plugins in .agents/plugins/, then global plugins in config/plugins/ of GEMINI_HOME or ~/.gemini."""
 
     def setUp(self):
         super().setUp()
@@ -653,6 +653,37 @@ class AntigravityResolveTest(ResolverCase):
 
         self.assertEqual(completed.returncode, 1)
         self.assertIn("not installed", completed.stderr)
+
+    def test_gemini_home_replaces_the_home_config_folder(self):
+        profile = self.tmp / "profile"  # A T3 Code profile, which T3 Code passes as GEMINI_HOME.
+        make_skill(self.agy_plugin(self.global_plugins, "matt", {"name": "matt"}), "skills/retro")
+        home_only = make_skill(self.agy_plugin(self.global_plugins, "tools", {"name": "tools"}), "skills/helper")
+        expected = make_skill(self.agy_plugin(profile / "config" / "plugins", "matt", {"name": "matt"}), "skills/retro")
+        make_skill(self.agy_plugin(profile / "config" / "plugins", "off", {"name": "off"}), "skills/task")
+        write(profile / "config" / "config.json", json.dumps({"plugins": {"off": {"enabled": False}}}))
+        self.agy_config({"matt": {"enabled": False}})  # The home config is not read either.
+
+        completed = self.run_resolver("--host", "antigravity", "matt:retro", "tools:helper", "off:task",
+                                      extra_env={"GEMINI_HOME": str(profile)})
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
+        self.assertIn(f"tools:helper: plugin tools is not installed in a workspace .agents/plugins folder or in "
+                      f"{profile / 'config' / 'plugins'}", completed.stderr)
+        self.assertIn(f"off:task: plugin off is disabled (plugins.off.enabled is false in "
+                      f"{profile / 'config' / 'config.json'})", completed.stderr)
+        self.assertNotIn(str(home_only), completed.stdout)
+
+    def test_relative_or_missing_gemini_home_falls_back_to_the_home_folder(self):
+        expected = make_skill(self.agy_plugin(self.global_plugins, "matt", {"name": "matt"}), "skills/retro")
+        (self.workdir / "profile" / "config" / "plugins").mkdir(parents=True)
+        for value in ("profile", str(self.tmp / "missing"), ""):
+            with self.subTest(value=value):
+                completed = self.run_resolver("--host", "antigravity", "matt:retro",
+                                              extra_env={"GEMINI_HOME": value})
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
 
 
 class UsageTest(ResolverCase):

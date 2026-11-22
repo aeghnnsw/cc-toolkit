@@ -21,16 +21,17 @@ Codex: the [plugins."PLUGIN@MARKETPLACE"] table in config.toml under
 CODEX_HOME (default ~/.codex) must set enabled = true. The highest numeric
 version under plugins/cache/MARKETPLACE/PLUGIN/ is used.
 
-Antigravity: search each .agents/plugins/ folder from the current directory
-upward, nearest first. Stop after the directory that holds .git (the Git top
-level) or at /. Then search ~/.gemini/config/plugins/. In these folders, a
-plugin folder matches by the name in .antigravity-plugin/plugin.json, else
-by the name in .claude-plugin/plugin.json, else by the folder name. The
-first enabled match is used, so a disabled workspace plugin does not hide a
-global plugin of the same name. In ~/.gemini/config/config.json,
-plugins.FOLDER.enabled decides first, then plugins.PLUGIN.enabled. With
-neither, "disabled": true in .antigravity-plugin/plugin.json disables the
-plugin.
+Antigravity: the config root is GEMINI_HOME when it is an absolute path to
+a directory, as in a T3 Code profile; otherwise it is ~/.gemini. Search each
+.agents/plugins/ folder from the current directory upward, nearest first.
+Stop after the directory that holds .git (the Git top level) or at /. Then
+search config/plugins/ in the config root. In these folders, a plugin folder
+matches by the name in .antigravity-plugin/plugin.json, else by the name in
+.claude-plugin/plugin.json, else by the folder name. The first enabled match
+is used, so a disabled workspace plugin does not hide a global plugin of the
+same name. In config/config.json in the config root, plugins.FOLDER.enabled
+decides first, then plugins.PLUGIN.enabled. With neither, "disabled": true
+in .antigravity-plugin/plugin.json disables the plugin.
 
 In the plugin root, search the skills paths of the host manifest and the
 skills/ directory. In Codex, manifest skills paths replace skills/. Without
@@ -188,11 +189,22 @@ def codex_plugin_root(plugin: str) -> Path:
     return max(versions, key=lambda p: version_key(p.name))
 
 
+def gemini_config() -> Path:
+    """Return the Antigravity config folder: GEMINI_HOME/config or ~/.gemini/config.
+
+    T3 Code sets GEMINI_HOME to a private profile for each Antigravity
+    provider instance. A relative or missing GEMINI_HOME is not used.
+    """
+    home = os.environ.get("GEMINI_HOME", "")
+    root = Path(home) if os.path.isabs(home) and os.path.isdir(home) else Path.home() / ".gemini"
+    return root / "config"
+
+
 def antigravity_plugin_dirs() -> list[Path]:
     """Return the Antigravity plugin folders in search order.
 
     Walk upward from the current directory to the Git top level (or to /),
-    nearest .agents/plugins first. The global folder comes last.
+    nearest .agents/plugins first. The global folder of the config root comes last.
     """
     folders = []
     current = Path.cwd().resolve()
@@ -200,7 +212,7 @@ def antigravity_plugin_dirs() -> list[Path]:
         folders.append(directory / ".agents" / "plugins")
         if (directory / ".git").exists():
             break
-    folders.append(Path.home() / ".gemini" / "config" / "plugins")
+    folders.append(gemini_config() / "plugins")
     return folders
 
 
@@ -240,9 +252,9 @@ def antigravity_plugin_root(plugin: str) -> Path:
             continue
         matches.extend(p for p in children if antigravity_name(p) == plugin)
     if not matches:
-        global_dir = Path.home() / ".gemini" / "config" / "plugins"
+        global_dir = gemini_config() / "plugins"
         raise ResolveError(f"plugin {plugin} is not installed in a workspace .agents/plugins folder or in {global_dir}")
-    config = Path.home() / ".gemini" / "config" / "config.json"
+    config = gemini_config() / "config.json"
     try:
         entries = load_json(config).get("plugins", {}) if config.exists() else {}
     except (OSError, ValueError) as error:
