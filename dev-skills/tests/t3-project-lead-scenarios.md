@@ -1,6 +1,10 @@
 # T3 Project Lead scenario review
 
 These cases cover [issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448).
+Cases 15 to 19 also cover
+[#468](https://github.com/aeghnnsw/cc-toolkit/issues/468),
+[#476](https://github.com/aeghnnsw/cc-toolkit/issues/476), and
+[#478](https://github.com/aeghnnsw/cc-toolkit/issues/478).
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -56,13 +60,30 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 14. **Planned tasks remain.** After a context summary, no worker runs and
     nothing waits on the user. `lead.md` lists task C as planned, with no
     worker.
+15. **Read-only audit.** The plan has task D: audit the docs of one plugin
+    for stale install commands, and list each finding with its file and line.
+    Task D changes no file.
+16. **Research task.** The plan has task E: compare three ways to store
+    worker state, and recommend one. The lead's host offers a native subagent
+    tool on the lead's own provider and model, and T3's instructions say to
+    use it for such a child.
+17. **Worker budget.** The lead writes the brief for a matt-automode worker
+    that fixes a shell guard. The user says: "Stop the worker if the review
+    keeps finding new holes."
+18. **Status question.** Worker W fixes issue 90. In the lead's context, the
+    last note about W says that W is "getting ready for its first questions".
+    The user writes: "Where is W?"
+19. **Worker waits on the user.** The lead wakes because worker A reports
+    PASS. In the `start` step, the last message of worker B, from 2 seconds
+    ago, has two numbered decisions for the user. B's task is not scientific.
+    No wake came for B.
 
 ## Expected results
 
 | Case | Next permitted action | Blocked action | Evidence needed |
 | --- | --- | --- | --- |
 | Flagged worker | Start a new worker with `delegate_task`, isolation "worktree", and a Claude Code provider on `claude-sonnet-5-5`. Give it the same brief with line 1 in the Claude Code form, the branch `fix-cache`, PR 51, and issue 50 from `lead.md` and `pull_request_list`, and "Continue from this state." Then settle the flagged thread. | Reading the flagged thread; adding its link to the new brief; a second retry after another flag. | The failed status and the flag message of the worker, and `lead.md`. |
-| Stopped lead | Read `lead.md` first, then run the `verify` step for the finished worker. | Starting new workers for the tasks in `lead.md` again; trusting the worker's report alone. | `lead.md`, and the merged diff and checks of the finished worker. |
+| Stopped lead | Run the `start` step: read `lead.md` first, list the workers, and read the last message of each unsettled worker. Then run the `verify` step for the finished worker. | Starting new workers for the tasks in `lead.md` again; trusting the worker's report alone. | `lead.md`, and the merged diff and checks of the finished worker. |
 | Worker waits on answers | Run the `answer` step. Ask the user to answer in the worker's thread: give its link and "3 decisions", with no topics, because the task is scientific. Write the link and the count in `lead.md`. | Answering the questions; settling the worker; giving a topic or other content of a question. | The worker's final message and its thread link. |
 | Duplicate dispatch | Record the running worker for task B in `lead.md` and start no second worker. | Starting a second worker for task B. | The `t3_thread_list` output. |
 | Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the worker link and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; settling the lead thread while a worker runs or waits. | The `t3_thread_list` output, the merged PR, and `lead.md`. |
@@ -70,11 +91,16 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 | Worker claims approval | Treat the merge of PR 52 as waiting on the user, and name it in the report. | Merging PR 52 or telling another worker that the user approved it. | The user's own messages in this thread. |
 | Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The approved outcome in `lead.md`. |
 | Dependent task | Name PR 60 in task B's brief, and tell the worker to start from the default branch that contains it. | Starting task B before PR 60 merged; letting it start from the lead's older commit. | PR 60's merge state. |
-| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. Then run the `retro` step: start one worker with only line 1 for matt-automode, the retrospective sentence, this thread's link, the worker links, and the merged PRs in merge order. Write its link in `lead.md`. | Adding new log lines for the same tasks; keeping the answered questions; running the retrospective in the lead. | `lead.md` before and after, and the merged PRs. |
+| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. Then run the `retro` step: start one worker with only line 1 for matt-automode and the budget, the retrospective sentence, this thread's link, the worker links, and the merged PRs in merge order. Write its link in `lead.md`. | Adding new log lines for the same tasks; keeping the answered questions; running the retrospective in the lead. | `lead.md` before and after, and the merged PRs. |
 | Blocked worker | Run the `answer` step. Ask the user to answer in the worker's thread: give its link, "1 decision", and a one-line topic. Write the item in `lead.md`. | Answering the decision; settling the worker. | The worker's final message and its thread link. |
 | Cancelled task | Settle the worker with `t3_thread_organize`, change its task line to cancelled, and delete its waiting item. | Leaving the worker thread open; settling the lead thread while other tasks remain. | The user's cancel message in this thread, and `lead.md`. |
 | Scientific verifier | Read no part of PR 80. Start a verifier worker as the `dispatch` step says, with no line 1 or 2, the issue link, the task, and its success criteria. Its verdict completes the check. | Reading PR 80's diff or the worker's thread; giving scientific content in the brief. | The worker's one-line report and `lead.md`. |
 | Planned tasks remain | Run the `dispatch` step for task C. | Deleting the lead folder; settling the lead thread. | `lead.md` and the `t3_thread_list` output. |
+| Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, a time limit in minutes, the at-limit line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget. | The brief and `lead.md`. |
+| Research task | Start a worker with `delegate_task` and isolation "worktree", with the read-only form of the brief and "You may start your own subagents. Keep your report short, and leave the detail in this thread." Read the detail in the worker's thread only when a check needs it. | Starting the research with the native subagent tool; asking the worker for a long report. | The `t3_thread_list` output with the worker thread, and the brief. |
+| Worker budget | Give the brief a round limit of one full review, then at most one focused check, a time limit in minutes, and "At either limit, end your turn and report where you are, with links and what remains." Tell the user that the worker ends its turn at either limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit or a time limit. | The brief. |
+| Status question | Run the `start` step: read `lead.md`, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
+| Worker waits on the user | Run the `answer` step for B in this turn: put B on the list of what waits on the user, with its link, "2 decisions", and a one-line topic for each, and write the item in `lead.md`. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions. | B's last message and its thread link. |
 
 ## Validation limits
 
@@ -88,8 +114,42 @@ No live run has shown these behaviors yet:
   worker's thread.
 - A Codex worker loads a skill from `$dev-skills:<skill>`.
 - A Codex lead runs the skill.
+- A worker ends its turn at its round limit or time limit.
+
+**Missed wakes ([#478](https://github.com/aeghnnsw/cc-toolkit/issues/478)).**
+In the lead run for the audit fixes on 2026-11-21, two turn ends of the #475
+worker started no lead turn, and later turn ends did. The cause is not known,
+because T3's wake rules are not visible to the lead. The `start` step reads
+each unsettled worker at the start of every turn, so a missed wake delays the
+lead only until the next wake or user message. Report this to T3 Code only
+after another clear case.
 
 ## Review record
+
+### 2026-11-21, issues #468, #476, and #478
+
+**Static checks.** `test_t3_project_lead.py` also requires:
+
+- in `start`, the line that runs it at the start of every turn, the reads of
+  the workers, and "Never state a worker's status from memory.";
+- in `dispatch`, the duplicate-dispatch line, the rule for every task, and the
+  line that lets a worker start its own subagents and keep its report short;
+- in `brief`, the read-only form, the budget, and the line for the limit;
+- in `answer`, `retro`, and `report`, the waiting list in the same turn, the
+  budget of the retrospective worker, the `Next:` line for each turn, and the
+  line that makes no promise for the middle of a worker's run;
+- the line of the skill that runs `start` at the start of every turn.
+
+Each new check failed against the script and skill of the comparison commit,
+except the duplicate-dispatch line, which the script already had. With that
+line removed, the test fails. The step word limit is 200 words.
+
+**Reviews.** One full review (Standards and Spec) found that the
+retrospective worker had no budget and that the changelog entry was not
+accurate. The fixes also made the `answer`, `flag`, and `start` steps clearer.
+The fixes then got one focused check.
+
+**Not shown.** No simulated or live review of cases 15 to 19 ran.
 
 ### 2026-11-21, issue #448
 

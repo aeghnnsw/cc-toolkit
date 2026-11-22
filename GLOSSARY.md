@@ -255,7 +255,10 @@ _Avoid_: Subagent
 
 **Brief**:
 The prompt that starts a worker: a line that loads a skill, the task, its
-success criteria, the lead's decisions, and the form of the worker's report.
+success criteria, the lead's decisions, a budget, and the form of the worker's
+report. A budget is a round limit and a time limit; at either limit, the
+worker ends its turn and reports. A brief for a read-only task or a verifier
+loads no skill and names what the worker must not change.
 _Avoid_: Handoff, worker prompt
 
 ## Lean-tests language
