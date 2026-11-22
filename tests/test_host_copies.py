@@ -463,9 +463,6 @@ HOST_LINES = {
 -run this command from the checkout that the current session runs in:
 +run this command from the checkout that the current session runs in.
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
-+The plan does not read Antigravity transcripts, so it finds another
-+Antigravity session only by its process or a Git lock.
-+
 ''',
     'dev-skills/codex-skills/t3-project-lead/SKILL.md': r'''
 +   `<plugin-root>` is two levels above this folder.

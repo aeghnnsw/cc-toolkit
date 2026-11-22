@@ -415,9 +415,13 @@ def main(argv=None):
         args.claude_root = [Path.home() / ".claude" / "projects"]
         args.codex_root = [Path.home() / ".codex" / "sessions"]
         # Antigravity has a CLI folder and an app folder; a user often has one
-        # of them. A missing default folder is left out instead of reported.
+        # of them. T3 Code runs Antigravity with a private profile for each
+        # provider instance and keeps its sessions in antigravity-acp there.
+        # A missing default folder is left out instead of reported.
+        t3_profiles = sorted((Path.home() / ".t3" / "userdata" / "providers" / "antigravity").glob("*/antigravity-acp"))
         args.antigravity_root = [path for path in (Path.home() / ".gemini" / "antigravity-cli",
-                                                   Path.home() / ".gemini" / "antigravity") if path.is_dir()]
+                                                   Path.home() / ".gemini" / "antigravity", *t3_profiles)
+                                 if path.is_dir()]
         if os.environ.get("CLAUDE_CONFIG_DIR"):
             args.claude_root.append(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser() / "projects")
         if os.environ.get("CODEX_HOME"):

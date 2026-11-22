@@ -258,6 +258,31 @@ Code plugin, and the result can lose parts of it. See the
 [Antigravity plugin guide](https://antigravity.google/docs/plugins) for other
 commands.
 
+#### Antigravity in T3 Code
+
+T3 Code runs Antigravity with a private profile for each Antigravity
+provider instance, not with `~/.gemini`. Each profile is a folder in
+`~/.t3/userdata/providers/antigravity/`. T3 Code sets `GEMINI_HOME` to the
+profile and does not link `~/.gemini/config/plugins/` into it, so its
+Antigravity does not load the plugins in that folder. `agy plugin install`
+ignores `GEMINI_HOME` and installs into `~/.gemini/config/plugins/`
+(measured with `agy` 1.5.13).
+
+To load an installed plugin in T3 Code, link its folder into the profile.
+Replace `<profile>` with the profile folder name and `<plugin>` with the
+plugin directory name:
+
+```bash
+profile=~/.t3/userdata/providers/antigravity/<profile>
+mkdir -p "$profile/config/plugins"
+ln -s ~/.gemini/config/plugins/<plugin> "$profile/config/plugins/<plugin>"
+```
+
+Then start a new T3 Code Antigravity session. One check on 2026-11-21, with
+T3 Code's Antigravity binary 1.5.14, measured this path: the session listed
+the skills of four linked plugins, and the linked Core Hooks blocked
+`git add -A`. No other version was checked.
+
 ### Updates and removal
 
 The examples use `creator-skills`. Replace that name with the plugin you
@@ -277,6 +302,14 @@ To update the installed Codex copy:
    the intended version.
 3. If it does not, run `codex plugin add creator-skills@cc-toolkit`.
 4. Start a new Codex session.
+
+To update the installed Antigravity copy:
+
+1. Run `agy plugin install https://github.com/aeghnnsw/cc-toolkit/tree/master/creator-skills`
+   again. `agy` has no plugin update command. With `agy` 1.5.14, the install
+   replaces the installed folder, and a link to it in a T3 Code profile
+   still finds the new copy.
+2. Start a new Antigravity session.
 
 The Core Hooks policy scripts that check your shell commands are the
 installed copy. A denial names its path, such as
@@ -313,6 +346,12 @@ To uninstall it instead:
 ```bash
 codex plugin remove creator-skills@cc-toolkit
 ```
+
+To uninstall the Antigravity copy, run
+`agy plugin uninstall creator-skills`. With `agy` 1.5.14, the uninstall does
+not remove a link in a T3 Code profile, so delete
+`~/.t3/userdata/providers/antigravity/<profile>/config/plugins/creator-skills`
+too.
 
 Start a new host session after changing its plugins. See the
 [Claude Code management guide](https://code.claude.com/docs/en/plugins/install#manage-plugins-from-your-shell)

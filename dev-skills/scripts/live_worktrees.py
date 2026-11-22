@@ -3,18 +3,31 @@
 
 repo-cleanup runs this script before it removes worktrees. Each output line is
 a worktree path, as `git worktree list` prints it, a tab, and the evidence:
-a Git lock, a running process with its working directory in the worktree, or
+a Git lock, a running process with its working directory in the worktree,
 a Claude Code or Codex session log, changed in the last 60 minutes, that
-records a working directory in the worktree. The main checkout is never
-listed, because cleanup never removes it.
+records a working directory in the worktree, or an Antigravity conversation,
+changed in the last 60 minutes, that started in the worktree. The main
+checkout is never listed, because cleanup never removes it.
+
+Antigravity conversations are the rows of conversation_summaries.db in
+~/.gemini/antigravity-cli (CLI), ~/.gemini/antigravity (app), and the
+antigravity-acp folder of each T3 Code profile in
+~/.t3/userdata/providers/antigravity/. The script reads a temporary copy of
+each database. A conversation counts for the worktree that holds one of its
+workspace_uris paths when its last_modified_time is in the window. When that
+time cannot be read, the worktree is listed with "time unknown".
 
 The current session is left out: this process, its ancestors, and the logs
-named by CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID. The exit status is 0 when
-the check ran and 1 when it could not run, for example without lsof or ps.
+named by CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID. An Antigravity
+conversation of the current session is not left out. The exit status is 0
+when the check ran and 1 when it could not run, for example without lsof or
+ps, or with an Antigravity folder, database, or recent conversation that
+cannot be read.
 
 Limit: a session with no process in the worktree and no log change in the
 last 60 minutes is not found, for example a Codex thread, whose app server
-runs in another folder, that waits for an hour.
+runs in another folder, that waits for an hour. An Antigravity conversation
+that started in another folder and moved into the worktree is not found.
 """
 
 from __future__ import annotations
@@ -23,14 +36,23 @@ import argparse
 import json
 import os
 import re
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
+from contextlib import closing
+from datetime import datetime
 from typing import NoReturn
+from urllib.parse import unquote, urlsplit
 
 WINDOW_MINUTES = 60
 TAIL = 4 * 1024 * 1024
 CONFIG_VAR = re.compile(r"(?:^|\s)(CLAUDE_CONFIG_DIR|CODEX_HOME)=(\S+)")
+# Antigravity writes last_modified_time as text, for example
+# "2026-11-21 04:59:57.48579+00:00".
+ANTIGRAVITY_TIME = re.compile(r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:[.,]\d+)?(Z|[+-]\d{2}:?\d{2})")
 
 
 def fail(message: str) -> NoReturn:
@@ -197,6 +219,119 @@ def log_dirs(path: str) -> set[str]:
     return dirs
 
 
+def antigravity_dirs() -> list[str]:
+    """Return the Antigravity folders that can hold conversation_summaries.db."""
+    home = os.path.expanduser("~")
+    profiles = os.path.join(home, ".t3", "userdata", "providers", "antigravity")
+    try:
+        names = sorted(os.listdir(profiles))
+    except (FileNotFoundError, NotADirectoryError):
+        names = []
+    except OSError as error:
+        fail(f"cannot list the T3 Code Antigravity profiles in {profiles} ({error})")
+    return [os.path.join(home, ".gemini", "antigravity-cli"), os.path.join(home, ".gemini", "antigravity"),
+            *(os.path.join(profiles, name, "antigravity-acp") for name in names)]
+
+
+def conversations(folder: str) -> list[tuple]:
+    """Return (conversation_id, workspace_uris, last_modified_time) for each row in folder.
+
+    Read a temporary copy of conversation_summaries.db and its -wal and -shm
+    files, so that a live database stays unchanged. A folder without the
+    database has no rows. A database that cannot be read stops the script.
+    """
+    database = os.path.join(folder, "conversation_summaries.db")
+    try:
+        os.stat(database)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    except OSError as error:  # For example, a folder that cannot be searched.
+        fail(f"cannot read the Antigravity database {database} ({error})")
+    with tempfile.TemporaryDirectory() as copy:
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                shutil.copyfile(database + suffix, os.path.join(copy, "conversation_summaries.db" + suffix))
+            except OSError as error:
+                if suffix and isinstance(error, FileNotFoundError):
+                    continue  # A database without a write-ahead log is complete.
+                fail(f"cannot copy the Antigravity database {database + suffix} ({error})")
+        try:
+            with closing(sqlite3.connect(os.path.join(copy, "conversation_summaries.db"))) as connection:
+                return connection.execute(
+                    "SELECT conversation_id, workspace_uris, last_modified_time FROM conversation_summaries"
+                ).fetchall()
+        except sqlite3.Error as error:
+            fail(f"cannot read the Antigravity database {database} ({error})")
+
+
+def changed_at(value: object) -> float | None:
+    """Return a last_modified_time value in seconds since the epoch, or None.
+
+    The fraction of a second is dropped, because Python before 3.11 reads only
+    3 or 6 digits of it.
+    """
+    match = ANTIGRAVITY_TIME.fullmatch(value.strip()) if isinstance(value, str) else None
+    if match is None:
+        return None
+    zone = "+00:00" if match.group(3) == "Z" else match.group(3)
+    if ":" not in zone:
+        zone = f"{zone[:3]}:{zone[3:]}"
+    try:
+        return datetime.fromisoformat(f"{match.group(1)}T{match.group(2)}{zone}").timestamp()
+    except ValueError:
+        return None
+
+
+def workspace_paths(uris: object) -> list[str]:
+    """Return the absolute local paths in a workspace_uris JSON list; raise ValueError.
+
+    A URI of another scheme or host, such as a remote workspace, has no local
+    path. An entry that is not a URI cannot be read.
+    """
+    if not isinstance(uris, str):
+        raise ValueError("workspace_uris is not text")
+    workspaces = json.loads(uris)
+    if not isinstance(workspaces, list):
+        raise ValueError("workspace_uris is not a list")
+    paths = []
+    for uri in workspaces:
+        parts = urlsplit(uri) if isinstance(uri, str) else None
+        if parts is None or not parts.scheme:
+            raise ValueError("an entry is not a URI")
+        if parts.scheme == "file" and parts.netloc in ("", "localhost"):
+            path = unquote(parts.path)
+            if not os.path.isabs(path):
+                raise ValueError("a file URI has no absolute path")
+            paths.append(path)
+    return paths
+
+
+def antigravity_evidence(roots: dict[str, str], now: float) -> list[tuple[str, str]]:
+    """Return (worktree, evidence) for each recent Antigravity conversation, newest first.
+
+    A conversation whose time cannot be read counts as recent, and one whose
+    workspace_uris cannot be read stops the script, so that no live worktree
+    is missed.
+    """
+    found = []
+    since = now - WINDOW_MINUTES * 60
+    for folder in antigravity_dirs():
+        for conversation, uris, modified in conversations(folder):
+            changed = changed_at(modified)
+            if changed is not None and changed < since:
+                continue
+            try:
+                paths = workspace_paths(uris)
+            except ValueError as error:
+                fail(f"cannot read workspace_uris of Antigravity conversation {conversation} in {folder} ({error})")
+            age = "time unknown" if changed is None else f"{(now - changed) / 60:.0f} min ago"
+            for path in {owner(workspace, roots) for workspace in paths} - {None}:
+                item = f"Antigravity conversation {conversation} in {folder} ({age})"
+                found.append((float("inf") if changed is None else changed, path, item))
+    found.sort(key=lambda entry: -entry[0])
+    return [(path, item) for _, path, item in found]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=".", help="repository checkout (default: .)")
@@ -204,7 +339,7 @@ def main() -> None:
 
     # For each linked worktree, the evidence of each kind, in report order.
     evidence = {
-        path: {"lock": locks, "process": [], "log": []}
+        path: {"lock": locks, "process": [], "log": [], "antigravity": []}
         for path, locks in linked_worktrees(args.repo).items()
     }
     roots = {os.path.realpath(path): path for path in evidence}
@@ -223,9 +358,11 @@ def main() -> None:
             continue
         for path in {owner(cwd, roots) for cwd in log_dirs(log)} - {None}:
             evidence[path]["log"].append(f"session log {log} ({(now - changed) / 60:.0f} min ago)")
+    for path, item in antigravity_evidence(roots, now):
+        evidence[path]["antigravity"].append(item)
     for path, kinds in evidence.items():
         # Name the first item of each kind and count the others; the newest
-        # log comes first.
+        # log and the newest conversation come first.
         found = [
             items[0] + (f" and {len(items) - 1} more" if len(items) > 1 else "")
             for items in kinds.values() if items

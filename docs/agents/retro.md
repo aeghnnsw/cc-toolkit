@@ -30,10 +30,12 @@ choose.
 
    Without a root option, the helper reads Claude Code sessions in
    `~/.claude/projects`, Codex sessions in `~/.codex/sessions`, and
-   Antigravity sessions in `~/.gemini/antigravity-cli` (CLI) and
-   `~/.gemini/antigravity` (app), plus the active `CLAUDE_CONFIG_DIR` and
-   `CODEX_HOME` roots. A missing root is a `root_unavailable` diagnostic,
-   except a missing default Antigravity folder, which the helper leaves out.
+   Antigravity sessions in `~/.gemini/antigravity-cli` (CLI),
+   `~/.gemini/antigravity` (app), and the `antigravity-acp` folder of each
+   T3 Code profile in `~/.t3/userdata/providers/antigravity/`, plus the
+   active `CLAUDE_CONFIG_DIR` and `CODEX_HOME` roots. A missing root is a
+   `root_unavailable` diagnostic, except a missing default Antigravity
+   folder, which the helper leaves out.
    Antigravity records have no working folder. The helper reads a copy of
    `conversation_summaries.db` and selects a conversation when one of its
    `workspace_uris`, resolved, is a repository root or a folder below one,

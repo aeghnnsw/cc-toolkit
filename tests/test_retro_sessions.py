@@ -298,6 +298,14 @@ class RetroSessionsTests(unittest.TestCase):
         self.antigravity_database(antigravity_cli, [self.antigravity_conversation(
             antigravity_cli, "conv-default", [str(self.repo)],
             [self.antigravity_step(0, "USER_INPUT", "default Antigravity")])])
+        # A T3 Code profile keeps its Antigravity sessions in antigravity-acp;
+        # a profile without that folder is left out.
+        profiles = fixture_home / ".t3" / "userdata" / "providers" / "antigravity"
+        t3_profile = profiles / "0f3a" / "antigravity-acp"
+        self.antigravity_database(t3_profile, [self.antigravity_conversation(
+            t3_profile, "conv-t3", [str(self.repo)],
+            [self.antigravity_step(0, "USER_INPUT", "T3 Code Antigravity")])])
+        (profiles / "1b2c" / "config").mkdir(parents=True)
         class FixedClock(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -306,10 +314,11 @@ class RetroSessionsTests(unittest.TestCase):
         with patch.object(Path, "home", return_value=fixture_home), patch.dict(os.environ, {
                 "CLAUDE_CONFIG_DIR": str(active_claude), "CODEX_HOME": str(active_codex)}), patch("datetime.datetime", FixedClock):
             _, manifest, _, digests = self.artifacts(self.run_in_process())
-            self.assertEqual(len(digests), 5)
-            self.assertEqual([(entry["path"], entry["status"]) for entry in manifest["roots"]
+            self.assertEqual(len(digests), 6)
+            self.assertIn("T3 Code Antigravity", [event["text"] for digest in digests for event in digest["events"]])
+            self.assertEqual([(entry["path"], entry["status"], entry["candidates"]) for entry in manifest["roots"]
                               if entry["host"] == "antigravity"],
-                             [(str(antigravity_cli), "ok")])
+                             [(str(antigravity_cli), "ok", 1), (str(t3_profile), "ok", 1)])
             self.assertNotIn("antigravity", [entry["host"] for entry in manifest["diagnostics"]
                                              if entry["code"] == "root_unavailable"])
             self.assertEqual(manifest["window"]["through"], "2026-01-03T00:00:00.123+00:00")
