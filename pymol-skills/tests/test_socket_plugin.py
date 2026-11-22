@@ -22,27 +22,19 @@ def load_plugin():
 
 
 class FakeCmd:
-    """Stand in for PyMOL's `cmd`: `do` writes each command to the open log, as PyMOL logs a command.
-    No call prints output."""
+    """Stand in for PyMOL's `cmd`: record each command that `do` runs. No call prints output."""
 
     def __init__(self):
-        self.log = None
         self.commands = []
-
-    def log_open(self, path):
-        self.log = path
-
-    def log_close(self):
-        self.log = None
 
     def do(self, command):
         self.commands.append(command)
-        if self.log:
-            with open(self.log, 'a') as log:
-                log.write(command + '\n')
 
     def align(self, mobile, target):
         pass
+
+    def count_atoms(self, selection):
+        return 0
 
 
 class SocketPluginTests(unittest.TestCase):
@@ -51,7 +43,7 @@ class SocketPluginTests(unittest.TestCase):
         self.cmd = FakeCmd()
 
     def execute(self, code):
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return self.plugin.execute_code(self.cmd, code)
 
     def test_code_without_output_gets_empty_output(self):
@@ -60,6 +52,11 @@ class SocketPluginTests(unittest.TestCase):
             with self.subTest(code=code):
                 self.assertEqual(self.execute(code), {'executed': True, 'output': '', 'error': ''})
         self.assertEqual(self.cmd.commands, [command, 'fetch 1ubq'])
+
+    def test_failed_assert_returns_an_error(self):
+        result = self.execute("assert cmd.count_atoms('1ubq') > 0, 'no atoms in 1ubq'")
+        self.assertEqual(result, {'executed': False, 'output': '',
+                                  'error': 'Error executing PyMOL command: no atoms in 1ubq'})
 
 
 if __name__ == '__main__':

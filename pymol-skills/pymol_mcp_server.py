@@ -166,10 +166,10 @@ mcp = FastMCP("PyMOLMCPServer", lifespan=server_lifespan)
 
 def response_text(response: Dict[str, Any], request: str) -> str:
     """
-    Returns the tool text for a socket plugin response: PyMOL's output, its
-    error, or a neutral note when PyMOL returned no output. The bridge adds
-    no success text of its own, because an empty result does not show that
-    the request did what it asked.
+    Returns the tool text for a socket plugin response: its output, its
+    error, or a neutral note when it returned no output. The bridge adds no
+    success text of its own, because an empty result does not show that the
+    request did what it asked.
     """
     if response.get("status", "error") != "success":
         return f"Execution failed: {response.get('message', 'Unknown error')}"
@@ -180,8 +180,7 @@ def response_text(response: Dict[str, Any], request: str) -> str:
         output = res.get("output")
     else:
         output = res  # legacy format: the result is the output string
-    # An output equal to the request only echoes it.
-    if not output or output == request:
+    if not output:
         return f"PyMOL returned no output for: {request}"
     return str(output)
 

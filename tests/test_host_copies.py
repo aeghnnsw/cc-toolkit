@@ -563,7 +563,7 @@ HOST_LINES = {
 +   3. Sign in to Supabase when Antigravity asks.
 ''',
     'pymol-skills/codex-skills/pymol-mcp/SKILL.md': r'''
--Find the tools by their exposed names; Claude Code adds a plugin namespace.
+-Find the tools by their exposed names; Claude Code can add a plugin namespace.
 +Find the tools by their exposed names; Codex can add a plugin namespace.
 -  MCP client, including a Codex or Antigravity session, then reconnect from
 -  Claude Code.
@@ -572,7 +572,7 @@ HOST_LINES = {
 +  that `uv` is available to the local Codex process.
 ''',
     'pymol-skills/antigravity-skills/pymol-mcp/SKILL.md': r'''
--Find the tools by their exposed names; Claude Code adds a plugin namespace.
+-Find the tools by their exposed names; Claude Code can add a plugin namespace.
 +Find the tools by their exposed names; Antigravity can add a plugin namespace.
 -  MCP client, including a Codex or Antigravity session, then reconnect from
 -  Claude Code.
@@ -597,7 +597,7 @@ HOST_LINES = {
 +missing dependencies. The Codex process must be able to find `uv` on `PATH`.
 -Install **PyMOL Skills** from the **cc-toolkit** marketplace if it is
 +Install **PyMOL Skills** from the **cc-toolkit** Codex marketplace if it is
--Restart Claude Code after installing the package to load its tools.
+-Start a new Claude Code session after installing the package to load its tools.
 +Start a new Codex task after installing the package to load its tools.
 # Claude Code gives the plugin root as ${CLAUDE_PLUGIN_ROOT}; the other hosts find it from the skill folder.
 -Use the installed copy of this plugin, `<plugin-root>`, independent
@@ -605,8 +605,8 @@ HOST_LINES = {
 +The plugin root, `<plugin-root>`, is two levels above the directory that
 +holds this `SKILL.md`. Use that installed copy, independent of any Claude
 +Code installation or source checkout.
--- Missing tools: check that `/plugin` shows the plugin as enabled, then
--  restart Claude Code.
+-- Missing tools: check that the Claude Code plugin is installed and
+-  enabled, then start a new session.
 +- Missing tools: check that the Codex plugin is installed and enabled, then
 +  start a new task.
 -  and ensure the Claude Code process can find it.
@@ -626,7 +626,7 @@ HOST_LINES = {
 +download missing dependencies. The Antigravity process must be able to find
 -Install **PyMOL Skills** from the **cc-toolkit** marketplace if it is
 -not installed. See the package [README](../../README.md) for installation.
--Restart Claude Code after installing the package to load its tools.
+-Start a new Claude Code session after installing the package to load its tools.
 +If **PyMOL Skills** is not installed, run this command, then start a new
 +conversation to load its tools:
 +
@@ -641,8 +641,8 @@ HOST_LINES = {
 +The plugin root, `<plugin-root>`, is two levels above the directory that
 +holds this `SKILL.md`. Use that installed copy, independent of any Claude
 +Code or Codex installation or source checkout.
--- Missing tools: check that `/plugin` shows the plugin as enabled, then
--  restart Claude Code.
+-- Missing tools: check that the Claude Code plugin is installed and
+-  enabled, then start a new session.
 +- Missing tools: check that `agy plugin list` shows the plugin as enabled,
 +  then start a new conversation.
 -  and ensure the Claude Code process can find it.

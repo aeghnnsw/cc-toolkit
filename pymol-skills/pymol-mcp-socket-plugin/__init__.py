@@ -10,12 +10,9 @@ Based on the concept of the "Rendering Plugin" from Michael Lerner.
 from __future__ import absolute_import
 from __future__ import print_function
 
-import ast
 import os
-import re
 import socket
 import json
-import tempfile
 import threading
 import time
 import traceback
@@ -158,57 +155,17 @@ class SocketServer:
         self.client = None
         self.thread = None
         
-def do_argument(code):
-    """Return the command of code that is one cmd.do() call with a string literal, or None."""
-    match = re.fullmatch(r"cmd\.do\((.+)\)", code.strip(), re.DOTALL)
-    if not match:
-        return None
-    try:
-        command = ast.literal_eval(match.group(1))
-    except (ValueError, SyntaxError):
-        return None
-    return command if isinstance(command, str) else None
-
 def execute_code(cmd, code):
     """Run code from the MCP bridge in PyMOL and return its result for the bridge.
 
-    The output holds only text that PyMOL produced. When PyMOL produced none,
-    the output is empty and the bridge says so; the plugin adds no success
-    text of its own, because a call without output does not show success.
+    The plugin does not capture what PyMOL or the code prints, so the output
+    is always empty, and the plugin adds no success text of its own. A Python
+    exception, such as a failed assert, returns as the error.
     """
     try:
         print(f"Executing PyMOL command from MCP:\n{code}")
-        exec_globals = {"cmd": cmd, "__builtins__": __builtins__}
-        output = ""
-        pymol_cmd = do_argument(code)
-        if pymol_cmd is None:
-            exec(code, exec_globals)
-        else:
-            # Log the command to a temporary file; the log can hold more than
-            # the command itself.
-            temp_log = tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.pml')
-            temp_log.close()
-            try:
-                cmd.log_open(temp_log.name)
-                try:
-                    exec(code, exec_globals)
-                finally:
-                    cmd.log_close()
-                try:
-                    with open(temp_log.name, 'r') as f:
-                        log_content = f.read().strip()
-                except OSError:
-                    log_content = ""  # The log could not be read; report no output.
-            finally:
-                try:
-                    os.unlink(temp_log.name)
-                except OSError:
-                    pass
-            if log_content and log_content != pymol_cmd:
-                output = f"PyMOL output: {log_content}"
-
-        print(f"Command output: {output}")
-        return {"executed": True, "output": output, "error": ""}
+        exec(code, {"cmd": cmd, "__builtins__": __builtins__})
+        return {"executed": True, "output": "", "error": ""}
 
     except Exception as e:
         error_msg = f"Error executing PyMOL command: {str(e)}"

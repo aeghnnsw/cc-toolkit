@@ -13,7 +13,7 @@ show **Listening on port 9876**. If setup is incomplete, follow
 
 ## Tools
 
-Find the tools by their exposed names; Claude Code adds a plugin namespace.
+Find the tools by their exposed names; Claude Code can add a plugin namespace.
 
 - `pymol_command(command)`: execute native PyMOL syntax, such as
   `show cartoon, all` or `color red, chain A`.
@@ -43,11 +43,16 @@ assert isinstance(cmd.count_atoms(), int)
 assert len(cmd.get_view()) == 18
 ```
 
-Read the returned text. The server can report execution or connection errors
-as ordinary text. A completed tool call alone does not prove success; report
-only what the response establishes. Generic success text, such as
-`Fetched structure: 1ubq`, comes from an outdated socket plugin; reinstall
-it as [PyMOL setup](../pymol-setup/SKILL.md) describes.
+Read the returned text. The server reports connection errors and Python
+exceptions as ordinary text. It does not return what PyMOL prints: printed
+values and the errors of a `pymol_command` show only in PyMOL. A completed
+tool call alone does not prove success, and neither does
+`PyMOL returned no output`. To check a result, query it with
+`pymol_python_api` and an `assert`, such as
+`assert cmd.count_atoms('1ubq') > 0`; a failed check returns as an error.
+Generic success text, such as `Fetched structure: 1ubq`, comes from an
+outdated socket plugin; reinstall it as
+[PyMOL setup](../pymol-setup/SKILL.md) describes.
 
 ## Connection recovery
 

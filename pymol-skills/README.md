@@ -69,9 +69,9 @@ own manifest, skills, and MCP configuration.
 
 Use the existing socket plugin if it is already installed, unless it is
 outdated. An outdated socket plugin returns generic success text, such as
-`Fetched structure: 1ubq`, when PyMOL prints nothing; reinstall it from the
-installed package and restart PyMOL. The bridge always connects to
-`localhost:9876`. Start the listener again after restarting PyMOL.
+`Fetched structure: 1ubq`; reinstall it from the installed package and
+restart PyMOL. The bridge always connects to `localhost:9876`. Start the
+listener again after restarting PyMOL.
 The listener serves one client at a time. Disconnect another Claude Code,
 Codex, or Antigravity MCP client before connecting a new one.
 

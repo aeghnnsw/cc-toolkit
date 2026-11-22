@@ -52,10 +52,10 @@ assert len(cmd.get_view()) == 18
 ```
 
 Success requires a response without a connection or execution error. This
-check preserves the molecular scene and prints nothing, so with a current
-socket plugin the response is `PyMOL returned no output for: ...`. Generic
-success text, such as `Python API command executed`, comes from an outdated
-socket plugin: reinstall it as above, then restart PyMOL.
+check preserves the molecular scene. With a current socket plugin, the
+response is `PyMOL returned no output for: ...`. Generic success text, such
+as `Python API command executed`, comes from an outdated socket plugin:
+reinstall it as above, then restart PyMOL.
 
 ## Troubleshoot
 

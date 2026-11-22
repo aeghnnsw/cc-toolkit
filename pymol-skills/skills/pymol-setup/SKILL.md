@@ -16,7 +16,7 @@ download missing dependencies. The Claude Code process must be able to find
 
 Install **PyMOL Skills** from the **cc-toolkit** marketplace if it is
 not installed. See the package [README](../../README.md) for installation.
-Restart Claude Code after installing the package to load its tools.
+Start a new Claude Code session after installing the package to load its tools.
 
 ## Install the socket plugin
 
@@ -47,15 +47,15 @@ assert len(cmd.get_view()) == 18
 ```
 
 Success requires a response without a connection or execution error. This
-check preserves the molecular scene and prints nothing, so with a current
-socket plugin the response is `PyMOL returned no output for: ...`. Generic
-success text, such as `Python API command executed`, comes from an outdated
-socket plugin: reinstall it as above, then restart PyMOL.
+check preserves the molecular scene. With a current socket plugin, the
+response is `PyMOL returned no output for: ...`. Generic success text, such
+as `Python API command executed`, comes from an outdated socket plugin:
+reinstall it as above, then restart PyMOL.
 
 ## Troubleshoot
 
-- Missing tools: check that `/plugin` shows the plugin as enabled, then
-  restart Claude Code.
+- Missing tools: check that the Claude Code plugin is installed and
+  enabled, then start a new session.
 - Missing `uv`: install it using the [official uv instructions](https://docs.astral.sh/uv/getting-started/installation/)
   and ensure the Claude Code process can find it.
 - Connection refused: start PyMOL's listener. The bridge uses `localhost:9876`;
