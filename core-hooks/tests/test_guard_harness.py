@@ -1,5 +1,6 @@
 """Tests for `guard_harness.py`, the helper that runs payloads safely (#479)."""
 
+import subprocess
 import tempfile
 import time
 import unittest
@@ -10,6 +11,16 @@ from test_safety_guard import HOME_RM, ISSUE_479_CASES
 
 
 SHELLS = [shell for shell in guard_harness.SHELLS if Path(shell).exists()]
+# Bash 3.2, the /bin/bash of macOS, ends a substitution at a `)` in a heredoc
+# body, so it runs the command after it. Bash 5 on Linux and zsh do not (#496).
+BASH_3_ONLY = (
+    "echo $(cat <<'EOF'\na ) ; env\nEOF\n)",
+    f"cat <(cat <<'EOF'\na ) ; {HOME_RM}\nEOF\n)",
+)
+HAS_BASH_3 = "/bin/bash" in SHELLS and subprocess.run(
+    ["/bin/bash", "-c", "echo ${BASH_VERSINFO[0]}"],
+    capture_output=True, text=True, check=False,
+).stdout.strip() == "3"
 
 
 @unittest.skipUnless(SHELLS, "needs /bin/bash or /bin/zsh")
@@ -52,10 +63,14 @@ class GuardHarnessTests(unittest.TestCase):
         self.assertEqual((row["old"], row["new"], row["miss"]), ("blocked", "blocked", False))
 
     def test_a_shell_runs_a_blocked_command_in_each_issue_479_case(self):
+        commands = {command for _, command, _ in ISSUE_479_CASES}
+        self.assertLessEqual(set(BASH_3_ONLY), commands)
         for case, command, _ in ISSUE_479_CASES:
             if case == 6:
                 continue
             with self.subTest(case=case, command=command):
+                if command in BASH_3_ONLY and not HAS_BASH_3:
+                    self.skipTest("needs bash 3, the /bin/bash of macOS")
                 ran = [guard_harness.run_shell(shell, command)["ran"] for shell in SHELLS]
                 self.assertTrue(any(ran), ran)
 

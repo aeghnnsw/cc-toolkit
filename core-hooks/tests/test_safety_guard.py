@@ -363,9 +363,11 @@ class SafetyGuardTests(unittest.TestCase):
                 self.assert_blocked(command, "protected system path /var")
 
     def test_blocks_rm_invoked_by_find_exec(self):
+        # `build` is a find root that is safe on every host. /tmp is not: it
+        # is the temporary directory root on Linux, and is always blocked.
         commands = (
             (
-                r"find /tmp -name example -exec rm -rf /var/log/example {} \;",
+                r"find build -name example -exec rm -rf /var/log/example {} \;",
                 "protected system path /var",
             ),
             (
@@ -373,7 +375,7 @@ class SafetyGuardTests(unittest.TestCase):
                 "protected system path /var",
             ),
             (
-                r"find /tmp /etc/example -type f -exec rm -rf {} \;",
+                r"find build /etc/example -type f -exec rm -rf {} \;",
                 "protected system path /etc",
             ),
             (
@@ -752,6 +754,29 @@ class SafetyGuardTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         return module
+
+    def test_blocks_tmp_itself_when_tmpdir_is_a_folder_below_it(self):
+        # A sandbox can set TMPDIR to a folder below /tmp. /tmp is then not
+        # the temporary directory root, but other sessions still use it.
+        module = self.load_module()
+        temp_dir = "/tmp/claude-501/example"
+        commands = (
+            "rm -rf /tmp",
+            "rm -rf /tmp/",
+            "rm -rf /private/tmp",
+            r"find /tmp -type f -exec rm -f {} \;",
+        )
+        with mock.patch.dict(os.environ, {"TMPDIR": temp_dir}), mock.patch.object(
+            module.tempfile, "gettempdir", return_value=temp_dir
+        ):
+            for command in commands:
+                with self.subTest(command=command):
+                    self.assertEqual(
+                        module.dangerous_rm_reason(command),
+                        "temporary directory root",
+                    )
+            self.assertIsNone(module.dangerous_rm_reason("rm /tmp/candidate.json"))
+            self.assertIsNone(module.dangerous_rm_reason(f"rm -rf {temp_dir}/work"))
 
     def test_unexpected_parser_exception_fails_closed(self):
         module = self.load_module()

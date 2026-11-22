@@ -183,6 +183,9 @@ PROTECTED_SYSTEM_PATHS = (
     "/dev",
     "/boot",
 )
+# The shared temporary directory of the host. An rm of it is blocked even when
+# TMPDIR names another folder, such as a sandbox folder below /tmp.
+SYSTEM_TEMP_DIRS = ("/tmp", "/private/tmp")
 
 
 def _shell_tokens(command):
@@ -1378,6 +1381,15 @@ def _temp_roots():
     return roots
 
 
+def _is_system_temp_dir(normalized):
+    if normalized.lower() in SYSTEM_TEMP_DIRS:
+        return True
+    candidate = _resolved_absolute_path(normalized)
+    return candidate is not None and any(
+        candidate == _resolved_absolute_path(value) for value in SYSTEM_TEMP_DIRS
+    )
+
+
 def _temp_relationship(target):
     candidate = _resolved_absolute_path(target)
     if candidate is None:
@@ -1416,7 +1428,7 @@ def _dangerous_target_reason(target):
         return "home directory target"
 
     temp_relationship = _temp_relationship(target)
-    if temp_relationship == "root":
+    if temp_relationship == "root" or _is_system_temp_dir(normalized):
         return "temporary directory root"
     if temp_relationship == "descendant":
         return None

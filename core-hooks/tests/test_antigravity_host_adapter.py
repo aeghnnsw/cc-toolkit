@@ -103,13 +103,17 @@ def read_file_call(cwd):
     }
 
 
-def load_hook_payload_module():
+def load_script_module(name):
     spec = importlib.util.spec_from_file_location(
-        "hook_payload", SCRIPTS / "hook_payload.py"
+        Path(name).stem, SCRIPTS / name
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_hook_payload_module():
+    return load_script_module("hook_payload.py")
 
 
 class AntigravityHostAdapterTests(unittest.TestCase):
@@ -372,7 +376,12 @@ class AntigravityHostAdapterTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
-        self.assertEqual(record.read_text(), "success\n")
+        if load_script_module("system_notification.py").has_audio_output():
+            self.assertEqual(record.read_text(), "success\n")
+        else:
+            # A Linux host without a playback device, such as a CI runner,
+            # plays no sound.
+            self.assertFalse(record.exists())
         self.assertIn("--success --host antigravity", command_for("system_notification.py"))
 
     def test_script_failures_follow_each_hook_failure_policy(self):

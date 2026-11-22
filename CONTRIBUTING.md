@@ -279,10 +279,10 @@ A change that only adds facts needs no note.
 
 Run these checks locally before opening a pull request. On each pull
 request, [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the
-package validator, the root tests, and the plugin test suites in one job. It
-does not run the Codex skill validator or `agy`. There is no
-repository-wide build command. Run every row that matches your change from
-the repository root:
+package validator, the root tests, and the plugin test suites in one job on
+Linux and one on macOS. It does not run the Codex skill validator or `agy`.
+There is no repository-wide build command. Run every row that matches your
+change from the repository root:
 
 | Change | Check |
 | --- | --- |
