@@ -194,7 +194,8 @@ grep -qiw "ok" "$DIR/msg.txt" && echo "REPLY OK" || { echo "REPLY MISSING"; tail
   sandbox blocked network access", or "the critic model is not
   available to this account". Write a short conclusion with the diagnosis; the
   ending condition is "critic unavailable". Every pressure test needs an
-  independent critic, so do not continue with self-critique only.
+  independent critic, so do not continue with self-critique only, and do not
+  use a Codex subagent as the critic.
 
 ## Step 1 — Kickoff
 

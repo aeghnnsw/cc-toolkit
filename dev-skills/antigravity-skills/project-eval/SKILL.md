@@ -117,8 +117,8 @@ When an evaluator finishes:
 2. If the result has no findings list, or the result is partial, send the
    evaluator one message. Ask for its findings so far in its final-message
    format.
-3. Append the answer of the evaluator to `<RUN>/E<N>.md`. If no answer
-   comes, keep the saved result, and mark it as partial in the report.
+3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
+   answer comes, keep the saved result, and mark it as partial in the report.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.

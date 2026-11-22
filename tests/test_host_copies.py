@@ -354,6 +354,7 @@ HOST_LINES = {
 +task artifact.
 ''',
     'dev-skills/antigravity-skills/pr-feedback/SKILL.md': r'''
+# Antigravity has no Skill tool, no background Bash wait, and asks with ask_question.
 -Invoke a code review or PR review skill via the **Skill tool** for the self-review, such as `mattpocock-skills:code-review`. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
 +Load a code review or PR review skill for the self-review, such as `mattpocock-skills:code-review`. Resolve the path of its `SKILL.md`, then read and follow it. `<plugin-root>` is this plugin's root, two levels above the skill folder:
 -If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
@@ -488,6 +489,7 @@ HOST_LINES = {
 # Setup checks the Codex-only scripts.
 -test -f "$RUNNER" || echo "runner not found: $RUNNER"
 +test -f "$SKILL_DIR/scripts/limit_call.py" || echo "critic scripts not found: $SKILL_DIR/scripts"
+# The critic calls, not a runner script, send the prompt.
 -The runner sends `prompt.md` followed by `critic.txt` to the critic, so every
 +The call blocks send `prompt.md` followed by `critic.txt` to the critic, so every
 # The Claude critic models.
@@ -527,6 +529,10 @@ HOST_LINES = {
 +- **Any other result** — stop. Report a one-line diagnosis from the status line
 +  and `$DIR/err.log`, for example "Claude Code is not signed in", "the Codex
 +  sandbox blocked network access", or "the critic model is not
+# A Codex subagent shares the model family of the main agent, so it is no independent critic.
+-  independent critic, so do not continue with self-critique only.
++  independent critic, so do not continue with self-critique only, and do not
++  use a Codex subagent as the critic.
 # The kickoff and later rounds call critic with a Claude Code session; test_pressure_test_models.py reads this section (#502).
 +## Calling the critic
 +
@@ -750,8 +756,6 @@ HOST_LINES = {
 +   GEMINI.md, AGENTS.md, or CLAUDE.md, the top-level layout, and
 +   `git log --oneline -20`.
 # Step 3 starts each evaluator with invoke_subagent and its reference file.
--### 3. Dispatch the Evaluators
-+### 3. Start the Evaluators
 -Send one Agent call for each evaluator, all in one message:
 +`<skill-dir>` is the folder that holds this `SKILL.md`. In each prompt,
 +write its absolute path.
@@ -826,11 +830,13 @@ HOST_LINES = {
 +- `project-rules` — Compliance with GEMINI.md, AGENTS.md, or CLAUDE.md, project-specific conventions
 ''',
     'dev-skills/codex-skills/repo-cleanup/SKILL.md': r'''
+# The copy says where <plugin-root> is; the Claude copy uses its plugin-root variable.
 -run this command from the checkout that the current session runs in:
 +run this command from the checkout that the current session runs in.
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
 ''',
     'dev-skills/antigravity-skills/repo-cleanup/SKILL.md': r'''
+# The copy says where <plugin-root> is; the Claude copy uses its plugin-root variable.
 -run this command from the checkout that the current session runs in:
 +run this command from the checkout that the current session runs in.
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.

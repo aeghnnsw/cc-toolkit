@@ -78,7 +78,7 @@ lose the `RUN` path, find the newest run with
 Tell the user the scope, the dimensions of each evaluator, and the deadline
 in two or three lines.
 
-### 3. Dispatch the Evaluators
+### 3. Start the Evaluators
 
 Send one Agent call for each evaluator, all in one message:
 
@@ -110,8 +110,8 @@ When an evaluator finishes:
 2. If the result has no findings list, or the result is partial (turn
    limit), resume the evaluator once with SendMessage. Ask for its findings
    so far in its final-message format.
-3. Append the answer of the evaluator to `<RUN>/E<N>.md`. If no answer
-   comes, keep the saved result, and mark it as partial in the report.
+3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
+   answer comes, keep the saved result, and mark it as partial in the report.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.

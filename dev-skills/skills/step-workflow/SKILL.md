@@ -1,7 +1,7 @@
 ---
 name: step-workflow
 version: 1.1.0
-description: Use when the user requests step-based file naming and folder organization for a new feature, including sequential numbered prefixes, sub-step notation, and plan tracking across scripts, outputs, tests, or documentation.
+description: Use when the user or a calling skill requests step-based file naming and folder organization for a new feature, including sequential numbered prefixes, sub-step notation, and plan tracking across scripts, outputs, tests, or documentation.
 ---
 
 # Step-Based Workflow Organization
@@ -9,8 +9,9 @@ description: Use when the user requests step-based file naming and folder organi
 ## Overview
 
 Organize all work for a feature using step-based file naming with numbered
-prefixes. Apply this convention only when the user requests it and it does not
-conflict with an established repository layout or naming convention.
+prefixes. Apply this convention only when the user or a calling skill
+requests it and it does not conflict with an established repository layout
+or naming convention.
 
 ## File Naming Convention
 
@@ -54,7 +55,8 @@ This ensures proper alphabetical sorting.
 ## Workflow Rules
 
 1. **Respect repository conventions** - Apply step-based names only when the
-   user requests them and they do not conflict with established project layout
+   user or a calling skill requests them and they do not conflict with
+   established project layout
 2. **Keep related artifacts together** - Keep files for the feature in its
    feature folder while preserving the repository's expected subdirectories
 3. **Number files sequentially** - Order prefixes by execution or workflow
