@@ -33,10 +33,8 @@ def split_body(path: Path) -> tuple[list[str], list[str]]:
 
 
 class SciFigureFormatTest(unittest.TestCase):
-    def test_each_host_copy_is_checked(self) -> None:
-        self.assertEqual(len(COPIES), 3, COPIES)
-
     def test_rule_values_are_only_in_the_standards_table(self) -> None:
+        self.assertEqual(len(COPIES), 3, COPIES)
         for path in COPIES:
             table, other = split_body(path)
             with self.subTest(copy=str(path.relative_to(PLUGIN_ROOT))):

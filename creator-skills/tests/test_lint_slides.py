@@ -187,7 +187,9 @@ class LintSlidesHtmlTest(unittest.TestCase):
         code, findings, output, _ = run_lint("talk.html", appendix, "--max-slides", "3")
         self.assertEqual((code, findings), (0, set()), output)
         # Only a title that starts with Backup or Appendix ends the content slides.
-        mention = html_deck(TITLE_SLIDE, CLEAN_SLIDE, "<h2>Docking needs a backup scoring function</h2><p>x</p>", CLEAN_SLIDE)
+        mention = html_deck(
+            TITLE_SLIDE, CLEAN_SLIDE, "<h2>Docking needs a backup scoring function</h2><p>x</p>", CLEAN_SLIDE
+        )
         code, findings, output, _ = run_lint("talk.html", mention, "--max-slides", "2")
         self.assertEqual((code, findings), (1, {(4, "slide-budget")}), output)
 

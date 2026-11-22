@@ -17,7 +17,7 @@ This table gives the one value of each rule. The other sections refer to it.
 |---------|-------------|
 | **Colors** | Okabe-Ito palette (colorblind-safe) |
 | **Font** | Helvetica or Arial; 6-8 pt target, 5 pt hard minimum (Nature/ACS requirement); panel labels (a, b, c) 8-10 pt bold |
-| **Resolution** | At the final print size: 300 DPI minimum for photos; 600 DPI minimum for line art and for combination figures (photos with lines or text). Some journals ask for 1200 DPI for line art |
+| **Resolution** | At the final print size: 300 DPI minimum for photos; 600 DPI minimum for line art and for combination figures (photos with lines or text). Use the journal's value when it asks for more |
 | **Format** | PDF (vector, preferred) or EPS for graphs; TIFF for photos and other raster images; no JPEG (lossy compression) |
 | **Width** | 3.5" (9 cm, single column) or 7" (18 cm, double column) |
 | **Height** | ≤10" |
@@ -145,7 +145,7 @@ This table gives the one value of each rule. The other sections refer to it.
 
 **Resolution and file formats:** the Resolution and Format rows of [Universal Standards](#universal-standards-all-major-journals).
 
-**Key principle:** Use vector formats (PDF/EPS) for graphs - they scale without quality loss
+**Key principle:** vector formats scale without quality loss, so the Format row prefers them for graphs.
 
 ---
 

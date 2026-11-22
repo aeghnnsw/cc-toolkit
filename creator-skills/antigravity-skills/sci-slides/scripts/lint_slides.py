@@ -46,7 +46,7 @@ RULES = {
     "slide-budget": "the deck has more content slides than --max-slides",
 }
 
-BACKUP = re.compile(r"(?:backup|appendix)\b", re.IGNORECASE)
+BACKUP_TITLE = re.compile(r"(?:backup|appendix)\b", re.IGNORECASE)
 QUESTION = re.compile(r"\?\s*$")
 CONTRAST = re.compile(r"(?:[,;—–]|\s-)\s*not\s+\w", re.IGNORECASE)
 NUMBER = re.compile(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\w.]|,\d)")
@@ -775,7 +775,7 @@ def alt_problem(alt: str | None) -> str | None:
 def content_slide_count(slides: list[Slide]) -> int:
     """Count the slides after slide 1 and before the first Backup or Appendix title."""
     for number, slide in enumerate(slides[1:], start=2):
-        if BACKUP.match(slide.title or ""):
+        if BACKUP_TITLE.match(slide.title or ""):
             return number - 2
     return max(len(slides) - 1, 0)
 
