@@ -511,12 +511,14 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual([event["text"] for digest in digests for event in digest["events"]],
                          ["after the cutoff"])
 
-    def test_after_skips_sources_modified_at_or_before_it_and_reads_newer_ones(self):
+    def test_after_skips_sources_modified_2_s_or_more_before_it_and_reads_newer_ones(self):
         after_ns = int(datetime(2026, 1, 2, tzinfo=timezone.utc).timestamp()) * 10 ** 9
-        # Both records are in the window, so only the modification time can
-        # leave the unchanged source out.
+        # Each record is in the window, so only the modification time can
+        # leave the unchanged source out. A file system that rounds times
+        # down to 2 s can store a time up to 2 s before a later write.
         sources = {}
-        for name, modified in (("unchanged", after_ns), ("newer", after_ns + 1_000_000)):
+        for name, modified in (("unchanged", after_ns - 2 * 10 ** 9), ("rounded", after_ns - 2 * 10 ** 9 + 1_000_000),
+                               ("newer", after_ns + 1_000_000)):
             sources[name] = self.transcript(self.claude, f"{name}.jsonl", [self.claude_message(name)])
             os.utime(sources[name], ns=(modified, modified))
         opened = []
@@ -529,14 +531,14 @@ class RetroSessionsTests(unittest.TestCase):
             _, manifest, _, digests = self.artifacts(self.run_in_process(
                 "--claude-root", str(self.claude), "--codex-root", str(self.codex),
                 "--after", "2026-01-02T00:00:00Z", "--through", "2026-01-03T00:00:00Z"))
-        self.assertEqual([event["text"] for digest in digests for event in digest["events"]], ["newer"])
+        self.assertEqual(sorted(event["text"] for digest in digests for event in digest["events"]), ["newer", "rounded"])
         self.assertNotIn(sources["unchanged"], opened)
-        self.assertEqual(manifest["counts"]["records"], 1)
+        self.assertEqual(manifest["counts"]["records"], 2)
         self.assertEqual((manifest["counts"]["candidate_sources"], manifest["counts"]["unchanged_sources"],
-                          manifest["counts"]["skipped_sources"]), (2, 1, 1))
+                          manifest["counts"]["skipped_sources"]), (3, 1, 1))
         self.output = self.base / "no-lower-bound"
         _, manifest, _, _ = self.artifacts(self.run_cli("--through", "2026-01-03T00:00:00Z"))
-        self.assertEqual((manifest["counts"]["selected_sources"], manifest["counts"]["unchanged_sources"]), (2, 0))
+        self.assertEqual((manifest["counts"]["selected_sources"], manifest["counts"]["unchanged_sources"]), (3, 0))
 
     def test_unknown_json_shapes_and_unreadable_sources_do_not_abort_available_evidence(self):
         denied = self.transcript(self.claude, "denied.jsonl", [self.claude_message("unreadable")])

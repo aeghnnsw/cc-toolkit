@@ -185,10 +185,11 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    It copies the Claude Code, Codex, and Antigravity sessions of the
    repository and its worktrees, and leaves the original logs unchanged.
    `--help` names the session folders that it reads. Read the timeline that
-   `<new-dir>/manifest.json` lists for each source: one line for each event,
-   with gaps, errors, and hook blocks flagged. Do not write a parser for the
-   copies. Check each finding against its copied source lines. Keep the
-   copies out of Git and PR content, and remove `<new-dir>` after step 6.
+   `<new-dir>/manifest.json` lists for each source: one line for each event.
+   It flags gaps, and the error results and hook blocks of Claude Code. Do
+   not write a parser for the copies. Check each finding against its copied
+   source lines. Keep the copies out of Git and PR content, and remove
+   `<new-dir>` after step 6.
 3. Keep findings that cost the run significant time or work, such as a long
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.

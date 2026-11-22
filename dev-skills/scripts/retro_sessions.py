@@ -41,6 +41,10 @@ TIMESTAMP = re.compile(r"(\d{4}-\d\d-\d\d[Tt ]\d\d:\d\d(?::\d\d)?)(?:[.,](\d+))?
 # A timeline flags an event that starts this many seconds or more after the
 # previous window event of its source.
 GAP_SECONDS = 30
+# Some file systems store modification times in steps of up to 2 s, rounded
+# down. A source is skipped only when it was modified this many seconds or
+# more before --after, so a rounded time never hides a later record.
+MTIME_STEP_SECONDS = 2
 # Claude Code returns a blocked tool call as an error result that starts with
 # the hook event and tool, for example "PreToolUse:Bash hook error: ...".
 HOOK_BLOCK = re.compile(r"\w+:\S+ hook error:")
@@ -204,8 +208,8 @@ def timeline_line(line, time, event, tool, gap, max_text):
         flags.append("error")
         if isinstance(event["text"], str) and HOOK_BLOCK.match(event["text"]):
             flags.append("hook_block")
-    cells = [timeline_cell(value, max_text) for value in (time, event["kind"], tool, event["text"])]
-    return "\t".join([str(line), *cells[:3], ",".join(flags) or "-", cells[3]]) + "\n"
+    time, kind, tool, text = (timeline_cell(value, max_text) for value in (time, event["kind"], tool, event["text"]))
+    return "\t".join([str(line), time, kind, tool, ",".join(flags) or "-", text]) + "\n"
 
 
 def extract(stream, host, repository_roots, after, through, max_events, max_text, cwd=None):
@@ -215,8 +219,8 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
     the caller gives the matched workspace folder.
     """
     timeline = []
-    tools = {}
-    previous = None
+    tool_names = {}
+    previous_instant = None
     events = []
     tail = deque(maxlen=max_events // 2)
     head_size = (max_events + 1) // 2
@@ -265,7 +269,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
         rendered = record_events(record, host, unknown, ignored)
         for event in rendered:
             if event["kind"] == "tool_call" and isinstance(event.get("call_id"), str):
-                tools[event["call_id"]] = event.get("tool")
+                tool_names[event["call_id"]] = event.get("tool")
         if ignored:
             counts["ignored_records"] += 1
             for ignored_type in ignored:
@@ -304,10 +308,10 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             if event["kind"] == "tool_call":
                 tool = event.get("tool")
             else:
-                tool = tools.get(call_id) if isinstance(call_id, str) else None
+                tool = tool_names.get(call_id) if isinstance(call_id, str) else None
             timeline.append(timeline_line(line, record[time_field], event, tool,
-                                          None if previous is None else instant - previous, max_text))
-            previous = instant
+                                          None if previous_instant is None else instant - previous_instant, max_text))
+            previous_instant = instant
             event = {"line": line, "timestamp": record[time_field],
                      "cwd": cwd, "omitted_characters": 0, **event}
             bounded = bound_event(event, max_text)
@@ -449,12 +453,12 @@ def main(argv=None):
         "Antigravity reads ~/.gemini/antigravity-cli, ~/.gemini/antigravity, and "
         "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
         "folder. The manifest lists each root with its status. "
-        "With --after, a source whose modification time is at or before that "
+        f"With --after, a source modified {MTIME_STEP_SECONDS} s or more before that "
         "cutoff is not copied or read; counts.unchanged_sources counts it. "
         "Each selected source has a digest and a timeline: one tab-separated "
         "line for each window event, with its line, time, kind, tool, flags, "
-        f"and clipped text. Flags mark gaps of {GAP_SECONDS} s or more, error "
-        "results, and hook blocks. "
+        f"and clipped text. Flags mark gaps of {GAP_SECONDS} s or more, and the "
+        "is_error results and hook blocks of Claude Code. "
         "A partial result retains usable evidence; inspect manifest diagnostics. "
         "Originals remain unchanged."))
     parser.add_argument("--repo", required=True, type=Path, help="target Git checkout")
@@ -576,14 +580,14 @@ def main(argv=None):
                 copy = f"raw/{alias}.jsonl"
                 digest = f"digests/{alias}.json"
                 timeline = f"timelines/{alias}.tsv"
-                # A record is written after its time, so a source modified at
-                # or before --after holds no record after it. A source that
+                # A record is written after its time, so a source modified
+                # before --after holds no record after it. A source that
                 # cannot be read here goes on to snapshot(), which reports it.
                 try:
                     modified = Fraction(path.stat().st_mtime_ns, 10 ** 9)
                 except OSError:
                     modified = None
-                if after is not None and modified is not None and modified <= after:
+                if after is not None and modified is not None and modified + MTIME_STEP_SECONDS <= after:
                     unchanged += 1
                     continue
                 boundary, copied, copy_diagnostics = snapshot(path, output / copy)
@@ -624,9 +628,9 @@ def main(argv=None):
                 "roots": roots, "sources": sources, "diagnostics": diagnostics,
                 "limitations": ["Removed external worktrees cannot be attributed without current Git registration.",
                                 "Copies are measured byte prefixes, not atomic filesystem snapshots.",
-                                "A source modified at or before --after is not read; a record whose time "
-                                "is later than its file's modification time, such as after a clock change, "
-                                "is missed.",
+                                f"A source modified {MTIME_STEP_SECONDS} s or more before --after is not read; "
+                                f"a record more than {MTIME_STEP_SECONDS} s later than its file's modification "
+                                "time, such as after a clock change, is missed.",
                                 "Raw copies can include records outside the repository and time window.",
                                 "Antigravity records carry no cwd; their events show the matched workspace folder as cwd.",
                                 "Digests are evidence indexes, not complete semantic reviews."],
