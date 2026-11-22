@@ -14,7 +14,8 @@ concurrency:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # macOS matches the machines that the suites were written on. Some suites fail on Linux; see #496.
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       # The default ref is the merge of the pull request into its target, so the validator compares the
@@ -30,14 +31,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # zsh runs the zsh cases of the Core Hooks and Dev Skills suites. The productivity-skills suite needs
-      # initdb, pg_ctl, and psql; the runner installs PostgreSQL outside PATH. A missing tool fails here,
-      # so that no suite skips its cases.
-      - name: Install the test tools
+      # The productivity-skills suite needs initdb, pg_ctl, and psql. Use the PostgreSQL that Homebrew has
+      # installed, or install one. A missing tool fails the next step, so that no suite skips its cases.
+      - name: Put the PostgreSQL tools on PATH
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q zsh
-          ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
+          for dir in "$(brew --prefix)"/opt/postgresql@*/bin; do
+            if [ -x "$dir/initdb" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          brew install postgresql@17
+          echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
 
       - name: Check the test tools
         run: command -v git lsof python3 uv zsh initdb pg_ctl psql
