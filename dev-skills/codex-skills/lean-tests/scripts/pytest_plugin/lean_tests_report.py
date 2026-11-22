@@ -21,6 +21,10 @@ import pytest
 
 _state: dict = {"config": None, "start": None, "xdist_ids": False}
 
+# The fixture manager attributes that map each fixture name to its definitions.
+# pytest 9.2 replaced _arg2fixturedefs with the other two.
+_FIXTURE_MAPS = ("_arg2fixturedefs", "_arg2node2fixturedefs", "_arg2nodeid2fixturedefs")
+
 
 def _write(record: dict) -> None:
     path = os.environ.get("LEAN_TESTS_RECORDS")
@@ -59,15 +63,21 @@ def pytest_collection_modifyitems(session, config, items) -> None:
         items.reverse()
 
 
+def _fixture_names(session) -> list | None:
+    """The fixture names that pytest knows, or None when the fixture manager has none of _FIXTURE_MAPS."""
+    manager = getattr(session, "_fixturemanager", None)
+    maps = [found for found in (getattr(manager, name, None) for name in _FIXTURE_MAPS) if found is not None]
+    return sorted(set().union(*maps)) if maps else None
+
+
 def pytest_collection_finish(session) -> None:
     start = _state["start"]
     seconds = None if start is None else time.perf_counter() - start
-    definitions = getattr(getattr(session, "_fixturemanager", None), "_arg2fixturedefs", None)
     _write({
         "event": "collected",
         "seconds": seconds,
         "nodeids": [item.nodeid for item in session.items],
-        "fixtures": None if definitions is None else sorted(definitions),
+        "fixtures": _fixture_names(session),
     })
 
 
