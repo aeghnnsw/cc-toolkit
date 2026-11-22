@@ -1,8 +1,8 @@
 # Isolate host adapter discovery
 
-> **Superseded in part (2026-11-22, issue #487).** A safety script error
-> blocks the tool call in Claude Code and Codex too, not only in
-> Antigravity. Read [Safety script errors](#safety-script-errors).
+> **Superseded in part (2026-11-22, issue #487).** An error that the
+> safety script catches blocks the tool call in Claude Code and Codex too,
+> not only in Antigravity. Read [Safety script errors](#safety-script-errors).
 
 Core Hooks ships host-specific manifests and hook configurations alongside
 shared scripts so each host can load its own installed copy independently.

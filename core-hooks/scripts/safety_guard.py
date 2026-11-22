@@ -1417,8 +1417,8 @@ TURN_OFF_PLUGIN_STEPS = {
 def error_status(host):
     """Return the exit status after a script error on `host`.
 
-    A script error blocks the tool call on every host, because the guard
-    cannot decide (#487). Claude Code blocks on status 2. In Codex and
+    An error that `main()` catches blocks the tool call on every host,
+    because the guard cannot decide (#487). Claude Code blocks on status 2. In Codex and
     Antigravity mode, the status is 1, and the `hooks/hooks.codex.json` and
     root `hooks.json` wrappers block with their "hook failed" line.
     """

@@ -888,8 +888,8 @@ def configured_safety_command(hooks_path):
 
 
 class ScriptErrorTests(unittest.TestCase):
-    """A safety script error blocks the tool call on every host, because the
-    guard cannot decide (#487)."""
+    """An error that the safety script catches blocks the tool call on every
+    host, because the guard cannot decide (#487)."""
 
     def run_configured_command(self, host, hooks_path, data, logs_is_a_file):
         """Run the safety command of `hooks_path` through `/bin/sh` as `host`
