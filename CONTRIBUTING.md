@@ -342,8 +342,9 @@ The table in [Verification](#verification) gives the command for each suite.
 The `productivity-skills` suite needs `uv` and PostgreSQL tools (`initdb`,
 `pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
 
-The `dev-skills` suite takes about 2 minutes, most of it in
-`dev-skills/tests/test_codex_critic.py`.
+The `dev-skills` suite takes about 3 to 4 minutes on an idle machine. When
+other test runs share the machine, it can take up to 8 minutes. More than
+half of the time is in `dev-skills/tests/test_codex_critic.py`.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov. Under a `python3` without them, these
