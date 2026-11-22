@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.21.0
+version: 1.22.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -184,8 +184,10 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/retro_sessions.py" --repo . --after <cutoff> --output <new-dir>`.
    It copies the Claude Code, Codex, and Antigravity sessions of the
    repository and its worktrees, and leaves the original logs unchanged.
-   `--help` names the session folders that it reads. Read the digests that
-   `<new-dir>/manifest.json` lists, and check each finding against its copied
+   `--help` names the session folders that it reads. Read the timeline that
+   `<new-dir>/manifest.json` lists for each source: one line for each event.
+   It flags gaps, and the error results and hook blocks of Claude Code. Do
+   not write a parser for the copies. Check each finding against its copied
    source lines. Keep the copies out of Git and PR content, and remove
    `<new-dir>` after step 6.
 3. Keep findings that cost the run significant time or work, such as a long
