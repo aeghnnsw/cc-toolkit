@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.16.0
+version: 1.17.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -114,7 +114,10 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
 7. **Cleanup — `dev-skills:repo-cleanup`.** After all ticket PRs merge, pass
    the tracked tickets, parent spec, and PRs to cleanup. Verify ticket closure
    and close the parent only when fully satisfied. Close tickets by hand only
-   after merge if the tracker did not close them.
+   after merge if the tracker did not close them. Then run
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/open_closing_issues.py" <pr>...` with the
+   merged PRs and report its output. Report each `OPEN` issue with the reason
+   that it stays open.
 8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
    "Navigation retrospective" below once for the run. Complete when its record
    is posted. When the task says that a leader runs the retrospective for
