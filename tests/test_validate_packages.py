@@ -447,6 +447,108 @@ class PackageValidationTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_removing_a_skill_version_fails(self):
+        self.version_baseline_skill()
+        self.write_skill('Say hello.')
+        self.bump()
+        self.assert_failure('demo [claude]: skill greet lost its version 1.0.0 in demo/skills/greet/SKILL.md')
+
+    def changelog_baseline(self, old='- Dev Skills: an old entry. See [#1](https://example.invalid/1).'):
+        self.write('CHANGELOG.md', f'# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Changed\n\n{old}\n')
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+
+    def reset_changelog(self):
+        self.git('checkout', '-q', 'baseline', '--', 'CHANGELOG.md')
+
+    def add_bullet(self, bullet, issue=2, section='### Changed'):
+        if issue:
+            bullet += f' See [#{issue}](https://github.com/aeghnnsw/cc-toolkit/issues/{issue}).'
+        text = (self.root / 'CHANGELOG.md').read_text()
+        self.write('CHANGELOG.md', text.replace(f'{section}\n\n', f'{section}\n\n{bullet}\n', 1))
+
+    def test_new_changelog_bullet_must_use_the_entry_form(self):
+        self.changelog_baseline()
+        self.add_bullet('- Repository: add a check.')
+        self.assertEqual(self.run_check().returncode, 0)
+        for bullet, issue in [
+            ('- Repository: two issues. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2) and '
+             '[#3](https://github.com/aeghnnsw/cc-toolkit/issues/3).', None),
+            ('- Repository: a wrong link. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/3).', None),
+            ('- Repository: no link.', None),
+            ('- Repository: two links. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).', 3),
+            ('- Repository (Claude Code 1.0.0): a version.', 2),
+            ('- Demo (Claude Code 1.0.1): a display name.', 2),
+        ]:
+            with self.subTest(bullet=bullet):
+                self.reset_changelog()
+                self.add_bullet(bullet, issue)
+                self.assert_failure('CHANGELOG.md:9: the new bullet breaks the entry form')
+        linked = '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).'
+        for index, bullet in enumerate(['* Repository: another marker.', linked + '\n  ' + 'y' * 600,
+                                        linked + '\n#' + 'y' * 600]):
+            with self.subTest(index=index):
+                self.reset_changelog()
+                self.add_bullet(bullet, None)
+                self.assert_failure('a new line must be a one-line bullet that starts with "- "')
+
+    def test_new_plugin_bullet_names_each_increased_host_at_its_version(self):
+        self.add_codex()
+        self.add_antigravity()
+        self.changelog_baseline()
+        self.bump('claude', '1.1.0')
+        self.bump('antigravity', '1.1.0')
+        for hosts, error in [
+            ('Antigravity 1.1.0, Claude Code 1.1.0', 'in that order'),
+            ('Claude Code 1.1.0, Antigravity 1.1.0', 'with one version for hosts that ship the same version'),
+            ('Claude Code and Antigravity 1.0.1', 'demo Claude Code is version 1.1.0 in demo/.claude-plugin/plugin.json, '
+                                                  'not 1.0.1'),
+            ('Claude Code 1.1.0', 'name each host whose demo version increased (Claude Code, Antigravity) and no other'),
+            ('Claude Code, Codex, and Antigravity 1.1.0', 'demo Codex is version 1.0.0'),
+            ('Claude Code 1.1.0, Codex 1.0.0, Antigravity 1.1.0', 'name each host whose demo version increased'),
+        ]:
+            with self.subTest(hosts=hosts):
+                self.reset_changelog()
+                self.add_bullet(f'- demo ({hosts}): a change.')
+                self.assert_failure(error)
+        self.reset_changelog()
+        self.add_bullet('- other (Claude Code 1.0.0): a change.')
+        self.assert_failure('other is not a registered plugin')
+        self.reset_changelog()
+        self.add_bullet('- demo (Claude Code and Antigravity 1.1.0): a change.')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_version_increase_needs_a_new_changelog_bullet(self):
+        self.changelog_baseline()
+        self.bump()
+        self.add_bullet('- Repository: a change.')
+        self.assert_failure('demo version increased (Claude Code 1.0.1); add a bullet for it under ## [Unreleased]')
+        (self.root / 'CHANGELOG.md').unlink()
+        self.assert_failure('CHANGELOG.md: missing')
+
+    def test_new_changelog_bullet_length_and_placement(self):
+        self.changelog_baseline()
+        self.add_bullet('- Repository: ' + 'x' * 526 + '.')
+        self.assertEqual(self.run_check().returncode, 0)
+        self.add_bullet('- Repository: ' + 'y' * 527 + '.')
+        self.assert_failure('CHANGELOG.md:9: the new bullet has 601 characters; the limit is 600')
+        for section in ('### Fixed', '## 2026-11-22\n\n### Changed'):
+            with self.subTest(section=section):
+                self.reset_changelog()
+                text = (self.root / 'CHANGELOG.md').read_text()
+                self.write('CHANGELOG.md', text + f'\n{section}\n\n- Repository: a change.'
+                           ' See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n')
+                self.assert_failure('put the new bullet under ## [Unreleased] in ### Added, ### Removed, or ### Changed')
+
+    def test_moved_and_unchanged_changelog_bullets_are_not_checked(self):
+        self.changelog_baseline()
+        text = (self.root / 'CHANGELOG.md').read_text()
+        self.write('CHANGELOG.md', text.replace('### Changed\n\n', '### Changed\n\n## 2026-11-22\n\n### Changed\n\n'))
+        self.add_bullet('- Repository: a change.')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_staged_unstaged_new_and_deleted_files_require_versions(self):
         for state in ('new', 'staged', 'unstaged', 'deleted'):
             with self.subTest(state=state):

@@ -428,6 +428,112 @@ def skill_version(root, path, revision=None):
     return skill_header(path, text).get('version')
 
 
+CHANGELOG_PATH = 'CHANGELOG.md'
+CHANGELOG_LIMIT = 600
+CHANGELOG_SECTIONS = ('### Added', '### Removed', '### Changed')
+HOST_LABELS = {'claude': 'Claude Code', 'codex': 'Codex', 'antigravity': 'Antigravity'}
+CHANGELOG_FORM = ('- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).'
+                  ' or - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
+CHANGELOG_BULLET = re.compile(
+    r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): (?:(?! See \[#).)+'
+    r' See \[#(?P<issue>\d+)\]\(https://github\.com/aeghnnsw/cc-toolkit/issues/(?P=issue)\)\.')
+MARKDOWN_HEADING = re.compile(r'#{1,6}(?:[ \t]|$)')
+HOST_NAME = '(?:Claude Code|Codex|Antigravity)'
+HOST_GROUP = re.compile(rf'(?P<hosts>{HOST_NAME}(?:(?:, and |, | and ){HOST_NAME})*) (?P<version>\d+\.\d+\.\d+)')
+
+
+def changelog_hosts(text):
+    """Return [(host, version)] from 'Claude Code and Codex 1.2.0, Antigravity 1.0.0', or None for another form."""
+    groups, position = [], 0
+    while True:
+        match = HOST_GROUP.match(text, position)
+        if not match:
+            return None
+        names = re.findall(HOST_NAME, match['hosts'])
+        groups.append(([host for name in names for host, label in HOST_LABELS.items() if label == name],
+                       match['version']))
+        position = match.end()
+        if position == len(text):
+            break
+        if not text.startswith(', ', position):
+            return None
+        position += 2
+    if any(left[1] == right[1] for left, right in zip(groups, groups[1:])):
+        return None  # Hosts that ship the same version share one version.
+    return [(host, value) for hosts, value in groups for host in hosts]
+
+
+def check_changelog(text, old_text, packages, previous):
+    """Check the CHANGELOG.md bullets whose text is not in the base file, and require one for each version increase."""
+    risen = {}
+    for (name, host), package in packages.items():
+        old = previous.get((name, host))
+        if old is None or version(package.manifest['version']) > version(old.manifest['version']):
+            risen.setdefault(name, set()).add(host)
+    if text is None:
+        if old_text is not None:
+            raise InvalidPackage(f'{CHANGELOG_PATH}: missing; restore it')
+        return
+    old_lines = set((old_text or '').splitlines())
+    named = set()
+    heading = section = None
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.startswith('## '):
+            heading, section = line, None
+        elif line.startswith('### '):
+            section = line
+        if not line.strip() or MARKDOWN_HEADING.match(line) or line in old_lines:
+            continue
+        where = f'{CHANGELOG_PATH}:{number}'
+        if not line.startswith('- '):
+            raise InvalidPackage(f'{where}: a new line must be a one-line bullet that starts with "- "')
+        if heading != '## [Unreleased]' or section not in CHANGELOG_SECTIONS:
+            raise InvalidPackage(f'{where}: put the new bullet under ## [Unreleased] in ### Added, ### Removed, or ### Changed')
+        if len(line) > CHANGELOG_LIMIT:
+            raise InvalidPackage(f'{where}: the new bullet has {len(line)} characters; the limit is {CHANGELOG_LIMIT}. '
+                                 'Move the detail to the pull request')
+        match = CHANGELOG_BULLET.fullmatch(line)
+        if not match:
+            raise InvalidPackage(f'{where}: the new bullet breaks the entry form {CHANGELOG_FORM}')
+        name = match['plugin']
+        if name is None:
+            continue
+        registered = {host: package for (plugin, host), package in packages.items() if plugin == name}
+        if not registered:
+            raise InvalidPackage(f'{where}: {name} is not a registered plugin; use its registered name or Repository')
+        hosts = changelog_hosts(match['hosts'])
+        order = [host for host, _ in hosts or []]
+        if hosts is None or order != sorted(set(order), key=HOSTS.index):
+            raise InvalidPackage(f'{where}: write the hosts as "Claude Code <version>, Codex <version>, Antigravity '
+                                 '<version>" in that order, with one version for hosts that ship the same version')
+        for host, value in hosts:
+            if host not in registered:
+                raise InvalidPackage(f'{where}: {name} has no {HOST_LABELS[host]} registration')
+            if value != registered[host].manifest['version']:
+                raise InvalidPackage(f'{where}: {name} {HOST_LABELS[host]} is version '
+                                     f'{registered[host].manifest["version"]} in {registered[host].manifest_path}, not {value}')
+        expected = risen.get(name, set())
+        if set(order) != expected:
+            labels = ', '.join(HOST_LABELS[host] for host in HOSTS if host in expected) or 'no host'
+            raise InvalidPackage(f'{where}: name each host whose {name} version increased ({labels}) and no other')
+        named.add(name)
+    for name in sorted(set(risen) - named):
+        labels = ', '.join(f'{HOST_LABELS[host]} {packages[name, host].manifest["version"]}'
+                           for host in HOSTS if host in risen[name])
+        raise InvalidPackage(f'{CHANGELOG_PATH}: {name} version increased ({labels}); '
+                             'add a bullet for it under ## [Unreleased]')
+
+
+def validate_changelog(root, packages, previous, base, base_files):
+    path = root / CHANGELOG_PATH
+    try:
+        text = path.read_text(encoding='utf-8') if path.is_file() else None
+        old_text = git(root, 'show', f'{base}:{CHANGELOG_PATH}').decode() if CHANGELOG_PATH in base_files else None
+    except UnicodeError as error:
+        raise InvalidPackage(f'{CHANGELOG_PATH}: invalid UTF-8 text') from error
+    check_changelog(text, old_text, packages, previous)
+
+
 def validate_releases(root, packages, rules, files, base_ref):
     try:
         base = git(root, 'merge-base', 'HEAD', base_ref).decode().strip()
@@ -458,8 +564,11 @@ def validate_releases(root, packages, rules, files, base_ref):
             if not changes:
                 continue
             new_value, old_value = skill_version(root, path), skill_version(root, former[name], base)
+            if old_value and not new_value:
+                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} lost its version {old_value} in {path}; restore the version line with a greater version; changed {changes[0][0]} ({changes[0][1]})')
             if new_value and old_value and version(new_value, path) <= version(old_value, former[name]):
                 raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} version must increase above {old_value} in {path}; changed {changes[0][0]} ({changes[0][1]})')
+    validate_changelog(root, packages, previous, base, base_files)
 
 
 def main():

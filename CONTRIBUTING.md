@@ -240,6 +240,15 @@ plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket.
 
+The package validator checks each new bullet: a bullet whose text is not in
+`CHANGELOG.md` at the merge base. An edited bullet is new; a moved bullet is
+not. A new bullet is one line that uses the form above, has at most 600
+characters, and is under `## [Unreleased]` in one of the three sections. Put
+more detail in the pull request. A plugin bullet uses the registered plugin
+name and names each host whose manifest version increased, at its current
+manifest version. Each plugin whose manifest version increases needs a new
+bullet. Older entries are under `## 2026-11-22`.
+
 When a rebase makes `CHANGELOG.md` conflict, keep both entries, and put
 the entry of the rebased branch first.
 
@@ -268,9 +277,12 @@ A change that only adds facts needs no note.
 
 ## Verification
 
-Run these checks locally before opening a pull request. This repository
-does not use CI. There is no repository-wide build command. Run every row
-that matches your change from the repository root:
+Run these checks locally before opening a pull request. On each pull
+request, [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the
+package validator, the root tests, and the plugin test suites in one job. It
+does not run the Codex skill validator or `agy`. There is no
+repository-wide build command. Run every row that matches your change from
+the repository root:
 
 | Change | Check |
 | --- | --- |
@@ -307,7 +319,9 @@ uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base
 ```
 
 Shipped changes need a greater plugin `version` in each affected host's
-manifest, and a greater skill `version` when the skill has one. The
+manifest, and a greater skill `version` when the skill has one. A changed
+skill that loses its `version` line fails. The validator also checks new
+`CHANGELOG.md` bullets; see [Changelog entries](#changelog-entries). The
 [package validation design](docs/design/package-validation.md) describes
 each check, the rules in [package-validation.json](package-validation.json),
 and the error messages.
@@ -335,7 +349,12 @@ The validator checks an Antigravity registration as follows:
   folder too.
 
 The root tests are under `tests/`; [Verification](#verification) gives when
-and how to run them.
+and how to run them. A test reads a release version from its manifest or
+`SKILL.md`; it does not hold one as a literal.
+[tests/test_no_version_pins.py](tests/test_no_version_pins.py) fails on each
+version string in a `tests/*.py` or `<plugin>/tests/*.py` file that its
+`FIXTURE_VERSIONS` list does not give for that file. List there only
+versions that a test writes to a fixture or quotes from another tool.
 
 ### Plugin runtime tests
 

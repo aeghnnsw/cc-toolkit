@@ -101,3 +101,5 @@ git worktree add trees/doc-<description> -b doc-<description>
 
 [.github/workflows/claude.yml](.github/workflows/claude.yml) handles explicit
 `@claude` mentions on GitHub issues, comments, and PR reviews.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs the package
+validator and the test suites on each pull request.
