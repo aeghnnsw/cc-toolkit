@@ -389,13 +389,17 @@ class GateTests(HookCase):
                                            self.main)),
                    ("antigravity", tool_payload("antigravity", "view_file", {"AbsolutePath": str(shot)}, self.main)),
                    ("antigravity", tool_payload("antigravity", "list_dir", {"DirectoryPath": str(attachments)},
-                                                self.main))]
+                                                self.main)),
+                   ("codex", shell_payload("codex", f"ls {attachments}", self.main)),
+                   ("codex", shell_payload("codex", f"cat {shot}", self.main)),
+                   ("codex", shell_payload("codex", f"sed -n 1,5p {shot}", self.main))]
         blocked = [("claude", tool_payload("claude", "Write", {"file_path": str(shot), "content": "x"}, self.main)),
                    ("claude", tool_payload("claude", "Glob", {"pattern": "*.png"}, self.main)),
                    ("claude", tool_payload("claude", "Glob", {"pattern": f"{attachments}/*"}, self.main)),
                    ("claude", tool_payload("claude", "Read", {"file_path": f"{attachments}/../notes.md"}, self.main)),
-                   ("codex", shell_payload("codex", f"ls {attachments}", self.main)),
-                   ("codex", shell_payload("codex", f"cat {shot}", self.main))]
+                   ("codex", shell_payload("codex", f"cat {attachments}/../notes.md", self.main)),
+                   ("codex", shell_payload("codex", f"cat {shot} | head", self.main)),
+                   ("codex", shell_payload("codex", f"rm {shot}", self.main))]
         self.check(allowed, allowed=True, env=env)
         self.check(blocked, allowed=False, env=env)
         self.assert_blocks(self.run_hook("claude", tool_payload("claude", "Read", {"file_path": str(shot)},

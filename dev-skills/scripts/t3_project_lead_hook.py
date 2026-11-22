@@ -16,8 +16,9 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   an error.
 - Gate (issue #530): in a recorded session, the hook allows one simple shell
   command `python3 <script> <subcommand> [arguments...]`, where the script
-  passes the record check, and file reads in T3 Code's attachments folder.
-  It blocks every other shell command, every other file read, every file
+  passes the record check, and file reads in T3 Code's attachments folder,
+  also through one cat, head, tail, wc, ls, grep, or `sed -n` command. It
+  blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. MCP tools and other tools pass. A blocked call exits 2 with the
   reason on stderr. A call that the hook cannot check also exits 2.
@@ -40,8 +41,9 @@ RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
 ALLOWED = {
-    "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments], as one simple '
-              "command: no pipe, redirect, list, or substitution. Quote text with single quotes."),
+    "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; one cat, head, '
+              "tail, wc, ls, grep, or sed -n of T3 attachments. Each is one simple command: no pipe, "
+              "redirect, list, or substitution. Quote text with single quotes."),
     "read": "Allowed reads: T3 attachments. Print the lead state with t3_project_lead.py show.",
     "edit": "No file edits. Change the lead state with t3_project_lead.py commands.",
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
@@ -283,14 +285,26 @@ def write_record(folder, session):
 # Shell commands.
 
 def check_shell(arguments, key, cwd, folder, session):
-    """Return when the shell command runs the step script; raise Blocked otherwise.
+    """Return when the shell command is a lead action; raise Blocked otherwise.
 
-    The command is `python3|python <script> <subcommand> [arguments...]`.
-    Only an exact `python3|python <script> start` refreshes the record.
+    The command is `python3|python <script> <subcommand> [arguments...]`, or
+    one read command of T3 attachments. Only an exact
+    `python3|python <script> start` refreshes the record.
     """
     words, cwd = shell_words(arguments, key, cwd)
-    if (not words or len(words) < 3 or words[0] not in ("python3", "python") or not is_step(words[2])
-            or not step_script(words, cwd)):
+    if not words:
+        raise Blocked("shell")
+    if words[0] not in ("python3", "python"):
+        # One read command of T3 attachments, for a host whose reads go through the shell.
+        paths = read_paths(words[0], words[1:])
+        if paths is None:
+            raise Blocked("shell")
+        try:
+            check_reads(paths, cwd)
+        except Blocked:
+            raise Blocked("shell") from None
+        return
+    if len(words) < 3 or not is_step(words[2]) or not step_script(words, cwd):
         raise Blocked("shell")
     if words[2:] == ["start"]:
         try:
@@ -336,6 +350,113 @@ def step_script(words, cwd):
     if path == os.path.realpath(sibling_script()):
         return True
     return os.path.isfile(path) and git(os.path.dirname(path), "rev-parse", "--is-inside-work-tree") != "true"
+
+
+def read_paths(program, args):
+    """Return the file arguments of one simple read command, or None."""
+    if program == "sed":
+        return sed_paths(args)
+    if program == "grep":
+        return grep_paths(args)
+    flags = {"cat": "AbeEnstTuv", "wc": "clmwL", "ls": "1@aAcdFghilLnoprRsStu"}.get(program)
+    if flags is None and program not in ("head", "tail"):
+        return None
+    paths = []
+    index = 0
+    while index < len(args):
+        word = args[index]
+        index += 1
+        if paths or word == "-" or not word.startswith("-"):
+            if word.startswith("-"):
+                return None
+            paths.append(word)
+        elif word == "--":
+            paths.extend(args[index:])
+            break
+        elif flags is not None:
+            if not set(word[1:]) <= set(flags):
+                return None
+        elif word[1:].isdigit() or word in ("-q", "-v"):
+            continue
+        elif word[1:2] in ("n", "c"):
+            value = word[2:]
+            if not value:
+                if index >= len(args):
+                    return None
+                value = args[index]
+                index += 1
+            if not value.lstrip("+-").isdigit():
+                return None
+        else:
+            return None
+    return paths or None
+
+
+def grep_paths(args):
+    """Return the file arguments of a grep command, or None."""
+    flags = set("EFGHhiIlLnorRsvwxcqzaU")
+    pattern_given = False
+    paths = []
+    index = 0
+    while index < len(args):
+        word = args[index]
+        index += 1
+        if word == "--":
+            rest = args[index:]
+            if not pattern_given and rest:
+                pattern_given = True
+                rest = rest[1:]
+            paths.extend(rest)
+            break
+        if not word.startswith("-") or word == "-":
+            if word == "-":
+                return None
+            if pattern_given:
+                paths.append(word)
+            else:
+                pattern_given = True
+            continue
+        if paths or word.startswith("--"):
+            return None
+        letters = word[1:]
+        while letters:
+            letter, letters = letters[0], letters[1:]
+            if letter in flags:
+                continue
+            if letter not in "eABCm":
+                return None
+            value = letters
+            letters = ""
+            if not value:
+                if index >= len(args):
+                    return None
+                value = args[index]
+                index += 1
+            if letter == "e":
+                pattern_given = True
+            elif not value.isdigit():
+                return None
+    return paths if pattern_given and paths else None
+
+
+def sed_paths(args):
+    """Return the file arguments of `sed -n <print-only script> <file>...`, or None."""
+    import re
+
+    if len(args) >= 2 and args[0] == "-n" and args[1] == "-e":
+        args = ["-n"] + args[2:]
+    if len(args) < 3 or args[0] != "-n":
+        return None
+    address = r"(?:\d+|\$|/(?:[^/\\\n]|\\.)*/)"
+    command = rf"\s*(?:{address}(?:\s*,\s*{address})?\s*)?p\s*"
+    if re.fullmatch(rf"{command}(?:[;\n]{command})*;?\s*", args[1]) is None:
+        return None
+    paths = args[2:]
+    if paths[0] == "--":
+        paths = paths[1:]
+    if not paths or any(path.startswith("-") for path in paths):
+        return None
+    return paths
 
 
 def split_words(command):

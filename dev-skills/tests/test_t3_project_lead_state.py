@@ -140,7 +140,7 @@ class LeadStateTests(unittest.TestCase):
         self.refused("task", "pr", "a", "5", reason="a is planned; task pr needs running or pr-open")
         self.refused("task", "verified", "a", reason="a is planned")
         self.refused("task", "resume", "a", reason="task resume needs paused")
-        self.refused("task", "start", "a", "https://example.com", reason="a worker link starts with")
+        self.refused("task", "start", "a", "two words", reason="the worker link must be one word")
         self.ok("task", "start", "a", WORKER.format(1))
         self.refused("task", "start", "a", WORKER.format(1), reason="a is running")
         self.ok("task", "pr", "a", "5")
@@ -201,9 +201,53 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "close-1", WORKER.format(9))
         self.ok("task", "verified", "close-1")
         self.refused("task", "add", "late", "Late task", "--batch", "1",
-                     reason="batch 1 is closed out; use --batch 2")
+                     reason="the close-out of batch 1 has started; use --batch 2")
         self.refused("task", "add", "far", "Far task", "--batch", "3", reason="the batch must be from 1 to 2")
         self.ok("task", "add", "next", "Next task", "--batch", "2")
+
+    def test_a_task_opens_its_next_pr_after_one_merges(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "tickets", "Two matt-automode tickets")
+        self.ok("task", "start", "tickets", WORKER.format(1))
+        self.ok("task", "pr", "tickets", "11")
+        self.ok("task", "merged", "tickets", "11", "abcdef1")
+        self.assertEqual(self.task("tickets")["state"], "merged")
+        self.ok("task", "pr", "tickets", "12")
+        self.assertEqual(self.task("tickets")["state"], "pr-open")
+        self.refused("task", "verified", "tickets", reason="tickets has an open PR")
+        self.ok("task", "merged", "tickets", "12", "abcdef2")
+        self.ok("task", "verified", "tickets")
+
+    def test_a_cancelled_task_does_not_release_a_task_after_it(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "research", "Research the cache")
+        self.ok("task", "add", "impl", "Build the cache", "--after", "research")
+        self.ok("task", "cancel", "research")
+        self.ok("task", "settled", "research")
+        self.refused("task", "start", "impl", WORKER.format(2), reason="impl waits for research")
+
+    def test_no_task_joins_a_batch_whose_close_out_has_started(self) -> None:
+        self.ok("init", "demo")
+        self.merged_task("w", "5")
+        self.ok("task", "add", "co", "Close out batch 1", "--kind", "closeout")
+        self.ok("task", "start", "co", WORKER.format(9))
+        self.refused("task", "add", "late", "Late task", "--batch", "1",
+                     reason="the close-out of batch 1 has started; use --batch 2")
+        self.assertIn("Task late added to batch 2.", self.ok("task", "add", "late", "Late task"))
+        self.ok("task", "verified", "co")
+        self.ok("task", "settled", "w")
+        self.ok("task", "settled", "co")
+
+    def test_a_cancelled_close_out_lets_the_batch_add_another(self) -> None:
+        self.ok("init", "demo")
+        self.merged_task("w", "5")
+        self.ok("task", "add", "co", "Close out batch 1", "--kind", "closeout")
+        self.ok("task", "cancel", "co")
+        self.ok("task", "settled", "co")
+        self.ok("task", "add", "co-2", "Close out batch 1 again", "--kind", "closeout", "--batch", "1")
+        self.ok("task", "start", "co-2", WORKER.format(9))
+        self.ok("task", "verified", "co-2")
+        self.assertEqual(self.task("w")["state"], "closed-out")
 
     def test_names_and_text_are_checked(self) -> None:
         self.ok("init", "demo")
@@ -227,7 +271,7 @@ class LeadStateTests(unittest.TestCase):
                       self.ok("wait", "--task", "grill", "--decisions", "5"))
         self.ok("wait", "Triage #503", "--recommend", "ready-for-agent")
         self.ok("done", "1")
-        self.refused("done", "1", reason="no open item 1")
+        self.refused("done", "1", reason="no waiting item 1")
         self.ok("wait", "Delete the backup files?", "--link", "https://example.com/x")
         waiting = self.ok("waiting")
         self.assertEqual(waiting.splitlines(), [
@@ -238,6 +282,16 @@ class LeadStateTests(unittest.TestCase):
         self.assertTrue(self.ok("start").rstrip().endswith("3 Delete the backup files?. https://example.com/x"))
         self.assertIn("2 Triage #503. Lead recommends: ready-for-agent.", self.ok("report"))
         self.refused("wait", "--decisions", "2", reason="give the item's text, or --task")
+
+    def test_a_worker_item_holds_no_detail_of_the_decisions(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "grill", "Design the cache")
+        self.refused("wait", "--task", "grill", "--decisions", "2", reason="grill has no worker that is not settled")
+        self.ok("task", "start", "grill", WORKER.format(1))
+        for extra in (["Choose JSON or SQLite"], ["--recommend", "SQLite"], ["--link", "https://x"]):
+            with self.subTest(extra=extra):
+                self.refused("wait", "--task", "grill", "--decisions", "2", *extra,
+                             reason="a worker item takes only --decisions")
 
     def test_the_view_hides_settled_tasks_and_counts_closed_out_tasks(self) -> None:
         self.ok("init", "demo")
@@ -310,8 +364,10 @@ class LeadStateTests(unittest.TestCase):
         self.assertIn("- a (batch 1) paused: Task a.", self.ok("show"))
         self.refused("task", "start", "a", WORKER.format(1), reason="a is paused")
         self.ok("task", "resume", "a")
-        self.assertIn("it had no worker to settle", self.ok("task", "cancel", "a"))
-        self.assertEqual(self.task("a")["state"], "settled")
+        self.assertIn("It has no worker: run task settled a.", self.ok("task", "cancel", "a"))
+        self.assertEqual(self.task("a")["state"], "cancelled")
+        self.assertIn("- a has no worker: run task settled a.", self.ok("show"))
+        self.ok("task", "settled", "a")
         self.ok("task", "add", "b", "Task b")
         self.ok("task", "start", "b", WORKER.format(2))
         self.ok("task", "cancel", "b")
@@ -335,6 +391,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("wait", "Approve the release?")
         self.refused("finish", reason="tasks not settled: a; items that wait: 1")
         self.ok("task", "cancel", "a")
+        self.refused("finish", reason="tasks not settled: a")
+        self.ok("task", "settled", "a")
         self.ok("done", "1")
         folder = self.folder()
         self.assertIn("Settle this thread.", self.ok("finish"))

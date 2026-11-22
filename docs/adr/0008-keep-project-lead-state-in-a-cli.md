@@ -55,10 +55,10 @@ only; it was not tested.
 
 In a recorded session, the hook of ADR 0007 now allows only
 `python3 "<script>" <subcommand> [arguments...]` as one simple command, and
-reads of T3 attachments. It blocks every other shell command, every other
-file read, and every file edit, so it also blocks reads, edits, and `rm` of
-the lead folder. So the lead state changes only through the script. Only a
-three-word
+reads of T3 attachments, also through one simple read command such as `cat`.
+It blocks every other shell command, every other file read, and every file
+edit, so it also blocks reads, edits, and `rm` of the lead folder. So the
+lead state changes only through the script. Only a three-word
 `python3 "<script>" start` records a session.
 
 The lead state is independent of GTD: the script reads and writes no GTD

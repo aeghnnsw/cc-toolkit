@@ -193,7 +193,6 @@ NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
-WORKER_LINK = "t3-thread://"
 KINDS = ("work", "check", "closeout")
 
 PLANNED, PAUSED, RUNNING, PR_OPEN, MERGED = "planned", "paused", "running", "pr-open", "merged"
@@ -202,6 +201,8 @@ VERIFIED, CLOSED_OUT, SETTLED, CANCELLED = "verified", "closed-out", "settled", 
 ACCEPTED = (VERIFIED, CLOSED_OUT, SETTLED)
 # A task whose worker may still run.
 ACTIVE = (RUNNING, PR_OPEN)
+# A task that needs no more work: accepted or cancelled.
+DONE = ACCEPTED + (CANCELLED,)
 
 
 class Refused(Exception):
@@ -302,8 +303,6 @@ def link(value: str, what: str) -> str:
 
 
 def worker_link(value: str) -> str:
-    if not value.startswith(WORKER_LINK):
-        raise Refused(f"a worker link starts with {WORKER_LINK}")
     return link(value, "worker link")
 
 
@@ -312,6 +311,11 @@ def find_task(state: dict, name: str) -> dict:
         if task["name"] == name:
             return task
     raise Refused(f"no task named {name}")
+
+
+def accepted(task: dict) -> bool:
+    """Return whether the lead accepted the task's result; a cancelled task never counts."""
+    return task["state"] in ACCEPTED and not task.get("cancelled")
 
 
 def require(task: dict, states: tuple[str, ...], action: str) -> None:
@@ -333,7 +337,7 @@ def merged_prs(state: dict, batch: int) -> list[dict]:
 
 def closeout_task(state: dict, batch: int) -> dict | None:
     for task in batch_tasks(state, batch):
-        if task["kind"] == "closeout" and task["state"] != CANCELLED:
+        if task["kind"] == "closeout" and not task.get("cancelled"):
             return task
     return None
 
@@ -343,10 +347,15 @@ def batch_closed(state: dict, batch: int) -> bool:
     return task is not None and task["state"] in ACCEPTED
 
 
+def closeout_started(state: dict, batch: int) -> bool:
+    """Return whether the batch's close-out task has started, so no task may join the batch."""
+    task = closeout_task(state, batch)
+    return task is not None and task["state"] not in (PLANNED, PAUSED)
+
+
 def batch_done(state: dict, batch: int) -> bool:
     """Return whether each task of the batch, other than a close-out, is accepted or cancelled."""
-    return all(task["state"] in ACCEPTED + (CANCELLED,) for task in batch_tasks(state, batch)
-               if task["kind"] != "closeout")
+    return all(task["state"] in DONE for task in batch_tasks(state, batch) if task["kind"] != "closeout")
 
 
 def needs_closeout(state: dict, batch: int) -> bool:
@@ -413,11 +422,14 @@ def change_task_add(state, args, time):
         raise Refused(f"a task named {name} already exists")
     title = text(args.title, "title")
     highest = max((task["batch"] for task in state["tasks"]), default=1)
-    batch = highest if args.batch is None else args.batch
+    if args.batch is not None:
+        batch = args.batch
+    else:
+        batch = highest + 1 if closeout_started(state, highest) else highest
     if not 1 <= batch <= highest + 1:
         raise Refused(f"the batch must be from 1 to {highest + 1}")
-    if batch_closed(state, batch):
-        raise Refused(f"batch {batch} is closed out; use --batch {highest + 1}")
+    if closeout_started(state, batch):
+        raise Refused(f"the close-out of batch {batch} has started; use --batch {highest + 1}")
     if args.kind == "check":
         if not args.of:
             raise Refused("a check task needs --of <task>")
@@ -449,7 +461,7 @@ def move(task: dict, new: str, time: str, **fields) -> dict:
 def change_task_start(state, args, time):
     task = find_task(state, args.name)
     require(task, (PLANNED,), "task start")
-    waiting = [other for other in task["after"] if find_task(state, other)["state"] not in ACCEPTED]
+    waiting = [other for other in task["after"] if not accepted(find_task(state, other))]
     if waiting:
         raise Refused(f"{task['name']} waits for {', '.join(waiting)} to be verified")
     if task["kind"] == "closeout":
@@ -476,7 +488,7 @@ def change_task_worker(state, args, time):
 
 def change_task_pr(state, args, time):
     task = find_task(state, args.name)
-    require(task, ACTIVE, "task pr")
+    require(task, ACTIVE + (MERGED,), "task pr")
     if args.number < 1 or any(pr["number"] == args.number for pr in task["prs"]):
         raise Refused(f"PR #{args.number} is not a new positive PR number for {task['name']}")
     task["prs"].append({"number": args.number, "commit": None, "merged": None})
@@ -527,9 +539,10 @@ def change_task_settled(state, args, time):
 def change_task_cancel(state, args, time):
     task = find_task(state, args.name)
     require(task, (PLANNED, PAUSED) + ACTIVE, "task cancel")
+    task["cancelled"] = True
     if task["worker"] is None:
-        return f"{task['name']} is cancelled; it had no worker to settle.", move(task, SETTLED, time,
-                                                                               cancelled=True)
+        return (f"{task['name']} is cancelled. It has no worker: run task settled {task['name']}.",
+                move(task, CANCELLED, time))
     return f"{task['name']} is cancelled. Settle its worker.", move(task, CANCELLED, time)
 
 
@@ -547,8 +560,13 @@ def change_task_resume(state, args, time):
 
 def change_wait(state, args, time):
     task = find_task(state, args.task) if args.task else None
-    if task is not None and task["state"] == SETTLED:
-        raise Refused(f"{task['name']} is settled")
+    if task is not None:
+        if args.text is not None or args.recommend or args.link:
+            raise Refused("a worker item takes only --decisions: it holds no detail of the "
+                          "worker's decisions, and it points to the worker's thread")
+        if not task["worker"] or task["state"] == SETTLED:
+            raise Refused(f"{task['name']} has no worker that is not settled; add the item without "
+                          "--task")
     if args.text is None and task is None:
         raise Refused("give the item's text, or --task for a worker that waits")
     if args.decisions is not None and args.decisions < 1:
@@ -575,7 +593,7 @@ def change_done(state, args, time):
         if item["number"] == args.number:
             state["items"].remove(item)
             return f"Item {args.number} is done.", {"item": args.number, "to": "done"}
-    raise Refused(f"no open item {args.number}")
+    raise Refused(f"no waiting item {args.number}")
 
 
 def change_decision_add(state, args, time):
@@ -633,8 +651,6 @@ def item_line(item: dict) -> str:
         line += f" Decisions: {item['decisions']}."
     if item["recommend"]:
         line += f" Lead recommends: {item['recommend'].rstrip('.')}."
-    else:
-        line += ""
     if item["link"]:
         line += f" {item['link']}"
     return line
@@ -682,17 +698,20 @@ def due_lines(state: dict) -> list[str]:
         if task["state"] == SETTLED:
             continue
         if task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None:
-            lines.append(f"Settle the worker of {task['name']}, then run task settled {task['name']}: "
-                         f"{task['worker']}")
+            if task["worker"]:
+                lines.append(f"Settle the worker of {task['name']}, then run task settled "
+                             f"{task['name']}: {task['worker']}")
+            else:
+                lines.append(f"{task['name']} has no worker: run task settled {task['name']}.")
         if task["kind"] == "check" and task["state"] in ACCEPTED:
             target = find_task(state, task["of"])
-            if target["state"] not in ACCEPTED + (CANCELLED,):
+            if target["state"] not in DONE:
                 lines.append(f"Check {task['name']} is verified: run task verified {target['name']} "
                              "when its verdict passes.")
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
         task = tasks.get(item["task"])
-        if task is not None and task["state"] in ACCEPTED + (CANCELLED,):
+        if task is not None and task["state"] in DONE:
             lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
                          f"{item['number']}, or keep it.")
     if state["tasks"] and not state["items"] and all(task["state"] == SETTLED for task in state["tasks"]):
