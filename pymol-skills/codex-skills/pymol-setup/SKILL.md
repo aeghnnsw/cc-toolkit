@@ -30,7 +30,8 @@ Code installation or source checkout.
 5. Open **Plugin > PyMol MCP Socket Plugin** and click **Start Listening**.
 6. Confirm **Listening on port 9876**.
 
-If the socket plugin is already installed, use the existing installation.
+If the socket plugin is already installed, use the existing installation
+unless [Verify](#verify) shows that it is outdated.
 If its interface fails to open because the UI file is missing, reinstall
 from the complete bundled directory. Restarting PyMOL may require starting
 its listener again. Preserve any unsaved session before restarting.
@@ -45,8 +46,10 @@ assert len(cmd.get_view()) == 18
 ```
 
 Success requires a response without a connection or execution error. This
-check preserves the molecular scene. Do not treat generic success text as
-returned molecular data.
+check preserves the molecular scene and prints nothing, so with a current
+socket plugin the response is `PyMOL returned no output for: ...`. Generic
+success text, such as `Python API command executed`, comes from an outdated
+socket plugin: reinstall it as above, then restart PyMOL.
 
 ## Troubleshoot
 
@@ -57,5 +60,6 @@ returned molecular data.
 - Connection refused: start PyMOL's listener. The bridge uses `localhost:9876`;
   changing only the port in the PyMOL dialog will break the connection.
 - Timeout: disconnect any other client. The socket plugin serves one
-  persistent connection at a time, including across Claude Code and Codex.
+  persistent connection at a time, including across Claude Code, Codex, and
+  Antigravity.
 - Remote Codex host: run the integration locally on the PyMOL machine.

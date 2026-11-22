@@ -10,9 +10,12 @@ Based on the concept of the "Rendering Plugin" from Michael Lerner.
 from __future__ import absolute_import
 from __future__ import print_function
 
+import ast
 import os
+import re
 import socket
 import json
+import tempfile
 import threading
 import time
 import traceback
@@ -155,6 +158,64 @@ class SocketServer:
         self.client = None
         self.thread = None
         
+def do_argument(code):
+    """Return the command of code that is one cmd.do() call with a string literal, or None."""
+    match = re.fullmatch(r"cmd\.do\((.+)\)", code.strip(), re.DOTALL)
+    if not match:
+        return None
+    try:
+        command = ast.literal_eval(match.group(1))
+    except (ValueError, SyntaxError):
+        return None
+    return command if isinstance(command, str) else None
+
+def execute_code(cmd, code):
+    """Run code from the MCP bridge in PyMOL and return its result for the bridge.
+
+    The output holds only text that PyMOL produced. When PyMOL produced none,
+    the output is empty and the bridge says so; the plugin adds no success
+    text of its own, because a call without output does not show success.
+    """
+    try:
+        print(f"Executing PyMOL command from MCP:\n{code}")
+        exec_globals = {"cmd": cmd, "__builtins__": __builtins__}
+        output = ""
+        pymol_cmd = do_argument(code)
+        if pymol_cmd is None:
+            exec(code, exec_globals)
+        else:
+            # Log the command to a temporary file; the log can hold more than
+            # the command itself.
+            temp_log = tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.pml')
+            temp_log.close()
+            try:
+                cmd.log_open(temp_log.name)
+                try:
+                    exec(code, exec_globals)
+                finally:
+                    cmd.log_close()
+                try:
+                    with open(temp_log.name, 'r') as f:
+                        log_content = f.read().strip()
+                except OSError:
+                    log_content = ""  # The log could not be read; report no output.
+            finally:
+                try:
+                    os.unlink(temp_log.name)
+                except OSError:
+                    pass
+            if log_content and log_content != pymol_cmd:
+                output = f"PyMOL output: {log_content}"
+
+        print(f"Command output: {output}")
+        return {"executed": True, "output": output, "error": ""}
+
+    except Exception as e:
+        error_msg = f"Error executing PyMOL command: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return {"executed": False, "output": "", "error": error_msg}
+
 def run_plugin_gui():
     '''
     Open our custom dialog
@@ -187,166 +248,6 @@ def make_dialog():
     form.input_port.setValue(current_port)
     update_status_label(form, "Not listening")
     
-    # Helper function to generate meaningful output for PyMOL commands
-    def generate_meaningful_output(pymol_cmd):
-        """Generate meaningful feedback for PyMOL commands"""
-        if pymol_cmd.startswith('set '):
-            parts = pymol_cmd.split(',')
-            if len(parts) >= 2:
-                setting_name = parts[0].replace('set ', '').strip()
-                setting_value = parts[1].strip()
-                return f"Setting: {setting_name} set to {setting_value}"
-            else:
-                return f"Setting updated: {pymol_cmd}"
-        elif pymol_cmd.startswith('fetch'):
-            structure = pymol_cmd.replace('fetch ', '').split()[0]
-            return f"Fetched structure: {structure}"
-        elif pymol_cmd.startswith('align'):
-            return f"Alignment completed: {pymol_cmd}"
-        elif pymol_cmd.startswith('super'):
-            return f"Superposition completed: {pymol_cmd}"
-        elif pymol_cmd.startswith('show') or pymol_cmd.startswith('hide'):
-            return f"Display representation updated: {pymol_cmd}"
-        elif pymol_cmd.startswith('color'):
-            return f"Coloring applied: {pymol_cmd}"
-        elif pymol_cmd.startswith('bg_color'):
-            color = pymol_cmd.replace('bg_color ', '').strip()
-            return f"Background color changed to: {color}"
-        elif pymol_cmd.startswith('load'):
-            filename = pymol_cmd.replace('load ', '').split()[0]
-            return f"Loaded file: {filename}"
-        elif pymol_cmd.startswith('save'):
-            filename = pymol_cmd.replace('save ', '').split()[0]
-            return f"Saved to file: {filename}"
-        elif pymol_cmd.startswith('select'):
-            selection_name = pymol_cmd.split()[1] if len(pymol_cmd.split()) > 1 else "selection"
-            return f"Selection '{selection_name}' created"
-        elif pymol_cmd.startswith(('distance', 'angle', 'dihedral')):
-            measurement_type = pymol_cmd.split()[0]
-            return f"{measurement_type.capitalize()} measurement created"
-        elif pymol_cmd.startswith('zoom'):
-            return f"View zoomed: {pymol_cmd}"
-        elif pymol_cmd.startswith('orient'):
-            return f"View oriented: {pymol_cmd}"
-        elif pymol_cmd.startswith('reinitialize'):
-            return "PyMOL session reinitialized"
-        elif pymol_cmd.startswith('delete'):
-            target = pymol_cmd.replace('delete ', '').strip()
-            return f"Deleted: {target}"
-        else:
-            return f"Command executed: {pymol_cmd}"
-
-    # Define a function to execute PyMOL commands and capture output
-    def execute_pymol_command(code):
-        try:
-            # Execute in PyMOL with output capture
-            print(f"Executing PyMOL command from MCP:\n{code}")
-            
-            # Prepare the execution environment
-            exec_globals = {"cmd": cmd, "__builtins__": __builtins__}
-            
-            # Capture PyMOL feedback by temporarily redirecting it
-            captured_output = []
-            
-            def capture_feedback(message, category="output"):
-                """Capture PyMOL feedback messages"""
-                captured_output.append(str(message))
-            
-            # Store original feedback function and replace with our capture function
-            original_feedback = getattr(cmd, 'feedback', None)
-            
-            try:
-                # For cmd.do() commands, try to capture PyMOL's actual output
-                if "cmd.do(" in code:
-                    # Extract the command from cmd.do('command')
-                    import re
-                    match = re.search(r"cmd\.do\(['\"](.+)['\"]\)", code)
-                    if match:
-                        pymol_cmd = match.group(1)
-                        
-                        # Try to capture output using a temporary log file
-                        import tempfile
-                        import os
-                        
-                        # Create a temporary file for logging
-                        temp_log = tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.pml')
-                        temp_log_path = temp_log.name
-                        temp_log.close()
-                        
-                        try:
-                            # Open logging to capture output
-                            cmd.log_open(temp_log_path)
-                            
-                            # Execute the command
-                            exec(code, exec_globals)
-                            
-                            # Close logging
-                            cmd.log_close()
-                            
-                            # Read the captured output
-                            try:
-                                with open(temp_log_path, 'r') as f:
-                                    log_content = f.read().strip()
-                                
-                                # If we captured something meaningful, use it
-                                if log_content and log_content != pymol_cmd:
-                                    output = f"PyMOL output: {log_content}"
-                                else:
-                                    # Fall back to our meaningful responses
-                                    output = generate_meaningful_output(pymol_cmd)
-                            except:
-                                output = generate_meaningful_output(pymol_cmd)
-                                
-                        finally:
-                            # Clean up temp file
-                            try:
-                                if os.path.exists(temp_log_path):
-                                    os.unlink(temp_log_path)
-                            except:
-                                pass
-                    else:
-                        exec(code, exec_globals)
-                        output = "Command executed successfully"
-                else:
-                    # Regular Python API command
-                    result = exec(code, exec_globals)
-                    if result is not None:
-                        output = str(result)
-                    else:
-                        # Try to provide meaningful feedback for common API commands
-                        if 'cmd.fetch(' in code:
-                            output = f"Structure fetched via API: {code}"
-                        elif 'cmd.align(' in code or 'cmd.super(' in code:
-                            output = f"Alignment completed via API: {code}"
-                        elif 'cmd.show(' in code or 'cmd.hide(' in code:
-                            output = f"Display updated via API: {code}"
-                        elif 'cmd.color(' in code:
-                            output = f"Coloring applied via API: {code}"
-                        elif 'cmd.set(' in code:
-                            output = f"Setting updated via API: {code}"
-                        else:
-                            output = f"Python API command executed: {code}"
-            
-            finally:
-                # Restore original feedback function if it existed
-                if original_feedback:
-                    cmd.feedback = original_feedback
-            
-            # Return captured output or our generated meaningful response
-            if captured_output:
-                final_output = " ".join(captured_output)
-            else:
-                final_output = output
-            
-            print(f"Command output: {final_output}")
-            return {"executed": True, "output": final_output, "error": ""}
-                
-        except Exception as e:
-            error_msg = f"Error executing PyMOL command: {str(e)}"
-            print(error_msg)
-            traceback.print_exc()
-            return {"executed": False, "output": "", "error": error_msg}
-    
     # Callback for the "Start Listening" button
     def toggle_listening():
         global socket_server, listening, current_port
@@ -357,7 +258,7 @@ def make_dialog():
             current_port = port
             
             socket_server = SocketServer(port=port)
-            if socket_server.start(execute_pymol_command):
+            if socket_server.start(lambda code: execute_code(cmd, code)):
                 listening = True
                 form.button_toggle_listening.setText("Stop Listening")
                 update_status_label(form, f"Listening on port {port}")

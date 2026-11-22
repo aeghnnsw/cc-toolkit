@@ -1,7 +1,7 @@
 {
   "name": "pymol-skills",
   "displayName": "PyMOL Skills",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Control local PyMOL visualization and structural analysis through MCP.",
   "author": {
     "name": "Steven",

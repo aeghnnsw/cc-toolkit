@@ -164,6 +164,27 @@ mcp = FastMCP("PyMOLMCPServer", lifespan=server_lifespan)
 # MCP TOOLS
 ##############################################################################
 
+def response_text(response: Dict[str, Any], request: str) -> str:
+    """
+    Returns the tool text for a socket plugin response: PyMOL's output, its
+    error, or a neutral note when PyMOL returned no output. The bridge adds
+    no success text of its own, because an empty result does not show that
+    the request did what it asked.
+    """
+    if response.get("status", "error") != "success":
+        return f"Execution failed: {response.get('message', 'Unknown error')}"
+    res = response.get("result", {})
+    if isinstance(res, dict):
+        if res.get("error"):
+            return f"Error: {res['error']}"
+        output = res.get("output")
+    else:
+        output = res  # legacy format: the result is the output string
+    # An output equal to the request only echoes it.
+    if not output or output == request:
+        return f"PyMOL returned no output for: {request}"
+    return str(output)
+
 @mcp.tool()
 def pymol_command(ctx: Context, command: str) -> str:
     """
@@ -180,44 +201,10 @@ def pymol_command(ctx: Context, command: str) -> str:
     try:
         conn = get_pymol_connection()
 
-        # Wrap command in cmd.do() for execution
-        code = f"cmd.do('{command}')"
+        # Wrap command in cmd.do() for execution; repr() keeps any quotes in it
+        code = f"cmd.do({command!r})"
         response = conn.send_command(code)
-
-        status = response.get("status", "error")
-        if status == "success":
-            res = response.get("result", {})
-
-            # Handle different response formats
-            if isinstance(res, dict):
-                output = res.get("output", "")
-                error = res.get("error", "")
-
-                if error:
-                    return f"Error: {error}"
-
-                # Generate meaningful output for common commands
-                if not output or output == command:
-                    if command.startswith('fetch'):
-                        structure = command.replace('fetch ', '').split()[0]
-                        return f"Fetched structure: {structure}"
-                    elif command.startswith('show') or command.startswith('hide'):
-                        return f"Display updated: {command}"
-                    elif command.startswith('color'):
-                        return f"Coloring applied: {command}"
-                    elif command.startswith('bg_color'):
-                        color = command.replace('bg_color ', '').strip()
-                        return f"Background color changed to: {color}"
-                    else:
-                        return f"Command executed: {command}"
-
-                return output
-            else:
-                # Handle string response (legacy format)
-                return str(res) if res else f"Command executed: {command}"
-        else:
-            msg = response.get("message", "Unknown error")
-            return f"Execution failed: {msg}"
+        return response_text(response, command)
     except Exception as e:
         return f"Connection error: {e}"
 
@@ -234,6 +221,7 @@ def pymol_python_api(ctx: Context, python_code: str) -> str:
       - "cmd.align('mobile', 'target')"
       - Custom Python scripts for complex operations
     """
+    request = python_code
     try:
         conn = get_pymol_connection()
 
@@ -242,41 +230,7 @@ def pymol_python_api(ctx: Context, python_code: str) -> str:
             python_code = f"from pymol import cmd\n{python_code}"
 
         response = conn.send_command(python_code)
-
-        status = response.get("status", "error")
-        if status == "success":
-            res = response.get("result", {})
-
-            # Handle different response formats
-            if isinstance(res, dict):
-                output = res.get("output", "")
-                error = res.get("error", "")
-
-                if error:
-                    return f"Error: {error}"
-
-                # Generate meaningful output if none provided
-                if not output:
-                    if 'cmd.fetch(' in python_code:
-                        return f"Structure fetched via Python API"
-                    elif 'cmd.align(' in python_code or 'cmd.super(' in python_code:
-                        return f"Alignment completed via Python API"
-                    elif 'cmd.show(' in python_code or 'cmd.hide(' in python_code:
-                        return f"Display updated via Python API"
-                    elif 'cmd.color(' in python_code:
-                        return f"Coloring applied via Python API"
-                    elif 'cmd.select(' in python_code:
-                        return f"Selection created via Python API"
-                    else:
-                        return f"Python API command executed"
-
-                return output
-            else:
-                # Handle string response (legacy format)
-                return str(res) if res else f"Python API executed"
-        else:
-            msg = response.get("message", "Unknown error")
-            return f"Execution failed: {msg}"
+        return response_text(response, request)
     except Exception as e:
         return f"Connection error: {e}"
 

@@ -67,8 +67,11 @@ own manifest, skills, and MCP configuration.
 3. Open **Plugin > PyMol MCP Socket Plugin** and click **Start Listening**.
 4. Confirm **Listening on port 9876**.
 
-Use the existing socket plugin if it is already installed. The bridge always
-connects to `localhost:9876`. Start the listener again after restarting PyMOL.
+Use the existing socket plugin if it is already installed, unless it is
+outdated. An outdated socket plugin returns generic success text, such as
+`Fetched structure: 1ubq`, when PyMOL prints nothing; reinstall it from the
+installed package and restart PyMOL. The bridge always connects to
+`localhost:9876`. Start the listener again after restarting PyMOL.
 The listener serves one client at a time. Disconnect another Claude Code,
 Codex, or Antigravity MCP client before connecting a new one.
 

@@ -18,7 +18,7 @@ Find the tools by their exposed names; Codex can add a plugin namespace.
   `show cartoon, all` or `color red, chain A`.
 - `pymol_python_api(python_code)`: execute Python using the existing `cmd`
   object, such as `cmd.align('mobile', 'target')`. Prefer this tool when
-  commands contain quotes or require multiple steps.
+  commands require multiple steps.
 
 Act on the objects and selections the user requests. Preserve the current
 session unless the requested operation requires changing it. Use absolute
@@ -43,9 +43,10 @@ assert len(cmd.get_view()) == 18
 ```
 
 Read the returned text. The server can report execution or connection errors
-as ordinary text. A completed tool call alone does not prove success. The
-socket plugin may return a generic success message instead of Python values
-or printed output; report only what the response establishes.
+as ordinary text. A completed tool call alone does not prove success; report
+only what the response establishes. Generic success text, such as
+`Fetched structure: 1ubq`, comes from an outdated socket plugin; reinstall
+it as [PyMOL setup](../pymol-setup/SKILL.md) describes.
 
 ## Connection recovery
 
