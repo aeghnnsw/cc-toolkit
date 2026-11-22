@@ -8,7 +8,9 @@
       "ownership": [],
       "resources": [
         {"path": "skills/statusline-setup/scripts/statusline-command.sh", "hosts": ["claude"]},
-        {"path": "skills/claude-prompt-config/assets/global-claude-md.md", "hosts": ["claude"]}
+        {"path": "skills/claude-prompt-config/assets/global-claude-md.md", "hosts": ["claude"]},
+        {"path": "skills/claude-prompt-config/scripts/install_prompt.sh", "hosts": ["claude"]},
+        {"path": "skills/model-config/scripts/set_autocompact.sh", "hosts": ["claude"]}
       ]
     },
     "core-hooks": {

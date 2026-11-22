@@ -1,5 +1,6 @@
 {
-  "description": "Allowed models for each model family. A model pin names the primary model of its family. A Claude Code agent can set inherit instead. A pressure-test critic starts on the primary model unless the user or a calling skill chooses the fallback model, and a flag switches it to the other allowed model once. tests/test_model_pins.py checks every pin against this list.",
-  "claude": {"primary": "claude-opus-5-5", "fallback": "claude-sonnet-5-5"},
+  "description": "Allowed models for each model family. A model pin names the primary model of its family. A Claude Code agent can set inherit instead. A pressure-test critic starts on the primary model unless the user or a calling skill chooses the fallback model, and a flag switches it to the other allowed model once. The claude current list names the current Claude models, in the order that model-config offers them. tests/test_model_pins.py checks every pin and the model-config model list against this file.",
+  "claude": {"primary": "claude-opus-5-5", "fallback": "claude-sonnet-5-5",
+             "current": ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]},
   "gpt": {"primary": "gpt-6-astra", "fallback": "gpt-6.1-sol"}
 }

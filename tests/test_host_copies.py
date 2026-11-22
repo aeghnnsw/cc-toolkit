@@ -213,6 +213,18 @@ class HostCopyTests(unittest.TestCase):
                 if (plugin, skill) in PINNED_POLICY:
                     self.assertEqual(agreed, {PINNED_POLICY[plugin, skill][0]}, PINNED_POLICY[plugin, skill][1])
 
+    def test_pinned_skills_keep_their_policy_on_every_host(self):
+        found = set()
+        for package, _, skills in self.registrations:
+            for skill in skills:
+                key = (package.source, skill.parent.name)
+                if key in PINNED_POLICY and relative(skill.parent) not in INVOCATION_EXCEPTIONS:
+                    found.add(key)
+                    with self.subTest(copy=relative(skill.parent)):
+                        self.assertEqual(user_invoked(package.host, skill.parent), PINNED_POLICY[key][0],
+                                         PINNED_POLICY[key][1])
+        self.assertEqual(found, set(PINNED_POLICY), 'a pinned skill has no copy')
+
     def test_copies_name_no_tool_of_another_host(self):
         claude_copies = {skill.parent for package, _, skills in self.registrations if package.host == 'claude'
                          for skill in skills}
@@ -237,6 +249,8 @@ PINNED_POLICY = {
                                                  'user invokes it (#406)'),
     ('dev-skills', 'repo-cleanup'): (False, 'workflows run repo-cleanup after a merge (#247)'),
     ('dev-skills', 'grill-with-research'): (False, 'matt-automode runs grill-with-research as a step (#365)'),
+    ('cc-customize', 'claude-prompt-config'): (True, 'claude-prompt-config replaces the global instruction file '
+                                                     'only because the user invokes it (#464)'),
 }
 
 INVOCATION_EXCEPTIONS = {}

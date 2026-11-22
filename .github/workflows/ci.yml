@@ -45,7 +45,7 @@ jobs:
           echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
 
       - name: Check the test tools
-        run: command -v git lsof python3 uv zsh initdb pg_ctl psql
+        run: command -v git jq lsof python3 uv zsh initdb pg_ctl psql
 
       - name: Package validator
         if: ${{ !cancelled() }}
@@ -54,6 +54,10 @@ jobs:
       - name: Root tests
         if: ${{ !cancelled() }}
         run: uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: CC Customize tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s cc-customize/tests -p 'test_*.py'
 
       - name: Core Hooks tests
         if: ${{ !cancelled() }}

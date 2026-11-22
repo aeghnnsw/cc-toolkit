@@ -295,7 +295,7 @@ the repository root:
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | A plugin with an Antigravity manifest, when `agy` is installed | `agy plugin validate <plugin>` |
 | `allowed-models.json` or a `pressure-test` `SKILL.md` | `python3 -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
-| Code or a test in `core-hooks`, `creator-skills`, `dev-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
+| Code or a test in `cc-customize`, `core-hooks`, `creator-skills`, `dev-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
 | Code or a test in `productivity-skills` | `uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'` |
 | Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
@@ -304,8 +304,9 @@ the repository root:
 copy that an Antigravity copy shadows (see [Shadowing](#shadowing)). These
 warnings are expected. Do not pass `--strict`, because it fails on them.
 
-Core Hooks tests require Python and `uv` on `PATH`. `cc-customize` has no
-test suite. Before you run a plugin suite, read
+Core Hooks tests require Python and `uv` on `PATH`. The `cc-customize`
+tests run its scripts with `bash`; without `jq`, the `set_autocompact.sh`
+checks skip. Before you run a plugin suite, read
 [Plugin runtime tests](#plugin-runtime-tests).
 
 ### Package and release validation

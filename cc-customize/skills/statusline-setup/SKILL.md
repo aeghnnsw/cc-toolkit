@@ -1,6 +1,6 @@
 ---
 name: statusline-setup
-version: 2.0.1
+version: 2.0.2
 description: This skill should be used when the user asks to "set up statusline", "configure statusline", "install statusline", "set up status bar", or wants to configure the Claude Code statusline with model info, git status, context/rate-limit bars, prompt-cache state, and session token and cost totals.
 ---
 
@@ -35,7 +35,7 @@ Claude Code cancels a statusline run that is still busy when the next update arr
 
 Per-session state is kept in `${TMPDIR:-/tmp}/cc-statusline-<uid>/<session-id>/`. The script sets the directory to mode 700. If another user owns the directory, the script keeps no state: the token total shows `…` and git status is not cached. The last input JSON is saved there as `last-input.json` for debugging.
 
-The script reads `settings.json` and the session task list from `${CLAUDE_CONFIG_DIR:-~/.claude}`. If `settings.json` is not valid JSON, the script ignores it.
+The script reads `settings.json` and the session task list from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, the folder where the setup steps install it. If `settings.json` is not valid JSON, the script ignores it.
 
 ## Prerequisites
 
@@ -46,25 +46,28 @@ The script reads `settings.json` and the session task list from `${CLAUDE_CONFIG
 
 ### Step 1: Copy the statusline script
 
-Copy the bundled script to the Claude Code config directory:
+Copy the bundled script to the Claude Code configuration folder. Claude Code reads its configuration from `CLAUDE_CONFIG_DIR` when the variable is set, as in a T3 Code profile. The last command prints the folder:
 
 ```bash
-cp "${CLAUDE_PLUGIN_ROOT}/skills/statusline-setup/scripts/statusline-command.sh" ~/.claude/statusline-command.sh
-chmod +x ~/.claude/statusline-command.sh
+dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+mkdir -p "$dir"
+cp "${CLAUDE_PLUGIN_ROOT}/skills/statusline-setup/scripts/statusline-command.sh" "$dir/statusline-command.sh"
+chmod +x "$dir/statusline-command.sh"
+printf '%s\n' "$dir"
 ```
 
 ### Step 2: Configure settings.json
 
-Read `~/.claude/settings.json`, then set the `statusLine` field to the following value:
+Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, then set the `statusLine` field to the following value. Replace `<folder>` with the folder that Step 1 printed, so that the command does not depend on the shell that runs it:
 
 ```json
 {
   "type": "command",
-  "command": "bash ~/.claude/statusline-command.sh"
+  "command": "bash \"<folder>/statusline-command.sh\""
 }
 ```
 
-- If `~/.claude/settings.json` does not exist, create it: `{ "statusLine": <value above> }`.
+- If `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` does not exist, create it: `{ "statusLine": <value above> }`.
 - If the file exists and a `statusLine` field already exists, replace its value. If not, add it.
 - Preserve all other top-level keys in the file.
 
@@ -78,4 +81,4 @@ To install changes from a new plugin version, re-run Step 1 above.
 
 ## Uninstall
 
-To remove the statusline, delete the `statusLine` field from `~/.claude/settings.json` and remove `~/.claude/statusline-command.sh`.
+To remove the statusline, delete the `statusLine` field from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` and remove `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/statusline-command.sh`.

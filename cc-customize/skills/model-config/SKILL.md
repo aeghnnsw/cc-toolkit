@@ -1,15 +1,18 @@
 ---
 name: model-config
-version: 2.2.0
+version: 2.3.0
 description: This skill should be used when the user asks to "change model", "set default model", "switch model", "use 1M context", "enable 1M context window", "change effort level", "set thinking depth", "configure effort", "set auto-compact window", "adjust auto compact", "compact earlier", "change compact threshold", "disable auto compact", "configure autocompact", or wants to modify the model, effort level, or auto-compact settings in Claude Code.
 ---
 
 Configure the default model, effort level, and auto-compact window in
-`~/.claude/settings.json`.
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`. Claude Code reads its
+configuration from `CLAUDE_CONFIG_DIR` when the variable is set, as in a T3
+Code profile.
 
 ## Background
 
-Claude Code reads these top-level keys from `~/.claude/settings.json`:
+Claude Code reads these top-level keys from
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`:
 
 | Key | Type | Purpose |
 |---|---|---|
@@ -27,7 +30,10 @@ matching setting.
 
 The auto-compact window is a token count, not a percentage. Use
 `autoCompactWindow` as the only auto-compact threshold. Never write
-`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`.
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Step 8
+writes every auto-compact change with
+[scripts/set_autocompact.sh](scripts/set_autocompact.sh), which removes both
+variables from the settings `env` block.
 
 Claude Code reads the window from four places. This list shows the precedence,
 highest first. Use it to find values that conflict with `autoCompactWindow`:
@@ -75,7 +81,7 @@ documented; verify it against the installed version before you rely on it.
 Without an auto-compact window, Claude Code compacts when the conversation
 reaches the model context limit. These sessions compact earlier:
 
-- Models with a native 1M window, such as Fable 5.1, Fable 5, Sonnet 5 and
+- Models with a native 1M window, such as Fable 5 and later, Sonnet 5 and
   later, Haiku 5.5, and Opus 4.7 and later on the Anthropic API, compact at
   about 967K tokens
 - Sonnet 4.6 and Opus 4.6 without extended context compact at the 200K
@@ -100,8 +106,9 @@ The variable stacks with `autoCompactWindow`; it does not replace it. With
 `autoCompactWindow: 400000` and an override of `40`, the trigger drops from
 about 367,000 to about 152,000 tokens.
 
-Never write this variable. Remove it from the settings `env` block whenever the
-skill changes auto-compact. Report any value set outside that file.
+Never write this variable. The Step 8 script removes it from the settings
+`env` block on every auto-compact change. Report any value set outside that
+file.
 
 If the override is the only threshold set, offer a window that keeps the same
 trigger. Compute the effective window as the model context window minus
@@ -120,7 +127,7 @@ gives 0.4 x 980,000 = 392,000, so the matching window is `425000`.
 
 | Model | Effort levels | 1M context |
 |---|---|---|
-| `claude-fable-5-1`, `claude-fable-5` | low, medium, high, xhigh, max | native |
+| `claude-fable-5-2`, `claude-fable-5-1`, `claude-fable-5` | low, medium, high, xhigh, max | native |
 | `claude-opus-5-5` | low, medium, high, xhigh, max | native |
 | `claude-sonnet-5-5` | low, medium, high, xhigh, max | native |
 | `claude-haiku-5-5` | low, medium, high, xhigh, max | native |
@@ -130,13 +137,14 @@ gives 0.4 x 980,000 = 392,000, so the matching window is `425000`.
 | `claude-opus-4-6`, `claude-sonnet-4-6` | low, medium, high, max | `[1m]` variant only |
 | `claude-sonnet-4-5`, `claude-haiku-4-5` | not supported | no |
 
-Opus 5.5, Sonnet 5.5, and Haiku 5.5 default to `medium` effort. Opus 4.7
-defaults to `xhigh`. Every other model that supports effort defaults to
-`high`. If the active model does not support the level you set, Claude Code
+Fable 5.2, Opus 5.5, Sonnet 5.5, and Haiku 5.5 default to `medium` effort.
+Opus 4.7 defaults to `xhigh`. Every other model that supports effort defaults
+to `high`. If the active model does not support the level you set, Claude Code
 falls back to the highest supported level at or below it.
 
 On the Anthropic API, the aliases `opus`, `sonnet`, and `haiku` select Opus
-5.5, Sonnet 5.5, and Haiku 5.5. The alias `fable` selects Fable 5.1.
+5.5, Sonnet 5.5, and Haiku 5.5. The alias `fable` selects Fable 5.2, except in
+Claude apps gateway sessions, where it selects Fable 5.
 
 `max` is not accepted in `effortLevel` or `modelSettings`. Set
 `CLAUDE_CODE_EFFORT_LEVEL=max` in the `env` block to keep `max` across
@@ -171,7 +179,7 @@ write its `modelSettings` entry.
 
 ### 1M context window
 
-Fable 5.1, Fable 5, Sonnet 5 and later, Haiku 5.5, and Opus 4.7 and later run
+Fable 5 and later, Sonnet 5 and later, Haiku 5.5, and Opus 4.7 and later run
 with the 1M window on every plan on the Anthropic API. Do not append `[1m]` to
 these models.
 
@@ -198,12 +206,12 @@ using built-in defaults."
 
 ## Step 2: Read Current Settings
 
-Read `~/.claude/settings.json`.
+Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`.
 
 Then search for `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the other places that can set them:
 
-- `~/.claude/settings.local.json`
+- `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.local.json`
 - The project's `.claude/settings.json` and `.claude/settings.local.json`
 - The shell profiles `~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.bashrc`, and
   `~/.bash_profile`
@@ -242,7 +250,7 @@ Use **AskUserQuestion** to present the models from Step 1. When the fetch
 failed, present the built-in model list:
 
 ```
-1. claude-fable-5-1
+1. claude-fable-5-2
 2. claude-opus-5-5
 3. claude-sonnet-5-5
 4. claude-haiku-5-5
@@ -335,13 +343,14 @@ Validate the integer:
 - Equal to the current setting: report "Already set. No change needed." and
   skip the write.
 
-Write the integer to the top-level `autoCompactWindow` key. In the same write,
-remove `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
-from the `env` block, and tell the user what you removed. `autoCompactWindow`
-must be the only threshold.
+Record the action `window <integer>` for Step 8. In the same write, the
+script removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the `env` block, so that
+`autoCompactWindow` is the only threshold.
 
-If Step 2 found either variable outside `~/.claude/settings.json`, give the
-user the file and line, and ask them to remove it. The skill does not edit
+If Step 2 found either variable outside
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, give the user the file and line, and
+ask them to remove it. The skill does not edit
 shell profiles or project files.
 
 Report the new trigger. Tell the user that `/autocompact <value>` sets the same
@@ -349,30 +358,55 @@ key from inside a session.
 
 ### Step 7c: Return to the Tuned Window
 
-Remove the `autoCompactWindow` key. Also remove
-`env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
-when present, so that the tuned window applies unchanged. This matches
-`/autocompact auto`.
+Record the action `auto` for Step 8. The script removes the
+`autoCompactWindow` key, `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW`, and
+`env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, so that the tuned window applies
+unchanged. This matches `/autocompact auto`.
 
 ### Step 7d: Turn Auto-Compact Off or On
 
 Ask which scope the user wants:
 
-- **Automatic compaction only**: set `"autoCompactEnabled": false`. The manual
-  `/compact` command keeps working. Warn the user that a session which reaches
-  the context limit stops with a context-limit error instead of compacting.
-- **All compaction**: add `"DISABLE_COMPACT": "1"` to the `env` block. This
-  also disables `/compact`.
+- **Automatic compaction only**: record the action `off`, which sets
+  `"autoCompactEnabled": false`. The manual `/compact` command keeps working.
+  Warn the user that a session which reaches the context limit stops with a
+  context-limit error instead of compacting.
+- **All compaction**: record the action `off-all`, which adds
+  `"DISABLE_COMPACT": "1"` to the `env` block. This also disables `/compact`.
 
-To turn auto-compact back on, set `"autoCompactEnabled": true` and remove
-`DISABLE_AUTO_COMPACT` and `DISABLE_COMPACT` from the `env` block. Tell the
-user that `DISABLE_AUTO_COMPACT` overrides `autoCompactEnabled`, so leaving it
-in place keeps auto-compact off.
+To turn auto-compact back on, record the action `on`. It sets
+`"autoCompactEnabled": true` and removes `DISABLE_AUTO_COMPACT` and
+`DISABLE_COMPACT` from the `env` block, because `DISABLE_AUTO_COMPACT`
+overrides `autoCompactEnabled` and keeps auto-compact off.
 
 ## Step 8: Write All Changes
 
-Read `~/.claude/settings.json` again, then apply every collected change in one
-surgical update:
+Write only the keys the user selected that differ from the current value.
+
+### Step 8a: Auto-compact
+
+When Step 7 recorded an action, run the script with it. This skill writes
+auto-compact settings only with this script:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/model-config/scripts/set_autocompact.sh" window 400000
+```
+
+Replace `window 400000` with the recorded action: `window <tokens>`, `auto`,
+`off`, `off-all`, or `on`. The script edits
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, or the file after `--file <path>`. It keeps every other key, and it writes
+through a symlink. Every action also removes `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
+and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the `env` block. The script prints
+`file: <path>`, then `no change` when the file already has the values, then a
+`removed: env.<name>=<old value>` line for each removed variable, then the
+resulting `autoCompactWindow`, `autoCompactEnabled`,
+`env.DISABLE_AUTO_COMPACT`, and `env.DISABLE_COMPACT`. Tell the user what it
+removed. Exit status 2 means that it changed nothing; report its error.
+
+### Step 8b: Model and effort
+
+Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` again, then apply the
+model and effort changes in one surgical update:
 
 - If the file does not exist, use **Write** to create it with only the keys
   being set.
@@ -381,15 +415,14 @@ surgical update:
   in the `env` block.
 - If no `env` block exists and an environment variable is needed, add one.
 
-`model` and `effortLevel` are JSON strings. `autoCompactWindow` is a JSON
-number. `autoCompactEnabled` and `ultracode` are JSON booleans. Every value in
-the `env` block is a string.
+`model` and `effortLevel` are JSON strings. `ultracode` is a JSON boolean.
+Every value in the `env` block is a string.
 
 Example result:
 
 ```json
 {
-  "model": "claude-fable-5-1",
+  "model": "claude-fable-5-2",
   "effortLevel": "high",
   "modelSettings": {
     "claude-opus-5-5": { "effortLevel": "high" }
@@ -400,8 +433,6 @@ Example result:
   }
 }
 ```
-
-Write only the keys the user selected that differ from the current value.
 
 ## Step 9: Confirm
 
@@ -415,7 +446,8 @@ If nothing changed, confirm: "No changes were made."
 
 ## Uninstall
 
-Remove these keys from `~/.claude/settings.json` to return to defaults:
+Remove these keys from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` to return to
+defaults:
 
 - `model`, to restore the account default model
 - `effortLevel` and `modelSettings`, to restore the model default effort
