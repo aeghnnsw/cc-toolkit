@@ -243,9 +243,10 @@ _Avoid_: Cluster, direction
 ## Project-lead language
 
 **Project lead**:
-A T3 Code session that runs the t3-project-lead skill. It plans the project's
-work, starts each task in a worker, and verifies the delivered results. It
-implements only small fixes to non-scientific findings.
+A T3 Code session that runs the t3-project-lead skill. It talks with the
+user, plans the project's work, starts each task in a worker, and judges the
+workers' reports. It gives every other task to a worker, even a small fix or
+a check of a result.
 _Avoid_: Orchestrator, director, coordinator
 
 **Worker**:
@@ -258,9 +259,15 @@ _Avoid_: Subagent
 The prompt that starts a worker: a line that loads a skill, the task, its
 success criteria, the lead's decisions, a budget, and the form of the worker's
 report. A budget is a round limit and a time limit; at either limit, the
-worker ends its turn and reports. A brief for a read-only task or a verifier
-loads no skill and names what the worker must not change.
+worker ends its turn and reports. A brief for a read-only task, such as a
+check of a result, loads no skill and names what the worker must not change.
 _Avoid_: Handoff, worker prompt
+
+**Close-out worker**:
+The worker that runs the navigation retrospective of a batch with merged PRs,
+and then repo-cleanup. The project lead settles the batch's workers only after
+the close-out worker reports, so that the retrospective can read their sessions.
+_Avoid_: Cleanup worker, retro worker
 
 ## Lean-tests language
 

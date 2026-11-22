@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|exec_command|shell|apply_patch|spawn_agent|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" ] || exit 0; python3 \"${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" --host codex"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" ] || exit 0; python3 \"${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py\" --host codex"
+          }
+        ]
+      }
+    ]
+  }
+}
