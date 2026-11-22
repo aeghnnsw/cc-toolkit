@@ -75,5 +75,5 @@ Each task in the Markdown task list corresponds to a numbered step:
 - [ ] Run analysis (03_analysis.py)
 ```
 
-Update the list as the work advances so file order and task state remain
-aligned. Mark a finished task `[x]`.
+Update the task list as the work advances so file order and task state
+remain aligned. Mark a finished task `[x]`.

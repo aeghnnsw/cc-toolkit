@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-version: 3.3.1
+version: 3.4.0
 description: This skill should be used when the user asks to "gather PR feedback", "review and fix PR issues", "run pr-feedback", "address reviewer comments", or wants to run a structured review-fix-push cycle on the current pull request. Orchestrates self-review, external review collection, issue investigation, and iterative fixing until clean.
 ---
 
@@ -22,7 +22,7 @@ If this fails, inform the user they need to be on a branch with an open PR and e
 
 ## Step 1: Self-Review
 
-Invoke a code review or PR review skill via the **Skill tool** for the self-review. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
+Invoke a code review or PR review skill via the **Skill tool** for the self-review, such as `mattpocock-skills:code-review`. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
 
 If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
 

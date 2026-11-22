@@ -1,6 +1,6 @@
 ---
 name: project-eval
-version: 2.0.0
+version: 2.1.0
 description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It dispatches skeptical evaluator agents, has a separate verifier check every finding, and writes one report. For a diff or PR, use /code-review; for one decision or design choice, use pressure-test.
 ---
 
@@ -20,7 +20,7 @@ project. You write one report with the verified findings.
 
 ## Inputs
 
-Take these from the user's message, or from a calling skill. Ask only when
+Take these from the user's request, or from a calling skill. Ask only when
 the target is unclear.
 
 - **Target**: files, a feature or module, a document, an app URL, or the
@@ -59,9 +59,9 @@ the target is unclear.
 
 ### 2. Set Up the Run
 
-Set up the run just before dispatch, so that scoping does not use the time
-budget. Each Bash call can start a new shell, so keep the run state in a
-file. Set `MINUTES` to the time budget:
+Set up the run just before you start the evaluators, so that scoping does
+not use the time budget. Each command can run in a new shell, so keep the
+run state in a file. Set `MINUTES` to the time budget, then run:
 
 ```bash
 MINUTES=30
@@ -110,7 +110,8 @@ When an evaluator finishes:
 2. If the result has no findings list, or the result is partial (turn
    limit), resume the evaluator once with SendMessage. Ask for its findings
    so far in its final-message format.
-3. Append the answer of a resumed evaluator to `<RUN>/E<N>.md`.
+3. Append the answer of the evaluator to `<RUN>/E<N>.md`. If no answer
+   comes, keep the saved result, and mark it as partial in the report.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.
@@ -163,9 +164,11 @@ When every evaluator and verifier has finished:
   experiments only in a temporary directory. Only you write the run results
   and the report.
 - Evaluators and verifiers change no Git state, start no server, and take no
-  action with external effects.
-- When no browser tools are available, or the session refuses a browser
-  call, the report says that browser checks were skipped.
+  action with external effects. Their instructions set these limits; no
+  tool list enforces them.
+- Evaluators and verifiers use browser tools when the session has them.
+  When the session has no browser tools, or it refuses a browser call, the
+  report says that browser checks were skipped.
 - Earlier reports are context for the reader. Do not pass their findings to
   evaluators: an old finding must not hide a new one.
 
