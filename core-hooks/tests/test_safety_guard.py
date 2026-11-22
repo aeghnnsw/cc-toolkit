@@ -891,16 +891,17 @@ class ScriptErrorTests(unittest.TestCase):
     """A safety script error blocks the tool call on every host, because the
     guard cannot decide (#487)."""
 
-    def run_configured_command(self, host, hooks_path, data):
+    def run_configured_command(self, host, hooks_path, data, logs_is_a_file):
         """Run the safety command of `hooks_path` through `/bin/sh` as `host`
-        does, with `data` on stdin and `<temp>/project` as the project."""
+        does, with `data` on stdin and `<temp>/project` as the project.
+        `PROJECT` in `data` becomes the project path. With `logs_is_a_file`,
+        the hook cannot create its log directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
             project = temp / "project"
             project.mkdir()
             data = data.replace("PROJECT", str(project))
-            if '"cwd"' in data:
-                # The hook cannot create its log directory.
+            if logs_is_a_file:
                 (project / "logs").write_text("")
             env = os.environ.copy()
             env.pop("CLAUDE_PROJECT_DIR", None)
@@ -926,19 +927,23 @@ class ScriptErrorTests(unittest.TestCase):
             )
 
     def test_script_error_blocks_and_says_how_to_turn_off_the_plugin(self):
+        # Each fault: the error it raises, the payload, and whether `logs` is
+        # a file.
         faults = (
-            ("JSONDecodeError", "not json"),
+            ("JSONDecodeError", "not json", False),
             ("FileExistsError", json.dumps({
                 "hook_event_name": "PreToolUse",
                 "tool_name": "Bash",
                 "tool_input": {"command": "echo hello"},
                 "cwd": "PROJECT",
-            })),
+            }), True),
         )
         for host, hooks_path, turn_off in SCRIPT_ERROR_HOSTS:
-            for error, data in faults:
+            for error, data, logs_is_a_file in faults:
                 with self.subTest(host=host, error=error):
-                    result = self.run_configured_command(host, hooks_path, data)
+                    result = self.run_configured_command(
+                        host, hooks_path, data, logs_is_a_file
+                    )
                     self.assertEqual(result.returncode, 2, result.stderr)
                     self.assertEqual(result.stdout, "")
                     self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)

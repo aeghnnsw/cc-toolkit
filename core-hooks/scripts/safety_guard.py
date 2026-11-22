@@ -1404,7 +1404,7 @@ def _log_error(text, host, input_data):
 
 # How to turn off the plugin on each host, so that a bug in the guard does
 # not leave the user with no way to run a command (#487).
-TURN_OFF_PLUGIN = {
+TURN_OFF_PLUGIN_STEPS = {
     None: "run `claude plugin disable core-hooks@cc-toolkit` in a terminal",
     CODEX: (
         "set `enabled = false` in the `[plugins.\"core-hooks@cc-toolkit\"]` "
@@ -1428,20 +1428,19 @@ def error_status(host):
 def block_on_error(error, host, input_data):
     """Log `error`, then block the tool call with a message that names
     `error` and tells how to turn off the plugin."""
+    description = f"{type(error).__name__}: {error}"
     try:
-        _log_error(f"{type(error).__name__}: {error}\n{traceback.format_exc()}\n",
-                   host, input_data)
+        _log_error(f"{description}\n{traceback.format_exc()}\n", host, input_data)
     except Exception:
         pass  # The block must not depend on the log.
     print(
         "BLOCKED: The core-hooks safety guard failed, so it cannot check this "
-        f"tool call. Error: {type(error).__name__}: {error}",
+        f"tool call. Error: {description}",
         file=sys.stderr,
     )
+    steps = TURN_OFF_PLUGIN_STEPS.get(host, TURN_OFF_PLUGIN_STEPS[None])
     print(
-        "To turn off the core-hooks plugin, "
-        f"{TURN_OFF_PLUGIN.get(host, TURN_OFF_PLUGIN[None])}, then start a new "
-        "session.",
+        f"To turn off the core-hooks plugin, {steps}, then start a new session.",
         file=sys.stderr,
     )
     sys.exit(error_status(host))
