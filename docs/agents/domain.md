@@ -26,6 +26,7 @@ Current decisions:
 - [Trigger agent captures from global instruction files](../adr/0005-trigger-agent-captures-from-global-instructions.md)
 - [Use a native Antigravity plugin layout](../adr/0006-antigravity-plugin-layout.md)
 - [Gate the project lead with a session-checked plugin hook](../adr/0007-gate-the-project-lead-with-a-session-checked-hook.md)
+- [Keep the lead state in the step script](../adr/0008-keep-project-lead-state-in-a-cli.md)
 
 ## Host compatibility
 

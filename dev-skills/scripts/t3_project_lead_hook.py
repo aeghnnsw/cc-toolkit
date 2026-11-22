@@ -6,15 +6,22 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
 (UserPromptSubmit). It reads the host's JSON payload on stdin. Run it as
 `python3 t3_project_lead_hook.py --host claude|codex|antigravity`.
 
-- Record: when a shell call runs `python3 <path>/t3_project_lead.py start`,
-  and the script is this hook's sibling or a copy outside every Git work
-  tree, the hook writes an empty file named by the session ID to the state
-  folder. A copy inside a Git work tree, such as a developer's worktree,
-  records nothing. Each new record deletes records older than 30 days.
+- Record: when a shell call is exactly `python3 <path>/t3_project_lead.py
+  start`, and the script is this hook's sibling or a copy outside every Git
+  work tree, the hook writes an empty file named by the session ID to the
+  state folder. A copy inside a Git work tree, such as a developer's
+  worktree, records nothing, and so does `start` with more words. Each new
+  record deletes records older than 30 days.
 - Other sessions: without a record, the hook exits 0 with no output, even on
   an error.
-- Gate: in a recorded session, a call that is not a lead action exits 2 with
-  the reason on stderr. A call that the hook cannot check also exits 2.
+- Gate (issue #530): in a recorded session, the hook allows one simple shell
+  command `python3 <script> <subcommand> [arguments...]`, where the script
+  passes the record check, and file reads in T3 Code's attachments folder,
+  also through one cat, head, tail, wc, ls, grep, or `sed -n` command. It
+  blocks every other shell command, every other file read, every file
+  edit, and native subagents, so only the script reads or writes the lead
+  state. MCP tools and other tools pass. A blocked call exits 2 with the
+  reason on stderr. A call that the hook cannot check also exits 2.
 - Reminder: on a user message in a recorded session, Claude Code and Codex
   get additional context that tells the lead to run `start` first.
 
@@ -33,14 +40,12 @@ SESSION_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
-LEAD_FOLDER = ".scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout"
 ALLOWED = {
-    "shell": ('Allowed commands: python3 "{script}" <step>; one cat, head, tail, wc, ls, grep, or '
-              "sed -n of lead files; ls of .scratch; rm -r of the lead folder; no pipe, redirect, "
-              "list, or substitution."),
-    "read": (f"Allowed reads: the lead folder {LEAD_FOLDER}, its .gitignore, Git's info/exclude, "
-             "and T3 attachments. Glob and list_dir may also list .scratch."),
-    "edit": f"Allowed edits: files in the lead folder {LEAD_FOLDER}, and Git's info/exclude.",
+    "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; one cat, head, '
+              "tail, wc, ls, grep, or sed -n of T3 attachments. Each is one simple command: no pipe, "
+              "redirect, list, or substitution. Quote text with single quotes."),
+    "read": "Allowed reads: T3 attachments. Print the lead state with t3_project_lead.py show.",
+    "edit": "No file edits. Change the lead state with t3_project_lead.py commands.",
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
@@ -51,8 +56,6 @@ SHELL_TOOLS = {"Bash": "command", "Monitor": "command", "exec_command": "cmd", "
                "run_command": "CommandLine"}
 READ_TOOLS = frozenset({"Read", "Grep", "Glob", "read_file", "view_file", "view_file_outline",
                         "view_code_item", "list_dir", "grep_search", "find_by_name", "codebase_search"})
-# Read tools that list names and read no file content.
-LIST_TOOLS = frozenset({"Glob", "list_dir", "find_by_name"})
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file",
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
@@ -187,10 +190,10 @@ def gate(payload, host, folder, session):
     name, arguments = tool_call(payload, host)
     if name in AGENT_TOOLS or name.endswith("spawn_agent"):
         raise Blocked("agent")
+    if name == "apply_patch" or name in EDIT_TOOLS:
+        raise Blocked("edit")  # Only t3_project_lead.py writes the lead state.
     if name in SHELL_TOOLS:
         kind = "shell"
-    elif name == "apply_patch" or name in EDIT_TOOLS:
-        kind = "edit"
     elif name in READ_TOOLS:
         kind = "read"
     else:
@@ -200,20 +203,13 @@ def gate(payload, host, folder, session):
     cwd = payload_cwd(payload)
     if kind == "shell":
         check_shell(arguments, SHELL_TOOLS[name], cwd, folder, session)
-    elif name == "apply_patch":
-        paths = patch_paths(arguments.get("command", arguments.get("input")))
-        check_paths(paths, cwd, LeadFiles(cwd).editable, kind)
-    elif kind == "edit":
-        check_paths(tool_paths(arguments, None), cwd, LeadFiles(cwd).editable, kind)
-    else:
-        if name == "Glob":
-            pattern = arguments.get("pattern")
-            if not isinstance(pattern, str) or pattern.startswith(("/", "~")) or ".." in pattern.split("/"):
-                raise Blocked(kind)
-        default = cwd if name in ("Grep", "Glob") else None
-        files = LeadFiles(cwd)
-        allowed = files.listable if name in LIST_TOOLS else files.readable
-        check_paths(tool_paths(arguments, default), cwd, allowed, kind)
+        return
+    if name == "Glob":
+        pattern = arguments.get("pattern")
+        if not isinstance(pattern, str) or pattern.startswith(("/", "~")) or ".." in pattern.split("/"):
+            raise Blocked(kind)
+    default = cwd if name in ("Grep", "Glob") else None
+    check_reads(tool_paths(arguments, default), cwd)
 
 
 def tool_paths(arguments, default):
@@ -228,23 +224,14 @@ def tool_paths(arguments, default):
     return paths
 
 
-def patch_paths(patch):
-    """Return each path that an apply_patch patch adds, updates, deletes, or moves to."""
-    if not isinstance(patch, str):
-        return []
-    headers = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: ")
-    return [line[len(header):].strip() for line in patch.splitlines() for header in headers
-            if line.startswith(header)]
-
-
-def check_paths(paths, cwd, allowed, kind):
-    """Raise Blocked unless `paths` is not empty and `allowed` accepts each path."""
+def check_reads(paths, cwd):
+    """Raise Blocked unless `paths` is not empty and each path is in T3 attachments."""
     if not paths:
-        raise Blocked(kind)
+        raise Blocked("read")
     for path in paths:
         resolved = resolve(path, cwd)
-        if resolved is None or not allowed(resolved):
-            raise Blocked(kind)
+        if resolved is None or not in_attachments(resolved):
+            raise Blocked("read")
 
 
 def resolve(path, cwd):
@@ -259,56 +246,10 @@ def resolve(path, cwd):
     return os.path.realpath(path)
 
 
-class LeadFiles:
-    """The lead files of the repository that holds `cwd`."""
-
-    def __init__(self, cwd):
-        if cwd is None:
-            raise ValueError("the payload has no absolute cwd")
-        common = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
-        if not common:
-            raise ValueError(f"no Git repository at {cwd}")
-        common = os.path.realpath(common)
-        main = os.path.dirname(common) if os.path.basename(common) == ".git" else None
-        self.scratch = os.path.join(main, ".scratch") if main else None
-        self.gitignore = os.path.join(main, ".gitignore") if main else None
-        self.exclude = os.path.join(common, "info", "exclude")
-
-    def in_lead_folder(self, path, *, folder_itself):
-        """Return whether `path` is in a lead folder, or is one when `folder_itself`."""
-        if self.scratch is None or not path.startswith(self.scratch + os.sep):
-            return False
-        parts = path[len(self.scratch) + 1:].split(os.sep)
-        if not lead_folder_name(parts[0]):
-            return False
-        return len(parts) > 1 or folder_itself
-
-    def readable(self, path):
-        return (self.in_lead_folder(path, folder_itself=True) or path in (self.gitignore, self.exclude)
-                or in_attachments(path))
-
-    def listable(self, path):
-        """Return whether a listing of `path` shows only names that the lead may see."""
-        return self.readable(path) or path == self.scratch
-
-    def editable(self, path):
-        return self.in_lead_folder(path, folder_itself=False) or path == self.exclude
-
-    def removable(self, path):
-        return self.in_lead_folder(path, folder_itself=True)
-
-
 def in_attachments(path):
     """Return whether `path` is in T3 Code's attachments folder, where the user's files arrive."""
     folder = os.path.realpath(os.path.join(os.path.expanduser("~"), ".t3", "userdata", "attachments"))
     return path == folder or path.startswith(folder + os.sep)
-
-
-def lead_folder_name(name):
-    """Return whether `name` has the form <8 digits>-lead-<slug>."""
-    import re
-
-    return re.fullmatch(r"\d{8}-lead-[A-Za-z0-9._-]+", name) is not None
 
 
 def git(cwd, *args):
@@ -344,31 +285,32 @@ def write_record(folder, session):
 # Shell commands.
 
 def check_shell(arguments, key, cwd, folder, session):
-    """Return when the shell command is a lead action; raise Blocked otherwise."""
+    """Return when the shell command is a lead action; raise Blocked otherwise.
+
+    The command is `python3|python <script> <subcommand> [arguments...]`, or
+    one read command of T3 attachments. Only an exact
+    `python3|python <script> start` refreshes the record.
+    """
     words, cwd = shell_words(arguments, key, cwd)
     if not words:
         raise Blocked("shell")
-    program, args = words[0], words[1:]
-    if program in ("python3", "python"):
-        if len(words) != 3 or not is_step(words[2]) or not step_script(words, cwd):
-            raise Blocked("shell")
-        if words[2] == "start":
-            try:
-                write_record(folder, session)
-            except OSError:
-                pass  # The record exists; a failed refresh does not stop the step.
-        return
-    if program == "rm":
-        paths = rm_paths(args)
+    if words[0] not in ("python3", "python"):
+        # One read command of T3 attachments, for a host whose reads go through the shell.
+        paths = read_paths(words[0], words[1:])
         if paths is None:
             raise Blocked("shell")
-        check_paths(paths, cwd, LeadFiles(cwd).removable, "shell")
+        try:
+            check_reads(paths, cwd)
+        except Blocked:
+            raise Blocked("shell") from None
         return
-    paths = read_paths(program, args)
-    if paths is None:
+    if len(words) < 3 or not is_step(words[2]) or not step_script(words, cwd):
         raise Blocked("shell")
-    files = LeadFiles(cwd)
-    check_paths(paths, cwd, files.listable if program == "ls" else files.readable, "shell")
+    if words[2:] == ["start"]:
+        try:
+            write_record(folder, session)
+        except OSError:
+            pass  # The record exists; a failed refresh does not stop the step.
 
 
 def shell_words(arguments, key, cwd):
@@ -408,15 +350,6 @@ def step_script(words, cwd):
     if path == os.path.realpath(sibling_script()):
         return True
     return os.path.isfile(path) and git(os.path.dirname(path), "rev-parse", "--is-inside-work-tree") != "true"
-
-
-def rm_paths(args):
-    """Return the paths of `rm` with -r, -f, -rf, or -fr only, or None."""
-    paths = [word for word in args if not word.startswith("-")]
-    options = [word for word in args if word.startswith("-")]
-    if not paths or any(option not in ("-r", "-f", "-rf", "-fr") for option in options):
-        return None
-    return paths
 
 
 def read_paths(program, args):

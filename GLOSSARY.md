@@ -258,9 +258,9 @@ _Avoid_: Subagent
 **Brief**:
 The prompt that starts a worker: a line that loads a skill, the task, its
 success criteria, the lead's decisions, a budget, and the form of the worker's
-report. A budget is a round limit and a time limit; at either limit, the
-worker ends its turn and reports. A brief for a read-only task, such as a
-check of a result, loads no skill and names what the worker must not change.
+report. A budget is a round limit; at the limit, the worker ends its turn and
+reports. A brief for a read-only task, such as a check of a result, loads no
+skill and names what the worker must not change.
 _Avoid_: Handoff, worker prompt
 
 **Close-out worker**:
@@ -268,6 +268,42 @@ The worker that runs the navigation retrospective of a batch with merged PRs,
 and then repo-cleanup. The project lead settles the batch's workers only after
 the close-out worker reports, so that the retrospective can read their sessions.
 _Avoid_: Cleanup worker, retro worker
+
+**Task**:
+The unit of a project lead's plan: one brief for one worker, with its success
+criteria. A task can cover several issues and pull requests. A close-out and a
+read-only check of another task's result are tasks too.
+_Avoid_: Job
+
+**Batch**:
+The tasks that a project lead starts together. A batch with a merged pull
+request gets one close-out worker.
+_Avoid_: Wave
+
+**Verified**:
+The state of a task whose result the project lead accepted against its success
+criteria. A task with a pull request is verified only after each of its pull
+requests merges. Only the user approves; a project lead verifies.
+_Avoid_: Approved
+
+**Settle**:
+To mark a worker's thread as finished in T3 Code. T3 Code can then remove the
+thread's worktree. So a project lead settles the workers of a batch with a
+merged pull request only after the batch's close-out worker reports.
+_Avoid_: Archive
+
+**Lead state**:
+The record of a project lead's outcome, success criteria, tasks, waiting items,
+and decisions. The project lead changes it only through its step script.
+_Avoid_: lead.md, lead notes
+
+**Waiting item**:
+An entry in the lead state for something that only the user can give: a
+decision, an approval, access, or the answers to a worker's questions. It keeps
+one number, which is never reused. A worker's item points to the worker's
+thread and holds no detail of its decisions. It is separate from an agent
+capture.
+_Avoid_: Open item, pending item
 
 ## Lean-tests language
 

@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
-"""Print one step of the t3-project-lead skill.
+"""Print the steps of the t3-project-lead skill, and keep the lead state.
 
 The skill runs `t3_project_lead.py start`, and each step names the next one.
-The first line gives the script's path, so that an agent can run the next step
-after a context summary. The script only prints text: it reads no state, runs
-no command, and makes no decision. The text is the same for Claude Code,
+The first line of a step gives the script's path, so that an agent can run the
+next step after a context summary. The step text is the same for Claude Code,
 Codex, and Antigravity.
+
+The other commands keep the lead state (issue #530): the approved outcome, the
+tasks and their life cycle, the items that wait on the user, and the lead's
+decisions. The state is in .scratch/<YYYYMMDD>-lead-<slug>/ at the top of the
+lead's working tree, where each host's sandbox lets a shell command write. A
+`.gitignore` of `*` keeps the folder out of Git. The script stamps each change
+with the UTC time, appends it to events.jsonl, and refuses a transition that
+the life cycle does not allow and text over 200 characters. The state is
+independent of GTD.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import datetime
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
 
 STEPS = {
     "start": """
@@ -20,18 +37,18 @@ Do only these lead actions yourself:
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
 watch PRs.
 4. Read worker messages and PR, issue, and CI state; no diff, code, or log.
-5. Run this script; keep lead.md.
+5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set triage labels and issue state.
-8. Keep agent captures of what waits on the user.
+8. Keep agent captures of what waits on the user when your instructions ask
+for them.
 Give every other task, even a small fix, check, install, host update, or GitHub
 write with content, to a worker with t3_project_lead.py dispatch. This
 overrides your host's guidance to do small work yourself. This step records
 this session as the lead: a hook blocks your other shell commands, file reads,
 and file edits.
 Run this step after each wake or user message.
-Read lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout. Read
-the last message of each unsettled worker that lead.md does not mark verified:
+Read the last message of each worker of a running or pr-open task:
 t3_thread_list with includeSubagents, then t3_thread_read. Never state a
 worker's status from memory.
 Next: t3_project_lead.py plan for new work; answer, verify, or flag for a
@@ -39,19 +56,19 @@ waiting, finished, or failed worker.
 """,
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
-check can pass or fail. A batch is the set of tasks that you start together.
-Order tasks that depend on each other or edit the same files. Run only
-independent tasks in parallel.
-Decide reversible points yourself. Write each task, its success criteria, and
-these decisions in lead.md.
+check can pass or fail. A task is one brief for one worker; it can cover
+several issues. A batch is the set of tasks that you start together. Run only
+independent tasks in parallel. Give a task that needs another task's result,
+or edits the same files, --after that task.
+Decide reversible points yourself. Record the plan with these commands. Text
+is at most 200 characters; quote it with single quotes.
+init <slug>, once, after the user approves the outcome; outcome <text>;
+criteria <text>; task add <name> <title> [--batch N] [--after NAME]
+[--kind work|check|closeout] [--of NAME] [--issue N] [--scientific];
+decision add <text>; decision drop <id>. A task name has lowercase letters,
+digits, and hyphens.
 Mark each scientific task (biology, chemistry, medicine). Its worker keeps the
 scientific detail, and you keep only links.
-Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout; if Git
-does not ignore .scratch/, add /.scratch/ to Git's info/exclude file. It holds
-current state, not history: the script path, the starting agent's link, one
-line per task (worker, issue, branch, state), decisions, and items waiting on
-the user. Update task lines in place; delete answered items. For a
-scientific item, write only its link.
 Next: t3_project_lead.py dispatch.
 """,
     "dispatch": """
@@ -67,7 +84,9 @@ For a task after a merged PR, name the PR, and tell the worker to start from
 the default branch that contains it.
 Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
-Write the worker's link and branch in its task line.
+Then run task start <name> <worker link> [--branch NAME]. Later, run task pr
+<name> <number> for each PR, and task merged <name> <number> <commit> after
+each merge.
 Next: t3_project_lead.py report while workers run. After a wake or a user
 message: t3_project_lead.py start.
 """,
@@ -81,8 +100,8 @@ thread with the matt-automode skill of dev-skills."
 Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."
 For a read-only task (audit, research, or check), write no line 1, keep line 2,
 and name what the worker must not change.
-Budget: name a round limit and a time limit in minutes, and add: "At either
-limit, end your turn and report where you are, with links and what remains."
+Budget: name a round limit, and add: "At the limit, end your turn and report
+where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
 a blocking problem of matt-automode phase 5 stops the merge.
 Last line: "Report PASS, ISSUES, or BLOCKED, with evidence and links. Number
@@ -94,13 +113,11 @@ Next: t3_project_lead.py dispatch.
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
 the user. Settle it only when the user cancels its task. Do not answer its
-questions.
-In this turn, put it on the list of what waits on the user, with its link and
-its number of decisions, if any. Write the item in lead.md, and delete the
-item when the worker resumes or finishes.
+questions. Keep no detail of them: lead the user to the worker's thread.
+In this turn, run wait --task <name> --decisions <N>. The script adds the
+worker's link. Run done <number> when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
-thread does not continue when the worker finishes. For a non-scientific task,
-also give a one-line topic for each decision.
+thread does not continue when the worker finishes.
 Next: t3_project_lead.py report.
 """,
     "flag": """
@@ -110,9 +127,10 @@ the Antigravity quota is reached (how T3 shows a refusal).
 If it ran on another model and claude-sonnet-5-5 is available, start a new
 worker with delegate_task, isolation "worktree", and a Claude Code provider on
 claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude Code
-form, the branch, PR, and issue from lead.md and pull_request_list, and
+form, the branch, PR, and issue from start and pull_request_list, and
 "Continue from this state." Do not read the flagged thread or give its link.
-Settle each flagged thread.
+Run task worker <name> <new link>, and settle the flagged thread that it
+names.
 Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
@@ -123,56 +141,734 @@ decisions. No worker or other agent does.
 Judge the result against its success criteria. Accept the result from the
 report, the PR state, and the CI state, or start a read-only worker that
 checks it. Start that worker as t3_project_lead.py dispatch says, with no line
-1 or 2. It checks the artifact, such as the diff and the checks, and edits
-nothing; its verdict completes the check.
+1 or 2, as a task with --kind check --of <name>. It checks the artifact, such
+as the diff and the checks, and edits nothing; its verdict completes the
+check.
 For a scientific task, read no artifact, and always start the read-only
 worker.
 Give each finding to one follow-up worker, even a small one. Then what
 remains waits on the user. Fix and check nothing yourself.
-Mark the task verified in lead.md, and do not settle its worker yet.
-Next: t3_project_lead.py closeout for a verified batch with a merged PR and
-no close-out. Otherwise dispatch, or report.
+Run task verified <name>. Settle its worker only when a due line lists it.
+Next: t3_project_lead.py closeout when a due line lists a batch for a
+close-out. Otherwise dispatch, or report.
 """,
     "closeout": """
-Start one close-out worker for the batch, as t3_project_lead.py dispatch says.
+Add one close-out task for the batch with task add <name> <title> --batch N
+--kind closeout, and start its worker as t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode and the
 budget. Then write: "Run only the Navigation retrospective of matt-automode,
-once, in place of the leader of these runs:", with this thread's link, the
-worker links, and the merged PRs in merge order. Then write: "After the
-retrospective, run repo-cleanup." and "List the lead thread's tool calls
-other than T3, GitHub, and GTD tools, t3_project_lead.py, and reads and edits
-of lead.md." For a batch with a scientific task, add: "Reply in one line, with
-links."
-Write its thread link in lead.md.
-When it reports, settle each verified or cancelled worker and the close-out
-worker with t3_thread_organize; never reuse one.
+once, in place of the leader of these runs:", with this thread's link and the
+worker links and merged PRs below. Then write: "After the retrospective, run
+repo-cleanup." and "List the lead thread's tool calls other than T3, GitHub,
+and GTD tools and t3_project_lead.py. Its history with real times is in:"
+with the history path below. For a batch with a scientific task, add: "Reply
+in one line, with links."
+When it reports, run task verified <name>; the batch's verified tasks are then
+closed out. Settle each worker that a due line lists with t3_thread_organize,
+and run task settled <name>; never reuse one.
 Next: t3_project_lead.py report.
 """,
     "report": """
-First check unsettled workers with t3_thread_list and includeSubagents; run
-t3_project_lead.py verify for each that finished and is not verified.
+First check the workers of running and pr-open tasks with t3_thread_list and
+includeSubagents; run t3_project_lead.py verify for each that finished.
 Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
-End with what waits on the user: approvals, access, worker questions, and
-steps that cannot be undone or leave the project. Name each worker item by its
-link and number of decisions; for a scientific item, give only the link.
-With agent captures, this list is gtd-inbox's "## Needs you" list.
-Only when each task in lead.md is verified or cancelled, each merged batch has
-a close-out, nothing waits on the user, and no worker runs: settle each
-remaining worker, delete the lead folder, then settle this thread.
+End with the "Waiting on you" list below, copied as it is. Before that, add
+each new approval, access request, or step that cannot be undone or leaves
+the project: wait <text> [--link URL] [--recommend TEXT]. Name no detail of a
+worker's decisions.
+When a due line says to run finish, run it, then settle this thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
 
+STATE_FILE = "state.json"
+EVENTS_FILE = "events.jsonl"
+LOCK_FILE = ".lock"
+SCHEMA = 1
+TEXT_LIMIT = 200
+LINK_LIMIT = 600
+NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
+SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+KINDS = ("work", "check", "closeout")
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("step", choices=STEPS, help="the step to print")
-    step = parser.parse_args().step
+PLANNED, PAUSED, RUNNING, PR_OPEN, MERGED = "planned", "paused", "running", "pr-open", "merged"
+VERIFIED, CLOSED_OUT, SETTLED, CANCELLED = "verified", "closed-out", "settled", "cancelled"
+# A task whose result the lead accepted.
+ACCEPTED = (VERIFIED, CLOSED_OUT, SETTLED)
+# A task whose worker may still run.
+ACTIVE = (RUNNING, PR_OPEN)
+# A task that needs no more work: accepted or cancelled.
+DONE = ACCEPTED + (CANCELLED,)
+
+
+class Refused(Exception):
+    """The command is not allowed in the current lead state."""
+
+
+# Time and files.
+
+def utc_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_time(value: str) -> datetime.datetime:
+    return datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+
+
+def working_tree_top() -> str:
+    """Return the top of the Git working tree that holds the current folder, or the folder."""
+    cwd = os.getcwd()
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
+    try:
+        result = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+                                capture_output=True, text=True, env=env, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return cwd
+    top = result.stdout.strip()
+    return top if result.returncode == 0 and top else cwd
+
+
+def find_lead(top: str) -> str | None:
+    """Return the lead folder in `top`, or None. More than one is an error."""
+    scratch = os.path.join(top, ".scratch")
+    try:
+        names = sorted(os.listdir(scratch))
+    except OSError:
+        return None
+    folders = [os.path.join(scratch, name) for name in names
+               if FOLDER.fullmatch(name) and os.path.isfile(os.path.join(scratch, name, STATE_FILE))]
+    if len(folders) > 1:
+        raise Refused(f"more than one lead state in {scratch}: {', '.join(folders)}")
+    return folders[0] if folders else None
+
+
+def load(folder: str) -> dict:
+    with open(os.path.join(folder, STATE_FILE), encoding="utf-8") as handle:
+        state = json.load(handle)
+    if state.get("schema") != SCHEMA:
+        raise Refused(f"unknown lead state schema in {folder}")
+    return state
+
+
+def save(folder: str, state: dict) -> None:
+    descriptor, temporary = tempfile.mkstemp(dir=folder, prefix=".state.", suffix=".tmp")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=1)
+            handle.write("\n")
+        os.replace(temporary, os.path.join(folder, STATE_FILE))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise
+
+
+def append_event(folder: str, event: dict) -> None:
+    with open(os.path.join(folder, EVENTS_FILE), "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+@contextlib.contextmanager
+def locked(folder: str):
+    import fcntl
+
+    with open(os.path.join(folder, LOCK_FILE), "a", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+# Checks of input.
+
+def text(value: str, what: str) -> str:
+    value = " ".join(value.split())
+    if not value:
+        raise Refused(f"the {what} is empty")
+    if len(value) > TEXT_LIMIT:
+        raise Refused(f"the {what} has {len(value)} characters; the limit is {TEXT_LIMIT}")
+    return value
+
+
+def link(value: str, what: str) -> str:
+    if not value or len(value) > LINK_LIMIT or any(char.isspace() for char in value):
+        raise Refused(f"the {what} must be one word of at most {LINK_LIMIT} characters")
+    return value
+
+
+def worker_link(value: str) -> str:
+    return link(value, "worker link")
+
+
+def find_task(state: dict, name: str) -> dict:
+    for task in state["tasks"]:
+        if task["name"] == name:
+            return task
+    raise Refused(f"no task named {name}")
+
+
+def accepted(task: dict) -> bool:
+    """Return whether the lead accepted the task's result; a cancelled task never counts."""
+    return task["state"] in ACCEPTED and not task.get("cancelled")
+
+
+def require(task: dict, states: tuple[str, ...], action: str) -> None:
+    if task["state"] not in states:
+        raise Refused(f"{task['name']} is {task['state']}; {action} needs {' or '.join(states)}")
+
+
+# Batches.
+
+def batch_tasks(state: dict, batch: int) -> list[dict]:
+    return [task for task in state["tasks"] if task["batch"] == batch]
+
+
+def merged_prs(state: dict, batch: int) -> list[dict]:
+    """Return the merged PRs of a batch in merge order."""
+    prs = [pr for task in batch_tasks(state, batch) for pr in task["prs"] if pr["merged"]]
+    return sorted(prs, key=lambda pr: (pr["merged"], pr["number"]))
+
+
+def closeout_task(state: dict, batch: int) -> dict | None:
+    for task in batch_tasks(state, batch):
+        if task["kind"] == "closeout" and not task.get("cancelled"):
+            return task
+    return None
+
+
+def batch_closed(state: dict, batch: int) -> bool:
+    task = closeout_task(state, batch)
+    return task is not None and task["state"] in ACCEPTED
+
+
+def closeout_started(state: dict, batch: int) -> bool:
+    """Return whether the batch's close-out task has started, so no task may join the batch."""
+    task = closeout_task(state, batch)
+    return task is not None and task["state"] not in (PLANNED, PAUSED)
+
+
+def batch_done(state: dict, batch: int) -> bool:
+    """Return whether each task of the batch, other than a close-out, is accepted or cancelled."""
+    return all(task["state"] in DONE for task in batch_tasks(state, batch) if task["kind"] != "closeout")
+
+
+def needs_closeout(state: dict, batch: int) -> bool:
+    return batch_done(state, batch) and bool(merged_prs(state, batch)) and closeout_task(state, batch) is None
+
+
+def settle_refusal(state: dict, task: dict) -> str | None:
+    """Return why the task's worker cannot be settled yet, or None when it can."""
+    if task["state"] in (CLOSED_OUT, CANCELLED):
+        return None
+    if task["state"] != VERIFIED:
+        return f"{task['name']} is {task['state']}; settle needs closed-out, cancelled, or verified"
+    if task["kind"] == "closeout":
+        return None
+    batch = task["batch"]
+    if merged_prs(state, batch):
+        return (f"batch {batch} has a merged PR; settle {task['name']} after the batch's close-out "
+                "task is verified")
+    if not batch_done(state, batch):
+        return f"batch {batch} still has open tasks; settle {task['name']} when they are verified"
+    return None
+
+
+# Commands that change the state.
+
+def cmd_init(args) -> str:
+    slug = args.slug
+    if not SLUG.fullmatch(slug):
+        raise Refused("a slug has lowercase letters, digits, and hyphens, at most 40 characters")
+    top = working_tree_top()
+    existing = find_lead(top)
+    if existing:
+        raise Refused(f"a lead state already exists here: {existing}. Start this lead in its own "
+                      "T3 worktree.")
+    time = utc_now()
+    folder = os.path.join(top, ".scratch", f"{time[:10].replace('-', '')}-lead-{slug}")
+    if os.path.exists(folder):
+        raise Refused(f"{folder} already exists")
+    os.makedirs(folder)
+    with open(os.path.join(folder, ".gitignore"), "w", encoding="utf-8") as handle:
+        handle.write("*\n")
+    state = {"schema": SCHEMA, "slug": slug, "created": time, "outcome": None, "criteria": None,
+             "tasks": [], "items": [], "next_item": 1, "decisions": [], "next_decision": 1}
+    save(folder, state)
+    append_event(folder, {"time": time, "command": "init", "slug": slug})
+    return f"Lead state created: {folder}"
+
+
+def change_outcome(state, args, time):
+    state["outcome"] = text(args.text, "outcome")
+    return "Outcome set.", {"text": state["outcome"]}
+
+
+def change_criteria(state, args, time):
+    state["criteria"] = text(args.text, "criteria")
+    return "Criteria set.", {"text": state["criteria"]}
+
+
+def change_task_add(state, args, time):
+    name = args.name
+    if not NAME.fullmatch(name):
+        raise Refused("a task name has lowercase letters, digits, and hyphens, at most 24 characters")
+    if any(task["name"] == name for task in state["tasks"]):
+        raise Refused(f"a task named {name} already exists")
+    title = text(args.title, "title")
+    highest = max((task["batch"] for task in state["tasks"]), default=1)
+    if args.batch is not None:
+        batch = args.batch
+    else:
+        batch = highest + 1 if closeout_started(state, highest) else highest
+    if not 1 <= batch <= highest + 1:
+        raise Refused(f"the batch must be from 1 to {highest + 1}")
+    if closeout_started(state, batch):
+        raise Refused(f"the close-out of batch {batch} has started; use --batch {highest + 1}")
+    if args.kind == "check":
+        if not args.of:
+            raise Refused("a check task needs --of <task>")
+        find_task(state, args.of)
+    elif args.of:
+        raise Refused("only a check task takes --of")
+    if args.kind == "closeout" and closeout_task(state, batch):
+        raise Refused(f"batch {batch} already has a close-out task")
+    for other in args.after:
+        find_task(state, other)
+    if any(issue < 1 for issue in args.issue):
+        raise Refused("an issue number is positive")
+    task = {"name": name, "title": title, "kind": args.kind, "of": args.of, "batch": batch,
+            "after": list(dict.fromkeys(args.after)), "issues": list(dict.fromkeys(args.issue)),
+            "scientific": args.scientific, "state": PLANNED, "worker": None, "branch": None,
+            "started": None, "prs": [], "changed": time}
+    state["tasks"].append(task)
+    return f"Task {name} added to batch {batch}.", {"task": name, "to": PLANNED, "batch": batch,
+                                                     "kind": args.kind}
+
+
+def move(task: dict, new: str, time: str, **fields) -> dict:
+    event = {"task": task["name"], "from": task["state"], "to": new, **fields}
+    task["state"] = new
+    task["changed"] = time
+    return event
+
+
+def change_task_start(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PLANNED,), "task start")
+    waiting = [other for other in task["after"] if not accepted(find_task(state, other))]
+    if waiting:
+        raise Refused(f"{task['name']} waits for {', '.join(waiting)} to be verified")
+    if task["kind"] == "closeout":
+        batch = task["batch"]
+        if not batch_done(state, batch):
+            raise Refused(f"batch {batch} still has tasks that are not verified or cancelled")
+        if not merged_prs(state, batch):
+            raise Refused(f"batch {batch} has no merged PR, so it needs no close-out")
+    task["worker"] = worker_link(args.worker)
+    task["branch"] = link(args.branch, "branch") if args.branch else None
+    task["started"] = time
+    event = move(task, RUNNING, time, worker=task["worker"], branch=task["branch"])
+    return f"{task['name']} is running.", event
+
+
+def change_task_worker(state, args, time):
+    task = find_task(state, args.name)
+    require(task, ACTIVE, "task worker")
+    old, task["worker"] = task["worker"], worker_link(args.worker)
+    event = {"task": task["name"], "from": task["state"], "to": task["state"], "old_worker": old,
+             "worker": task["worker"]}
+    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}", event
+
+
+def change_task_pr(state, args, time):
+    task = find_task(state, args.name)
+    require(task, ACTIVE + (MERGED,), "task pr")
+    if args.number < 1 or any(pr["number"] == args.number for pr in task["prs"]):
+        raise Refused(f"PR #{args.number} is not a new positive PR number for {task['name']}")
+    task["prs"].append({"number": args.number, "commit": None, "merged": None})
+    return f"{task['name']}: PR #{args.number} is open.", move(task, PR_OPEN, time, pr=args.number)
+
+
+def change_task_merged(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PR_OPEN,), "task merged")
+    pr = next((pr for pr in task["prs"] if pr["number"] == args.number), None)
+    if pr is None or pr["merged"]:
+        raise Refused(f"PR #{args.number} is not an open PR of {task['name']}")
+    if not COMMIT.fullmatch(args.commit):
+        raise Refused("a commit is 7 to 40 lowercase hexadecimal characters")
+    pr["commit"], pr["merged"] = args.commit, time
+    new = MERGED if all(item["merged"] for item in task["prs"]) else PR_OPEN
+    event = move(task, new, time, pr=args.number, commit=args.commit)
+    return f"{task['name']}: PR #{args.number} merged; the task is {new}.", event
+
+
+def change_task_verified(state, args, time):
+    task = find_task(state, args.name)
+    if task["state"] == PR_OPEN:
+        raise Refused(f"{task['name']} has an open PR; verify it after task merged")
+    if task["state"] == RUNNING and task["prs"]:
+        raise Refused(f"{task['name']} has a PR that is not merged")
+    require(task, (RUNNING, MERGED), "task verified")
+    event = move(task, VERIFIED, time)
+    message = f"{task['name']} is verified."
+    if task["kind"] == "closeout":
+        closed = [other for other in batch_tasks(state, task["batch"])
+                  if other["state"] == VERIFIED and other["kind"] != "closeout"]
+        for other in closed:
+            other["state"], other["changed"] = CLOSED_OUT, time
+        event["closed_out"] = [other["name"] for other in closed]
+        message += f" Batch {task['batch']} is closed out: {', '.join(event['closed_out']) or 'no task'}."
+    return message, event
+
+
+def change_task_settled(state, args, time):
+    task = find_task(state, args.name)
+    reason = settle_refusal(state, task)
+    if reason:
+        raise Refused(reason)
+    return f"{task['name']} is settled.", move(task, SETTLED, time)
+
+
+def change_task_cancel(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PLANNED, PAUSED) + ACTIVE, "task cancel")
+    task["cancelled"] = True
+    if task["worker"] is None:
+        return (f"{task['name']} is cancelled. It has no worker: run task settled {task['name']}.",
+                move(task, CANCELLED, time))
+    return f"{task['name']} is cancelled. Settle its worker.", move(task, CANCELLED, time)
+
+
+def change_task_pause(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PLANNED,), "task pause")
+    return f"{task['name']} is paused.", move(task, PAUSED, time)
+
+
+def change_task_resume(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PAUSED,), "task resume")
+    return f"{task['name']} is planned again.", move(task, PLANNED, time)
+
+
+def change_wait(state, args, time):
+    task = find_task(state, args.task) if args.task else None
+    if task is not None:
+        if args.text is not None or args.recommend or args.link:
+            raise Refused("a worker item takes only --decisions: it holds no detail of the "
+                          "worker's decisions, and it points to the worker's thread")
+        if not task["worker"] or task["state"] == SETTLED:
+            raise Refused(f"{task['name']} has no worker that is not settled; add the item without "
+                          "--task")
+    if args.text is None and task is None:
+        raise Refused("give the item's text, or --task for a worker that waits")
+    if args.decisions is not None and args.decisions < 1:
+        raise Refused("the number of decisions is positive")
+    if args.text is not None:
+        body = text(args.text, "item text")
+    elif args.decisions:
+        body = f"{args.decisions} decision{'s' if args.decisions > 1 else ''}"
+    else:
+        body = "waits on you"
+    item_link = link(args.link, "link") if args.link else (task["worker"] if task else None)
+    item = {"number": state["next_item"], "text": body, "task": task["name"] if task else None,
+            "link": item_link, "decisions": args.decisions,
+            "recommend": text(args.recommend, "recommendation") if args.recommend else None,
+            "opened": time}
+    state["items"].append(item)
+    state["next_item"] += 1
+    return f"Item {item['number']} added: {item_line(item)}", {"item": item["number"], "to": "open",
+                                                              "task": item["task"]}
+
+
+def change_done(state, args, time):
+    for item in state["items"]:
+        if item["number"] == args.number:
+            state["items"].remove(item)
+            return f"Item {args.number} is done.", {"item": args.number, "to": "done"}
+    raise Refused(f"no waiting item {args.number}")
+
+
+def change_decision_add(state, args, time):
+    decision = {"id": f"D{state['next_decision']}", "text": text(args.text, "decision"), "added": time}
+    state["decisions"].append(decision)
+    state["next_decision"] += 1
+    return f"Decision {decision['id']} added.", {"decision": decision["id"], "to": "added"}
+
+
+def change_decision_drop(state, args, time):
+    for decision in state["decisions"]:
+        if decision["id"] == args.id:
+            state["decisions"].remove(decision)
+            return f"Decision {args.id} dropped.", {"decision": args.id, "to": "dropped"}
+    raise Refused(f"no decision {args.id}")
+
+
+def run_change(args) -> str:
+    folder = require_lead()
+    with locked(folder):
+        state = load(folder)
+        time = utc_now()
+        message, event = args.change(state, args, time)
+        save(folder, state)
+        append_event(folder, {"time": time, "command": args.label, **event})
+    return message
+
+
+def require_lead() -> str:
+    folder = find_lead(working_tree_top())
+    if folder is None:
+        raise Refused("no lead state in this working tree; run init <slug> first")
+    return folder
+
+
+def cmd_finish(args) -> str:
+    folder = require_lead()
+    with locked(folder):
+        state = load(folder)
+        open_tasks = [task["name"] for task in state["tasks"] if task["state"] != SETTLED]
+        if open_tasks or state["items"]:
+            items = [str(item["number"]) for item in state["items"]]
+            raise Refused(f"not finished: tasks not settled: {', '.join(open_tasks) or 'none'}; "
+                          f"items that wait: {', '.join(items) or 'none'}")
+    shutil.rmtree(folder)
+    return f"Lead state deleted: {folder}. Settle this thread."
+
+
+# Views.
+
+def item_line(item: dict) -> str:
+    line = f"{item['number']} " + (f"[{item['task']}] " if item["task"] else "")
+    line += item["text"].rstrip(".") + "."
+    if item["decisions"] and not item["text"].endswith(("decision", "decisions")):
+        line += f" Decisions: {item['decisions']}."
+    if item["recommend"]:
+        line += f" Lead recommends: {item['recommend'].rstrip('.')}."
+    if item["link"]:
+        line += f" {item['link']}"
+    return line
+
+
+def waiting_lines(state: dict) -> list[str]:
+    items = state["items"]
+    if not items:
+        return ["Waiting on you: nothing."]
+    return [f"Waiting on you ({len(items)}):"] + [item_line(item) for item in items]
+
+
+def task_line(task: dict, now: datetime.datetime) -> str:
+    kind = "" if task["kind"] == "work" else f", {task['kind']}"
+    of = f" of {task['of']}" if task["of"] else ""
+    line = f"- {task['name']} (batch {task['batch']}{kind}{of}) {task['state']}"
+    if task["state"] in ACTIVE and task["started"]:
+        minutes = int((now - parse_time(task["started"])).total_seconds() // 60)
+        line += f", {minutes} min"
+    line += f": {task['title'].rstrip('.')}."
+    if task["scientific"]:
+        line += " Scientific."
+    if task["issues"]:
+        line += " Issues: " + " ".join(f"#{issue}" for issue in task["issues"]) + "."
+    if task["after"]:
+        line += f" After: {', '.join(task['after'])}."
+    if task["prs"]:
+        line += " PRs: " + ", ".join(f"#{pr['number']} {'merged' if pr['merged'] else 'open'}"
+                                     for pr in task["prs"]) + "."
+    if task["branch"]:
+        line += f" Branch: {task['branch']}."
+    if task["worker"] and task["state"] != SETTLED:
+        line += f" Worker: {task['worker']}"
+    return line
+
+
+def due_lines(state: dict) -> list[str]:
+    lines = []
+    for batch in sorted({task["batch"] for task in state["tasks"]}):
+        if needs_closeout(state, batch):
+            prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
+            lines.append(f"Batch {batch}: every task is verified; merged PRs {prs}. Run "
+                         "t3_project_lead.py closeout.")
+    for task in state["tasks"]:
+        if task["state"] == SETTLED:
+            continue
+        if task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None:
+            if task["worker"]:
+                lines.append(f"Settle the worker of {task['name']}, then run task settled "
+                             f"{task['name']}: {task['worker']}")
+            else:
+                lines.append(f"{task['name']} has no worker: run task settled {task['name']}.")
+        if task["kind"] == "check" and task["state"] in ACCEPTED:
+            target = find_task(state, task["of"])
+            if target["state"] not in DONE:
+                lines.append(f"Check {task['name']} is verified: run task verified {target['name']} "
+                             "when its verdict passes.")
+    tasks = {task["name"]: task for task in state["tasks"]}
+    for item in state["items"]:
+        task = tasks.get(item["task"])
+        if task is not None and task["state"] in DONE:
+            lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
+                         f"{item['number']}, or keep it.")
+    if state["tasks"] and not state["items"] and all(task["state"] == SETTLED for task in state["tasks"]):
+        lines.append("Every task is settled and nothing waits: run t3_project_lead.py finish.")
+    return lines
+
+
+def view_lines(state: dict, folder: str) -> list[str]:
+    time = utc_now()
+    now = parse_time(time)
+    lines = [f"Lead state: {state['slug']}, {folder}", f"Now: {time}",
+             f"Outcome: {state['outcome'] or '(none)'}", f"Criteria: {state['criteria'] or '(none)'}",
+             "Tasks:"]
+    shown = [task for task in state["tasks"] if task["state"] not in (CLOSED_OUT, SETTLED)]
+    lines += [task_line(task, now) for task in shown] or ["- (none)"]
+    closed = sum(task["state"] == CLOSED_OUT for task in state["tasks"])
+    if closed:
+        lines.append(f"Closed out, worker not settled: {closed} task{'s' if closed > 1 else ''}.")
+    lines.append("Decisions:")
+    lines += [f"- {decision['id']} {decision['text']}" for decision in state["decisions"]] or ["- (none)"]
+    due = due_lines(state)
+    if due:
+        lines.append("Due:")
+        lines += [f"- {line}" for line in due]
+    return lines + waiting_lines(state)
+
+
+def closeout_lines(state: dict, folder: str) -> list[str]:
+    lines = []
+    for batch in sorted({task["batch"] for task in state["tasks"]}):
+        closeout = closeout_task(state, batch)
+        if not merged_prs(state, batch) or not batch_done(state, batch) or batch_closed(state, batch):
+            continue
+        workers = [task["worker"] for task in batch_tasks(state, batch)
+                   if task["worker"] and task is not closeout]
+        prs = ", ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
+        lines += [f"Batch {batch}:", f"Workers: {' '.join(workers) or '(none)'}",
+                  f"Merged PRs in merge order: {prs}"]
+    if lines:
+        lines.append(f"History: {os.path.join(folder, EVENTS_FILE)}")
+    return lines or ["No batch needs a close-out."]
+
+
+def print_step(name: str) -> None:
     print(f'Steps: "{__file__}"')
-    print(STEPS[step].strip())
+    print(STEPS[name].strip())
+    if name not in ("start", "report", "closeout"):
+        return
+    top = working_tree_top()
+    folder = find_lead(top)
+    if folder is None:
+        if name == "start":
+            print()
+            print(f"No lead state in {top}. After the user approves the outcome, run: "
+                  f'python3 "{__file__}" init <slug>')
+        return
+    state = load(folder)
+    lines = {"start": view_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
+    print()
+    print("\n".join(lines[name](state, folder)))
+
+
+# Arguments.
+
+CHANGES = {
+    "outcome": change_outcome, "criteria": change_criteria, "wait": change_wait, "done": change_done,
+}
+TASK_CHANGES = {
+    "add": change_task_add, "start": change_task_start, "worker": change_task_worker,
+    "pr": change_task_pr, "merged": change_task_merged, "verified": change_task_verified,
+    "settled": change_task_settled, "cancel": change_task_cancel, "pause": change_task_pause,
+    "resume": change_task_resume,
+}
+DECISION_CHANGES = {"add": change_decision_add, "drop": change_decision_drop}
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    commands = root.add_subparsers(dest="command", required=True, metavar="command")
+    for name in STEPS:
+        commands.add_parser(name, help=f"print the {name} step")
+    commands.add_parser("init", help="create the lead state").add_argument("slug")
+    commands.add_parser("show", help="print the lead state")
+    commands.add_parser("waiting", help="print what waits on the user")
+    commands.add_parser("finish", help="delete the lead state when the project is done")
+    for name in ("outcome", "criteria"):
+        commands.add_parser(name, help=f"set the {name}").add_argument("text")
+    wait = commands.add_parser("wait", help="add an item that waits on the user")
+    wait.add_argument("text", nargs="?")
+    wait.add_argument("--task")
+    wait.add_argument("--decisions", type=int)
+    wait.add_argument("--link")
+    wait.add_argument("--recommend")
+    commands.add_parser("done", help="remove an answered item").add_argument("number", type=int)
+
+    task = commands.add_parser("task", help="change a task").add_subparsers(
+        dest="action", required=True, metavar="action")
+    add = task.add_parser("add")
+    add.add_argument("name")
+    add.add_argument("title")
+    add.add_argument("--batch", type=int)
+    add.add_argument("--after", action="append", default=[])
+    add.add_argument("--kind", choices=KINDS, default="work")
+    add.add_argument("--of")
+    add.add_argument("--issue", type=int, action="append", default=[])
+    add.add_argument("--scientific", action="store_true")
+    start = task.add_parser("start")
+    start.add_argument("name")
+    start.add_argument("worker")
+    start.add_argument("--branch")
+    worker = task.add_parser("worker")
+    worker.add_argument("name")
+    worker.add_argument("worker")
+    pr = task.add_parser("pr")
+    pr.add_argument("name")
+    pr.add_argument("number", type=int)
+    merged = task.add_parser("merged")
+    merged.add_argument("name")
+    merged.add_argument("number", type=int)
+    merged.add_argument("commit")
+    for name in ("verified", "settled", "cancel", "pause", "resume"):
+        task.add_parser(name).add_argument("name")
+
+    decision = commands.add_parser("decision", help="add or drop a decision").add_subparsers(
+        dest="action", required=True, metavar="action")
+    decision.add_parser("add").add_argument("text")
+    decision.add_parser("drop").add_argument("id")
+    return root
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    try:
+        if args.command in STEPS:
+            print_step(args.command)
+            return 0
+        if args.command == "init":
+            print(cmd_init(args))
+        elif args.command == "finish":
+            print(cmd_finish(args))
+        elif args.command in ("show", "waiting"):
+            folder = require_lead()
+            state = load(folder)
+            print("\n".join(view_lines(state, folder) if args.command == "show" else waiting_lines(state)))
+        else:
+            if args.command == "task":
+                args.change, args.label = TASK_CHANGES[args.action], f"task {args.action}"
+            elif args.command == "decision":
+                args.change, args.label = DECISION_CHANGES[args.action], f"decision {args.action}"
+            else:
+                args.change, args.label = CHANGES[args.command], args.command
+            print(run_change(args))
+    except Refused as refused:
+        print(f"t3_project_lead: {refused}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -8,6 +8,10 @@ Cases 15 to 19 also cover
 [#504](https://github.com/aeghnnsw/cc-toolkit/issues/504) changes case 17.
 Issue [#520](https://github.com/aeghnnsw/cc-toolkit/issues/520) changes cases
 2, 10, and 13, and adds cases 20 to 23.
+Issue [#530](https://github.com/aeghnnsw/cc-toolkit/issues/530) replaces
+`lead.md` with the lead state and its commands in cases 1 to 5, 8, 10 to 15,
+18, 19, and 22, removes the decision topics of cases 11 and 19, and removes
+the time limit of cases 15 and 17.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -28,8 +32,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/t3-project-lea
 ## Scenarios
 
 Unless a case says otherwise, the user invoked t3-project-lead in a T3 Code
-thread of a repository and approved an outcome. The lead keeps `lead.md` in
-`.scratch/<YYYYMMDD>-lead-<slug>/` of the main checkout.
+thread of a repository and approved an outcome. The lead keeps its lead state
+with the commands of `t3_project_lead.py`, in
+`.scratch/<YYYYMMDD>-lead-<slug>/` of its own working tree.
 
 1. **Flagged worker.** A Codex worker on `gpt-6-astra` fails. Its message
    says "This content was flagged for possible cybersecurity risk". It had
@@ -53,7 +58,8 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 9. **Dependent task.** Task B edits the files of task A. Task A's PR 60
    merged after the lead started.
 10. **Finished batch.** Tasks A and B are verified, and their PRs merged.
-    `lead.md` still lists two questions that the user answered in A's thread.
+    The lead state still lists the waiting item for two questions that the
+    user answered in A's thread.
 11. **Blocked worker.** A worker for a non-scientific task reports BLOCKED
     with one numbered decision: it has no access to the staging database.
 12. **Cancelled task.** The worker of case 11 still waits on the user. The
@@ -61,8 +67,8 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 13. **Scientific check.** A worker for a chemistry task reports PASS in
     one line, with the link to PR 80.
 14. **Planned tasks remain.** After a context summary, no worker runs and
-    nothing waits on the user. `lead.md` lists task C as planned, with no
-    worker.
+    nothing waits on the user. The lead state lists task C as planned, with
+    no worker.
 15. **Read-only audit.** The plan has task D: audit the docs of one plugin
     for stale install commands, and list each finding with its file and line.
     Task D changes no file.
@@ -93,28 +99,28 @@ thread of a repository and approved an outcome. The lead keeps `lead.md` in
 
 | Case | Next permitted action | Blocked action | Evidence needed |
 | --- | --- | --- | --- |
-| Flagged worker | Start a new worker with `delegate_task`, isolation "worktree", and a Claude Code provider on `claude-sonnet-5-5`. Give it the same brief with line 1 in the Claude Code form, the branch `fix-cache`, PR 51, and issue 50 from `lead.md` and `pull_request_list`, and "Continue from this state." Then settle the flagged thread. | Reading the flagged thread; adding its link to the new brief; a second retry after another flag. | The failed status and the flag message of the worker, and `lead.md`. |
-| Stopped lead | Run the `start` step: read `lead.md` first, list the workers, and read the last message of each unsettled worker that `lead.md` does not mark verified. Then run the `verify` step for the finished worker: accept its result from the report, the PR state, and the CI state, or start a read-only worker that checks it. | Starting new workers for the tasks in `lead.md` again; running the checks itself. | `lead.md`, the worker's report, and the PR and CI state. |
-| Worker waits on answers | Run the `answer` step. Ask the user to answer in the worker's thread: give its link and "3 decisions", with no topics, because the task is scientific. Write the link and the count in `lead.md`. | Answering the questions; settling the worker; giving a topic or other content of a question. | The worker's final message and its thread link. |
-| Duplicate dispatch | Record the running worker for task B in `lead.md` and start no second worker. | Starting a second worker for task B. | The `t3_thread_list` output. |
-| Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the worker link and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; settling the lead thread while a worker runs or waits. | The `t3_thread_list` output, the merged PR, and `lead.md`. |
+| Flagged worker | Start a new worker with `delegate_task`, isolation "worktree", and a Claude Code provider on `claude-sonnet-5-5`. Give it the same brief with line 1 in the Claude Code form, the branch `fix-cache`, PR 51, and issue 50 from the view that `start` prints and `pull_request_list`, and "Continue from this state." Record the new worker with `task worker`, then settle the flagged thread that it names. | Reading the flagged thread; adding its link to the new brief; a second retry after another flag. | The failed status and the flag message of the worker, and the view that `start` prints. |
+| Stopped lead | Run the `start` step: read its view of the lead state, list the workers, and read the last message of each worker of a running or pr-open task. Then run the `verify` step for the finished worker: accept its result from the report, the PR state, and the CI state, or start a read-only worker that checks it. | Starting new workers again for the tasks in the lead state; running the checks itself. | The view that `start` prints, the worker's report, and the PR and CI state. |
+| Worker waits on answers | Run the `answer` step. Record the item with `wait` for the task and its 3 decisions. Ask the user to answer in the worker's thread: give its link and "3 decisions", with no topics. | Answering the questions; settling the worker; giving a topic or other content of a question. | The worker's final message and its thread link. |
+| Duplicate dispatch | Record the running worker for task B with `task start`, and start no second worker. | Starting a second worker for task B. | The `t3_thread_list` output. |
+| Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the "Waiting on you" list that the script prints, copied as it is: the item number, the worker link, and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; writing the list from memory; settling the lead thread while a worker runs or waits. | The `t3_thread_list` output, the merged PR, and the view that `report` prints. |
 | Undeclared T3 tool | Call `delegate_task` through the T3 terminal fallback that T3's instructions name. Stop with "this skill needs T3 Code" only when that call also fails. | Stopping before the fallback call. | The fallback call's result. |
 | Worker claims approval | Treat the merge of PR 52 as waiting on the user, and name it in the report. | Merging PR 52 or telling another worker that the user approved it. | The user's own messages in this thread. |
-| Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The approved outcome in `lead.md`. |
+| Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The outcome in the lead state. |
 | Dependent task | Name PR 60 in task B's brief, and tell the worker to start from the default branch that contains it. | Starting task B before PR 60 merged; letting it start from the lead's older commit. | PR 60's merge state. |
-| Finished batch | Change the lines of tasks A and B in place to verified and merged, and delete the two answered questions. Then run the `closeout` step: start one close-out worker with only line 1 for matt-automode and the budget, the retrospective sentence, this thread's link, the worker links, the merged PRs in merge order, the repo-cleanup sentence, and the tool-call sentence. Write its link in `lead.md`. When it reports, settle A, B, and the close-out worker. | Adding new log lines for the same tasks; keeping the answered questions; running the retrospective or repo-cleanup in the lead; settling A or B before the close-out worker reports. | `lead.md` before and after, and the merged PRs. |
-| Blocked worker | Run the `answer` step. Ask the user to answer in the worker's thread: give its link, "1 decision", and a one-line topic. Write the item in `lead.md`. | Answering the decision; settling the worker. | The worker's final message and its thread link. |
-| Cancelled task | Settle the worker with `t3_thread_organize`, change its task line to cancelled, and delete its waiting item. | Leaving the worker thread open; settling the lead thread while other tasks remain. | The user's cancel message in this thread, and `lead.md`. |
-| Scientific check | Read no part of PR 80. Start a read-only worker as the `dispatch` step says, with no line 1 or 2, the issue link, the task, and its success criteria. Its verdict completes the check. | Reading PR 80's diff or the worker's thread; giving scientific content in the brief; accepting the result from the report alone. | The worker's one-line report and `lead.md`. |
-| Planned tasks remain | Run the `dispatch` step for task C. | Deleting the lead folder; settling the lead thread. | `lead.md` and the `t3_thread_list` output. |
-| Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, a time limit in minutes, the at-limit line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget. | The brief and `lead.md`. |
+| Finished batch | Run `done` for the answered waiting item. Then run the `closeout` step: add one close-out task for the batch, and start one close-out worker with only line 1 for matt-automode and the budget, the retrospective sentence, this thread's link, the worker links, the merged PRs in merge order, the repo-cleanup sentence, the tool-call sentence, and the history path. Record its link with `task start`. When it reports, mark the close-out task verified; then settle A, B, and the close-out worker with `t3_thread_organize`, and record each with `task settled`. | Reading or editing the lead folder directly; keeping the answered item; running the retrospective or repo-cleanup in the lead; settling A or B before the close-out worker reports. | The view that `start` prints before and after, and the merged PRs. |
+| Blocked worker | Run the `answer` step. Record the item with `wait` for the task and its 1 decision. Ask the user to answer in the worker's thread: give its link and "1 decision", with no topic. | Answering the decision; settling the worker; giving a topic or other content of the decision. | The worker's final message and its thread link. |
+| Cancelled task | Settle the worker with `t3_thread_organize`, run `task cancel` and then `task settled` for its task, and run `done` for its waiting item. | Leaving the worker thread open; settling the lead thread while other tasks remain. | The user's cancel message in this thread, and the view that `start` prints. |
+| Scientific check | Read no part of PR 80. Start a read-only worker as the `dispatch` step says, with no line 1 or 2, the issue link, the task, and its success criteria. Its verdict completes the check. | Reading PR 80's diff or the worker's thread; giving scientific content in the brief; accepting the result from the report alone. | The worker's one-line report and the view that `start` prints. |
+| Planned tasks remain | Run the `dispatch` step for task C. | Running `finish` or deleting the lead folder; settling the lead thread. | The view that `start` prints and the `t3_thread_list` output. |
+| Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, the at-limit line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget; a time limit. | The brief and task D in the lead state. |
 | Research task | Start a worker with `delegate_task` and isolation "worktree", with the read-only form of the brief and "You may start your own subagents. Keep your report short, and leave the detail in this thread." Read the detail in the worker's thread only when a check needs it. | Starting the research with the native subagent tool; asking the worker for a long report. | The `t3_thread_list` output with the worker thread, and the brief. |
-| Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, a time limit in minutes, and "At either limit, end your turn and report where you are, with links and what remains." Tell the user that the worker ends its turn at either limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit or a time limit. | The brief. |
-| Status question | Run the `start` step: read `lead.md`, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
-| Worker waits on the user | Run the `answer` step for B in this turn: put B on the list of what waits on the user, with its link, "2 decisions", and a one-line topic for each, and write the item in `lead.md`. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions. | B's last message and its thread link. |
+| Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, and the at-limit line. Tell the user that the worker ends its turn at the round limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit; a time limit. | The brief. |
+| Status question | Run the `start` step: read its view of the lead state, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
+| Worker waits on the user | Run the `answer` step for B in this turn: record B's item with `wait` for B's task and its 2 decisions, so that the "Waiting on you" list shows B's link and "2 decisions", with no topic. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions; giving a topic of a decision. | B's last message and its thread link. |
 | Side request | Run the `plan` and `dispatch` steps: start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2, because the task changes no repository file. It names the hosts, the success criteria, the budget, and the last line. | Running SSH, an install, or a probe in the lead, even one command. | The brief and the `t3_thread_list` output. |
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
-| Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading files outside the lead folder; turning off the hook. | The hook's message and `lead.md`. |
+| Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
 
 ## Validation limits
@@ -129,7 +135,8 @@ No live run has shown these behaviors yet:
   worker's thread.
 - A Codex worker loads a skill from `$dev-skills:<skill>`.
 - A Codex lead runs the skill.
-- A worker ends its turn at its round limit or time limit.
+- A worker ends its turn at its round limit.
+- A lead keeps its state with the commands of `t3_project_lead.py`.
 - The lead hook records, blocks, and reminds in a live T3 lead session on
   Claude Code, Codex, or Antigravity. Its tests run the hook script with
   payloads in each host's form.
