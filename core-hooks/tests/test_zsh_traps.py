@@ -176,6 +176,48 @@ MODIFIER_SAFE = [
     "echo $C: done",
 ]
 
+# A test or validator command piped into `tail` or `head` while `pipefail`
+# is off, so the pipeline can exit 0 when the tests fail (#458 W4-10, #391).
+# The value is the (test, pager) pair that the warning names.
+PIPEFAIL_TRAPS = {
+    "python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tail -5": ("unittest", "tail"),
+    "pytest -q | tail -20": ("pytest", "tail"),
+    (
+        "uv run --no-project --python '>=3.11' python scripts/validate_packages.py"
+        " --base origin/master | head -40"
+    ): ("scripts/validate_packages.py", "head"),
+    "python3 scripts/validate_packages.py | tail": ("scripts/validate_packages.py", "tail"),
+    "uv run --with pytest-cov pytest | tail": ("pytest", "tail"),
+    "uvx pytest | tail": ("pytest", "tail"),
+    "python -munittest | tail": ("unittest", "tail"),
+    "cd x && FOO=1 time pytest | tee log | tail -3": ("pytest", "tail"),
+    ".venv/bin/py.test |& head": (".venv/bin/py.test", "head"),
+    "x=$(pytest | tail)": ("pytest", "tail"),
+    "(pytest | tail) &": ("pytest", "tail"),
+    "set +o pipefail; pytest | tail": ("pytest", "tail"),
+    "set -o pipefail; unsetopt pipefail; pytest | tail": ("pytest", "tail"),
+    "pytest | tail; set -o pipefail": ("pytest", "tail"),
+}
+
+PIPEFAIL_SAFE = [
+    "set -o pipefail; pytest | tail",
+    "set -euo pipefail; python3 -m unittest | tail",
+    "setopt PIPE_FAIL && pytest | tail",
+    "setopt pipefail\npytest | head",
+    "pytest | grep FAILED",
+    "pytest > log; tail log",
+    "pytest; tail log",
+    "tail log | python -m unittest",
+    "grep -rn pytest . | head",
+    "git grep -n unittest | head",
+    "ls .venv/bin/pytest | head",
+    "uv pip install pytest | tail -1",
+    "python3 -m pip install pytest | tail -1",
+    "echo 'pytest | tail'",
+    "cat <<'EOF'\npytest | tail\nEOF",
+    "echo hi # pytest | tail",
+]
+
 
 def glob_directory(temp_dir):
     """Fill `temp_dir` with `a.txt` and `sub/b.md`, and return its path."""
@@ -310,6 +352,46 @@ class ZshTrapTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(zsh_traps.zsh_traps(command), [])
 
+    def test_warns_when_a_pipe_hides_the_status_of_a_test_command(self):
+        for command, (test, pager) in PIPEFAIL_TRAPS.items():
+            for host in (None, "claude", "codex"):
+                with self.subTest(command=command, host=host):
+                    traps = zsh_traps.zsh_traps(command, host=host)
+                    self.assertEqual([trap.blocks for trap in traps], [False], traps)
+                    self.assertIn(f"output of `{test}` goes through a pipe to `{pager}`", traps[0].message)
+                    self.assertIn("`set -o pipefail;`", traps[0].message)
+
+    def test_gives_no_pipefail_finding_with_pipefail_or_without_a_test_pipe(self):
+        for command in PIPEFAIL_SAFE:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command, host="claude"), [])
+
+    def test_skips_the_pipefail_check_for_antigravity(self):
+        for command in PIPEFAIL_TRAPS:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command, host="antigravity"), [])
+
+    @unittest.skipUnless(ZSH, "zsh is not installed")
+    def test_pipefail_cases_match_zsh(self):
+        # The pipe hides a failure; the fix that the warning names shows it.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            hidden = run_zsh("false | tail -1", temp_dir)
+            shown = run_zsh("set -o pipefail; false | tail -1", temp_dir)
+            self.assertEqual(hidden.returncode, 0, hidden.stderr)
+            self.assertNotEqual(shown.returncode, 0, shown.stderr)
+
+    def test_hook_gives_a_pipefail_warning_without_a_decision(self):
+        for host in (None, "claude", "codex"):
+            with self.subTest(host=host):
+                result = run_hook("pytest -q | tail -20", host=host)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                response = json.loads(result.stdout)
+                output = response["hookSpecificOutput"]
+                self.assertNotIn("permissionDecision", output)
+                self.assertNotIn("updatedInput", output)
+                self.assertIn("set -o pipefail;", output["additionalContext"])
+                self.assertEqual(response["systemMessage"], output["additionalContext"])
+
     @unittest.skipUnless(ZSH, "zsh is not installed")
     def test_modifier_cases_change_the_value_in_zsh(self):
         # The braced fix keeps the value; the unbraced form changes it.
@@ -404,6 +486,24 @@ class ZshTrapTests(unittest.TestCase):
                 "== SECTION_2 ====CODEX==",
             ),
             (" echo == ====  === \t", " echo '==' '===='  '===' \t", "== ==== ===\n"),
+            ("echo a; echo =====; echo b", "echo a; echo '====='; echo b", "a\n=====\nb\n"),
+            (
+                "echo a && echo ===== && echo b",
+                "echo a && echo '=====' && echo b",
+                "a\n=====\nb\n",
+            ),
+            ("false || echo =====CODEX || echo b", "false || echo '=====CODEX' || echo b", "=====CODEX\n"),
+            ("echo a\necho == SECTION ==\necho b", "echo a\necho '==' SECTION '=='\necho b", "a\n== SECTION ==\nb\n"),
+            ("echo =====;echo ===step_2===", "echo '=====';echo '===step_2==='", "=====\n===step_2===\n"),
+            ("echo a | cat; echo -n ====", "echo a | cat; echo -n '===='", "a\n===="),
+            (
+                "echo a; echo =====; echo \"b  c\" $# # 'quoted' after",
+                "echo a; echo '====='; echo \"b  c\" $# # 'quoted' after",
+                "a\n=====\nb  c 0\n",
+            ),
+            ("echo =====\n", "echo '====='\n", "=====\n"),
+            ("\necho =====", "\necho '====='", "=====\n"),
+            ("[[ -n x && -n y ]] && echo =====", "[[ -n x && -n y ]] && echo '====='", "=====\n"),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             for command, rewritten, expected_stdout in cases:
@@ -427,13 +527,31 @@ class ZshTrapTests(unittest.TestCase):
 
     def test_unsupported_commands_keep_their_existing_denial(self):
         commands = (
-            "echo =====; echo later",
-            "echo first && echo =====",
-            "echo ===== || echo later",
             "echo ===== | cat",
             "echo ===== &",
-            "echo =====\n",
-            "\necho =====",
+            "echo ===== | cat; echo b",
+            "echo a; echo ===== &",
+            "echo a; echo ===== |& cat",
+            "(echo a; echo =====)",
+            "(echo =====); echo b",
+            "{ echo =====; }",
+            "if true; then echo =====; fi",
+            "for i in 1; do echo =====; done",
+            "case a in a) echo =====;; esac",
+            "cat <<EOF\nx\nEOF\necho =====",
+            "cat <<-EOF; echo =====\n\tx\n\tEOF",
+            "echo a; echo ===== # note",
+            "x=$(echo a; echo =====); echo b",
+            "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"; echo =====",
+            "echo $(date) # note\necho =====",
+            "printf '%s\\n' 'x; echo ====='; echo =====",
+            'cat "a b"; echo =====',
+            "echo $HOME; echo =====",
+            "echo a\\\n; echo =====",
+            "echo a; printf =====; echo b",
+            "echo =====; echo ===== =sh",
+            "echo =====; echo ===== | cat",
+            "! echo =====; echo b",
             "echo ===== # =====",
             "echo ===== '====='",
             'echo ===== "====="',
@@ -478,10 +596,39 @@ class ZshTrapTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, original.stdout)
 
+    def test_rewrite_never_edits_text_inside_a_substitution_heredoc_or_test(self):
+        # The tokenizer can read a comment, a heredoc body, an escape, or a
+        # quote wrongly, and `&&` in `[[ ]]` joins conditions, not commands.
+        commands = (
+            "x=$(cat <<EOF # )\necho =====\nEOF\n)\necho \"$x\"",
+            "x=$(echo a # )\necho =====\n); echo \"$x\"",
+            "diff <(cat <<EOF # )\necho =====\nEOF\n) /dev/null",
+            "cat <<E\"OF\"\necho =====\nEOF",
+            "[[ a == a && echo == echo && b == b ]] && echo yes",
+            # The four inputs of the focused check on PR #501.
+            "[[\\\n -n a && echo == echo && -n b ]] && echo yes",
+            "x=$(echo $'\\''); [[ -n ')'\\' && echo == echo && -n b ]] && echo yes",
+            'x=$(echo $\'\\\'\' "\')\necho =====\n"); echo "$x"',
+            'echo "${x:-"; echo =====; "}"',
+            "echo \\$'\\' '; echo =====; echo '",
+            "echo ${x:-'}' '; echo =====; echo '}",
+            'x=$(case a in a)\necho =====\n;; esac); echo "$x"',
+        )
+        for command in commands:
+            self.assertIsNone(zsh_traps._quote_echo_separators(command), command)
+            original = run_hook(command)
+            for host in ("claude", "codex"):
+                with self.subTest(host=host, command=command):
+                    result = run_hook(command, host=host)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, original.stdout)
+                    self.assertNotIn("updatedInput", result.stdout)
+
     def test_unsupported_commands_preserve_other_warnings(self):
         cases = (
             ("echo ===== *.missing", "matches no file"),
             ('WORDS="a b"; echo ===== $WORDS', "does not split"),
+            ("pytest | tail; echo =====", "set -o pipefail;"),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             for command, warning in cases:
