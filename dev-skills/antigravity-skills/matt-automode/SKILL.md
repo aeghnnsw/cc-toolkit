@@ -201,7 +201,7 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    each finding with its session and time and its issue link or "no fix". A
    run that merges no PR skips the retro; the next run reads its sessions.
    Write the cutoff as `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, truncated
-   to whole seconds, so that the script finds it.
+   to whole seconds.
 
 A leader is a session that starts parallel runs. When a leader runs the
 retrospective for its runs, it runs it once, after the runs finish, and posts
