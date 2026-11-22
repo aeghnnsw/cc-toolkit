@@ -24,6 +24,14 @@ failure line. The wrappers keep the status in `rc`, because zsh reserves
 `status` as a read-only variable
 ([#442](https://github.com/aeghnnsw/cc-toolkit/issues/442)).
 
+A safety script error blocks the tool call in Claude Code, Codex, and
+Antigravity, because the guard cannot decide
+([#487](https://github.com/aeghnnsw/cc-toolkit/issues/487)). The script
+writes the error and the host's way to turn off Core Hooks to stderr, so
+that a bug in the guard does not leave the user with no way to run a
+command. It exits 2 in Claude Code, which blocks on 2. In Codex and
+Antigravity mode, it exits 1, and the wrapper blocks with the failure line.
+
 See the [host-isolation design](https://github.com/aeghnnsw/cc-toolkit/blob/4be3c4bf74dd07eb08bde12da95f0c26f24980b6/docs/superpowers/specs/2026-08-18-core-hooks-codex-host-isolation-design.md)
 and the [Codex adapter tests](../../core-hooks/tests/test_codex_host_adapter.py)
 for the implementation boundaries and validation.
@@ -47,11 +55,10 @@ The wrappers apply the Codex failure policy: a safety or git policy hook
 failure blocks, and a zsh trap, logging, or notification hook failure writes
 a warning to stderr and exits 0. `uv` also exits 2 when it cannot start a
 script. So the safety, git policy, and zsh trap scripts exit 3 for a block,
-and their wrappers change that status to 2 without the failure line. An
-Antigravity safety script error exits 1, so its wrapper blocks; in Claude
-Code and Codex, a safety script error still allows the command. The wrappers
-keep the status in `rc`, because zsh reserves `status` as a read-only
-variable.
+and their wrappers change that status to 2 without the failure line. A
+safety script error exits 1, so its wrapper blocks, as in Codex mode. The
+wrappers keep the status in `rc`, because zsh reserves `status` as a
+read-only variable.
 
 Antigravity has no Notification, SessionEnd, or SubagentStop event, and a
 PreToolUse hook cannot warn without blocking. So the adapter drops the git

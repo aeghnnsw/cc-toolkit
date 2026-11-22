@@ -10,6 +10,9 @@
 
 ### Changed
 
+- core-hooks (Claude Code and Codex 1.0.30, Antigravity 1.0.5): an error in `safety_guard.py`, such as unreadable input or a failed log write, blocks the tool call on every host; before, Claude Code and Codex allowed it. The message names the error and how to turn off the plugin on that host. The script exits 2 in Claude Code, and 1 in Codex and Antigravity mode, which the wrappers block. See [#487](https://github.com/aeghnnsw/cc-toolkit/issues/487).
+- Repository: ADR 0001 states that a safety script error blocks the tool call on every host. `core-hooks/tests/test_safety_guard.py` runs the configured safety command of each host on invalid JSON and on a log path that is a file, and checks the block status and the message. See [#487](https://github.com/aeghnnsw/cc-toolkit/issues/487).
+
 ## 2026-11-22
 
 ### Added

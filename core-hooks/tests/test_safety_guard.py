@@ -866,5 +866,85 @@ class SafetyGuardTests(unittest.TestCase):
                 self.assert_allowed(command, tool_name="Bash")
 
 
+# Each host, its hook configuration file, and the text that tells how to turn
+# off the plugin on that host.
+SCRIPT_ERROR_HOSTS = (
+    ("Claude Code", ROOT / "hooks" / "hooks.json",
+     "claude plugin disable core-hooks@cc-toolkit"),
+    ("Codex", CODEX_HOOKS, '[plugins."core-hooks@cc-toolkit"]'),
+    ("Antigravity", ROOT / "hooks.json", "agy plugin disable core-hooks"),
+)
+
+
+def configured_safety_command(hooks_path):
+    config = json.loads(hooks_path.read_text())
+    events = config["core-hooks"] if "core-hooks" in config else config["hooks"]
+    return next(
+        hook["command"]
+        for entry in events["PreToolUse"]
+        for hook in entry["hooks"]
+        if "safety_guard.py" in hook["command"]
+    )
+
+
+class ScriptErrorTests(unittest.TestCase):
+    """A safety script error blocks the tool call on every host, because the
+    guard cannot decide (#487)."""
+
+    def run_configured_command(self, host, hooks_path, data):
+        """Run the safety command of `hooks_path` through `/bin/sh` as `host`
+        does, with `data` on stdin and `<temp>/project` as the project."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            project = temp / "project"
+            project.mkdir()
+            data = data.replace("PROJECT", str(project))
+            if '"cwd"' in data:
+                # The hook cannot create its log directory.
+                (project / "logs").write_text("")
+            env = os.environ.copy()
+            env.pop("CLAUDE_PROJECT_DIR", None)
+            env.update({
+                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "PLUGIN_ROOT": str(ROOT),
+                "UV_CACHE_DIR": str(temp / "uv-cache"),
+                # Stop Git from finding a repository that holds the temp directory.
+                "GIT_CEILING_DIRECTORIES": str(temp),
+            })
+            if host == "Claude Code":
+                env["CLAUDE_PROJECT_DIR"] = str(project)
+            return subprocess.run(
+                ["/bin/sh", "-c", configured_safety_command(hooks_path)],
+                input=data,
+                text=True,
+                capture_output=True,
+                # Antigravity runs each hook command from the plugin root.
+                cwd=ROOT if host == "Antigravity" else project,
+                env=env,
+                check=False,
+                timeout=60,
+            )
+
+    def test_script_error_blocks_and_says_how_to_turn_off_the_plugin(self):
+        faults = (
+            ("JSONDecodeError", "not json"),
+            ("FileExistsError", json.dumps({
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "echo hello"},
+                "cwd": "PROJECT",
+            })),
+        )
+        for host, hooks_path, turn_off in SCRIPT_ERROR_HOSTS:
+            for error, data in faults:
+                with self.subTest(host=host, error=error):
+                    result = self.run_configured_command(host, hooks_path, data)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)
+                    self.assertIn(error, result.stderr)
+                    self.assertIn(turn_off, result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
