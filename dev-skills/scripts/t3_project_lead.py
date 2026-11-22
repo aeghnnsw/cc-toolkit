@@ -71,8 +71,8 @@ For a read-only task (audit, research, verification), write no line 1 or 2,
 as for a verifier, and name what the worker must not change.
 Budget: name a round limit and a time limit in minutes, and add: "At either
 limit, end your turn and report where you are, with links and what remains."
-For a code change, the round limit is matt-automode's: one full review, then
-at most one focused check.
+For a code change: one full review and one fix of any size, then merge. Only
+a blocking problem of matt-automode phase 5 stops the merge.
 Last line: "Report PASS, ISSUES, or BLOCKED, with evidence and links. Number
 each decision that waits on the user." For a scientific task, replace "with
 evidence and links" with "in one line, with links. Keep scientific detail in

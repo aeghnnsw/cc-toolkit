@@ -101,12 +101,16 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    requirement, a broken cited rule, and shipped text that the change makes
    false. A problem present at the comparison commit blocks only when the
    ticket requires its fix. List other findings with a reason in the review
-   record. Open or reuse an issue only for a defect that a user can hit. Fix
-   the blocking findings, commit, and pass affected checks. Then give one
-   fresh reviewer only the fix diff and the findings that it closes. Run no
-   second full review. If this focused check finds a blocking finding, stop
-   the ticket without a merge, keep the work, report the finding, and
-   continue independent tickets. Record the head SHA that the review covers.
+   record. Open or reuse an issue only for a defect that a user can hit.
+   Close all blocking findings in one fix, commit, and pass the affected
+   checks. The fix has no size limit. Run no second full review and no
+   focused check of the fix. Stop the ticket without a merge only for a
+   blocking problem that the run cannot settle: a design or scope choice that
+   the ticket and the spec do not settle, a needed approval or access, or a
+   test or CI failure that the fix does not close. In that case, keep the
+   work, report the problem to the user, and continue independent tickets.
+   Otherwise, go to phase 6 and merge. Record the head SHA that the review
+   covers.
 6. **PR — `mattpocock-skills:pr`.** Open the reviewed PR with its issue
    references. Use a separate `Closes #N` for each fully resolved
    ticket; use ordinary references for partial work. Carry closure references
@@ -117,9 +121,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
       `--match-head-commit` rejects a short SHA.
    2. Post the phase 5 review record for that head with
       `gh pr review <PR> --comment --body-file <file>`. Name the comparison
-      commit, the head SHA, the Standards and Spec results, the fixes, the
-      focused checks, and the test results. When the head is not the commit
-      that phase 5 reviewed, name that commit and state what changed since it.
+      commit, the head SHA, the Standards and Spec results, the fixes, and
+      the test results. When the head is not the commit that phase 5
+      reviewed, name that commit and state what changed since it.
    3. Merge with `gh pr merge <PR> --match-head-commit <head SHA>` and the
       merge method that the repository requires, such as `--squash`.
    4. Record the merged PR link.
@@ -156,8 +160,9 @@ do not make the earlier order compliant.
 
 For pending PR checks, run `gh pr checks`, and check again later until the
 required checks finish.
-Fix failures on the PR branch. Give each fix one focused check of its diff and
-the failure that it fixes; a blocking finding stops the ticket as in phase 5.
+Fix failures on the PR branch. Give each failure one fix of any size, and run
+no review of the fix. When the fix does not close the failure, stop the ticket
+as in phase 5.
 For a rebase, give the agent a resolution rule per conflicted file and the
 required final versions; recheck versions that Git merged without conflict. If
 a required human review cannot be supplied, continue independent tickets, then

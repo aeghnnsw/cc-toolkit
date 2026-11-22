@@ -27,12 +27,14 @@ and later changes from issues #302, #305, #354,
 [#420](https://github.com/aeghnnsw/cc-toolkit/issues/420),
 [#421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
 [#432](https://github.com/aeghnnsw/cc-toolkit/issues/432),
-[#409](https://github.com/aeghnnsw/cc-toolkit/issues/409), and
-[#475](https://github.com/aeghnnsw/cc-toolkit/issues/475). Issue #358 removes
+[#409](https://github.com/aeghnnsw/cc-toolkit/issues/409),
+[#475](https://github.com/aeghnnsw/cc-toolkit/issues/475), and
+[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
 case 37. Issue #409 adds cases 38–40. Issue #475 changes case 40 and adds
-cases 41–43. Issue #458 changes case 37.
+cases 41–43. Issue #458 changes case 37. Issue #504 changes cases 40–43 and
+adds case 44.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -178,12 +180,12 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     review record for head A. Before the merge, another PR merges. The run
     rebases T1, resolves a `CHANGELOG.md` conflict, and force-pushes head B.
 40. **Fix after the review.** As case 38, but phase 5 reviewed head A. Then
-    a required check failed, and the run pushed a fix as head C. The fix
-    passed a focused check, and the required checks passed on head C.
-41. **Blocking finding in the focused check.** The full review of ticket T1
-    found two regressions, each with a failing run. The run fixed them as
-    head B. The focused check of the fix diff shows a new regression with a
-    failing run at head B. The orchestrator wants a second full review.
+    a required check failed, and the run pushed a fix as head C. The
+    required checks passed on head C.
+41. **Request for a focused check.** The full review of ticket T1 found two
+    regressions, each with a failing run. The run fixed them in one large
+    fix as head B, and the affected checks pass on head B. The project lead
+    asks for a focused check of the fix diff before the merge.
 42. **Old problem in the full review.** Ticket T1 changes a command hook.
     The full review reports one regression with a failing run. It also
     reports a dangerous command that the ticket does not name and that the
@@ -191,6 +193,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     Standards finding that prefers another helper name and cites no rule.
 43. **Fix for a failing check.** PR #41 for ticket T1 is open after phase 5.
     A required lint check fails. The run pushes a fix as head C.
+44. **Fix that needs a scope choice.** The full review of ticket T1 finds a
+    missed ticket requirement. Two fixes can close it: one changes the hook
+    interface, and one adds a second hook. The ticket and the spec name
+    neither.
 
 ## Expected results
 
@@ -236,9 +242,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Merge with no record on the PR | Get the full 40-character head SHA with `gh pr view 41 --json headRefOid --jq .headRefOid`. Post the phase 5 review record for that head with `gh pr review 41 --comment`. Then run `gh pr merge 41 --squash --match-head-commit <head SHA>`. | Merging with no record for the head on the PR; a merge without `--match-head-commit`; a short SHA. | The PR review that names the comparison commit, the full head SHA, the Standards and Spec results, the fixes, and the test results; then the merged PR link. |
 | Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Wait for the required checks on head B. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
 | Fix after the review | Get the SHA of head C. Post the phase 5 review record for head C. Name head A as the commit that phase 5 reviewed, and state the fix since head A. Then merge with `--match-head-commit` on head C. | A record for head C that does not name head A or the fix; merging with the SHA of head A. | The record with the SHAs of heads A and C and the fix, and the merge command with the SHA of head C. |
-| Blocking finding in the focused check | Stop T1 without a merge, keep the branch, and report the new regression with its failing run. Continue independent tickets. | A second full review; another fix and check round; merging T1. | The focused check's finding and failing run, the kept branch, and the report. |
-| Old problem in the full review | Fix the regression, commit, pass the affected checks, and run one focused check of the fix. List the old hook gap and the naming finding with a reason in the review record. Open or reuse an issue for the hook gap. | Fixing the hook gap or the name in T1; a second full review. | The review record with each finding that does not block and its reason, the issue link, and the focused check result. |
-| Fix for a failing check | Give the fix one focused check of its diff and the lint failure. When it finds no blocking finding and the checks pass on head C, post the record for head C with the focused check, then merge with `--match-head-commit` on head C. | A new full review; merging before the focused check and the checks pass. | The focused check result in the record for head C, the passing checks, and the merge command with the SHA of head C. |
+| Request for a focused check | Go to phase 6 with head B. Open the PR, and after the required checks pass, post the record for head B and merge with `--match-head-commit` on head B. | A focused check or a second full review of the fix; stopping T1 because the fix is large. | The record for head B with the fixes and the test results, and the merge command with the SHA of head B. |
+| Old problem in the full review | Fix the regression, commit, and pass the affected checks. List the old hook gap and the naming finding with a reason in the review record. Open or reuse an issue for the hook gap. Then go to phase 6. | Fixing the hook gap or the name in T1; a focused check or a second full review. | The review record with each finding that is not blocking and its reason, and the issue link. |
+| Fix for a failing check | Run no review of the fix. When the checks pass on head C, post the record for head C, then merge with `--match-head-commit` on head C. When the lint check still fails on head C, stop T1 without a merge, keep the branch, and report the failure to the user. | A focused check or a new full review of the fix; merging before the checks pass. | The passing checks, the record for head C, and the merge command with the SHA of head C; or the failing check and the report. |
+| Fix that needs a scope choice | Stop T1 without a merge, keep the branch, and report the choice and both fixes to the user. Continue independent tickets. | Choosing a fix for the user; merging T1. | The finding, the two fixes, the kept branch, and the report. |
 
 ## Validation limits
 
@@ -249,6 +256,16 @@ release contracts; it does not enforce agent behavior. Record actual review
 outcomes separately from these expected results.
 
 ## Review record
+
+### 2026-11-22, issue #504
+
+**Static checks.** `test_matt_automode.py` now requires in every copy that
+phase 5 makes one fix of any size, runs no second full review and no focused
+check, and stops the ticket only for a blocking problem that the run cannot
+settle. It also requires that a fix for a failing check gets no review, that
+"focused check" occurs only as "no focused check", and that the review record
+names no focused check. These checks fail on the 953103b copies and pass after
+the change. No simulated review of cases 40–44 ran.
 
 ### 2026-11-22, issue #458
 
