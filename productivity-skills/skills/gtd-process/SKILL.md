@@ -1,6 +1,6 @@
 ---
 name: gtd-process
-version: 3.5.0
+version: 3.5.1
 description: "Use when processing, triaging, or clarifying GTD inbox items into projects and human next actions."
 ---
 
@@ -11,8 +11,7 @@ Before every invocation, read the [cloud operating contract](../../references/gt
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
 contract for the GTD binding, complete reads, UUID links, dates, revisions,
 atomic writes, and recovery. Use the planning policy for every action and
-project, including work without agents. Missing cloud data or access makes
-processing unavailable; it does not authorize a native fallback.
+project, including work without agents.
 
 ## Gather
 

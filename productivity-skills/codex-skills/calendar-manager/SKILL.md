@@ -163,13 +163,11 @@ swift "<plugin-root>/scripts/productivity-cli.swift" calendars create \
 
 ### Delete an Event
 
-```bash
-swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
-  --title "Team Meeting" \
-  --date "2025-01-15"
-```
+`delete` requires `--calendar`. It deletes the one event with this title on
+this date in this calendar. When more than one event matches, it deletes
+nothing, exits with an error, and lists the matches. Show the matches to the
+user. Add `--all-matches` only when the user confirms that every match goes.
 
-With specific calendar:
 ```bash
 swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
   --title "Team Meeting" \
@@ -182,6 +180,7 @@ swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
 swift "<plugin-root>/scripts/productivity-cli.swift" calendars delete \
   --title "Daily Standup" \
   --date "2026-01-25" \
+  --calendar "Work" \
   --all-future
 ```
 
@@ -212,6 +211,15 @@ Error responses:
 }
 ```
 
+A delete with more than one match also returns the matches:
+```json
+{
+  "error": "2 events match title 'Team Meeting' on 2025-01-15 in calendar 'Work'. Nothing was deleted. Pass --all-matches to delete all of them.",
+  "count": 2,
+  "matches": [...]
+}
+```
+
 ## Date Formats
 
 | Format | Example | Usage |
@@ -224,7 +232,7 @@ Error responses:
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--title` | Yes | Event title |
-| `--calendar` | Yes (create) | Calendar name |
+| `--calendar` | Yes (create, delete) | Calendar name |
 | `--start` | Yes (create) | Start date/time |
 | `--end` | No | End date/time (default: 1 hour after start) |
 | `--location` | No | Event location |
@@ -236,6 +244,7 @@ Error responses:
 | `--repeat-count` | No | Number of occurrences |
 | `--repeat-days` | No | Days for weekly recurrence (e.g., mon,wed,fri) |
 | `--all-future` | No | Delete all future occurrences (delete only) |
+| `--all-matches` | No | Delete every event that matches (delete only) |
 
 ## Event Output with Recurrence
 
@@ -266,6 +275,5 @@ When reading events, recurring events include additional fields:
 
 ## Notes
 
-- Always list calendars first and confirm with user before create/delete
 - Calendar names are case-insensitive
 - The CLI uses EventKit for fast, native access to Calendar data

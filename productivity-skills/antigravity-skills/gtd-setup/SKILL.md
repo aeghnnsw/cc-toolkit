@@ -66,14 +66,9 @@ item for this owner.
    A host can add a prefix to each name, so find each tool by the end of
    its exposed name.
 3. If no Supabase tool is connected, or the connector needs
-   authentication, report the required connection or sign-in, give the
-   user these steps, and stop:
-   1. Run `agy mcp add supabase https://mcp.supabase.com/mcp` in a
-      terminal. The command adds the Supabase MCP server to the user's
-      global MCP configuration, `~/.gemini/config/mcp_config.json`. Skip
-      this step when that file already has the server.
-   2. Start a new Antigravity conversation.
-   3. Sign in to Supabase when Antigravity asks.
+   authentication, follow the connector rules in
+   [Bind the route](../../references/gtd-cloud.md#bind-the-route). Then
+   stop.
 4. List the accessible projects to prove the access. If the connection is
    scoped to one project, it cannot list or create projects. If the
    connection is read-only, it cannot apply the schema. A connector URL
@@ -110,9 +105,9 @@ only after an explicit confirmation.
 1. Show the accessible projects with name, organization, region, and
    status.
 2. Ask the user to choose one project, or to ask for a new project.
-3. If the chosen project is paused, report the pause and the restore step
-   (the Supabase dashboard, or the connector's restore tool). Restore it
-   only when the user asks. Otherwise stop.
+3. If the chosen project is paused, follow the paused-project rule in
+   [Bind the route](../../references/gtd-cloud.md#bind-the-route).
+   Continue only after a restore that the user asked for. Otherwise stop.
 
 To create a project:
 

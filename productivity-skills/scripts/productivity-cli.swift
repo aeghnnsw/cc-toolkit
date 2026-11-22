@@ -40,6 +40,12 @@ struct ErrorResponse: Codable {
     let error: String
 }
 
+struct MatchErrorResponse: Codable {
+    let error: String
+    let count: Int
+    let matches: [EventInfo]
+}
+
 struct SuccessResponse<T: Codable>: Codable {
     let success: Bool
     let data: T
@@ -373,27 +379,28 @@ func getEvents(from startDate: Date, to endDate: Date, searchTerm: String? = nil
         events = events.filter { $0.title?.lowercased().contains(term) ?? false }
     }
 
-    let eventInfos = events.map { event -> EventInfo in
-        let recurrence: RecurrenceInfo?
-        if let rules = event.recurrenceRules, let firstRule = rules.first {
-            recurrence = formatRecurrenceRule(firstRule)
-        } else {
-            recurrence = nil
-        }
+    outputSuccess(events.map(eventInfo))
+}
 
-        return EventInfo(
-            title: event.title ?? "Untitled",
-            calendar: event.calendar.title,
-            startDate: dateFormatter.string(from: event.startDate),
-            endDate: dateFormatter.string(from: event.endDate),
-            location: event.location,
-            notes: event.notes,
-            isAllDay: event.isAllDay,
-            isRecurring: event.hasRecurrenceRules,
-            recurrence: recurrence
-        )
+func eventInfo(_ event: EKEvent) -> EventInfo {
+    let recurrence: RecurrenceInfo?
+    if let rules = event.recurrenceRules, let firstRule = rules.first {
+        recurrence = formatRecurrenceRule(firstRule)
+    } else {
+        recurrence = nil
     }
-    outputSuccess(eventInfos)
+
+    return EventInfo(
+        title: event.title ?? "Untitled",
+        calendar: event.calendar.title,
+        startDate: dateFormatter.string(from: event.startDate),
+        endDate: dateFormatter.string(from: event.endDate),
+        location: event.location,
+        notes: event.notes,
+        isAllDay: event.isAllDay,
+        isRecurring: event.hasRecurrenceRules,
+        recurrence: recurrence
+    )
 }
 
 func getTodayEvents() {
@@ -564,14 +571,13 @@ func createEvent(_ args: [String: String]) {
 }
 
 func deleteEvent(_ args: [String: String]) {
-    let access = requestCalendarAccess()
-    guard access.granted else {
-        let reason = access.error ?? "Unknown reason"
-        outputError("Calendar access denied: \(reason)")
-    }
-
+    // Check the arguments before Calendar access, so that a wrong command reads and changes nothing.
     guard let title = args["title"], !title.isEmpty else {
         outputError("Missing or empty required argument: --title")
+    }
+
+    guard let calendarName = args["calendar"], !calendarName.isEmpty else {
+        outputError("Missing or empty required argument: --calendar")
     }
 
     guard let dateStr = args["date"], !dateStr.isEmpty else {
@@ -582,19 +588,33 @@ func deleteEvent(_ args: [String: String]) {
         outputError("Invalid date format. Use yyyy-MM-dd")
     }
 
-    var calendars = store.calendars(for: .event)
-    if let calendarName = args["calendar"], !calendarName.isEmpty {
-        calendars = calendars.filter { $0.title.lowercased() == calendarName.lowercased() }
-        if calendars.isEmpty {
-            outputError("Calendar '\(calendarName)' not found")
-        }
+    let access = requestCalendarAccess()
+    guard access.granted else {
+        let reason = access.error ?? "Unknown reason"
+        outputError("Calendar access denied: \(reason)")
+    }
+
+    let calendars = store.calendars(for: .event).filter { $0.title.lowercased() == calendarName.lowercased() }
+    if calendars.isEmpty {
+        outputError("Calendar '\(calendarName)' not found")
     }
 
     let predicate = store.predicateForEvents(withStart: startOfDay(date), end: endOfDay(date), calendars: calendars)
     let events = store.events(matching: predicate).filter { $0.title?.lowercased() == title.lowercased() }
 
     if events.isEmpty {
-        outputError("No event found with title '\(title)' on \(dateStr)")
+        outputError("No event found with title '\(title)' on \(dateStr) in calendar '\(calendarName)'")
+    }
+
+    // Delete more than one event only on request. Otherwise list the matches and delete nothing.
+    if events.count > 1 && args["all-matches"] != "true" {
+        outputJSON(MatchErrorResponse(
+            error: "\(events.count) events match title '\(title)' on \(dateStr) in calendar '\(calendarName)'. "
+                + "Nothing was deleted. Pass --all-matches to delete all of them.",
+            count: events.count,
+            matches: events.map(eventInfo)
+        ))
+        exit(1)
     }
 
     // Determine delete span based on --all-future flag
@@ -650,8 +670,10 @@ func printUsage() {
                        [--repeat-interval <N>] [--repeat-until <yyyy-MM-dd>]
                        [--repeat-count <N>] [--repeat-days <mon,wed,fri>]
                                               Create a new event
-      calendars delete --title <title> --date <yyyy-MM-dd> [--calendar <name>]
-                       [--all-future]         Delete an event (--all-future for recurring)
+      calendars delete --title <title> --date <yyyy-MM-dd> --calendar <name>
+                       [--all-future] [--all-matches]
+                                              Delete one event (--all-future for recurring;
+                                              --all-matches when more than one event matches)
 
     Recurrence: daily, weekly, monthly, yearly (interval defaults to 1)
     """

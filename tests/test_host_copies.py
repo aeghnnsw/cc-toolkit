@@ -881,16 +881,10 @@ HOST_LINES = {
 +   `<plugin-root>` is two levels above this folder.
 ''',
     'productivity-skills/codex-skills/calendar-manager/SKILL.md': r'''
-# Drift, repaired by #465: the descriptions differ.
--description: This skill should be used when the user asks to "create calendar event", "add meeting", "schedule appointment", "check calendar", "list upcoming events", "search events", "update event", "delete event", or wants to manage macOS Calendar app events via EventKit CLI. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
-+description: Use when creating, listing, searching, or deleting macOS Calendar events — scheduling meetings or appointments, checking today's or this week's agenda, or querying date ranges via the bundled EventKit CLI. Requires macOS with Calendar access.
 -Run the Swift source directly (no build step required):
 +Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `codex-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
 ''',
     'productivity-skills/antigravity-skills/calendar-manager/SKILL.md': r'''
-# Drift, repaired by #465: the descriptions differ.
--description: This skill should be used when the user asks to "create calendar event", "add meeting", "schedule appointment", "check calendar", "list upcoming events", "search events", "update event", "delete event", or wants to manage macOS Calendar app events via EventKit CLI. Supports setting event details like title, start/end times, location, and notes. Requires macOS and Calendar.app access permissions.
-+description: Use when creating, listing, searching, or deleting macOS Calendar events — scheduling meetings or appointments, checking today's or this week's agenda, or querying date ranges via the bundled EventKit CLI. Requires macOS with Calendar access.
 -Run the Swift source directly (no build step required):
 +Run the Swift source directly (no build step required). `<plugin-root>` is the installed plugin directory — the directory that contains `scripts/` and `antigravity-skills/` (two levels above this skill's folder; in a repository checkout it is `productivity-skills/`). Resolve it to an absolute path and substitute it in every command:
 -Before any create/delete operation, list calendars and ask the user which one to use:
@@ -967,18 +961,6 @@ HOST_LINES = {
 +   `confirm_cost`, `apply_migration`, `execute_sql`, and `list_tables`.
 +   A host can add a prefix to each name, so find each tool by the end of
 +   its exposed name.
--   authentication, report the required connection or sign-in. For several
--   Claude Code profiles, or for Codex without a connected Supabase app,
--   also name the [token connector](../../references/gtd-token-connector.md).
--   Then stop.
-+   authentication, report the required connection or sign-in, give the
-+   user these steps, and stop:
-+   1. Run `agy mcp add supabase https://mcp.supabase.com/mcp` in a
-+      terminal. The command adds the Supabase MCP server to the user's
-+      global MCP configuration, `~/.gemini/config/mcp_config.json`. Skip
-+      this step when that file already has the server.
-+   2. Start a new Antigravity conversation.
-+   3. Sign in to Supabase when Antigravity asks.
 ''',
     'pymol-skills/codex-skills/pymol-mcp/SKILL.md': r'''
 -Find the tools by their exposed names; Claude Code can add a plugin namespace.

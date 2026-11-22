@@ -1,6 +1,6 @@
-"""Run the gtd-setup step 9 shell blocks of every copy in bash and zsh.
+"""Run the gtd-setup step 7 and step 9 shell blocks of every copy in bash and zsh.
 
-Step 9 has two blocks: a check of the global instruction files, and an append
+Step 7 has one block, which writes the GTD binding. Step 9 has two blocks: a check of the global instruction files, and an append
 of the agent-capture rule to one file. The blocks come from SKILL.md, so the
 checks cover the text that an agent runs. Each block runs in a new shell with
 a temporary HOME, CLAUDE_CONFIG_DIR, and CODEX_HOME. Antigravity's file is
@@ -9,10 +9,12 @@ $HOME/.gemini/GEMINI.md.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +32,25 @@ RULE = (
     "When a task you were given stops and waits on the user, add each waiting item "
     "to the GTD inbox with the `gtd-inbox` skill."
 )
+
+
+PROJECT = "abcdefghijklmnopqrst"  # synthetic values, as in references/gtd-cloud.md
+OWNER = "11111111-1111-4111-8111-111111111111"
+
+
+def step7_block(path: Path) -> str:
+    """Return the step 7 block that writes the GTD binding, dedented, with synthetic values."""
+    text = path.read_text(encoding="utf-8")
+    step = text[text.index("## 7. Write the GTD binding"):text.index("## 8. Verify")]
+    blocks = [re.sub(r"^   ", "", block, flags=re.MULTILINE) for block in BASH_FENCE.findall(step)]
+    if len(blocks) != 1:
+        raise AssertionError(f"{path}: expected 1 bash block in step 7, found {len(blocks)}")
+    if "<project-ref>" not in blocks[0] or "<owner-uuid>" not in blocks[0]:
+        raise AssertionError(f"{path}: the step 7 block has no <project-ref> or <owner-uuid> placeholder")
+    block = blocks[0].replace("<project-ref>", PROJECT).replace("<owner-uuid>", OWNER)
+    if re.search(r"<[a-z][a-z-]*>", block):
+        raise AssertionError(f"{path}: the step 7 block keeps a placeholder: {block}")
+    return block
 
 
 def step9_blocks(path: Path) -> tuple[str, str]:
@@ -161,6 +182,44 @@ class StepNineBlocks(unittest.TestCase):
         self.assertEqual(found, {str(broken / "CLAUDE.md"): "broken symlink",
                                  str(self.root / "no-codex" / "AGENTS.md"): "no host",
                                  str(antigravity_md): "present"})
+
+
+class StepSevenBlock(unittest.TestCase):
+    """The step 7 block writes a private GTD binding that the renderer accepts."""
+
+    def run_block(self, shell: str, home: Path, block: str) -> None:
+        # umask 000: the block itself, not the caller's umask, must make the file private.
+        result = subprocess.run([*SHELLS[shell], "umask 000\n" + block],
+                                env={"PATH": os.environ["PATH"], "HOME": str(home), "LANG": "en_US.UTF-8"},
+                                capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def check_binding(self, binding: Path) -> None:
+        self.assertEqual(binding.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(json.loads(binding.read_text(encoding="utf-8")),
+                         {"project_id": PROJECT, "owner_id": OWNER})
+        renderer = subprocess.run(
+            [sys.executable, str(PLUGIN_ROOT / "scripts" / "gtd_sql.py"), "--config", str(binding),
+             "read", "--limit", "1"], capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(renderer.returncode, 0, renderer.stderr)
+        self.assertEqual(json.loads(renderer.stdout)["project_id"], PROJECT)
+
+    def test_block_writes_a_private_binding_in_each_shell(self) -> None:
+        for copy, path in COPIES.items():
+            block = step7_block(path)
+            for shell in SHELLS:
+                with self.subTest(copy=copy, shell=shell):
+                    if shutil.which(SHELLS[shell][0]) is None:
+                        self.skipTest(f"{shell} is not installed")
+                    home = Path(tempfile.mkdtemp())
+                    self.addCleanup(shutil.rmtree, home)
+                    binding = home / ".config" / "cc-toolkit" / "gtd.json"
+                    self.run_block(shell, home, block)  # no .config folder yet
+                    self.check_binding(binding)
+                    binding.write_text('{"project_id":"old","owner_id":"old"}\n', encoding="utf-8")
+                    binding.chmod(0o644)
+                    self.run_block(shell, home, block)  # replaces an existing, readable file
+                    self.check_binding(binding)
 
 
 if __name__ == "__main__":
