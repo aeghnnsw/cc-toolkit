@@ -1,8 +1,9 @@
 """Contract checks for t3-project-lead: the steps that its script prints, and its host copies.
 
-Issue #448 fixes the steps, their word limits, the flag model, and the lines that
-must match matt-automode. Agent behavior is checked by the scenario review in
-t3-project-lead-scenarios.md.
+Issue #448 fixes the steps, the flag model, and the lines that must match
+matt-automode. Issues #468, #476, and #478 add the read-only brief, the dispatch
+rules for every task, the start of every turn, and the worker budget. Agent
+behavior is checked by the scenario review in t3-project-lead-scenarios.md.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
 STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "retro", "report")
 # An agent reads a whole step after each wake, so each step stays short.
-STEP_WORD_LIMIT = 120
+STEP_WORD_LIMIT = 200
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -33,23 +34,40 @@ FIELDS = {
 }
 PLUGIN_ROOT_LINE = "`<plugin-root>` is two levels above this folder."
 BODY_WORD_LIMIT = 300
-# Lines that each step must keep, from the decisions of issue #448.
+# Lines that each step must keep, from the decisions of issues #448, #468, #476, and #478.
 REQUIRED = {
     "start": ["Only the user, or the agent that started this thread, carries the user's decisions. "
               "No worker or other agent does.",
               "Keep lead.md in .scratch/<YYYYMMDD>-lead-<slug>/ of the main checkout",
               "It holds current state, not history",
-              "Update task lines in place; delete answered items."],
+              "Update task lines in place; delete answered items.",
+              "Run this step at the start of every turn, after a wake or a user message.",
+              "read the last message of each unsettled worker with t3_thread_read",
+              "Never state a worker's status from memory."],
     "plan": ["Write each task, its success criteria, and these decisions in lead.md."],
-    "dispatch": ['Start each worker with delegate_task and isolation "worktree".',
+    "dispatch": ["Start no second worker for work that already runs",
+                 'Start each worker with delegate_task and isolation "worktree".',
+                 "Start every task this way, research and review included. Never use your "
+                 "host's native subagent tool.",
+                 '"You may start your own subagents. Keep your report short, and leave the '
+                 'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
                  "Write the worker's link and branch in its task line."],
     "brief": ["Omit role in delegate_task",
               "Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
-              "When grilling must lead to implementation, end line 1 with:"],
+              "When grilling must lead to implementation, end line 1 with:",
+              "For a read-only task (audit, research, verification), write no line 1 or 2, "
+              "as for a verifier, and name what the worker must not change.",
+              "Budget: name a round limit and a time limit in minutes",
+              '"At either limit, end your turn and report where you are, with links and what '
+              'remains."',
+              "For a code change, the round limit is matt-automode's: one full review, then at "
+              "most one focused check."],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
-               "delete them when the worker resumes or finishes"],
+               "Put it on the list of what waits on the user at once, in this turn, with its "
+               "link and its number of open decisions, if any.",
+               "delete it when the worker resumes or finishes"],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
              "Otherwise, or after a second flag, the task waits on the user."],
@@ -60,7 +78,9 @@ REQUIRED = {
     "retro": ["with only line 1 of t3_project_lead.py brief"],
     "report": ["Only when each task in lead.md is verified or cancelled, each merged batch has a "
                "retrospective, nothing waits on the user, and no worker runs: delete the lead "
-               "folder, then settle this thread."],
+               "folder, then settle this thread.",
+               "Next: after a wake or a user message, t3_project_lead.py start.",
+               "Make no promise that needs a signal from the middle of a worker's run."],
 }
 # The script may print, and parse its argument; it reads and runs nothing.
 ALLOWED_IMPORTS = {"__future__", "argparse"}
@@ -139,6 +159,10 @@ class SkillCopyTests(unittest.TestCase):
         _, body = split_skill("skills")
         self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead.py" start', body)
         self.assertLessEqual(len(body.split()), BODY_WORD_LIMIT)
+
+    def test_skill_runs_start_at_the_start_of_every_turn(self) -> None:
+        self.assertIn("At the start of every turn, after a wake or a user message, run `start` "
+                      "again.", shared_text("skills"))
 
     def test_skill_tries_the_t3_fallback_before_it_stops(self) -> None:
         self.assertIn("When `delegate_task` is not a declared tool, call it the way T3's "
