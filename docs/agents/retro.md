@@ -17,18 +17,23 @@ choose.
    Use that cutoff. On exit status 1, its message tells whether no record
    exists or `gh` failed. When `gh` failed, post no record and report the
    retrospective as blocked.
-2. Run the [session helper](../../scripts/retro_sessions.py) from the
-   checkout root with Python 3.11 or newer. Replace the example cutoff with
-   the one from step 1, or omit `--after` when no earlier record exists. The
-   output subdirectory must be new.
+2. Run the [session script](../../dev-skills/scripts/retro_sessions.py)
+   that dev-skills ships, from the checkout root. matt-automode runs the same
+   script. Replace the example cutoff with the one from step 1, or omit
+   `--after` when no earlier record exists. The output subdirectory must be
+   new.
 
    ```sh
    retro_tmp=$(mktemp -d "${TMPDIR:-/tmp}/retro.XXXXXX")
-   uv run --no-project --python '>=3.11' python scripts/retro_sessions.py \
+   python3 dev-skills/scripts/retro_sessions.py \
      --repo . --after 2026-11-07T21:01:06.000Z --output "$retro_tmp/retro"
    ```
 
-   For each host without a root option, the helper reads the default roots
+   `--after` accepts a cutoff in each form that records use, such as
+   `2026-10-27T15:02:52.722Z`, `` `2026-11-09T00:22:55.226+00:00` ``, and
+   `2026-11-21T05:16:55Z`.
+
+   For each host without a root option, the script reads the default roots
    of that host:
 
    - Claude Code: the `projects` folder in `~/.claude`, in each T3 Code
@@ -43,10 +48,10 @@ choose.
    A root option, such as `--claude-root`, replaces only the default roots
    of its own host; the other hosts keep their default roots. The manifest
    `roots` list names each root and its status. A missing root is a
-   `root_unavailable` diagnostic, with two exceptions. The helper leaves out
+   `root_unavailable` diagnostic, with two exceptions. The script leaves out
    a T3 Code profile that has no `projects` or `antigravity-acp` folder. It
    also leaves out a missing default Antigravity folder.
-   Antigravity records have no working folder. The helper reads a copy of
+   Antigravity records have no working folder. The script reads a copy of
    `conversation_summaries.db` and selects a conversation when one of its
    `workspace_uris`, resolved, is a repository root or a folder below one,
    including each linked worktree that Git lists. Events from that
@@ -67,7 +72,9 @@ choose.
    the **Reviewed through** cutoff (`window.through`), the sessions read and
    history limits, and each finding with its session and time and its issue
    link or "no fix". A run that merges no PR skips the retrospective; the
-   next one reads its sessions.
+   next one reads its sessions. Write the cutoff as
+   `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, in UTC and truncated to
+   whole seconds.
 6. Remove the temporary directory by its exact path.
 
 A proposal issue states the finding, its session and time, and the proposed

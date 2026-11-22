@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
   "displayName": "Dev Skills",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Development workflow skills for repository hygiene, documentation, review, and structured execution.",
   "author": {
     "name": "Steven",

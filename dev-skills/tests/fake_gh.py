@@ -1,4 +1,4 @@
-"""A fake gh for the repo-cleanup and retrospective cutoff script tests.
+"""A fake gh for the repo-cleanup, retrospective cutoff, and phase gate tests.
 
 The tests put a `gh` wrapper that runs this file first on PATH. It answers only
 the read commands that the scripts use, from the JSON file that FAKE_GH_DATA
@@ -15,17 +15,41 @@ The data file has these optional keys:
   `gh api --paginate repos/{owner}/{repo}/issues/comments...`. Each page is a
   list; the pages print one after another, with no separator.
 - "merged": merged PR numbers, for `gh pr list --state merged --json number`.
+- "graphql": the repository for `gh api graphql`, as {"nameWithOwner": "o/r",
+  "issues": {"12": issue}}. Each `issue(number: N)` field of the query, with
+  an optional alias, gets the issue of N, whatever fields the query asks for.
+  N can be a literal or `$number`, from `-F number=N`. A missing issue is null
+  with a NOT_FOUND error, and gh exits 1, as the real gh does.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 
 def option(args: list[str], name: str) -> str | None:
     return args[args.index(name) + 1] if name in args[:-1] else None
+
+
+def graphql(args: list[str], repository: dict) -> int:
+    """Answer each issue(number: N) field of a GraphQL query from the issue data."""
+    fields = dict(args[i + 1].split("=", 1) for i, arg in enumerate(args[:-1])
+                  if arg in ("-F", "-f"))
+    answer, errors = {"nameWithOwner": repository["nameWithOwner"]}, []
+    for alias, number in re.findall(r"(?:(\w+):\s*)?issue\(number:\s*(\$number|\d+)\)",
+                                    fields["query"]):
+        key, number = alias or "issue", fields["number"] if number == "$number" else number
+        answer[key] = repository["issues"].get(number)
+        if answer[key] is None:
+            errors.append({"type": "NOT_FOUND", "path": ["repository", key],
+                           "message": f"Could not resolve to an Issue with the number of {number}."})
+    print(json.dumps({"data": {"repository": answer}, **({"errors": errors} if errors else {})}))
+    if errors:
+        print("gh: " + errors[0]["message"], file=sys.stderr)
+    return 1 if errors else 0
 
 
 def main() -> int:
@@ -62,6 +86,8 @@ def main() -> int:
         print(f"GraphQL: Could not resolve to an issue or pull request ({args[2]})",
               file=sys.stderr)
         return 1
+    if args[:2] == ["api", "graphql"] and "graphql" in data:
+        return graphql(args, data["graphql"])
     print(f"fake gh: unsupported command: {' '.join(args)}", file=sys.stderr)
     return 2
 

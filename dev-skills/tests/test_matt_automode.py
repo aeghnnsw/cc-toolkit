@@ -8,6 +8,8 @@ only blocking findings block, and a blocking finding in a focused check stops
 the ticket. A fix for a failing check gets a focused check, not a full review.
 Issue #446: the retrospective runs the cutoff script that dev-skills ships, in
 every repository.
+Issue #458: phase 4 runs the phase gate and the glossary term scripts, and a
+full test suite runs through the suite lock script.
 Agent behavior is checked by the scenario review in
 matt-automode-scenarios.md.
 """
@@ -150,6 +152,28 @@ class RetrospectiveRunsTheShippedCutoffScriptTest(unittest.TestCase):
                 self.assertIn("4. When step 1 found a record, run the script again.", steps)
                 self.assertNotIn("scripts/find-retrospective-cutoff.py", steps)
                 self.assertNotIn("When the repository has", steps)
+
+
+class ScriptsReplaceProseRulesTest(unittest.TestCase):
+    """Issue #458: each host copy runs the script that replaces a prose rule."""
+
+    def test_phase_four_runs_the_phase_gate_and_the_glossary_term_scan(self) -> None:
+        for host in HOSTS:
+            phase = between(host, "4. **Implement", "5. **Review")
+            root = PLUGIN_ROOT_PATHS[host]
+            with self.subTest(host=host):
+                self.assertIn(f'`python3 "{root}/scripts/phase_gate.py" --ticket <N>`', phase)
+                self.assertIn(f'`python3 "{root}/scripts/avoid_terms.py" --base <comparison commit>`',
+                              phase)
+                self.assertNotIn("search new prose", phase)
+
+    def test_full_suites_run_through_the_suite_lock(self) -> None:
+        for host in HOSTS:
+            briefs = between(host, "## Sub-agent briefs", "## Finish")
+            root = PLUGIN_ROOT_PATHS[host]
+            with self.subTest(host=host):
+                self.assertIn(f'`python3 "{root}/scripts/run_suite.py" -- <suite command>`', briefs)
+                self.assertNotIn("Allow only one full test suite at a time", briefs)
 
 
 if __name__ == "__main__":

@@ -28,10 +28,11 @@ does not set the minimum for installed plugins.
 
 | Component | Declared minimum | Python dependencies and exceptions |
 | --- | --- | --- |
-| [Root package validator](scripts/validate_packages.py), [retrospective helper](scripts/retro_sessions.py), and root tests | 3.11 | Standard library, including `tomllib`. |
+| [Root package validator](scripts/validate_packages.py) and root tests | 3.11 | Standard library, including `tomllib`. |
 | [Core Hooks](core-hooks/scripts/safety_guard.py) | 3.8 | Standard library, except [`chime` for sound notifications](core-hooks/scripts/system_notification.py). |
 | [Productivity Skills: GTD SQL renderer](productivity-skills/scripts/gtd_sql.py) | 3.11 | Standard library. The connected Supabase tool executes the prepared SQL. |
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
+| [Dev Skills: retrospective session script](dev-skills/scripts/retro_sessions.py) | 3.9 | Standard library. |
 | Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
 | [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
 | [PyMOL Skills: MCP bridge](pymol-skills/pymol_mcp_server.py) | 3.10 | `mcp[cli]>=1.0.0,<2`. |
@@ -275,6 +276,7 @@ that matches your change from the repository root:
 | --- | --- |
 | Any change | `git diff --check` |
 | Documentation | Check accuracy, relative links, and referenced paths. |
+| Markdown prose | `python3 dev-skills/scripts/avoid_terms.py --base origin/master`. Where a listed line names a glossary concept, use the glossary term. |
 | A skill | Check its frontmatter and invocation guidance. |
 | A plugin file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
 | A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
@@ -345,6 +347,12 @@ The `productivity-skills` suite needs `uv` and PostgreSQL tools (`initdb`,
 The `dev-skills` suite takes about 3 to 4 minutes on an idle machine. When
 other test runs share the machine, it can take up to 8 minutes. More than
 half of the time is in `dev-skills/tests/test_codex_critic.py`.
+
+To run a full suite, put `python3 dev-skills/scripts/run_suite.py --` before
+its command. The script lets one full suite run at a time in all worktrees
+of the repository. It reports a pass recorded for the same clean tree
+instead of a new run, and it prints the failing tests and the exit status
+last.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov. Under a `python3` without them, these

@@ -87,6 +87,11 @@ class FindRetrospectiveCutoffTests(unittest.TestCase):
         self.assert_cutoff({"comments": [comments], "merged": [424, 500]},
                            "2026-11-18T16:26:08.234Z PR #424")
 
+    def test_a_time_that_does_not_exist_does_not_count(self):
+        comments = [comment(501, record("2026-11-31T00:00:00Z")), comment(444, PR_444)]
+        self.assert_cutoff({"comments": [comments], "merged": [444, 501]},
+                           "2026-11-21T05:16:55Z PR #444")
+
     def test_only_records_on_merged_prs_count(self):
         issue = comment(294, "Navigation retrospective of the #314 run.\n\n"
                              "**Reviewed through:** 2026-11-22T00:00:00Z\n")
