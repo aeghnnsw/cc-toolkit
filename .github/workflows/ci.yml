@@ -1,0 +1,75 @@
+name: CI
+
+# One job runs the package validator, the root tests, and the plugin test suites on each pull request.
+# The commands match the Verification table in CONTRIBUTING.md.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The default ref is the merge of the pull request into its target, so the validator compares the
+      # merged result with the current master.
+      - name: Check out the merge result
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch master
+        run: git fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # zsh runs the zsh cases of the Core Hooks and Dev Skills suites. The productivity-skills suite needs
+      # initdb, pg_ctl, and psql; the runner installs PostgreSQL outside PATH. A missing tool fails here,
+      # so that no suite skips its cases.
+      - name: Install the test tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q zsh
+          ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
+
+      - name: Check the test tools
+        run: command -v git lsof python3 uv zsh initdb pg_ctl psql
+
+      - name: Package validator
+        if: ${{ !cancelled() }}
+        run: uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
+
+      - name: Root tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Core Hooks tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
+
+      - name: Creator Skills tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s creator-skills/tests -p 'test_*.py'
+
+      - name: Dev Skills tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'
+
+      - name: PyMOL Skills tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
+
+      - name: Productivity Skills tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'
+
+      - name: Task Loop tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'
