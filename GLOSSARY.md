@@ -382,3 +382,35 @@ _Avoid_: Memory file
 An issue that a navigation retrospective files so that a human can choose
 whether to make a proposed change.
 _Avoid_: Retro follow-up
+
+## Review language
+
+**Comparison commit**:
+The fixed commit that a code review compares a ticket's change with. The
+review reads every change since that commit.
+_Avoid_: Review base, base SHA
+
+**Full review**:
+The first code review of a ticket's change. It reads the whole change since
+the comparison commit, against the repository's standards and the ticket.
+_Avoid_: Broad review, review swarm
+
+**Focused check**:
+A review of one fix. It reads only the changes of the fix and the findings or
+the failing check that the fix closes. It confirms that the fix closes them and
+adds no blocking finding. It is not a second full review.
+_Avoid_: Re-review, second review
+
+**Blocking finding**:
+A review finding that stops the merge until a fix closes it: a regression that
+the reviewer shows at the head, a requirement of the ticket that the change
+misses, a repository rule that the reviewer cites and the change breaks, or
+shipped text that the change makes false. A problem that already exists at
+the comparison commit is a blocking finding only when the ticket requires its
+fix.
+_Avoid_: Must-fix finding, critical finding
+
+**Safety check**:
+A check whose purpose is to stop an unsafe action, such as a hook that blocks
+a dangerous shell command. A safety check fails closed when it blocks the
+action in a case that it cannot decide.

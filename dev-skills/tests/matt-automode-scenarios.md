@@ -26,11 +26,13 @@ and later changes from issues #302, #305, #354,
 [#388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [#420](https://github.com/aeghnnsw/cc-toolkit/issues/420),
 [#421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
-[#432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
-[#409](https://github.com/aeghnnsw/cc-toolkit/issues/409). Issue #358 removes
+[#432](https://github.com/aeghnnsw/cc-toolkit/issues/432),
+[#409](https://github.com/aeghnnsw/cc-toolkit/issues/409), and
+[#475](https://github.com/aeghnnsw/cc-toolkit/issues/475). Issue #358 removes
 the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
 Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
-case 37. Issue #409 adds cases 38–40.
+case 37. Issue #409 adds cases 38–40. Issue #475 changes case 40 and adds
+cases 41–43.
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -177,8 +179,18 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     rebases T1, resolves a `CHANGELOG.md` conflict, and force-pushes head B.
 40. **Fix after the review.** As case 38, but phase 5 reviewed head A. Then
     a required check failed, and the run pushed a fix as head C. The fix
-    passed review against the same comparison commit, and the required
-    checks passed on head C.
+    passed a focused check, and the required checks passed on head C.
+41. **Blocking finding in the focused check.** The full review of ticket T1
+    found two regressions, each with a failing run. The run fixed them as
+    head B. The focused check of the fix diff shows a new regression with a
+    failing run at head B. The orchestrator wants a second full review.
+42. **Old problem in the full review.** Ticket T1 changes a command hook.
+    The full review reports one regression with a failing run. It also
+    reports a dangerous command that the ticket does not name and that the
+    hook allows at the comparison commit too, with a reproduction, and a
+    Standards finding that prefers another helper name and cites no rule.
+43. **Fix for a failing check.** PR #41 for ticket T1 is open after phase 5.
+    A required lint check fails. The run pushes a fix as head C.
 
 ## Expected results
 
@@ -224,6 +236,9 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Merge with no record on the PR | Get the full 40-character head SHA with `gh pr view 41 --json headRefOid --jq .headRefOid`. Post the phase 5 review record for that head with `gh pr review 41 --comment`. Then run `gh pr merge 41 --squash --match-head-commit <head SHA>`. | Merging with no record for the head on the PR; a merge without `--match-head-commit`; a short SHA. | The PR review that names the comparison commit, the full head SHA, the Standards and Spec results, the fixes, and the test results; then the merged PR link. |
 | Rebase after the record | Check the resolved file and the versions that Git merged without conflict. Wait for the required checks on head B. Get the SHA of head B, post a new record for head B that states what changed since head A, and merge with `--match-head-commit` on head B. | Merging head B on the record for head A; merging with the SHA of head A. | Both records on the PR, the second with the SHA of head B and the rebase change, and the merge command with that SHA. |
 | Fix after the review | Get the SHA of head C. Post the phase 5 review record for head C. Name head A as the commit that phase 5 reviewed, and state the fix since head A. Then merge with `--match-head-commit` on head C. | A record for head C that does not name head A or the fix; merging with the SHA of head A. | The record with the SHAs of heads A and C and the fix, and the merge command with the SHA of head C. |
+| Blocking finding in the focused check | Stop T1 without a merge, keep the branch, and report the new regression with its failing run. Continue independent tickets. | A second full review; another fix and check round; merging T1. | The focused check's finding and failing run, the kept branch, and the report. |
+| Old problem in the full review | Fix the regression, commit, pass the affected checks, and run one focused check of the fix. List the old hook gap and the naming finding with a reason in the review record. Open or reuse an issue for the hook gap. | Fixing the hook gap or the name in T1; a second full review. | The review record with each finding that does not block and its reason, the issue link, and the focused check result. |
+| Fix for a failing check | Give the fix one focused check of its diff and the lint failure. When it finds no blocking finding and the checks pass on head C, post the record for head C with the focused check, then merge with `--match-head-commit` on head C. | A new full review; merging before the focused check and the checks pass. | The focused check result in the record for head C, the passing checks, and the merge command with the SHA of head C. |
 
 ## Validation limits
 
@@ -234,6 +249,28 @@ release contracts; it does not enforce agent behavior. Record actual review
 outcomes separately from these expected results.
 
 ## Review record
+
+### 2026-11-21, issue #475
+
+**Static checks.** `test_matt_automode.py` now requires in every copy that
+phase 5 runs one full review and one focused check, names the findings that
+block, lists the others, and stops the ticket on a blocking finding from the
+focused check. It also requires that a fix for a failing check gets a focused
+check, that no copy asks for review of every code change, that phase 2 makes
+a safety check fail closed, and that the review record names the focused
+checks. Run on the earlier skill text, these checks fail (31 failed
+subtests). All checks pass after the change.
+
+**Round 1.** One fresh agent read the three copies and cases 38–43 without
+the expected results. It gave the expected actions for all six cases, the
+same for each host. It reported that the skill did not say which rule wins
+when a problem at the comparison commit is also a missed ticket requirement,
+and that a stopped ticket did not let independent tickets continue. Phase 5
+now says that such a problem blocks only when the ticket requires its fix,
+and that independent tickets continue. Its other notes are about text that
+this change does not touch.
+
+These were simulated instruction reviews. No full automode workflow ran.
 
 ### 2026-11-21, issue #409
 
