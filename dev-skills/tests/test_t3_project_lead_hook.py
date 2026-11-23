@@ -593,6 +593,8 @@ class GtdInboxTests(HookCase):
         prefix = "uv run --no-project --python '>=3.11' python"
         allowed = (("claude", "Bash", {"command": f"{prefix} {self.script} --config {self.private}/b.json read "
                                                   "--kind inbox --limit 50"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.script} --config {self.private}/b.json uuid "
+                                                  "--count 2"}),
                    ("claude", "Bash", {"command": f"uv run -q --no-cache --no-project --python=3.13 python3 "
                                                   f"'{self.script}' apply {self.private}/held.json"}),
                    ("codex", "Bash", {"command": f"uv run --offline --quiet --no-project --python '>=3.11' "
