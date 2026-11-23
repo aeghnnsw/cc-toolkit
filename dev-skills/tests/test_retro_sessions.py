@@ -313,7 +313,62 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(set(manifest["repository"]["roots"]), {str(main), str(external)})
         self.assertEqual(manifest["counts"]["skipped_sources"], 2)
         self.assertEqual(summary["status"], "partial")
-        self.assertEqual(manifest["diagnostics"][0]["code"], "missing_cwd")
+        # The foreign folder is missing and beside the linked worktree.
+        self.assertEqual([item["code"] for item in manifest["diagnostics"]], ["removed_worktree", "missing_cwd"])
+
+    def linked_worktree(self):
+        """Register a linked worktree and return it with a missing folder beside it."""
+        message = self.base / "commit-message.txt"
+        message.write_text("Initialize fixture\n")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=Fixture", "-c",
+                        "user.email=fixture@example.invalid", "commit", "--allow-empty", "-q", "-F", str(message)], check=True)
+        registered = self.base / "worktrees" / "live"
+        subprocess.run(["git", "-C", str(self.repo), "worktree", "add", "-q", "--detach", str(registered)], check=True)
+        return registered, registered.parent / "removed"
+
+    def test_removed_worktree_session_is_diagnosed_then_selected_with_worktree_option(self):
+        _, removed = self.linked_worktree()
+        source = self.transcript(self.claude, "removed/session.jsonl", [
+            self.claude_message("in a subfolder", cwd=str(removed / "dev-skills")),
+            self.claude_message("in the worktree", cwd=str(removed))])
+        summary, manifest, selected, _ = self.artifacts(self.run_cli("--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual((summary["status"], selected), ("partial", []))
+        self.assertEqual(manifest["diagnostics"], [{
+            "path": str(source), "host": "claude", "code": "removed_worktree", "line": 1, "worktree": str(removed),
+            "message": "Pass this worktree path with --worktree to select these records.",
+            "count": 2, "lines": [1, 2]}])
+        self.assertIn("--worktree", manifest["limitations"][0])
+        # The option selects the sessions of each host under the removed path.
+        self.transcript(self.codex, "removed.jsonl", [
+            {"type": "session_meta", "payload": {"cwd": str(removed)}},
+            {"type": "response_item", "timestamp": "2026-01-02T12:00:00Z", "payload": {
+                "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Codex"}]}}])
+        antigravity = self.base / "antigravity"
+        self.antigravity_database(antigravity, [self.antigravity_conversation(
+            antigravity, "conv-removed", [str(removed)], [self.antigravity_step(0, "USER_INPUT", "Antigravity")])])
+        self.output = self.base / "with-worktree"
+        summary, manifest, _, digests = self.artifacts(self.run_cli(
+            "--antigravity-root", str(antigravity), "--worktree", str(removed), "--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual(summary["status"], "ok")
+        self.assertEqual(sorted(event["text"] for digest in digests for event in digest["events"]),
+                         ["Antigravity", "Codex", "in a subfolder", "in the worktree"])
+        self.assertEqual(manifest["repository"]["added_worktrees"], [str(removed)])
+        self.assertIn(str(removed), manifest["repository"]["roots"])
+
+    def test_existing_or_unrelated_cwd_and_records_outside_the_window_get_no_worktree_diagnostic(self):
+        registered, removed = self.linked_worktree()
+        unregistered = registered.parent / "unregistered"
+        unregistered.mkdir()
+        self.transcript(self.claude, "existing.jsonl", [self.claude_message("exists", cwd=str(unregistered))])
+        # The main checkout's parent folder holds no linked worktree.
+        self.transcript(self.claude, "elsewhere.jsonl", [
+            self.claude_message("other parent", cwd=str(self.base / "elsewhere" / "gone"))])
+        self.transcript(self.claude, "old.jsonl", [
+            self.claude_message("before the window", cwd=str(removed), timestamp="2026-01-01T00:00:00Z")])
+        summary, manifest, selected, _ = self.artifacts(self.run_cli(
+            "--after", "2026-01-02T00:00:00Z", "--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual((summary["status"], selected, manifest["diagnostics"]), ("ok", [], []))
+        self.assertEqual(manifest["counts"]["foreign_records"], 3)
 
     def test_default_active_and_per_host_explicit_roots_are_deduplicated(self):
         fixture_home = self.base / "home"
