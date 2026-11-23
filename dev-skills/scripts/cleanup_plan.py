@@ -19,11 +19,11 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   that script fails, keep every worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
 - A branch is merged when a merged PR of the branch has the branch tip as its
-  head commit (headRefOid). A branch also has no commit of its own, and is
-  merged, when its tip is in the Default Branch or is the head commit of any
-  merged PR (gh api repos/{owner}/{repo}/commits/<tip>/pulls). Keep such a
-  branch when its reflog shows that it was created less than 60 minutes ago,
-  or when the reflog cannot be read. The reflog of a remote branch shows when
+  head commit (headRefOid). The plan also treats a branch as merged when its
+  tip is in the Default Branch or is the head commit of any merged PR (gh api
+  repos/{owner}/{repo}/commits/<tip>/pulls): such a branch has no commit of
+  its own. Keep such a branch when its reflog shows that it was created less
+  than 60 minutes ago, or when the reflog cannot be read. The reflog of a remote branch shows when
   this clone first had it. Keep every other branch, and each branch whose PR
   state cannot be read.
 - Inspect the planning folders: the entries of --planning-location in the main
@@ -138,7 +138,7 @@ class Planner:
         return git(self.repo, "merge-base", "--is-ancestor", commit, self.default_ref,
                    check=False) is not None
 
-    def created(self, ref: str) -> tuple[int | None, str | None]:
+    def minutes_since_creation(self, ref: str) -> tuple[int | None, str | None]:
         """Return (the minutes since the oldest reflog entry of ref, None), or (None, the error)."""
         output = git(self.repo, "reflog", "show", "--date=unix", "--format=%gd", ref, "--",
                      check=False)
@@ -185,7 +185,7 @@ class Planner:
                 return KEEP, not_merged
             where = f"is the head commit of merged PR #{heads[0]}"
         reason = f"no commit of its own: the tip {tip[:7]} {where}{others}"
-        minutes, error = self.created(ref)
+        minutes, error = self.minutes_since_creation(ref)
         if error is not None:
             return KEEP, f"{reason}, but its creation time cannot be read: {error}"
         if minutes < WINDOW_MINUTES:

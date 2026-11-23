@@ -5,7 +5,7 @@ planning folders (#358), the worktrees that cleanup keeps (#419), and planning
 folders in worktrees (#421). Cases 17-19 come from issue #543: the worktrees
 that hold a lead state of t3-project-lead. Cases 20-25 come from issue #528:
 branches with no commit of their own, and a worktree that contains another
-worktree; it also changed cases 7 and 16. Each check builds a temporary
+worktree. Issue #528 also changed cases 7, 16, and 18. Each check builds a temporary
 repository with a bare origin, runs the script with a fake gh (fake_gh.py),
 and reads the lines that it prints. The real live_worktrees.py runs, so most
 checks need lsof. Each class makes as few plan runs as it can, because each
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -100,7 +100,7 @@ class Repo:
                  old: bool = False, parent: Path | None = None) -> Path:
         """Add <parent>/<name> on a new branch from start, and push the branch.
 
-        The parent folder is trees/. An old branch has reflog entries of two
+        The parent folder is trees/ when parent is None. An old branch has reflog entries of two
         hours ago, so the plan reads it as created 120 minutes ago.
         """
         path = (parent or self.path / "trees") / name

@@ -130,7 +130,10 @@ Consequences:
   no merged PR has as its head, so it keeps a lead worktree. This comes from
   the repo-cleanup text; it was not tested. (Superseded: repo-cleanup keeps
   each worktree that holds a lead state, in every mode; read
-  [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).)
+  [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree). Superseded in
+  part by #528: repo-cleanup removes a clean branch with no commit of its own
+  after 60 minutes; read
+  [Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).)
 - The script cannot see T3 threads. The lead still records each wait itself
   with `wait`, and ends it with `done`.
 - No command imports `lead.md`. A live lead enters its open state once, with
@@ -216,7 +219,7 @@ reflog cannot be read. The live session check, and this 60-minute rule for
 a session that has just started, replace the rule that kept such a branch
 because a session may have just started there. The Default Branch case is
 needed too: new threads start at Default Branch commits, so without it the
-same `KEEP` lines would come back.
+same `KEEP` lines would appear again.
 
 More clean worktrees are now removal candidates, and a clean worktree can
 still hold work that Git ignores. Two rules keep that work:

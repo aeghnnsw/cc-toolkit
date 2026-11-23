@@ -27,11 +27,12 @@ that a calling workflow did not name. A user request can limit this scope.
 
 - Add `--main-only` when the repository documents its planning folder
   location in the main checkout. Add `--planning-location <folder>` when the
-  documented location is not `.scratch`. The plan inspects
-  `.scratch/<issue>-<slug>/` in the main checkout, in the current worktree,
-  and in each worktree that it would otherwise remove, and keeps a worktree
-  that holds a kept folder. With `--main-only`, it does not inspect the
-  current worktree, and it removes no folder outside the main checkout.
+  documented location is not `.scratch`. The plan inspects the planning
+  folders, `.scratch/<issue>-<slug>/` by default, in the main checkout, in
+  the current worktree, and in each worktree that it would otherwise remove,
+  and keeps a worktree that holds a kept folder. With `--main-only`, it does
+  not inspect the current worktree, and it removes no folder outside the main
+  checkout.
 - Add `--remote <name>` when the upstream remote is not `origin`.
 - If the command fails, remove nothing and report the error.
 
@@ -43,11 +44,12 @@ lead state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`,
 also with `--main-only`. It keeps a worktree whose folder contains another
 worktree that Git lists. It keeps a worktree with a detached HEAD or
 uncommitted changes. A branch is merged when a merged PR of the branch has
-the branch tip as its head commit (`headRefOid`). A branch also has no
-commit of its own, and is merged, when its tip is in the Default Branch or is
-the head commit of any merged PR. The plan keeps such a branch when its
-reflog shows that it was created less than 60 minutes ago. When a check
-cannot run, the plan keeps the item and gives the error as the reason.
+the branch tip as its head commit (`headRefOid`). The plan also treats a
+branch as merged when its tip is in the Default Branch or is the head commit
+of any merged PR: such a branch has no commit of its own. The plan keeps such
+a branch when its reflog shows that it was created less than 60 minutes ago.
+When a check cannot run, the plan keeps the item and gives the error as the
+reason.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent
