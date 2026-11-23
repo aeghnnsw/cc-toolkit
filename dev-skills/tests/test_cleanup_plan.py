@@ -3,11 +3,12 @@
 Cases 1-16 come from the scenario review of repo-cleanup before issue #459:
 planning folders (#358), the worktrees that cleanup keeps (#419), and planning
 folders in worktrees (#421). Cases 17-19 come from issue #543: the worktrees
-that hold a lead state of t3-project-lead. Each check builds a temporary repository with a
-bare origin, runs the script with a fake gh (fake_gh.py), and reads the lines
-that it prints. The real live_worktrees.py runs, so most checks need lsof. One
-plan run serves the cases of each class, because each run takes some seconds.
-No check touches another repository.
+that hold a lead state of t3-project-lead. Each check builds a temporary
+repository with a bare origin, runs the script with a fake gh (fake_gh.py),
+and reads the lines that it prints. The real live_worktrees.py runs, so most
+checks need lsof. Each class makes as few plan runs as it can, because each
+run takes some seconds: one, or one for each mode. No check touches another
+repository.
 """
 
 from __future__ import annotations

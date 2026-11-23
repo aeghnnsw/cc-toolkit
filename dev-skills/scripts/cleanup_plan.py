@@ -50,6 +50,7 @@ import subprocess
 import sys
 from typing import NoReturn
 
+# Python puts the folder of this script on sys.path, so the sibling module loads.
 from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
@@ -171,7 +172,7 @@ class Planner:
         return KEEP, f"issue #{number} has state {state}"
 
 
-def lead_state(root: str) -> str | None:
+def lead_state_reason(root: str) -> str | None:
     """Return the reason to keep a worktree that holds a lead state, or None.
 
     An error other than a missing file keeps the worktree, because the plan
@@ -287,7 +288,7 @@ def main() -> None:
             merged = (f"; {planner.branch(pr_head(branch), head)[1]}"
                       if branch and branch != default else "")
             plan[path] = (KEEP, f"the current session runs here{merged}")
-        elif (lead := lead_state(path)) is not None:
+        elif (lead := lead_state_reason(path)) is not None:
             plan[path] = (KEEP, lead)
         elif live_error is not None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
