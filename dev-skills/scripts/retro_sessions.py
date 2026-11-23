@@ -6,6 +6,7 @@ from collections import deque
 from contextlib import closing
 from datetime import datetime, timezone
 from fractions import Fraction
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -68,6 +69,28 @@ def timestamp(value):
     parsed = datetime.fromisoformat(f"{clock}{hours or '+00'}:{minutes or '00'}")
     delta = parsed - datetime(1970, 1, 1, tzinfo=timezone.utc)
     return delta.days * 86400 + delta.seconds + Fraction(int(digits or "0"), 10 ** len(digits or ""))
+
+
+@lru_cache(maxsize=None)
+def folder_missing(folder):
+    """Return True when FOLDER does not exist, and False when it exists or cannot be checked."""
+    try:
+        return not folder.exists()
+    except OSError:
+        return False
+
+
+def removed_worktree(path, linked_parents):
+    """Return the removed worktree folder that holds the resolved PATH, or None.
+
+    The candidate is PATH or its nearest ancestor whose parent folder holds a
+    linked worktree that Git lists. The candidate is removed when it does not
+    exist.
+    """
+    for folder in (path, *path.parents):
+        if folder != folder.parent and folder.parent in linked_parents:
+            return folder if folder_missing(folder) else None
+    return None
 
 
 def write_json(path, value):
@@ -212,11 +235,15 @@ def timeline_line(line, time, event, tool, gap, max_text):
     return "\t".join([str(line), time, kind, tool, ",".join(flags) or "-", text]) + "\n"
 
 
-def extract(stream, host, repository_roots, after, through, max_events, max_text, cwd=None):
+def extract(stream, host, repository_roots, after, through, max_events, max_text, cwd=None,
+            linked_parents=frozenset()):
     """Return the bounded digest and the timeline of one transcript.
 
     CWD is the starting working folder. Antigravity records carry no cwd, so
-    the caller gives the matched workspace folder.
+    the caller gives the matched workspace folder. LINKED_PARENTS holds the
+    parent folder of each linked worktree that Git lists. A foreign record in
+    the window whose cwd is in a missing folder in one of these parent folders
+    gets a removed_worktree diagnostic.
     """
     timeline = []
     tool_names = {}
@@ -228,7 +255,7 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
     diagnostics = []
     diagnostic_index = {}
     def diagnose(code, line, **detail):
-        key = (code, detail.get("type"))
+        key = (code, detail.get("type"), detail.get("worktree"))
         if key not in diagnostic_index:
             item = {"code": code, "line": line, **detail}
             diagnostic_index[key] = item
@@ -241,6 +268,16 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             lines.append(line)
         else:
             item["omitted_line_references"] = item.get("omitted_line_references", 0) + 1
+
+    def record_instant(record):
+        """Return the time of RECORD as exact seconds, or None when it is invalid."""
+        try:
+            return timestamp(record[time_field])
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return None
+
+    def in_window(instant):
+        return (after is None or instant > after) and instant <= through
 
     ignored_types = {}
     counts = {"records": 0, "foreign_records": 0, "outside_window_records": 0,
@@ -288,14 +325,18 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             continue
         if not any(current_path.is_relative_to(root) for root in repository_roots):
             counts["foreign_records"] += 1
+            worktree = removed_worktree(current_path, linked_parents)
+            instant = None if worktree is None else record_instant(record)
+            if instant is not None and in_window(instant):
+                diagnose("removed_worktree", line, worktree=str(worktree),
+                         message="Pass this worktree path with --worktree to select these records.")
             continue
-        try:
-            instant = timestamp(record[time_field])
-        except (ValueError, TypeError, KeyError, AttributeError):
+        instant = record_instant(record)
+        if instant is None:
             selected = True
             diagnose("invalid_timestamp", line)
             continue
-        if (after is not None and instant <= after) or instant > through:
+        if not in_window(instant):
             counts["outside_window_records"] += 1
             continue
         selected = True
@@ -453,6 +494,12 @@ def main(argv=None):
         "Antigravity reads ~/.gemini/antigravity-cli, ~/.gemini/antigravity, and "
         "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
         "folder. The manifest lists each root with its status. "
+        "The repository roots are the worktrees that git worktree list shows and "
+        "each --worktree path. Without --worktree, the script checks each Claude "
+        "Code or Codex record in the window whose cwd is outside the repository "
+        "roots. When that cwd is in a missing folder in the same parent folder as "
+        "a linked worktree that Git lists, the source gets a removed_worktree "
+        "diagnostic. Its worktree field names the folder to pass with --worktree. "
         f"With --after, a source modified {MTIME_STEP_SECONDS} s or more before that "
         "cutoff is not copied or read; counts.unchanged_sources counts it. "
         "Each selected source has a digest and a timeline: one tab-separated "
@@ -470,6 +517,9 @@ def main(argv=None):
     parser.add_argument("--after", help=(
         "exclusive cutoff in the forms of --through, such as a Reviewed through cutoff "
         "copied from a retrospective record (default: no lower bound)"))
+    parser.add_argument("--worktree", action="append", type=Path, default=[], metavar="PATH", help=(
+        "worktree path that Git no longer lists, such as one that T3 Code removed; repeatable; "
+        "adds the path to the repository roots"))
     parser.add_argument("--max-events", type=int, default=60, help="head/tail events per digest (default: 60)")
     parser.add_argument("--max-text", type=int, default=300, help="characters per displayed text field (default: 300)")
     parser.add_argument("--claude-root", action="append", type=Path, default=[],
@@ -522,11 +572,17 @@ def main(argv=None):
             text=True, stderr=subprocess.PIPE)
     except (OSError, subprocess.CalledProcessError):
         parser.error("--repo must name an accessible Git checkout")
-    repository_roots = list(dict.fromkeys(Path(field[9:]).resolve()
-                                         for field in worktrees.split("\0") if field.startswith("worktree ")))
-    if not repository_roots or "bare" in worktrees.split("\0"):
+    git_roots = list(dict.fromkeys(Path(field[9:]).resolve()
+                                  for field in worktrees.split("\0") if field.startswith("worktree ")))
+    if not git_roots or "bare" in worktrees.split("\0"):
         parser.error("--repo must name a non-bare Git checkout")
-    repo = repository_roots[0]
+    # Git lists the main worktree first. Its parent folder often holds
+    # unrelated projects, so the script looks for a removed worktree only in
+    # the parent folders of linked worktrees.
+    repo = git_roots[0]
+    linked_parents = frozenset(root.parent for root in git_roots[1:])
+    added_worktrees = list(dict.fromkeys(path.expanduser().resolve() for path in args.worktree))
+    repository_roots = list(dict.fromkeys(git_roots + added_worktrees))
     output = args.output.expanduser().resolve()
     if args.output.exists() or args.output.is_symlink():
         parser.error("--output must be a new path")
@@ -596,7 +652,7 @@ def main(argv=None):
                     continue
                 with (output / copy).open("rb") as stream:
                     extracted = extract(stream, host, repository_roots, after, through,
-                                        args.max_events, args.max_text, workspace)
+                                        args.max_events, args.max_text, workspace, linked_parents)
                 extracted["diagnostics"] = copy_diagnostics + extracted["diagnostics"]
                 for key in totals:
                     totals[key] += extracted["counts"][key]
@@ -622,11 +678,16 @@ def main(argv=None):
     status = "partial" if diagnostic_count else "ok"
     manifest = {"schema_version": 1, "status": status,
                 "repository": {"requested": str(args.repo.resolve()), "main": str(repo),
-                               "roots": [str(root) for root in repository_roots]},
+                               "roots": [str(root) for root in repository_roots],
+                               "added_worktrees": [str(path) for path in added_worktrees]},
                 "window": {"after": args.after, "through": through_text},
                 "limits": {"max_events": args.max_events, "max_text": args.max_text},
                 "roots": roots, "sources": sources, "diagnostics": diagnostics,
-                "limitations": ["Removed external worktrees cannot be attributed without current Git registration.",
+                "limitations": ["A worktree that Git no longer lists is read only when --worktree names it. "
+                                "Without that option, a Claude Code or Codex record in the window can get a "
+                                "removed_worktree diagnostic. It gets one when its cwd is in a missing folder "
+                                "in the same parent folder as a linked worktree that Git lists. Other removed "
+                                "worktrees and Antigravity conversations get none.",
                                 "Copies are measured byte prefixes, not atomic filesystem snapshots.",
                                 f"A source modified {MTIME_STEP_SECONDS} s or more before --after is not read; "
                                 f"a record more than {MTIME_STEP_SECONDS} s later than its file's modification "
