@@ -37,13 +37,14 @@ Output. The command's stdout and stderr stream together as the command runs.
 Then the script prints a summary: the failing test IDs and the totals lines of
 unittest and pytest output, the lock wait, and last the exit status. For other
 output, the summary has no failing tests or totals. The lock wait is one line,
-only after the script waited for the suite lock: "Suite lock wait: <N> s, held by
-PID <pid> (<command>) in <folder>", with the wait time in whole seconds and the
-holder that the stderr line names. When a later run held the lock last, the
-line adds ", and last by PID <pid> (<command>) in <folder>". When the first
-holder had not written its details, the line names the last holder; when
-neither had, it names "another run". A run that reuses a recorded pass prints
-no summary; after a wait, it prints the lock wait as its last line.
+only after the script waited for the suite lock:
+"Suite lock wait: <N> s, held by PID <pid> (<command>) in <folder>", with the
+wait time in whole seconds and the holder that the stderr line names. When a
+later run held the lock last, the line adds
+", and last by PID <pid> (<command>) in <folder>". When the first holder had
+not written its details, the line names the last holder; when neither had, it
+names "another run". A run that reuses a recorded pass prints no summary;
+after a wait, it prints the lock wait as its last line.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -119,10 +120,10 @@ def describe(holder: dict | None) -> str:
     return f"PID {holder['pid']} ({holder['command']}) in {holder['folder']}"
 
 
-def suite_lock(common: Path, command: list[str], folder: str) -> Path:
-    """Return the lock file of a suite, named from the key of its recorded pass."""
-    key = json.dumps({"command": command, "folder": folder}, sort_keys=True)
-    return common / f"run-suite-{hashlib.sha256(key.encode()).hexdigest()[:16]}.lock"
+def suite_lock_path(common: Path, suite: dict) -> Path:
+    """Return the lock file of a suite: a short hash of its command and folder."""
+    digest = hashlib.sha256(json.dumps(suite, sort_keys=True).encode()).hexdigest()
+    return common / f"run-suite-{digest[:16]}.lock"
 
 
 def take_lock(path: Path, command: list[str]) -> tuple[TextIO, str | None]:
@@ -237,17 +238,19 @@ def main() -> None:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("give a command after --")
-    common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    common_dir = git("rev-parse", "--path-format=absolute", "--git-common-dir")
     top = git("rev-parse", "--show-toplevel")
-    if not common or not top:
+    if not common_dir or not top:
         print("run_suite: not inside a Git checkout", file=sys.stderr)
         sys.exit(2)
-    common = Path(common)
+    common = Path(common_dir)
     folder = Path(os.path.relpath(Path.cwd().resolve(), Path(top).resolve())).as_posix()
+    # A suite is a command in a folder: the key of its lock and of its recorded pass.
+    suite = {"command": command, "folder": folder}
 
-    lock, wait_line = take_lock(suite_lock(common, command, folder), command)
+    lock, wait_line = take_lock(suite_lock_path(common, suite), command)
     tree = clean_tree()
-    key = {"tree": tree, "command": command, "folder": folder}
+    key = {"tree": tree, **suite}
     if tree and not args.rerun:
         for entry in reversed(load_passes(common / PASSES)):
             if all(entry.get(name) == value for name, value in key.items()):

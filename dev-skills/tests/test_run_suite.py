@@ -109,9 +109,10 @@ class RunSuiteTests(unittest.TestCase):
     def log_lines(self) -> list[str]:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
-    def suite_lock(self, command: list[str], folder: str = ".") -> Path:
+    def suite_lock_path(self, command: list[str], folder: str = ".") -> Path:
         """Return the lock file of a suite, as run_suite.py names it."""
-        return RUN_SUITE.suite_lock(self.repo / ".git", command, folder)
+        return RUN_SUITE.suite_lock_path(self.repo / ".git",
+                                         {"command": command, "folder": folder})
 
     def test_same_suite_waits_then_reuses_the_pass_and_another_folder_does_not_wait(self):
         # A holds its suite lock until the release file exists. B has A's
@@ -133,7 +134,7 @@ class RunSuiteTests(unittest.TestCase):
         self.assertIn(f"PID {first.pid} (", waiting)
         self.assertIn("-c", waiting)
         self.assertRegex(waiting, r"started \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
-        self.assertNotIn("waiting", (self.tmp / "c.err").read_text())
+        self.assertNotIn("waiting for the suite lock", (self.tmp / "c.err").read_text())
 
         # B reused A's pass, so the wait line is its last line, for tail.
         out = {name: (self.tmp / f"{name}.out").read_text().splitlines() for name in "abc"}
@@ -150,7 +151,7 @@ class RunSuiteTests(unittest.TestCase):
         (self.repo / "tests" / "test_root.py").write_text(ROOT_TESTS)
         dev_skills = [sys.executable, "-m", "unittest", "discover", "-s", "dev-skills/tests",
                       "-p", "test_*.py"]
-        with open(self.suite_lock(dev_skills), "w") as lock:
+        with open(self.suite_lock_path(dev_skills), "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             result = self.run_suite("--", sys.executable, "-m", "unittest", "discover",
                                     "-s", "tests", "-p", "test_*.py")
@@ -188,7 +189,7 @@ class RunSuiteTests(unittest.TestCase):
                  (None, "PID 22 (last suite) in /last")]
         self.release.touch()
         for index, (details, holders) in enumerate(cases):
-            with open(self.suite_lock(self.hold()), "w") as lock:
+            with open(self.suite_lock_path(self.hold()), "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 lock.write(json.dumps(details) if details else "")
                 lock.flush()

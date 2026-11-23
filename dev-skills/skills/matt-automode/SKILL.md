@@ -229,10 +229,11 @@ Give each agent a self-contained task, owned files, and relevant planning-file
 sections by path and line. Keep plan and task-list tools in this session.
 Run each full test suite through
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/run_suite.py" -- <suite command>`, and put that
-command in each brief that runs one. It takes one lock for each suite, so two
-runs of the same suite run one at a time and different suites run in parallel.
-It reports a pass recorded for the same clean tree instead of a new run, and
-prints the failing tests and the exit status last. Do not pipe it into `tail`.
+command in each brief that runs one. It takes one lock for each suite: one
+command in one folder. So two runs of the same suite run one at a time, and
+different suites run in parallel. It reports a pass recorded for the same clean
+tree instead of a new run, and prints the failing tests and the exit status
+last. Do not pipe it into `tail`.
 Focused tests do not need it.
 State the repository search rules in reviewer briefs, including excluded paths.
 Require measured evidence for claims about external tool behavior.
