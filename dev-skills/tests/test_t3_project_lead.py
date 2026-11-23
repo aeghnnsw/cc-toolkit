@@ -7,7 +7,9 @@ rules for every task, the start of every turn, and the worker budget. Issue
 merge. Issue #520 limits the lead to its own actions, lets it choose how to
 check a result, and adds the close-out worker and the lead hook. Issue #530
 moves the lead state into the script's commands and drops the time limit; the
-state commands have their own tests in test_t3_project_lead_state.py. Agent behavior
+state commands have their own tests in test_t3_project_lead_state.py. Issue #493
+starts each task as soon as each task that it waits for is verified, with no
+batch wait and no worker limit. Agent behavior
 is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
 its own tests in test_t3_project_lead_hook.py.
 """
@@ -58,9 +60,13 @@ LEAD_ACTIONS = (
     "8. Keep agent captures of what waits on the user when your instructions ask for them. "
     "Write gtd-inbox files with your edit tool, not the shell.",
 )
-# Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, #520, and
-# #529. Each brief, the close-out brief too, tells its worker to add no GTD capture (#529).
+# Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, #493, #520,
+# and #529. Each brief, the close-out brief too, tells its worker to add no GTD capture (#529).
 NO_GTD_CAPTURE = '"Add no GTD capture; report what waits on the user."'
+# A task starts as soon as each task that it waits for is verified; no task waits for its batch
+# (#493).
+START_RULE = ("Start each planned task as soon as each task that it waits for is verified, also "
+              "while other workers run; do not wait for the rest of its batch.")
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -75,9 +81,13 @@ REQUIRED = {
     "plan": ["A task is one brief for one worker; it can cover several issues.",
              "Give a task that needs another task's result, or edits the same files, --after "
              "that task.",
+             START_RULE,
+             "A batch (--batch) only decides when its workers are closed out and settled.",
              "Text is at most 200 characters",
              "init <slug>, once, after the user approves the outcome"],
-    "dispatch": ["Start no second worker for work that already runs",
+    "dispatch": [START_RULE,
+                 "A due line names each task that is ready to start.",
+                 "Start no second worker for work that already runs",
                  'Start each worker with delegate_task and isolation "worktree".',
                  "Start every task this way, research and review tasks included. Never use your "
                  "host's native subagent tool.",
@@ -114,8 +124,13 @@ REQUIRED = {
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
                "Fix and check nothing yourself.",
-               "Run task verified <name>. Settle its worker only when a due line lists it."],
-    "closeout": ["From t3_project_lead.py brief, use only line 1 for matt-automode and the "
+               "Run task verified <name>. Settle its worker only when a due line lists it.",
+               START_RULE,
+               "The task verified output names each such task and its step.",
+               "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
+               "names."],
+    "closeout": ["--kind closeout, unless a due line names a planned one.",
+                 "From t3_project_lead.py brief, use only line 1 for matt-automode and the "
                  "budget.",
                  f"Write: {NO_GTD_CAPTURE}",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
@@ -140,6 +155,9 @@ FORBIDDEN_LINES = ("Fix a small non-scientific finding yourself",
 # Text that no step may print after #530: the lead state replaced lead.md, and a
 # brief names only a round limit.
 RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit")
+# Text that makes a task wait for its batch or for a free worker (#493). No step and no skill copy
+# may have it.
+BATCH_WAIT_TEXT = ("start together", "slot", "worker limit", "wave")
 
 
 def words(text: str) -> str:
@@ -253,6 +271,14 @@ class StepTests(unittest.TestCase):
             for retired in RETIRED_TEXT:
                 with self.subTest(step=name, text=retired):
                     self.assertNotIn(retired, words(step(name)))
+
+    def test_no_step_or_skill_copy_waits_for_a_batch_or_a_free_worker(self) -> None:
+        texts = {f"step {name}": words(step(name)) for name in STEPS}
+        texts |= {f"copy {host}": words(split_skill(host)[1]) for host in HOSTS}
+        for where, text in texts.items():
+            for term in BATCH_WAIT_TEXT:
+                with self.subTest(where=where, text=term):
+                    self.assertNotIn(term, text.lower())
 
     def test_start_without_a_lead_state_tells_how_to_create_one(self) -> None:
         self.assertIn("No lead state in ", step("start"))

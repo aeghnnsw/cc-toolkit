@@ -57,9 +57,11 @@ waiting, finished, or failed worker.
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
 check can pass or fail. A task is one brief for one worker; it can cover
-several issues. A batch is the set of tasks that you start together. Run only
-independent tasks in parallel. Give a task that needs another task's result,
-or edits the same files, --after that task.
+several issues. Give a task that needs another task's result, or edits the
+same files, --after that task. Start each planned task as soon as each task
+that it waits for is verified, also while other workers run; do not wait for
+the rest of its batch. A batch (--batch) only decides when its workers are
+closed out and settled.
 Decide reversible points yourself. Record the plan with these commands. Text
 is at most 200 characters; quote it with single quotes.
 init <slug>, once, after the user approves the outcome; outcome <text>;
@@ -72,6 +74,9 @@ scientific detail, and you keep only links.
 Next: t3_project_lead.py dispatch.
 """,
     "dispatch": """
+Start each planned task as soon as each task that it waits for is verified,
+also while other workers run; do not wait for the rest of its batch. A due
+line names each task that is ready to start.
 Start no second worker for work that already runs: check t3_thread_list with
 includeSubagents, and pull_request_list.
 Start each worker with delegate_task and isolation "worktree". Start every
@@ -150,12 +155,16 @@ worker.
 Give each finding to one follow-up worker, even a small one. Then what
 remains waits on the user. Fix and check nothing yourself.
 Run task verified <name>. Settle its worker only when a due line lists it.
-Next: t3_project_lead.py closeout when a due line lists a batch for a
-close-out. Otherwise dispatch, or report.
+Start each planned task as soon as each task that it waits for is verified,
+also while other workers run; do not wait for the rest of its batch. The task
+verified output names each such task and its step.
+Next: t3_project_lead.py dispatch or closeout, as task verified or a due line
+names. Otherwise report.
 """,
     "closeout": """
 Add one close-out task for the batch with task add <name> <title> --batch N
---kind closeout, and start its worker as t3_project_lead.py dispatch says.
+--kind closeout, unless a due line names a planned one. Start its worker as
+t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode and the
 budget. Write: "Add no GTD capture; report what waits on the user." Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
@@ -460,18 +469,40 @@ def move(task: dict, new: str, time: str, **fields) -> dict:
     return event
 
 
-def change_task_start(state, args, time):
-    task = find_task(state, args.name)
-    require(task, (PLANNED,), "task start")
+def start_refusal(state: dict, task: dict) -> str | None:
+    """Return why a planned task cannot start yet, or None when it can start now."""
     waiting = [other for other in task["after"] if not accepted(find_task(state, other))]
     if waiting:
-        raise Refused(f"{task['name']} waits for {', '.join(waiting)} to be verified")
+        return f"{task['name']} waits for {', '.join(waiting)} to be verified"
     if task["kind"] == "closeout":
         batch = task["batch"]
         if not batch_done(state, batch):
-            raise Refused(f"batch {batch} still has tasks that are not verified or cancelled")
+            return f"batch {batch} still has tasks that are not verified or cancelled"
         if not merged_prs(state, batch):
-            raise Refused(f"batch {batch} has no merged PR, so it needs no close-out")
+            return f"batch {batch} has no merged PR, so it needs no close-out"
+    return None
+
+
+def ready_lines(state: dict) -> list[str]:
+    """Name each planned task that can start now, with the step that starts it.
+
+    No task waits for its batch (#493). A close-out task needs the close-out brief, so its line
+    names the closeout step.
+    """
+    lines = []
+    for task in state["tasks"]:
+        if task["state"] == PLANNED and start_refusal(state, task) is None:
+            step = "closeout" if task["kind"] == "closeout" else "dispatch"
+            lines.append(f"{task['name']} is ready to start: run t3_project_lead.py {step} for it now.")
+    return lines
+
+
+def change_task_start(state, args, time):
+    task = find_task(state, args.name)
+    require(task, (PLANNED,), "task start")
+    reason = start_refusal(state, task)
+    if reason:
+        raise Refused(reason)
     task["worker"] = worker_link(args.worker)
     task["branch"] = link(args.branch, "branch") if args.branch else None
     task["started"] = time
@@ -527,7 +558,7 @@ def change_task_verified(state, args, time):
             other["state"], other["changed"] = CLOSED_OUT, time
         event["closed_out"] = [other["name"] for other in closed]
         message += f" Batch {task['batch']} is closed out: {', '.join(event['closed_out']) or 'no task'}."
-    return message, event
+    return " ".join([message, *ready_lines(state)]), event
 
 
 def change_task_settled(state, args, time):
@@ -696,6 +727,7 @@ def due_lines(state: dict) -> list[str]:
             prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
             lines.append(f"Batch {batch}: every task is verified; merged PRs {prs}. Run "
                          "t3_project_lead.py closeout.")
+    lines += ready_lines(state)
     for task in state["tasks"]:
         if task["state"] == SETTLED:
             continue
