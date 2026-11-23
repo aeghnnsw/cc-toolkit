@@ -15,6 +15,8 @@ the time limit of cases 15 and 17.
 Issue [#529](https://github.com/aeghnnsw/cc-toolkit/issues/529) adds the
 no-GTD-capture line to the briefs of cases 10, 13, 15, and 20.
 Issue [#493](https://github.com/aeghnnsw/cc-toolkit/issues/493) adds case 24.
+Issue [#516](https://github.com/aeghnnsw/cc-toolkit/issues/516) changes cases
+17 and 24, and adds case 25.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -100,6 +102,9 @@ with the commands of `t3_project_lead.py`, in
 24. **Ready task.** Tasks A, B, and C are in batch 1, and C has `--after A`.
     Workers A and B run. Worker A reports PASS. Its PR 95 merged, and CI
     passed. Worker B still runs.
+25. **PR waits on checks.** Matt-automode worker A opened PR 97 for issue 96.
+    Its last message gives the PR URL and the full head SHA, and says that
+    PR 97 waits on checks. The lead wakes.
 
 ## Expected results
 
@@ -121,14 +126,15 @@ with the commands of `t3_project_lead.py`, in
 | Planned tasks remain | Run the `dispatch` step for task C. | Running `finish` or deleting the lead folder; settling the lead thread. | The view that `start` prints and the `t3_thread_list` output. |
 | Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, the at-limit line, the no-GTD-capture line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget; a time limit. | The brief and task D in the lead state. |
 | Research task | Start a worker with `delegate_task` and isolation "worktree", with the read-only form of the brief and "You may start your own subagents. Keep your report short, and leave the detail in this thread." Read the detail in the worker's thread only when a check needs it. | Starting the research with the native subagent tool; asking the worker for a long report. | The `t3_thread_list` output with the worker thread, and the brief. |
-| Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, and the at-limit line. Tell the user that the worker ends its turn at the round limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit; a time limit. | The brief. |
+| Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, the PR-wait line, and the at-limit line. Tell the user that the worker ends its turn at the round limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit; a time limit. | The brief. |
 | Status question | Run the `start` step: read its view of the lead state, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
 | Worker waits on the user | Run the `answer` step for B in this turn: record B's item with `wait` for B's task and its 2 decisions, so that the "Waiting on you" list shows B's link and "2 decisions", with no topic. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions; giving a topic of a decision. | B's last message and its thread link. |
 | Side request | Run the `plan` and `dispatch` steps: start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2, because the task changes no repository file. It names the hosts, the success criteria, the budget, the no-GTD-capture line, and the last line. | Running SSH, an install, or a probe in the lead, even one command. | The brief and the `t3_thread_list` output. |
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
-| Ready task | Run the `verify` step for A, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
+| Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
+| PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
 
 ## Validation limits
 
@@ -145,6 +151,8 @@ No live run has shown these behaviors yet:
 - A worker ends its turn at its round limit.
 - A lead keeps its state with the commands of `t3_project_lead.py`.
 - A lead starts a ready task while another task of its batch runs.
+- A worker ends its turn when its PR waits on checks, and the lead resumes it
+  when the checks finish.
 - The lead hook records, blocks, and reminds in a live T3 lead session on
   Claude Code, Codex, or Antigravity. Its tests run the hook script with
   payloads in each host's form.
@@ -158,6 +166,24 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-23, issues #516 and #534
+
+**Static checks.** `test_t3_project_lead.py` requires the `brief` line that
+tells a code-change worker to report the PR URL and full head SHA and end its
+turn when its PR waits on checks, and the `report` line that tells the lead to
+watch the PR and resume the worker when the checks finish. To keep each step
+within 210 words, `dispatch` takes "no role" and the scientific last line from
+`brief`. `report` and `verify` take `task pr` and `task merged` from
+`dispatch`; `verify` records the merged PRs before `task verified`. The tests
+pin the moved lines. `test_t3_project_lead_state.py` checks
+the waiting list as `- <number>: <text>` bullets in `waiting`, `start`, `show`,
+and `report`, the empty line before it, and the period rule for item text,
+recommendations, and task titles. The new checks failed against the f6bb8cb
+script, except the checks of two titles without "?" or "!", which the old rule
+also printed with one period.
+
+**Not shown.** No simulated or live review of case 25 ran.
 
 ### 2026-11-23, issue #493
 

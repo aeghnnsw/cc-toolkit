@@ -5,7 +5,9 @@ project lead does. The checks read the script's output, exit status, and the
 files of the lead folder: the life cycle and its refusals, UTC times, the
 view, the due lines, what waits on the user, and finish. Issue #493 adds the
 tasks that are ready to start: a task starts as soon as each task that it waits
-for is verified, and does not wait for the rest of its batch.
+for is verified, and does not wait for the rest of its batch. Issue #534 prints
+the waiting list as Markdown bullets that keep the item numbers, and adds a
+period only to text that does not end in ".", "?", or "!".
 """
 
 from __future__ import annotations
@@ -308,21 +310,38 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("task", "add", "grill", "Design the cache")
         self.ok("task", "start", "grill", WORKER.format(1))
-        self.assertIn("Item 1 added: 1 [grill] 5 decisions. " + WORKER.format(1),
+        self.assertIn("Item 1 added: [grill] 5 decisions. " + WORKER.format(1),
                       self.ok("wait", "--task", "grill", "--decisions", "5"))
         self.ok("wait", "Triage #503", "--recommend", "ready-for-agent")
         self.ok("done", "1")
         self.refused("done", "1", reason="no waiting item 1")
         self.ok("wait", "Delete the backup files?", "--link", "https://example.com/x")
-        waiting = self.ok("waiting")
-        self.assertEqual(waiting.splitlines(), [
-            "Waiting on you (2):",
-            "2 Triage #503. Lead recommends: ready-for-agent.",
-            "3 Delete the backup files?. https://example.com/x",
-        ])
-        self.assertTrue(self.ok("start").rstrip().endswith("3 Delete the backup files?. https://example.com/x"))
-        self.assertIn("2 Triage #503. Lead recommends: ready-for-agent.", self.ok("report"))
+        # Each item is a bullet with its number as text: a renderer renumbers a numbered list (#534).
+        waiting = ["Waiting on you (2):",
+                   "- 2: Triage #503. Lead recommends: ready-for-agent.",
+                   "- 3: Delete the backup files? https://example.com/x"]
+        self.assertEqual(self.ok("waiting").splitlines(), waiting)
+        for command in ("start", "show", "report"):
+            with self.subTest(command=command):
+                self.assertTrue(self.ok(command).endswith("\n\n" + "\n".join(waiting) + "\n"))
         self.refused("wait", "--decisions", "2", reason="give the item's text, or --task")
+
+    def test_a_view_adds_a_period_only_to_text_without_end_punctuation(self) -> None:
+        self.ok("init", "demo")
+        for name, title in (("a", "Fix the cache"), ("b", "Fix the cache."), ("c", "Is the cache fast?"),
+                            ("d", "Ship it!")):
+            self.ok("task", "add", name, title)
+        self.ok("wait", "Approve the release", "--recommend", "Ship it")
+        self.ok("wait", "Delete the backup files?", "--recommend", "Keep them!")
+        self.ok("wait", "Rotate the key.", "--recommend", "Today.")
+        view = self.ok("show")
+        for line in ("- a (batch 1) planned: Fix the cache.", "- b (batch 1) planned: Fix the cache.",
+                     "- c (batch 1) planned: Is the cache fast?", "- d (batch 1) planned: Ship it!",
+                     "- 1: Approve the release. Lead recommends: Ship it.",
+                     "- 2: Delete the backup files? Lead recommends: Keep them!",
+                     "- 3: Rotate the key. Lead recommends: Today."):
+            with self.subTest(line=line):
+                self.assertIn(line + "\n", view)
 
     def test_a_worker_item_holds_no_detail_of_the_decisions(self) -> None:
         self.ok("init", "demo")
