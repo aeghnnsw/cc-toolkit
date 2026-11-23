@@ -278,10 +278,12 @@ read-only check of another task's result, and the discovery task are tasks too.
 _Avoid_: Job
 
 **Discovery task**:
-A read-only task that collects the open issues, pull requests, and unsettled
-T3 Code threads of a project and proposes one to three outcomes for the user.
-Its report gives only links, so that no issue or pull request text reaches the
-project lead.
+A read-only task that collects the open issues, pull requests, unsettled T3
+Code threads, and worktrees or branches with uncommitted or unpushed changes
+of a project, with what waits on the user, and lists all of them in groups.
+Its report gives only links and counts, so that no issue or pull request text
+reaches the project lead. The project lead shows the list, asks the user no
+question, and starts no second discovery.
 _Avoid_: Survey, scan task
 
 **Batch**:

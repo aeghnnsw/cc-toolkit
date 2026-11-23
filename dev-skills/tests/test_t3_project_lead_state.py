@@ -141,7 +141,7 @@ class LeadStateTests(unittest.TestCase):
                 self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
                 self.assertIn("On this first start, run: ", output)
                 self.assertIn("start the discovery task as t3_project_lead.py discover says, and come to the "
-                              "user only with its proposals.", words(output))
+                              "user only with its list of open work.", words(output))
                 self.assertNotIn("other worktrees", output)
 
     def test_a_git_failure_prints_a_listing_problem_and_refuses_init(self) -> None:
@@ -572,6 +572,8 @@ class LeadStateTests(unittest.TestCase):
 
     def test_due_lines_name_the_next_mechanical_steps(self) -> None:
         self.ok("init", "demo")
+        # A lead finishes only after the user named the work (#545).
+        self.ok("outcome", "Ship it.")
         self.merged_task("a", "5")
         self.ok("wait", "--task", "a", "--decisions", "1")
         view = self.ok("show")
@@ -595,16 +597,29 @@ class LeadStateTests(unittest.TestCase):
                       self.ok("show"))
 
     def test_a_state_without_an_outcome_names_the_discover_step(self) -> None:
-        # A wake after the discovery worker reports leads to its proposals (#545).
-        due = "- No approved outcome: run t3_project_lead.py discover."
+        # A wake after the discovery worker reports leads to the discover step (#545).
+        due = "- No outcome yet: run t3_project_lead.py discover."
+        # After the report, only the user starts the work: no second discovery.
+        done = ("- No outcome yet, and discover is verified: start no second discovery. Wait until the user "
+                "names the work.")
         self.ok("init", "demo")
         self.assertIn(due, self.ok("start"))
         self.ok("task", "add", "discover", "Discover open work")
         self.ok("task", "start", "discover", WORKER.format(1))
         self.assertIn(due, self.ok("show"))
         self.ok("task", "verified", "discover")
+        view = self.ok("start")
+        self.assertIn(done, view)
+        self.assertNotIn(due, view)
+        self.ok("task", "settled", "discover")
+        # A settled discovery task does not finish a lead whose user has not named the work.
+        view = self.ok("start")
+        self.assertIn(done, view)
+        self.assertNotIn("run t3_project_lead.py finish", view)
         self.ok("outcome", "Fix the audit themes.")
-        self.assertNotIn("No approved outcome", self.ok("start"))
+        view = self.ok("start")
+        self.assertNotIn("No outcome yet", view)
+        self.assertIn("Every task is settled and nothing waits: run t3_project_lead.py finish.", view)
 
     def test_merge_order_follows_the_merge_times(self) -> None:
         self.ok("init", "demo")

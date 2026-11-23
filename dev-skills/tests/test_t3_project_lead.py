@@ -37,8 +37,9 @@ STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "outcome", "c
                   "task", "decision")
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
-# An agent reads a whole step after each wake, so each step stays short. The reading rule of #545
-# took `start` from 210 words to 230.
+# An agent reads a whole step after each wake, so each step stays short. Issue #545 took `start`
+# from 210 words to 230 with the reading rule, and `plan` from 186 to 226 with the discover, init, and
+# triage lines.
 STEP_WORD_LIMIT = 230
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -84,10 +85,18 @@ PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR
 # The lead reads no issue or PR text (#545): a lead that read issues was flagged. Only this rule may
 # name read_issue.
 READING_RULE = "Never call read_issue, or pull_request_read with an include other than checks."
-# The links-only report of the discovery task (#545).
-REPORT_FORM = ("Report only links, in this form, and quote no issue or PR text; keep the detail in this "
-               "thread: - Outcome <N>: <short neutral title>: <issue and PR links in the recommended "
-               "order>. - Outside any outcome: <links of open PRs and unsettled threads>.\"")
+# The discovery brief that `discover` prints after its text (#545): what the worker collects, and its
+# links-only report of every item, in groups with counts.
+DISCOVERY_COLLECT = ('Discovery brief: "Collect each open issue with its labels, each open PR, each unsettled T3 '
+                     "thread, and each worktree or branch with uncommitted or unpushed changes of this project, "
+                     "with its progress and the decisions that wait on the user. Page each list to its end. "
+                     "Change no file, branch, issue, label, PR, or thread.")
+REPORT_FORM = ("Put each item in one group. Report one line for each group, with its count and links only. "
+               "Quote no issue or PR text, and keep the detail in this thread: - <short neutral title of the "
+               "group> (<count>): <links>. - Waiting on the user: <links>. - Recommended order: <group "
+               "titles>.\"")
+# The lead copies the discovery brief into a worker's brief; like a step, it stays short.
+DISCOVERY_BRIEF_WORD_LIMIT = 120
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -100,20 +109,23 @@ REQUIRED = {
               "t3_thread_list with includeSubagents, then t3_thread_read.",
               "Never state a worker's status from memory.",
               READING_RULE],
-    "discover": ["Use this step until the user approves an outcome. Read no issue or PR text yourself.",
-                 "When the user named the work, propose it as the outcome, and start no discovery task.",
+    "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
+                 "When the user named the work, record it with outcome <text> and criteria <text>, and start "
+                 "no discovery task.",
                  "Otherwise add the discovery task: task add discover 'Discover open work'.",
-                 "Start its worker as t3_project_lead.py dispatch says, with the read-only brief.",
-                 '"Collect the open issues with their labels, the open PRs, and the unsettled T3 '
-                 'threads of this project. Change no file, branch, issue, label, PR, or thread. Propose '
-                 'one to three outcomes.',
-                 REPORT_FORM,
-                 'In its last line, replace "with evidence and links" with "in the form above".',
-                 "When it reports, run task verified discover. Propose its outcomes to the user with your "
-                 "recommendation, as the report gives them. When the user approves one, run outcome "
-                 "<text> and criteria <text>.",
-                 "Next: t3_project_lead.py plan after the approval; else report."],
-    "plan": ["Use this step after the user approves an outcome; without one, run t3_project_lead.py "
+                 "Start its worker as t3_project_lead.py dispatch says, with the read-only brief, no outcome, "
+                 "and the discovery brief below, copied exactly.",
+                 'In the last line of its brief, replace "with evidence and links" with "in the form '
+                 'above".',
+                 # The user chooses the work, or not; the lead asks no question, and keeps no item (#545).
+                 "When it reports, run task verified discover. Copy its lines into your report as they are, "
+                 "and end your turn. The list is not a waiting item: add no wait item or GTD capture for it. "
+                 "Do not ask the user to choose, with a question tool or in text. When the user names the "
+                 "work, run outcome <text> and criteria <text>. When discover is verified and the user named "
+                 "no work, start no second discovery.",
+                 "Next: t3_project_lead.py plan after the user names the work; else report.",
+                 DISCOVERY_COLLECT, REPORT_FORM],
+    "plan": ["Use this step when the lead state has an outcome; without one, run t3_project_lead.py "
              "discover first.",
              "A task is one brief for one worker; it can cover several issues.",
              "Give a task that needs another task's result, or edits the same files, --after "
@@ -123,7 +135,7 @@ REQUIRED = {
              "Text is at most 200 characters",
              # init runs on the first start, before the discovery task; outcome waits for the user (#545).
              "init <slug>, once, on the first start;",
-             "outcome <text>, after the user approves it;",
+             "outcome <text>, after the user names the work;",
              "A triage that needs issue text is a read-only task: its worker recommends labels, and you "
              "set them.",
              # A second lead state needs the user's confirmation (#544).
@@ -204,7 +216,11 @@ FORBIDDEN_LINES = ("Fix a small non-scientific finding yourself",
 RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
                 # init no longer waits for the approved outcome (#545).
                 "init <slug>, once, after the user approves the outcome",
-                "After the user approves the outcome, run")
+                "After the user approves the outcome, run",
+                # No step asks the user to approve an outcome (#545).
+                "approved outcome",
+                # The lead lists the open work and asks the user no question (#545).
+                "one to three outcomes", "Choose an outcome", "Propose its outcomes")
 # Text that tells the lead to read issue or PR text (#545). No step may print it.
 TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
               "include diff", "issue body", "PR body", "read the issue", "read the PR")
@@ -347,7 +363,13 @@ class StepTests(unittest.TestCase):
         self.assertIn(f'. On this first start, run: python3 "{SCRIPT}" init '
                       "<slug>, with a slug that names the project or repository. Then, unless the user named "
                       "the work, start the discovery task as t3_project_lead.py discover says, and come to "
-                      "the user only with its proposals.", text)
+                      "the user only with its list of open work.", text)
+
+    def test_discover_prints_a_short_discovery_brief_after_its_text(self) -> None:
+        text, brief = step("discover").split("\n\n", 1)
+        self.assertTrue(brief.startswith('Discovery brief:\n"'), brief)
+        self.assertIn("the discovery brief below, copied exactly", words(text))
+        self.assertLessEqual(len(brief.split()), DISCOVERY_BRIEF_WORD_LIMIT)
 
     def test_no_step_tells_the_lead_to_read_issue_or_pr_text(self) -> None:
         for name in STEPS:

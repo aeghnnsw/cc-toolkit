@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|exec_command|shell|apply_patch|spawn_agent|Agent|mcp__t3_code__read_issue|mcp__t3_code__pull_request_read|mcp__t3_code_direct__read_issue|mcp__t3_code_direct__pull_request_read",
+        "matcher": "Bash|exec_command|shell|apply_patch|spawn_agent|Agent|^mcp__([0-9a-f]{12}__)?t3_code(_direct)?__(read_issue|pull_request_read)$",
         "hooks": [
           {
             "type": "command",

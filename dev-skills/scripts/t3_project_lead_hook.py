@@ -30,10 +30,11 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   `pull_request_read` unless its `include` is absent or lists only `checks`.
   When the hook cannot read `include` as a list of strings, it blocks. Claude
   Code names the tools `mcp__t3-code__<tool>`. Codex changes `-` to `_`, as in
-  `mcp__t3_code__<tool>`, and its sessions also use the server key
-  `t3-code-direct`. A read-only worker reads the text instead. Antigravity has
-  no known hook payload for MCP calls, so there only the step text holds the
-  rule.
+  `mcp__t3_code__<tool>`, puts a 12-character environment hash after `mcp__`
+  for a server of one environment, as in `mcp__<hash>__t3_code__<tool>`, and
+  its sessions also use the server key `t3-code-direct`. A read-only worker
+  reads the text instead. Antigravity has no known hook payload for MCP calls,
+  so there only the step text holds the rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -89,7 +90,8 @@ EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_fil
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
-# mcp__<server>__<tool>. The include values that pull_request_read may give without PR text.
+# mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The include values
+# that pull_request_read may give without PR text.
 T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
 PR_INCLUDE = frozenset({"checks"})
 # Path arguments: Claude Code first, then Antigravity.
@@ -259,11 +261,15 @@ def gate(payload, host, folder, session):
 
 
 def t3_tool(name):
-    """Return the tool name of a T3 Code MCP call, such as `read_issue`, or None."""
-    if not name.startswith("mcp__"):
+    """Return the tool name of a T3 Code MCP call, such as `read_issue`, or None.
+
+    The name is mcp__[<segments>__]<server>__<tool>, where Codex can add an
+    environment segment before the server.
+    """
+    parts = name.split("__")
+    if len(parts) < 3 or parts[0] != "mcp":
         return None
-    server, _, tool = name[len("mcp__"):].rpartition("__")
-    return tool if server.replace("-", "_") in T3_SERVERS else None
+    return parts[-1] if parts[-2].replace("-", "_") in T3_SERVERS else None
 
 
 def check_text_read(tool, arguments):

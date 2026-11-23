@@ -15,6 +15,10 @@
 > one event. Read
 > [`start` after a takeover](0009-bind-the-lead-state-to-its-t3-thread.md#start-after-a-takeover)
 > in ADR 0009.
+>
+> **Superseded in part (2026-11-23, issue #545).** The step script has ten
+> steps: the `discover` step starts the discovery task of a new lead. Read
+> [The discover step](#the-discover-step).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -35,7 +39,9 @@ still print text, and new commands change the state: `init`, `outcome`,
 `finish`. (Superseded in part by #544: `start` also changes the state once
 after a takeover; read
 [`start` after a takeover](0009-bind-the-lead-state-to-its-t3-thread.md#start-after-a-takeover)
-in ADR 0009.) The project lead changes its state only through these commands.
+in ADR 0009. Superseded in part by #545: the script has ten steps; read
+[The discover step](#the-discover-step).) The project lead changes its state
+only through these commands.
 This supersedes the rule of ADR 0007 that the step script only prints.
 
 The script keeps the life cycle of each task and refuses every transition
@@ -152,3 +158,31 @@ minutes: no merged PR had its branch tip as its head, and its date-named
 folder had no issue key. #528 would mark such a branch as merged, and
 `--main-only` does not read the planning folders of a worktree. Then cleanup
 could remove the worktree and the lead state with it.
+
+## The discover step
+
+Added on 2026-11-23 for
+[#545](https://github.com/aeghnnsw/cc-toolkit/issues/545).
+
+A lead that read the open issues itself was flagged by the model provider's
+safeguards, and a flag stops the whole lead thread. With no lead state and no
+task named, `start` printed only the `init` line, so no step found open work.
+
+So `start` tells a new lead to run `init` on its first `start`, and then the
+tenth step, `discover`. Unless the user named the work, the lead adds the
+discovery task and starts a read-only worker with the discovery brief that
+`discover` prints. The worker collects the open issues with their labels, the
+open PRs, the unsettled threads, and the worktrees or branches with
+uncommitted or unpushed changes, and lists all of them in groups, with counts
+and links only. The lead copies the list into its report, asks the user no
+question, and adds no waiting item for it; it runs `outcome` only after the
+user names the work. While the lead state has no outcome, a due line names
+`discover`, or, after the discovery task is verified, says to start no second
+discovery; no due line names `finish`.
+
+The lead reads the state, labels, titles, and check counts of issues and PRs,
+never their text. In a recorded session, the hook of
+[ADR 0007](0007-gate-the-project-lead-with-a-session-checked-hook.md) blocks
+the T3 Code MCP tool `read_issue`, and `pull_request_read` with an `include`
+other than `checks`, in Claude Code and Codex. Antigravity has no known hook
+payload for MCP calls, so there only the step text holds the rule.

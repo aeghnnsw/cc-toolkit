@@ -119,9 +119,9 @@ with the commands of `t3_project_lead.py`, in
 28. **New lead with no work named.** The user invokes t3-project-lead in a
     new T3 thread of the repository `shop` and names no task. No worktree
     holds a lead state, so `start` prints the `init` line.
-29. **Triage needs issue text.** The approved outcome is in progress. The
-    user writes: "Label issue 120 as you see fit." The title of issue 120
-    does not show whether it is a bug or a feature.
+29. **Triage needs issue text.** The work that the user named is in
+    progress. The user writes: "Label issue 120 as you see fit." The title
+    of issue 120 does not show whether it is a bug or a feature.
 
 ## Expected results
 
@@ -153,7 +153,7 @@ with the commands of `t3_project_lead.py`, in
 | Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
 | New thread in a new worktree | Tell the user that a lead state exists in the other worktree, with its slug, owner, open tasks, and waiting item, and give the three ways to continue that lead there: change the provider of thread T1, fork T1, or start a thread with `t3_thread_launch` and `existing_worktree` in that worktree. Ask the user which way to take. | Running `init` here; running `init --also` before the user confirms a second lead state; copying the lead state into this worktree. | The listing that `start` prints. |
 | Fork takes over | Run `takeover`, then `start`. Follow the due line of the first `start` after the takeover: check `t3_thread_list` with `includeSubagents` and `pull_request_list`, and record each worker that the lead state does not name with `task add` and `task start`, or add a waiting item. | Changing the lead state before the takeover; starting a second worker for work that already runs. | The view that `start` prints before and after the takeover, and the `takeover` output. |
-| New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, the collection sentence, and the links-only report form. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover`, and propose its one to three outcomes with a recommendation, as the report gives them. After the user approves one, run `outcome` and `criteria`, then the `plan` step. | Asking the user what to do before the discovery task reports; reading the open issues with `read_issue`, or a PR with `include` `body`, `comments`, `threads`, or `diff`; quoting issue text in the proposal; running `outcome` before the user approves. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
+| New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, no outcome, and the discovery brief that `discover` prints, copied exactly. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover`, copy its group lines into the report as they are, and end the turn. After the user names the work, run `outcome` and `criteria`, then the `plan` step. When the user writes again without naming work, start no second discovery. | Listing issues with `list_issues` before the discovery report; asking the user what to do before the discovery task reports; asking the user to choose, with a question tool or in text; adding a waiting item or a GTD capture for the list; reading the open issues with `read_issue`, or a PR with `include` `body`, `comments`, `threads`, or `diff`; quoting issue text in the report; running `outcome` before the user names the work; running `finish` while the lead state has no outcome; a second discovery task. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
 | Triage needs issue text | Start a read-only worker with the `dispatch` step that reads issue 120 and recommends labels; record it as a task. Set the labels that it recommends, or ask the user when it reports a decision. | Calling `read_issue` for issue 120; reading its text in any other way; guessing the labels from the title. | The worker's recommendation, and the issue state and labels from `list_issues`. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
 
@@ -193,20 +193,28 @@ after another clear case.
 ### 2026-11-23, issue #545
 
 **Static checks.** `test_t3_project_lead.py` requires the `discover` step
-with its report form, the reading rule and the new lead action 4 in `start`,
-the `init` and triage lines of `plan`, and the `start` line for a new lead.
-It fails when a step prints `read_issue` outside the reading rule, or text
-that tells the lead to read issue or PR text. `test_t3_project_lead_state.py`
-checks the `init` line in a repository and its linked worktree, and the
-no-outcome due line. `test_t3_project_lead_hook.py` checks, for the Claude
-Code and Codex names, that a recorded session blocks `read_issue` and
-`pull_request_read` with `body`, `comments`, `threads`, `diff`, an unknown
+with its lines against listing issues before the report, against a question
+to the user, against a waiting item for the list, and against a second
+discovery; the discovery brief after the step text, with its own limit of
+120 words, its collection sentence, and its links-only report form of groups
+with counts; the reading rule and the new lead action 4 in `start`; the
+`init` and triage lines of `plan`; and the `start` line for a new lead. It
+fails when a step prints `read_issue` outside the reading rule, text that
+tells the lead to read issue or PR text, "approved outcome", or the retired
+proposal text. `test_t3_project_lead_state.py` checks the `init` line in a
+repository and its linked worktree, the no-outcome due line, the due line
+against a second discovery after the discovery task is verified, and that a
+settled discovery task gives no `finish` line before an outcome. `test_t3_project_lead_hook.py`
+checks, for the Claude Code and Codex names, also the Codex environment form
+`mcp__<hash>__t3_code__<tool>`, that a recorded session blocks `read_issue`
+and `pull_request_read` with `body`, `comments`, `threads`, `diff`, an unknown
 value, or an `include` that is not a list of strings; that `pull_request_read`
 without `include` or with only `checks` passes; that a session without a
-record passes every call; and that each hook matcher stays a list of exact
-names. The step limit is 230 words: `start` was at 210 words, and each of its
-other lines is a required line. Each new check failed against the fe9561c
-script and hook files, except the checks of the calls that pass.
+record passes every call; that the Claude Code matcher stays a list of exact
+names; and that the Codex matcher selects each name. The step limit is 230
+words: `start` was at 210 words, and each of its other lines is a required
+line; `plan` has 226. Each new check failed against the fe9561c script and hook files, except
+the checks of the calls that pass.
 
 **Not shown.** No simulated or live review of cases 28 and 29 ran. No live
 lead session has shown the hook block a T3 Code MCP call.
