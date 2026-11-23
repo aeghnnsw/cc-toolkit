@@ -1,40 +1,50 @@
 #!/usr/bin/env python3
-"""Run a test suite one at a time per repository, and reuse a recorded pass.
+"""Run each test suite one at a time per repository, and reuse a recorded pass.
 
 Usage:
 
     python3 run_suite.py [--rerun] -- <command> [args...]
 
-Lock. The script takes an exclusive lock on run-suite.lock in the Git common
-folder (git rev-parse --git-common-dir), so all worktrees of one repository
-share it. When another run holds the lock, the script prints one line to
-stderr with the holder's PID, command, folder, and start time, and then waits.
+Suite lock. A suite is a command run in a folder relative to the worktree
+root. The script takes an exclusive lock for the suite: run-suite-<hash>.lock
+in the Git common folder (git rev-parse --git-common-dir), where <hash> is a
+short hash of the command and the relative folder. All worktrees of one
+repository share each lock. So two runs of the same suite run one at a time,
+and runs of different suites run in parallel. When another run holds the
+suite lock, the script prints one line to stderr with the holder's PID,
+command, folder, and start time, and then waits.
 
 Recorded pass. A run passes when the command exits 0. When the working tree
 was clean (git status --porcelain printed nothing, untracked files included)
 before and after the run, with the same HEAD^{tree}, the script records the
 pass in run-suite-passes.json in the Git common folder: the tree hash, the
 command, the folder relative to the worktree root, the time, and the HEAD
-commit. A dirty tree records nothing.
+commit. A dirty tree records nothing. To change the records, the script
+takes a short lock on run-suite-passes.lock in the Git common folder, so
+runs of different suites that end at the same time keep each other's
+records. When another run holds that lock, the script prints
+"run_suite: waiting for the pass-records lock" to stderr, and then waits.
 
-Reuse. After it takes the lock, the script looks for a recorded pass with the
-same tree, command, and relative folder. When the tree is clean and such a
-pass exists, it does not run the command. It prints the time and commit of
-that pass and exits 0. So a run that waited for the lock reuses the pass of
-the run before it, and a squash merge whose tree equals the pull request head
-reuses the pass of that head. --rerun always runs the command.
+Reuse. After it takes the suite lock, the script looks for a recorded pass
+with the same tree, command, and relative folder. When the tree is clean and
+such a pass exists, it does not run the command. It prints the time and
+commit of that pass and exits 0. So a run that waited for the suite lock
+reuses the pass of the run before it, and a squash merge whose tree equals
+the pull request head reuses the pass of that head. --rerun always runs the
+command.
 
 Output. The command's stdout and stderr stream together as the command runs.
 Then the script prints a summary: the failing test IDs and the totals lines of
 unittest and pytest output, the lock wait, and last the exit status. For other
 output, the summary has no failing tests or totals. The lock wait is one line,
-only after the script waited for the lock: "Suite lock wait: <N> s, held by
-PID <pid> (<command>) in <folder>", with the wait time in whole seconds and the
-holder that the stderr line names. When a later run held the lock last, the
-line adds ", and last by PID <pid> (<command>) in <folder>". When the first
-holder had not written its details, the line names the last holder; when
-neither had, it names "another run". A run that reuses a recorded pass prints
-no summary; after a wait, it prints the lock wait as its last line.
+only after the script waited for the suite lock:
+"Suite lock wait: <N> s, held by PID <pid> (<command>) in <folder>", with the
+wait time in whole seconds and the holder that the stderr line names. When a
+later run held the lock last, the line adds
+", and last by PID <pid> (<command>) in <folder>". When the first holder had
+not written its details, the line names the last holder; when neither had, it
+names "another run". A run that reuses a recorded pass prints no summary;
+after a wait, it prints the lock wait as its last line.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -45,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -56,8 +67,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
-LOCK = "run-suite.lock"
 PASSES = "run-suite-passes.json"
+PASSES_LOCK = "run-suite-passes.lock"
 # The script keeps only the newest records.
 KEEP = 200
 
@@ -109,12 +120,18 @@ def describe(holder: dict | None) -> str:
     return f"PID {holder['pid']} ({holder['command']}) in {holder['folder']}"
 
 
-def take_lock(common: Path, command: list[str]) -> tuple[TextIO, str | None]:
-    """Take the repository lock, and wait for it when another run holds it.
+def suite_lock_path(common: Path, suite: dict) -> Path:
+    """Return the lock file of a suite: a short hash of its command and folder."""
+    digest = hashlib.sha256(json.dumps(suite, sort_keys=True).encode()).hexdigest()
+    return common / f"run-suite-{digest[:16]}.lock"
+
+
+def take_lock(path: Path, command: list[str]) -> tuple[TextIO, str | None]:
+    """Take a suite lock, and wait for it when another run holds it.
 
     Return the lock file, and after a wait the lock wait line of the summary.
     """
-    handle = open(common / LOCK, "a+")
+    handle = open(path, "a+")
     wait_line = None
     try:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -152,12 +169,19 @@ def load_passes(path: Path) -> list[dict]:
     return [entry for entry in passes if isinstance(entry, dict)]
 
 
-def record_pass(path: Path, entry: dict) -> None:
-    """Add a pass to the records. The caller holds the lock."""
-    passes = (load_passes(path) + [entry])[-KEEP:]
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(passes, indent=1) + "\n")
-    os.replace(temporary, path)
+def record_pass(common: Path, entry: dict) -> None:
+    """Add a pass to the records, under the pass-records lock."""
+    with open(common / PASSES_LOCK, "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("run_suite: waiting for the pass-records lock", file=sys.stderr, flush=True)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        path = common / PASSES
+        passes = (load_passes(path) + [entry])[-KEEP:]
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(json.dumps(passes, indent=1) + "\n")
+        os.replace(temporary, path)
 
 
 def parse(line: str, failures: list[str], totals: list[str]) -> None:
@@ -214,19 +238,21 @@ def main() -> None:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("give a command after --")
-    common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    common_dir = git("rev-parse", "--path-format=absolute", "--git-common-dir")
     top = git("rev-parse", "--show-toplevel")
-    if not common or not top:
+    if not common_dir or not top:
         print("run_suite: not inside a Git checkout", file=sys.stderr)
         sys.exit(2)
-    passes_file = Path(common) / PASSES
+    common = Path(common_dir)
     folder = Path(os.path.relpath(Path.cwd().resolve(), Path(top).resolve())).as_posix()
+    # A suite is a command in a folder: the key of its lock and of its recorded pass.
+    suite = {"command": command, "folder": folder}
 
-    lock, wait_line = take_lock(Path(common), command)
+    lock, wait_line = take_lock(suite_lock_path(common, suite), command)
     tree = clean_tree()
-    key = {"tree": tree, "command": command, "folder": folder}
+    key = {"tree": tree, **suite}
     if tree and not args.rerun:
-        for entry in reversed(load_passes(passes_file)):
+        for entry in reversed(load_passes(common / PASSES)):
             if all(entry.get(name) == value for name, value in key.items()):
                 print(f"run_suite: a pass is recorded for tree {tree[:12]} at {entry.get('time')} "
                       f"(commit {str(entry.get('commit'))[:12]}), so the command did not run. "
@@ -239,7 +265,7 @@ def main() -> None:
     status, failures, totals = run(command)
     if status == 0:
         if tree and clean_tree() == tree:
-            record_pass(passes_file, {**key, "time": now(), "commit": commit})
+            record_pass(common, {**key, "time": now(), "commit": commit})
             print(f"\nrun_suite: recorded the pass for tree {tree[:12]}.")
         else:
             print("\nrun_suite: did not record the pass: the working tree was not clean, "

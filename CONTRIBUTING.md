@@ -371,8 +371,10 @@ longer when other test runs share the machine. Of this time,
 `dev-skills/tests/test_lean_tests.py` about 1 minute.
 
 To run a full suite, put `python3 dev-skills/scripts/run_suite.py --` before
-its command. The script lets one full suite run at a time in all worktrees
-of the repository. It reports a pass recorded for the same clean tree
+its command. A suite is one command in one folder. The script takes one
+lock for each suite, and all worktrees of the repository share each lock.
+So two runs of the same suite run one at a time, and different suites run
+in parallel. The script reports a pass recorded for the same clean tree
 instead of a new run, and it prints the failing tests and the exit status
 last.
 
