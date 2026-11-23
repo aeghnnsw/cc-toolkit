@@ -36,7 +36,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # zsh runs the zsh cases of the Core Hooks and Dev Skills suites, and jq runs the cc-customize checks.
+      # zsh runs the zsh cases of the Core Hooks, Dev Skills, and cc-customize suites, and jq runs the cc-customize
+      # checks.
       # The productivity-skills suite needs initdb, pg_ctl, and psql; the Linux runner installs PostgreSQL
       # outside PATH. A missing tool fails the check step below, so that no suite skips its cases.
       - name: Install the Linux test tools

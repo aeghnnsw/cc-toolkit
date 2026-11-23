@@ -20,12 +20,14 @@ SAMPLE = {'session_id': 'test', 'context_window': {'context_window_size': 100000
 SHELLS = {'bash': ['bash', '-c'], 'zsh': ['zsh', '-f', '-c']}  # -f: no user startup files
 
 
-def block(title):
+def first_block(title):
     """Return the first bash block under the level-3 heading of SKILL.md that starts with title."""
     text = SKILL.read_text(encoding='utf-8')
     heading = re.search(rf'^### {re.escape(title)}\b.*$', text, re.MULTILINE)
-    end = re.compile(r'^##', re.MULTILINE).search(text, heading.end())
-    match = re.search(r'^```bash\n(.*?)^```', text[heading.end():end.start()], re.MULTILINE | re.DOTALL)
+    end = heading and re.compile(r'^##', re.MULTILINE).search(text, heading.end())
+    match = end and re.search(r'^```bash\n(.*?)^```', text[heading.end():end.start()], re.MULTILINE | re.DOTALL)
+    if not match:
+        raise AssertionError(f'{SKILL}: no bash block under ### {title}')
     return match.group(1)
 
 
@@ -51,18 +53,18 @@ class StatuslineTests(unittest.TestCase):
         self.assertEqual(len(lines), 3, result.stdout)
         return lines
 
+    def run_block(self, shell, title):
+        """Run the first bash block of a SKILL.md step in a new shell, as the agent runs it, and return stdout."""
+        env = {**self.env, 'CLAUDE_PLUGIN_ROOT': str(PLUGIN)}
+        result = subprocess.run([*SHELLS[shell], first_block(title)], cwd=self.root, env=env, capture_output=True,
+                                text=True, timeout=30, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
     def test_context_limit_is_the_auto_compact_trigger(self):
         self.write_settings({'autoCompactWindow': 400000})
         self.assertIn('(113.8K/367.0K)', self.run_script()[1])
         self.assertIn('(113.8K/152.0K)', self.run_script(CLAUDE_AUTOCOMPACT_PCT_OVERRIDE='40')[1])
-
-    def run_block(self, shell, title):
-        """Run the first bash block of a SKILL.md step in a new shell, as the agent runs it, and return stdout."""
-        env = {**self.env, 'CLAUDE_PLUGIN_ROOT': str(PLUGIN)}
-        result = subprocess.run([*SHELLS[shell], block(title)], cwd=self.root, env=env, capture_output=True,
-                                text=True, timeout=30, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout
 
     def test_setup_blocks_install_and_check_the_script(self):
         command = f'bash "{self.config}/statusline-command.sh"'
@@ -72,7 +74,7 @@ class StatuslineTests(unittest.TestCase):
                     self.skipTest(f'{shell} is not installed')
                 self.write_settings({})
                 self.run_block(shell, 'Step 1')
-                self.assertIn('settings.json has no statusLine.command', self.run_block(shell, 'Step 3'))
+                self.assertIn('FAIL: cannot read statusLine.command from', self.run_block(shell, 'Step 3'))
                 self.write_settings({'statusLine': {'type': 'command', 'command': command},
                                      'autoCompactWindow': 400000})
                 out = self.run_block(shell, 'Step 3')

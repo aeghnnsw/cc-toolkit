@@ -305,9 +305,10 @@ copy that an Antigravity copy shadows (see [Shadowing](#shadowing)). These
 warnings are expected. Do not pass `--strict`, because it fails on them.
 
 Core Hooks tests require Python and `uv` on `PATH`. The `cc-customize`
-tests run its scripts with `bash`; without `jq`, the `set_autocompact.sh`
-checks skip. Before you run a plugin suite, read
-[Plugin runtime tests](#plugin-runtime-tests).
+tests run its scripts with `bash`, and the statusline-setup shell blocks in
+`bash` and `zsh`. Without `jq`, the `set_autocompact.sh` and statusline
+checks skip. Without `zsh`, the zsh cases skip. Before you run a plugin
+suite, read [Plugin runtime tests](#plugin-runtime-tests).
 
 ### Package and release validation
 

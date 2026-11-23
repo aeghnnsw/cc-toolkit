@@ -77,7 +77,7 @@ Run these commands. They print the `statusLine.command` value of `settings.json`
 
 ```bash
 dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-jq -er '.statusLine.command' "$dir/settings.json" || echo "FAIL: $dir/settings.json has no statusLine.command"
+jq -er '.statusLine.command' "$dir/settings.json" || echo "FAIL: cannot read statusLine.command from $dir/settings.json"
 sample='{"session_id":"statusline-setup-check","context_window":{"context_window_size":1000000,"total_input_tokens":113800}}'
 out=$(printf '%s\n' "$sample" | bash "$dir/statusline-command.sh") || echo "FAIL: statusline-command.sh exited with status $?"
 printf '%s\n' "$out"
