@@ -6,7 +6,9 @@ allows the step script with arguments as one simple shell command and file
 reads in T3 attachments. It blocks every other shell command, file read, file
 edit, and native subagent call, and it reminds the lead to run `start` on each
 user message. Issue #545 also blocks the T3 Code MCP calls that return issue
-or PR text, in the Claude Code and Codex names. Each test runs the hook as a
+or PR text, in the Claude Code and Codex names. Issue #554 also blocks the
+question tools of Claude Code and Codex, and a `t3_pending_request` call that
+can answer a worker's question. Each test runs the hook as a
 process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
 do, and checks the exit status, stdout, stderr, and the state folder.
 """
@@ -37,6 +39,18 @@ DAY = 24 * 60 * 60
 TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
              "pull_request_list, and pull_request_read with no include or with only checks. Give a triage "
              "that needs issue text to a read-only worker.")
+# The blocks of a question tool and of an answer to a worker's question (#554).
+QUESTION_LINE = ("Ask no question with a question tool. List in plain text and end your turn. Write a decision "
+                 "that only the user can make in plain text, with your recommendation. Never ask the user to "
+                 "choose which task to do. For a worker's question, run t3_project_lead.py answer.")
+RESPOND_LINE = ("Do not answer a worker's question: run t3_project_lead.py answer, and give the user the worker's "
+                "thread link. t3_pending_request may only list or read.")
+QUESTION_TOOLS = {"claude": ("AskUserQuestion",), "codex": ("request_user_input", "request_user_input_async")}
+QUESTION_INPUT = {"questions": [{"question": "Which outcome?", "options": [{"label": "A"}, {"label": "B"}]}]}
+PENDING = {"claude": ("mcp__t3-code__t3_pending_request",),
+           "codex": ("mcp__t3_code__t3_pending_request", "mcp__t3_code_direct__t3_pending_request",
+                     "mcp__0123456789ab__t3_code__t3_pending_request")}
+RESPOND = {"action": "respond", "threadId": "worker-1", "requestId": "r1", "answers": {"q1": "Remove it"}}
 # The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
 # keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
 # mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
@@ -197,6 +211,14 @@ class SessionWithoutRecordTests(HookCase):
                 for name, tool_input in ([(name, {"url": "https://github.com/o/r/issues/1"})
                                           for name in READ_ISSUE[host]]
                                          + [(name, {"include": ["body", "diff"]}) for name in PR_READ[host]])]
+        self.check(jobs, allowed=True)
+        self.assertFalse(self.state.exists())
+
+    def test_questions_and_answers_pass(self):
+        jobs = [(host, tool_payload(host, name, QUESTION_INPUT, self.main))
+                for host in ("claude", "codex") for name in QUESTION_TOOLS[host]]
+        jobs += [(host, tool_payload(host, name, RESPOND, self.main)) for host in ("claude", "codex")
+                 for name in PENDING[host]]
         self.check(jobs, allowed=True)
         self.assertFalse(self.state.exists())
 
@@ -498,6 +520,7 @@ class GateTests(HookCase):
                    allowed=False)
 
     def test_mcp_and_other_tools_pass(self):
+        # Antigravity has no known hook payload for its question tool; the step text holds the rule (#554).
         cases = (("claude", "mcp__t3-code__delegate_task"), ("claude", "TodoWrite"),
                  ("codex", "mcp__t3_code__t3_thread_list"), ("codex", "update_plan"),
                  ("antigravity", "ask_question"), ("claude", "mcp__t3-code__list_issues"),
@@ -536,6 +559,31 @@ class GateTests(HookCase):
                   {"include": ["checks", None]}, {"include": {"checks": True}}, {"include": ["Body"]},
                   {"include": ["files"]}, "{not json", ["include"], None)
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
+
+    def check_named(self, cases, *, allowed, line=None):
+        """Check (host, name, tool input) calls; a blocked call prints `line` after the block line."""
+        jobs = [(host, tool_payload(host, name, tool_input, self.main)) for host, name, tool_input in cases]
+        self.check(jobs, allowed=allowed)
+        if not allowed:
+            for host, payload in jobs:
+                with self.subTest(host=host, payload=payload):
+                    self.assertEqual(self.run_hook(host, payload).stderr.splitlines()[1], line)
+
+    def test_question_tools_are_blocked(self):
+        # A lead lists in plain text and asks the user no choice question (#554).
+        self.check_named(text_calls(QUESTION_TOOLS, (QUESTION_INPUT, {}, "not a dict")), allowed=False,
+                         line=QUESTION_LINE)
+
+    def test_an_answer_to_a_worker_question_is_blocked(self):
+        # The hook fails closed: only list and read pass (#554).
+        inputs = (RESPOND, {"action": "respond"}, {}, {"action": None}, {"action": ["list"]}, {"action": "Respond"},
+                  {"action": "write"}, "not a dict", None)
+        self.check_named(text_calls(PENDING, inputs), allowed=False, line=RESPOND_LINE)
+
+    def test_a_list_or_read_of_pending_requests_passes(self):
+        inputs = ({"action": "list"}, {"action": "list", "threadId": "worker-1"},
+                  {"action": "read", "threadId": "worker-1", "requestId": "r1"})
+        self.check_named(text_calls(PENDING, inputs), allowed=True)
 
     def test_a_malformed_call_is_blocked(self):
         step = "python3 scripts/t3_project_lead.py show"
@@ -756,7 +804,8 @@ def matcher_names(entry):
 
 class HookFileTests(HookCase):
     CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
-                    "Agent", "Task", *READ_ISSUE["claude"], *PR_READ["claude"]}
+                    "Agent", "Task", "AskUserQuestion", *READ_ISSUE["claude"], *PR_READ["claude"],
+                    *PENDING["claude"]}
     CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
@@ -801,11 +850,13 @@ class HookFileTests(HookCase):
                 self.assertRegex(name, entry["matcher"])
         # Codex reads a matcher with other characters than letters, digits, "_", and "|" as a regular
         # expression that can match part of a name. Its environment form needs one (#545).
-        for name in (*READ_ISSUE["codex"], *PR_READ["codex"]):
+        for name in (*READ_ISSUE["codex"], *PR_READ["codex"], *PENDING["codex"], *QUESTION_TOOLS["codex"]):
             with self.subTest(name=name):
                 self.assertRegex(name, entry["matcher"])
         for name in ("mcp__t3_code__list_issues", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
-                     "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue"):
+                     "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue",
+                     "mcp__t3_code__t3_pending_requests", "mcp__other__t3_pending_request", "request_user_input_x",
+                     "x_request_user_input"):
             with self.subTest(name=name):
                 self.assertNotRegex(name, entry["matcher"])
         self.assertEqual(command, '[ -f "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '

@@ -21,8 +21,8 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. Other tools pass, and so do MCP tools, except the reads of issue
-  and PR text below. A blocked call exits 2 with the reason on stderr. A call
-  that the hook cannot check also exits 2.
+  and PR text and the questions below. A blocked call exits 2 with the
+  reason on stderr. A call that the hook cannot check also exits 2.
 - Issue and PR text (issue #545): a lead that read open issues itself was
   flagged by the model provider's safeguards, and a flag stops the whole lead
   thread. So in a recorded session, the hook blocks two T3 Code MCP tools:
@@ -35,6 +35,19 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   its sessions also use the server key `t3-code-direct`. A read-only worker
   reads the text instead. Antigravity has no known hook payload for MCP calls,
   so there only the step text holds the rule.
+- Questions (issue #554): a new-project lead asked the user to pick an
+  outcome with AskUserQuestion, and a lead read a worker's question with
+  `t3_pending_request` and asked it again with AskUserQuestion. The question
+  changed in meaning, and the worker removed a table that the user needed.
+  So in a recorded session, the hook blocks the question tools
+  `AskUserQuestion` (Claude Code) and `request_user_input` and
+  `request_user_input_async` (Codex): the lead lists in plain text and ends
+  its turn. It also blocks `t3_pending_request` unless its `action` is `list`
+  or `read`, so the lead answers no worker's question; the block names the
+  `answer` step. Codex 0.170.0 runs PreToolUse for `request_user_input` in
+  every mode (`codex-rs/core/src/tools/registry.rs`). Antigravity has no known
+  hook payload for its question tool, so there only the step text holds the
+  rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -74,6 +87,12 @@ ALLOWED = {
              "or request, new or replacing one) at an absolute path outside every Git work tree. "
              "Change the lead state with t3_project_lead.py commands."),
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
+    "question": ("Ask no question with a question tool. List in plain text and end your turn. Write a "
+                 "decision that only the user can make in plain text, with your recommendation. Never ask "
+                 "the user to choose which task to do. For a worker's question, run t3_project_lead.py "
+                 "answer."),
+    "respond": ("Do not answer a worker's question: run t3_project_lead.py answer, and give the user the "
+                "worker's thread link. t3_pending_request may only list or read."),
     "text": ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
              "pull_request_list, and pull_request_read with no include or with only checks. Give a "
              "triage that needs issue text to a read-only worker."),
@@ -89,6 +108,10 @@ READ_TOOLS = frozenset({"Read", "Grep", "Glob", "read_file", "view_file", "view_
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file",
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
+# The question tools of Claude Code and Codex (#554), and the t3_pending_request actions that answer
+# nothing.
+QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_user_input_async"})
+PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
 # mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The include values
 # that pull_request_read may give without PR text.
@@ -235,7 +258,11 @@ def gate(payload, host, folder, session):
     name, arguments = tool_call(payload, host)
     if name in AGENT_TOOLS or name.endswith("spawn_agent"):
         raise Blocked("agent")
-    check_text_read(t3_tool(name), arguments)
+    if name in QUESTION_TOOLS:
+        raise Blocked("question")
+    tool = t3_tool(name)
+    check_text_read(tool, arguments)
+    check_pending_request(tool, arguments)
     cwd = payload_cwd(payload)
     if name == "apply_patch" or name in EDIT_TOOLS:
         # Only t3_project_lead.py writes the lead state; the lead writes only gtd-inbox files.
@@ -291,6 +318,19 @@ def check_text_read(tool, arguments):
     if not isinstance(include, list) or not all(isinstance(value, str) and value in PR_INCLUDE
                                                 for value in include):
         raise Blocked("text")
+
+
+def check_pending_request(tool, arguments):
+    """Raise Blocked when a `t3_pending_request` call can answer a worker's question (#554).
+
+    Only the actions `list` and `read` pass; `respond`, a missing or unknown
+    action, and an input that is not an object fail closed.
+    """
+    if tool != "t3_pending_request":
+        return
+    action = arguments.get("action") if isinstance(arguments, dict) else None
+    if not isinstance(action, str) or action not in PENDING_READS:
+        raise Blocked("respond")
 
 
 def tool_paths(arguments, default):
