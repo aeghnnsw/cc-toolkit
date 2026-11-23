@@ -82,7 +82,7 @@ REQUIRED = {
              "Give a task that needs another task's result, or edits the same files, --after "
              "that task.",
              START_RULE,
-             "A batch (--batch) only groups the tasks of one close-out worker.",
+             "A batch (--batch) only decides when its workers are closed out and settled.",
              "Text is at most 200 characters",
              "init <slug>, once, after the user approves the outcome"],
     "dispatch": [START_RULE,
@@ -125,10 +125,12 @@ REQUIRED = {
                "Give each finding to one follow-up worker, even a small one.",
                "Fix and check nothing yourself.",
                "Run task verified <name>. Settle its worker only when a due line lists it.",
-               "Start each task that its output names as ready in this turn, also while other "
-               "workers run; do not wait for the rest of its batch.",
-               "Next: t3_project_lead.py dispatch for each ready task"],
-    "closeout": ["From t3_project_lead.py brief, use only line 1 for matt-automode and the "
+               START_RULE,
+               "The task verified output names each such task and its step.",
+               "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
+               "names."],
+    "closeout": ["--kind closeout, unless a due line names a planned one.",
+                 "From t3_project_lead.py brief, use only line 1 for matt-automode and the "
                  "budget.",
                  f"Write: {NO_GTD_CAPTURE}",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
@@ -274,9 +276,9 @@ class StepTests(unittest.TestCase):
         texts = {f"step {name}": words(step(name)) for name in STEPS}
         texts |= {f"copy {host}": words(split_skill(host)[1]) for host in HOSTS}
         for where, text in texts.items():
-            for retired in BATCH_WAIT_TEXT:
-                with self.subTest(where=where, text=retired):
-                    self.assertNotIn(retired, text.lower())
+            for term in BATCH_WAIT_TEXT:
+                with self.subTest(where=where, text=term):
+                    self.assertNotIn(term, text.lower())
 
     def test_start_without_a_lead_state_tells_how_to_create_one(self) -> None:
         self.assertIn("No lead state in ", step("start"))

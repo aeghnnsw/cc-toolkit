@@ -276,9 +276,9 @@ read-only check of another task's result are tasks too.
 _Avoid_: Job
 
 **Batch**:
-The tasks that one close-out worker closes out. A batch with a merged pull
-request gets one close-out worker. A task does not wait for its batch: the
-project lead starts it as soon as each task that it waits for is verified.
+The tasks whose workers a project lead settles as one group. A batch with a
+merged pull request first gets one close-out worker. A batch does not decide
+when a task starts.
 _Avoid_: Wave
 
 **Verified**:

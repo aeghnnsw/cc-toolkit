@@ -98,7 +98,7 @@ with the commands of `t3_project_lead.py`, in
 23. **Restarted lead.** T3 restarted the lead's Claude Code process after a
     provider error. The user writes: "Status?"
 24. **Ready task.** Tasks A, B, and C are in batch 1, and C has `--after A`.
-    Workers A and B run. Worker A reports PASS, and its PR 95 merged with CI
+    Workers A and B run. Worker A reports PASS. Its PR 95 merged, and CI
     passed. Worker B still runs.
 
 ## Expected results
@@ -168,7 +168,9 @@ for the rest of its batch. It also requires the `plan` line that a batch only
 groups the tasks of one close-out worker. No step and no skill copy may make
 a task wait for its batch or for a free worker. `test_t3_project_lead_state.py`
 checks that `task verified` and the due lines name each planned task that
-`task start` would accept. Each new check failed against the 77b8c4b script.
+`task start` would accept, with the `closeout` step for a close-out task and
+the `dispatch` step for another task. Each new check failed against the
+77b8c4b script.
 
 **Not shown.** No simulated or live review of case 24 ran.
 

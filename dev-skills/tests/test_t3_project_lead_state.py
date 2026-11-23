@@ -205,14 +205,27 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "pr", "a", "5")
         self.ok("task", "merged", "a", "5", "abcdef1")
         # b of the same batch still runs: c is ready now, and d still waits for c.
-        self.assertEqual(self.ok("task", "verified", "a").strip(),
-                         "a is verified. Ready to start now: c.")
+        self.assertEqual(self.ok("task", "verified", "a").strip(), "a is verified. c is ready to "
+                         "start: run t3_project_lead.py dispatch for it now.")
         view = self.ok("show")
         self.assertIn("- c is ready to start: run t3_project_lead.py dispatch for it now.", view)
         self.assertNotIn("d is ready", view)
         self.assertEqual(self.task("b")["state"], "running")
         self.ok("task", "start", "c", WORKER.format("c"))
         self.assertNotIn("is ready to start", self.ok("show"))
+
+    def test_a_ready_close_out_task_names_the_closeout_step(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "pr", "a", "5")
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        line = "close-1 is ready to start: run t3_project_lead.py closeout for it now."
+        self.assertEqual(self.ok("task", "verified", "a").strip(), f"a is verified. {line}")
+        view = self.ok("show")
+        self.assertIn(f"- {line}", view)
+        self.assertNotIn("dispatch for it now", view)
 
     def test_a_close_out_starts_only_for_a_verified_batch_with_a_merged_pr(self) -> None:
         self.ok("init", "demo")
