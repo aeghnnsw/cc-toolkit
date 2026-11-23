@@ -576,10 +576,11 @@ def check_changelog(text, old_text, entries, old_entries, packages, previous):
 
 
 def check_release(text, old_entries, removed, changed):
-    """A branch that deletes an entry file of the merge base is a release: it moves each bullet and changes no other file."""
+    """A branch that deletes an entry file of the merge base runs the release step: it moves each bullet of the
+    file into CHANGELOG.md and changes no other file."""
     if not removed:
         return
-    other = sorted(path for path in changed if path and path != CHANGELOG_PATH and path not in old_entries)
+    other = sorted(path for path in changed if path != CHANGELOG_PATH and path not in old_entries)
     if other:
         raise InvalidPackage(f'{removed[0]}: this branch deletes an entry file and changes {other[0]}; run the '
                              'release step in a pull request of its own, or restore the entry file')
@@ -598,7 +599,7 @@ def read_text(root, path, revision=None):
         raise InvalidPackage(f'{path}: invalid UTF-8 text') from error
 
 
-def validate_changelog(root, previous, packages, changes):
+def validate_changelog(root, packages, previous, changes):
     text = read_text(root, CHANGELOG_PATH) if (root / CHANGELOG_PATH).is_file() else None
     old_text = read_text(root, CHANGELOG_PATH, changes.base) if CHANGELOG_PATH in changes.base_files else None
     folder = ENTRY_FOLDER + '/'
@@ -612,7 +613,7 @@ def validate_changelog(root, previous, packages, changes):
 
 @dataclass
 class Changes:
-    """The paths that the branch changes since its merge base with the target ref."""
+    """The merge base of the branch with the target ref, its files and rules there, and the changed paths."""
     base: str
     base_files: set
     old_rules: dict
@@ -643,7 +644,7 @@ def package_changes(package, old, packages, previous, rules, changes):
 
 
 def changed_skills(root, package, old, files, changes, affected):
-    """Yield (name, path, base path, changes) for each skill with base history that an affected path changes."""
+    """Yield (name, path, base path, affected paths) for each skill with base history that an affected path changes."""
     # Skills match by directory name, so a source move keeps their history; a new skill has none.
     former = skill_files(old, changes.base_files)
     for name, path in sorted(skill_files(package, files).items()):
@@ -671,7 +672,7 @@ def validate_releases(root, packages, rules, files, base_ref):
                 raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} lost its version {old_value} in {path}; restore the version line with a greater version; changed {found[0][0]} ({found[0][1]})')
             if new_value and old_value and version(new_value, path) <= version(old_value, former):
                 raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} version must increase above {old_value} in {path}; changed {found[0][0]} ({found[0][1]})')
-    validate_changelog(root, previous, packages, changes)
+    validate_changelog(root, packages, previous, changes)
 
 
 def main():

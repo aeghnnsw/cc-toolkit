@@ -90,8 +90,8 @@ git worktree add trees/doc-<description> -b doc-<description>
   [Skills for more than one host](CONTRIBUTING.md#skills-for-more-than-one-host).
 - Before shipping a plugin change, read
   [Package and release validation](CONTRIBUTING.md#package-and-release-validation)
-  for version increases. Set the versions with the version script, and
-  after a rebase run the checks that
+  for version increases. Set the versions with the version script. After a
+  rebase, run the checks that
   [Versions and rebases](CONTRIBUTING.md#versions-and-rebases) names.
 - Record substantive behavior or policy changes in a new entry file,
   `changelog.d/<N>.md`, in the

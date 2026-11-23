@@ -28,7 +28,7 @@ does not set the minimum for installed plugins.
 
 | Component | Declared minimum | Python dependencies and exceptions |
 | --- | --- | --- |
-| [Root package validator](scripts/validate_packages.py) and root tests | 3.11 | Standard library, including `tomllib`. |
+| [Root package validator](scripts/validate_packages.py), the [release step](scripts/release_changelog.py), the [version script](scripts/next_versions.py), and root tests | 3.11 | Standard library, including `tomllib`. |
 | [Core Hooks](core-hooks/scripts/safety_guard.py) | 3.8 | Standard library, except [`chime` for sound notifications](core-hooks/scripts/system_notification.py). |
 | [Productivity Skills: GTD SQL renderer](productivity-skills/scripts/gtd_sql.py) | 3.11 | Standard library. The connected Supabase tool executes the prepared SQL. |
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
@@ -216,12 +216,13 @@ git grep -n <term> -- ':!CHANGELOG.md' ':!changelog.d' ':!task-loop'
 ## Changelog entries
 
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog. A
-pull request does not edit it. It adds its entries in a new entry file,
-`changelog.d/<N>.md`, where `<N>` is the number of the issue that it links.
-When another change already uses that name, add lowercase words, as in
-`changelog.d/<N>-<words>.md`. Two pull requests thus add different files,
-and a rebase does not conflict in a changelog file. The
-[release step](#release-step) moves the entries into `CHANGELOG.md`.
+feature pull request does not edit `CHANGELOG.md`. The pull request adds
+its bullets in a new entry file, `changelog.d/<N>.md`, where `<N>` is the
+number of the linked issue. When another change already uses that name,
+add lowercase words, as in `changelog.d/<N>-<words>.md`. Two pull requests
+thus add different files, and a rebase does not conflict in a changelog
+file. The [release step](#release-step) moves the bullets into
+`CHANGELOG.md`.
 
 An entry file holds one or more of the headings `### Added`, `### Removed`,
 and `### Changed`, each with its bullets:
@@ -262,8 +263,8 @@ Older entries are under `## 2026-11-22`.
 
 The release step moves the bullets of each entry file into
 `## [Unreleased]` of `CHANGELOG.md`, under the same headings, and deletes
-the files. The entry file that the newest commit added comes first, and
-each file keeps the order of its bullets:
+the files. The entry file that the newest commit added under its current
+name comes first, and each file keeps the order of its bullets:
 
 ```bash
 uv run --no-project --python '>=3.11' python scripts/release_changelog.py
@@ -273,15 +274,15 @@ The maintainer runs the release step, or asks an agent to run it, on a
 branch from `master`, in a pull request that changes nothing else. A
 feature pull request never runs it. Run it between batches of parallel
 pull requests, for example, so that no open pull request must rebase over
-it. The release needs no version increase. The package validator fails a
+it. The release step needs no version increase. The package validator fails a
 branch that deletes an entry file of the merge base and changes another
 file, or that drops a bullet of a deleted entry file from `CHANGELOG.md`.
 
 ## Versions and rebases
 
 Set the plugin and skill versions with the version script when the pull
-request is ready, and again after each rebase. Run `git fetch origin
-master` first:
+request is ready, and again after each rebase. First run
+`git fetch origin master`:
 
 ```bash
 uv run --no-project --python '>=3.11' python scripts/next_versions.py --base origin/master
@@ -289,7 +290,9 @@ uv run --no-project --python '>=3.11' python scripts/next_versions.py --base ori
 
 For each plugin that the branch changes, the script sets the `version` of
 each affected host's manifest, and of each changed skill that has one, to
-the next version above `origin/master`. It raises the minor number; pass
+the next free version: the next version above `origin/master`. A host that
+a new plugin bullet of the branch names also gets an increase, for example
+after a change only to the plugin's tests. It raises the minor number; pass
 `--part patch` for a fix, or `--part major`. A version that is already
 above `origin/master` stays, so a second run changes nothing. The script
 also writes the new versions into the plugin bullets of the branch's entry

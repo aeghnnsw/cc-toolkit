@@ -12,11 +12,13 @@ import validate_packages as packages
 
 def added_order(root):
     """Return the entry files of HEAD, newest first, by the commit that added each one."""
-    log = packages.git(root, 'log', '--format=', '--name-only', '--diff-filter=A', '--', packages.ENTRY_FOLDER)
+    # --no-renames shows a renamed file as added, so a rename counts as the add of the new name.
+    log = packages.git(root, 'log', '--format=', '--name-only', '--no-renames', '--diff-filter=A', '--',
+                       packages.ENTRY_FOLDER)
     return list(dict.fromkeys(line for line in log.decode().splitlines() if line))
 
 
-def collect(text, additions):
+def add_to_unreleased(text, additions):
     """Return text with each section's new bullets first in that section of ## [Unreleased]."""
     lines = text.splitlines()
     if '## [Unreleased]' not in lines:
@@ -50,8 +52,10 @@ def main():
     argparse.ArgumentParser(description=__doc__).parse_args()
     try:
         root = Path(packages.git(Path.cwd(), 'rev-parse', '--show-toplevel').decode().strip())
-        folder = root / packages.ENTRY_FOLDER
-        paths = sorted(path.relative_to(root).as_posix() for path in folder.iterdir()) if folder.is_dir() else []
+        # The files that Git tracks or can add; an ignored file, such as .DS_Store, stays.
+        listed = packages.git(root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
+                              packages.ENTRY_FOLDER).decode().split('\0')
+        paths = sorted(path for path in set(listed) if path and (root / path).is_file())
         if not paths:
             print(f'No entry files in {packages.ENTRY_FOLDER}/; {packages.CHANGELOG_PATH} is unchanged')
             return 0
@@ -69,7 +73,7 @@ def main():
         changelog = root / packages.CHANGELOG_PATH
         if not changelog.is_file():
             raise packages.InvalidPackage(f'{packages.CHANGELOG_PATH}: missing; restore it')
-        changelog.write_text(collect(packages.read_text(root, packages.CHANGELOG_PATH), additions), encoding='utf-8')
+        changelog.write_text(add_to_unreleased(packages.read_text(root, packages.CHANGELOG_PATH), additions), encoding='utf-8')
         for path in paths:
             (root / path).unlink()
         count = sum(len(lines) for lines in additions.values())

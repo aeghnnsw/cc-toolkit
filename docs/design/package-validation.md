@@ -1,5 +1,11 @@
 # Package and release validation
 
+> **Superseded in part (2026-11-23, issue
+> [#298](https://github.com/aeghnnsw/cc-toolkit/issues/298)).** New changelog
+> bullets go in entry files, and a new bullet in `CHANGELOG.md` fails. Read
+> [CHANGELOG checks](#changelog-checks) and
+> [ADR 0010](../adr/0010-use-entry-files-and-a-version-script.md).
+
 Tracked in [issue #206](https://github.com/aeghnnsw/cc-toolkit/issues/206),
 with delivery in [#207](https://github.com/aeghnnsw/cc-toolkit/issues/207),
 [#208](https://github.com/aeghnnsw/cc-toolkit/issues/208), and
@@ -240,9 +246,10 @@ bullets to it. When the base has `CHANGELOG.md` and the proposed tree does
 not, validation fails; when neither has it, the changelog checks are
 skipped.
 
-A branch that deletes an entry file of the merge base is a release. It must
-change no file other than `CHANGELOG.md` and the entry files of the merge
-base, and `CHANGELOG.md` must hold each bullet of each deleted entry file.
+A branch that deletes an entry file of the merge base runs the release
+step. It must change no file other than `CHANGELOG.md` and the entry files
+of the merge base, and `CHANGELOG.md` must hold each bullet of each deleted
+entry file.
 
 ## Adoption and verification
 
@@ -258,7 +265,7 @@ metadata; missing and escaped resources; skill headers; shared and
 host-specific changes; exemptions; unknown files; plugin and skill version
 rules; resource changes and source moves; registration lifecycle; missing
 history; staged, unstaged, and new files; new bullets of entry files and
-`CHANGELOG.md`; and release branches. The
+`CHANGELOG.md`; and branches that run the release step. The
 [release script tests](../../tests/test_release_scripts.py) run the release
 step, the version script, and a rebase of two branches with entry files.
 

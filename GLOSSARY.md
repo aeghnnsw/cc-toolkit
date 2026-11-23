@@ -54,13 +54,19 @@ files, requires one for each version increase, and rejects a new bullet in
 **Entry file**:
 A file in `changelog.d/`, named for the issue of one change, that holds the
 changelog bullets of that change under `### Added`, `### Removed`, or
-`### Changed`. A pull request adds an entry file and does not edit
+`### Changed`. A feature pull request adds an entry file and does not edit
 `CHANGELOG.md`.
 
 **Release step**:
 The run of `scripts/release_changelog.py` that moves the bullets of all
 entry files into `## [Unreleased]` of `CHANGELOG.md` and deletes the files.
 It runs in a pull request of its own, never in a feature pull request.
+
+**Version script**:
+The run of `scripts/next_versions.py` that sets the next free version, the
+next version above `origin/master`, for each plugin and skill that the
+branch changes. It also writes these versions into the branch's entry
+files.
 
 **User-invoked skill**:
 A skill that a host loads only when the user invokes it by name. The agent

@@ -136,6 +136,55 @@ class VersionScriptTests(ReleaseFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+    def raise_claude(self, value, notes, issue=None):
+        """Change a Claude Code skill file, and raise Claude Code and the skill to value."""
+        self.write(f'demo/skills/greet/{notes}.md', f'{notes}\n')
+        path = 'demo/.claude-plugin/plugin.json'
+        self.write(path, self.read(path).replace('"1.0.0"', f'"{value}"'))
+        self.write('demo/skills/greet/SKILL.md', self.read('demo/skills/greet/SKILL.md').replace('1.0.0', value))
+        if issue:
+            self.write(f'changelog.d/{issue}.md', f'### Changed\n\n- demo (Claude Code {value}): {notes} in greet '
+                                                  f'{value}.{LINK.format(issue)}\n')
+        self.commit(notes)
+
+    def test_a_kept_side_of_master_gets_a_greater_version_in_the_bullet(self):
+        self.git('switch', '-q', '-c', 'feature')
+        self.raise_claude('1.1.0', 'feature', 5)
+        self.git('switch', '-q', 'master')
+        self.raise_claude('1.2.0', 'other')
+        self.git('switch', '-q', 'feature')
+        self.assertNotEqual(self.git('rebase', '-q', 'master', check=False).returncode, 0)
+        # Keep the side of master in each conflict, as CONTRIBUTING allows.
+        self.git('checkout', '--ours', '--', 'demo/.claude-plugin/plugin.json', 'demo/skills/greet/SKILL.md')
+        self.git('add', 'demo/.claude-plugin/plugin.json', 'demo/skills/greet/SKILL.md')
+        self.git('-c', 'core.editor=true', 'rebase', '--continue')
+        result = self.run_script('next_versions.py', '--base', 'master')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read('changelog.d/5.md'), '### Changed\n\n- demo (Claude Code 1.3.0): feature in greet '
+                         f'1.3.0.{LINK.format(5)}\n')
+        self.assertIn('version: 1.3.0\n', self.read('demo/skills/greet/SKILL.md'))
+        result = self.validate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_host_that_the_bullet_names_keeps_its_increase_after_a_test_only_change(self):
+        self.git('switch', '-q', '-c', 'tests')
+        self.write('demo/tests/test_greet.py', '# a test\n')
+        path = 'demo/.claude-plugin/plugin.json'
+        self.write(path, self.read(path).replace('"1.0.0"', '"1.0.1"'))
+        self.write('changelog.d/6.md', f'### Changed\n\n- demo (Claude Code 1.0.1): tests.{LINK.format(6)}\n')
+        self.commit('tests')
+        self.git('switch', '-q', 'master')
+        self.write(path, self.read(path).replace('"1.0.0"', '"1.0.1"'))
+        self.write('demo/skills/greet/other.md', 'other\n')
+        self.commit('other')
+        self.git('switch', '-q', 'tests')
+        self.git('rebase', '-q', 'master')
+        result = self.run_script('next_versions.py', '--base', 'master', '--part', 'patch')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('- demo (Claude Code 1.0.2): tests.', self.read('changelog.d/6.md'))
+        result = self.validate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 class ReleaseStepTests(ReleaseFixture):
     def test_release_moves_the_entry_files_into_their_sections_newest_first_and_deletes_them(self):
         entries = {
@@ -144,14 +193,17 @@ class ReleaseStepTests(ReleaseFixture):
                 '- Repository: change five.' + LINK.format(5) + '\n- Repository: more of five.' + LINK.format(5) + '\n'),
             6: '### Removed\n\n- Repository: removal six.' + LINK.format(6) + '\n',
         }
+        self.write('.gitignore', '.DS_Store\n')
         for issue, text in entries.items():
             self.write(f'changelog.d/{issue}.md', text)
             self.commit(f'Entry {issue}')
         self.git('switch', '-q', '-c', 'release')
+        # A file that Git ignores stays, and does not stop the release step.
+        self.write('changelog.d/.DS_Store', 'Finder data\n')
         result = self.run_script('release_changelog.py')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Moved 5 bullet(s) from 3 entry file(s)', result.stdout)
-        self.assertFalse((self.root / 'changelog.d').exists() and any((self.root / 'changelog.d').iterdir()))
+        self.assertEqual([path.name for path in (self.root / 'changelog.d').iterdir()], ['.DS_Store'])
         self.assertEqual(self.read('CHANGELOG.md'), (
             '# Changelog\n\n## [Unreleased]\n\n'
             '### Added\n\n- Repository: addition five.' + LINK.format(5) + '\n\n'

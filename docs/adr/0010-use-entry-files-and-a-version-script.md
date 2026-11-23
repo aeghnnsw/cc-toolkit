@@ -24,8 +24,8 @@ pull request into `master`.
 
 Decisions:
 
-1. **Entry files.** A pull request adds its changelog bullets in a new entry
-   file and does not edit `CHANGELOG.md`. The file is
+1. **Entry files.** A feature pull request adds its changelog bullets in a
+   new entry file and does not edit `CHANGELOG.md`. The file is
    `changelog.d/<N>.md`, where `<N>` is the issue number, or
    `changelog.d/<N>-<words>.md` when another change already uses the number.
    It holds the headings `### Added`, `### Removed`, or `### Changed`, each
@@ -40,7 +40,7 @@ Decisions:
 2. **Release step.** `scripts/release_changelog.py` moves the bullets of
    each entry file into `## [Unreleased]` of `CHANGELOG.md`, under the same
    headings, and deletes the files. The file that the newest commit added
-   comes first. The maintainer runs the release step, or asks an agent to
+   under its current name comes first. The maintainer runs the release step, or asks an agent to
    run it, on a branch from `master`, in a pull request that changes nothing
    else, for example between batches of parallel pull requests. A feature
    pull request never runs it. The validator fails a branch that deletes an
@@ -52,8 +52,9 @@ Decisions:
    rules for affected hosts and changed skills. It sets each of their
    versions that is not above the tip of the base ref to the tip version,
    raised in one part: minor by default, or `--part patch` or
-   `--part major`. A version above the tip stays, so a second run changes
-   nothing. It changes only the version value of a manifest, so the JSON
+   `--part major`. A host that a new plugin bullet of the branch names also
+   gets an increase, so that the bullet stays true after a rebase. A version
+   above the tip stays, so a second run changes nothing. It changes only the version value of a manifest, so the JSON
    format stays. Then it writes the new versions into the plugin bullets of
    the branch's entry files, and into `<skill> <version>` in their text. It
    compares with the tip and not with the merge base, so a run before a

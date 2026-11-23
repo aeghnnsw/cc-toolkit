@@ -31,7 +31,7 @@ FIXTURE_VERSIONS = {
     'tests/test_agent_fields.py': {'1.0.0'},
     'tests/test_host_copies.py': {'4.17.15', '9.0.0'},  # quoted skill text
     'tests/test_model_pins.py': {'1.0.0'},
-    'tests/test_release_scripts.py': {'1.0.0', '1.0.1', '1.1.0', '1.2.0'},  # fixture manifest and skill versions
+    'tests/test_release_scripts.py': {'1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.2.0', '1.3.0'},  # fixture manifest and skill versions
     'tests/test_skill_placeholders.py': {'1.0.0'},
     'tests/test_validate_packages.py': {'0.9.9', '1.0.0', '1.0.01', '1.0.1', '1.0.2', '1.1.0'},
 }
