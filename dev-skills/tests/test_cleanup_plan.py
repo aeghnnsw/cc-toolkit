@@ -2,11 +2,13 @@
 
 Cases 1-16 come from the scenario review of repo-cleanup before issue #459:
 planning folders (#358), the worktrees that cleanup keeps (#419), and planning
-folders in worktrees (#421). Each check builds a temporary repository with a
-bare origin, runs the script with a fake gh (fake_gh.py), and reads the lines
-that it prints. The real live_worktrees.py runs, so most checks need lsof. One
-plan run serves the cases of each class, because each run takes some seconds.
-No check touches another repository.
+folders in worktrees (#421). Cases 17-19 come from issue #543: the worktrees
+that hold a lead state of t3-project-lead. Each check builds a temporary
+repository with a bare origin, runs the script with a fake gh (fake_gh.py),
+and reads the lines that it prints. The real live_worktrees.py runs, so most
+checks need lsof. Each class makes as few plan runs as it can, because each
+run takes some seconds: one, or one for each mode. No check touches another
+repository.
 """
 
 from __future__ import annotations
@@ -431,6 +433,50 @@ class DocumentedLocationCase(PlanTestCase):
         self.assert_removed_with_branches(self.feat_i, "merged PR #64")
         self.assertNotIn(("folder", str(self.metrics)), self.plan)
         self.assertEqual(self.issues_read(), [])
+
+
+@NEEDS_LSOF_AND_GIT
+class LeadStateCases(PlanTestCase):
+    """Cases 17-19: merged worktrees with a lead folder, with and without --main-only."""
+
+    plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        worktrees = {}
+        for number, name in enumerate(("lead-a", "lead-b", "lead-c"), start=70):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+        cls.lead_a, cls.lead_b, cls.lead_c = worktrees.values()
+        cls.state = repo.folder(cls.lead_a, "20261122-lead-batch")
+        (cls.state / "state.json").write_text("{}\n")
+        repo.folder(cls.lead_b, "20261122-lead-old")
+        # A .scratch that the plan cannot list.
+        unreadable = cls.lead_c / ".scratch"
+        unreadable.mkdir()
+        unreadable.chmod(0)
+        cls.addClassCleanup(unreadable.chmod, 0o755)
+        cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
+
+    def test_case_17_keeps_a_merged_worktree_that_holds_a_lead_state_in_every_mode(self):
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_kept_with_branches(self.lead_a, "holds a lead state", str(self.state))
+
+    def test_case_18_a_lead_folder_without_state_json_keeps_no_worktree_by_this_rule(self):
+        self.plan = self.plans["default"]
+        self.assertNotIn("holds a lead state", self.line("worktree", self.lead_b)[1])
+        self.plan = self.plans["--main-only"]
+        self.assert_removed_with_branches(self.lead_b, "merged PR #71")
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
+    def test_case_19_keeps_a_worktree_whose_scratch_cannot_be_read(self):
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_kept_with_branches(self.lead_c, "cannot look for a lead state")
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")

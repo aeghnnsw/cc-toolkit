@@ -36,11 +36,13 @@ that a calling workflow did not name. A user request can limit this scope.
 The plan keeps the current worktree and each worktree that another live
 session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
-conversation of the last 60 minutes. It keeps a worktree with a detached HEAD
-or uncommitted changes. A branch is merged only when a merged PR of the
-branch has the branch tip as its head commit (`headRefOid`). The plan keeps a
-branch whose tip is in the Default Branch without such a PR: the branch has
-no commit of its own, and a session may have just started there. When a check
+conversation of the last 60 minutes. It keeps each worktree that holds a
+lead state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`,
+also with `--main-only`. It keeps a worktree with a detached HEAD or
+uncommitted changes. A branch is merged only when a merged PR of the branch
+has the branch tip as its head commit (`headRefOid`). The plan keeps a branch
+whose tip is in the Default Branch without such a PR: the branch has no
+commit of its own, and a session may have just started there. When a check
 cannot run, the plan keeps the item and gives the error as the reason.
 
 Before deleting anything, record the merged PRs that the plan names,
