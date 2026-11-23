@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.23.0
+version: 1.24.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -162,9 +162,15 @@ Fix failures on the PR branch. Give each failure one fix of any size, and run
 no review of the fix. When the fix does not close the failure, stop the ticket
 as in phase 5.
 For a rebase, give the agent a resolution rule per conflicted file and the
-required final versions; recheck versions that Git merged without conflict. If
-a required human review cannot be supplied, continue independent tickets, then
-report the blocker and keep the work. Respect branch protection.
+required final versions; recheck versions that Git merged without conflict.
+When the repository has a script that sets the next free versions, the rule
+for versions is to run it. When CI runs the suites on the PR, and the
+resolution of the rebase changes no file other than versions and changelog
+entries, rerun locally only the version and changelog checks, such as a
+package validator, and let CI run the suites on the new head. Rerun a suite
+locally only when the resolution changes another file. If a required human
+review cannot be supplied, continue independent tickets, then report the
+blocker and keep the work. Respect branch protection.
 
 ## Navigation retrospective
 

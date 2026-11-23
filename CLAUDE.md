@@ -90,10 +90,15 @@ git worktree add trees/doc-<description> -b doc-<description>
   [Skills for more than one host](CONTRIBUTING.md#skills-for-more-than-one-host).
 - Before shipping a plugin change, read
   [Package and release validation](CONTRIBUTING.md#package-and-release-validation)
-  for version increases.
-- Record substantive behavior or policy changes in the root
-  [CHANGELOG.md](CHANGELOG.md) in the
-  [entry format](CONTRIBUTING.md#changelog-entries).
+  for version increases. Set the versions with the version script. After a
+  rebase, run the checks that
+  [Versions and rebases](CONTRIBUTING.md#versions-and-rebases) names.
+- Record substantive behavior or policy changes in a new entry file,
+  `changelog.d/<N>.md`, in the
+  [entry format](CONTRIBUTING.md#changelog-entries). Do not edit
+  [CHANGELOG.md](CHANGELOG.md): the
+  [release step](CONTRIBUTING.md#release-step) moves the entries there, in
+  a pull request of its own.
 - Before adding agent-generated files, apply the storage policy in
   [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git).
 

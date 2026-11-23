@@ -429,6 +429,9 @@ def skill_version(root, path, revision=None):
 
 
 CHANGELOG_PATH = 'CHANGELOG.md'
+ENTRY_FOLDER = 'changelog.d'
+# changelog.d/<issue>.md, or changelog.d/<issue>-<words>.md when another change already uses the issue number.
+ENTRY_NAME = re.compile(r'changelog\.d/[0-9]+(?:-[a-z0-9]+)*\.md')
 CHANGELOG_LIMIT = 600
 CHANGELOG_SECTIONS = ('### Added', '### Removed', '### Changed')
 HOST_LABELS = {'claude': 'Claude Code', 'codex': 'Codex', 'antigravity': 'Antigravity'}
@@ -463,112 +466,213 @@ def changelog_hosts(text):
     return [(host, value) for hosts, value in groups for host in hosts]
 
 
-def check_changelog(text, old_text, packages, previous):
-    """Check the CHANGELOG.md bullets whose text is not in the base file, and require one for each version increase."""
+def risen_hosts(packages, previous):
+    """Map each plugin to the hosts whose manifest version is greater than at the merge base, or newly registered."""
     risen = {}
     for (name, host), package in packages.items():
         old = previous.get((name, host))
         if old is None or version(package.manifest['version']) > version(old.manifest['version']):
             risen.setdefault(name, set()).add(host)
+    return risen
+
+
+def entry_bullets(path, text):
+    """Return [(line number, section, bullet)] of an entry file; any line but a bullet, a section, or a blank fails."""
+    bullets, section = [], None
+    for number, line in enumerate(text.splitlines(), 1):
+        where = f'{path}:{number}'
+        if not line.strip():
+            continue
+        if MARKDOWN_HEADING.match(line):
+            if line not in CHANGELOG_SECTIONS:
+                raise InvalidPackage(f'{where}: an entry file has only the headings ### Added, ### Removed, and '
+                                     '### Changed, each with its bullets')
+            section = line
+        elif not line.startswith('- '):
+            raise InvalidPackage(f'{where}: a new line must be a one-line bullet that starts with "- "')
+        elif section is None:
+            raise InvalidPackage(f'{where}: put the new bullet under ### Added, ### Removed, or ### Changed')
+        else:
+            bullets.append((number, section, line))
+    if not bullets:
+        raise InvalidPackage(f'{path}: add a bullet, or delete the empty entry file')
+    return bullets
+
+
+def check_bullet(where, line, packages, risen):
+    """Check one new bullet; return its plugin name, or None for a Repository bullet."""
+    if len(line) > CHANGELOG_LIMIT:
+        raise InvalidPackage(f'{where}: the new bullet has {len(line)} characters; the limit is {CHANGELOG_LIMIT}. '
+                             'Move the detail to the pull request')
+    match = CHANGELOG_BULLET.fullmatch(line)
+    if not match:
+        raise InvalidPackage(f'{where}: the new bullet breaks the entry form {CHANGELOG_FORM}')
+    name = match['plugin']
+    if name is None:
+        return None
+    registered = {host: package for (plugin, host), package in packages.items() if plugin == name}
+    if not registered:
+        raise InvalidPackage(f'{where}: {name} is not a registered plugin; use its registered name or Repository')
+    hosts = changelog_hosts(match['hosts'])
+    order = [host for host, _ in hosts or []]
+    if hosts is None or order != sorted(set(order), key=HOSTS.index):
+        raise InvalidPackage(f'{where}: write the hosts as "Claude Code <version>, Codex <version>, Antigravity '
+                             '<version>" in that order, with one version for hosts that ship the same version')
+    for host, value in hosts:
+        if host not in registered:
+            raise InvalidPackage(f'{where}: {name} has no {HOST_LABELS[host]} registration')
+        if value != registered[host].manifest['version']:
+            raise InvalidPackage(f'{where}: {name} {HOST_LABELS[host]} is version '
+                                 f'{registered[host].manifest["version"]} in {registered[host].manifest_path}, not {value}')
+    expected = risen.get(name, set())
+    if set(order) != expected:
+        labels = ', '.join(HOST_LABELS[host] for host in HOSTS if host in expected) or 'no host'
+        raise InvalidPackage(f'{where}: name each host whose {name} version increased ({labels}) and no other')
+    return name
+
+
+def check_changelog(text, old_text, entries, old_entries, packages, previous):
+    """Check the new bullets of the changed entry files, and require one for each version increase.
+
+    A bullet is new when its text is in neither CHANGELOG.md nor an entry file at the merge base. CHANGELOG.md
+    takes only bullets that the release step moved from an entry file. entries and old_entries map each entry
+    file path to its text: the new or changed files now, and every file at the merge base.
+    """
     if text is None:
         if old_text is not None:
             raise InvalidPackage(f'{CHANGELOG_PATH}: missing; restore it')
         return
+    risen = risen_hosts(packages, previous)
     old_lines = set((old_text or '').splitlines())
-    named = set()
-    heading = section = None
+    for entry in old_entries.values():
+        old_lines.update(entry.splitlines())
+    heading = None
     for number, line in enumerate(text.splitlines(), 1):
         if line.startswith('## '):
-            heading, section = line, None
-        elif line.startswith('### '):
-            section = line
+            heading = line
         if not line.strip() or MARKDOWN_HEADING.match(line) or line in old_lines:
             continue
+        if heading is None and not line.startswith('- '):
+            continue  # Prose above the first section.
         where = f'{CHANGELOG_PATH}:{number}'
         if not line.startswith('- '):
             raise InvalidPackage(f'{where}: a new line must be a one-line bullet that starts with "- "')
-        if heading != '## [Unreleased]' or section not in CHANGELOG_SECTIONS:
-            raise InvalidPackage(f'{where}: put the new bullet under ## [Unreleased] in ### Added, ### Removed, or ### Changed')
-        if len(line) > CHANGELOG_LIMIT:
-            raise InvalidPackage(f'{where}: the new bullet has {len(line)} characters; the limit is {CHANGELOG_LIMIT}. '
-                                 'Move the detail to the pull request')
-        match = CHANGELOG_BULLET.fullmatch(line)
-        if not match:
-            raise InvalidPackage(f'{where}: the new bullet breaks the entry form {CHANGELOG_FORM}')
-        name = match['plugin']
-        if name is None:
-            continue
-        registered = {host: package for (plugin, host), package in packages.items() if plugin == name}
-        if not registered:
-            raise InvalidPackage(f'{where}: {name} is not a registered plugin; use its registered name or Repository')
-        hosts = changelog_hosts(match['hosts'])
-        order = [host for host, _ in hosts or []]
-        if hosts is None or order != sorted(set(order), key=HOSTS.index):
-            raise InvalidPackage(f'{where}: write the hosts as "Claude Code <version>, Codex <version>, Antigravity '
-                                 '<version>" in that order, with one version for hosts that ship the same version')
-        for host, value in hosts:
-            if host not in registered:
-                raise InvalidPackage(f'{where}: {name} has no {HOST_LABELS[host]} registration')
-            if value != registered[host].manifest['version']:
-                raise InvalidPackage(f'{where}: {name} {HOST_LABELS[host]} is version '
-                                     f'{registered[host].manifest["version"]} in {registered[host].manifest_path}, not {value}')
-        expected = risen.get(name, set())
-        if set(order) != expected:
-            labels = ', '.join(HOST_LABELS[host] for host in HOSTS if host in expected) or 'no host'
-            raise InvalidPackage(f'{where}: name each host whose {name} version increased ({labels}) and no other')
-        named.add(name)
+        raise InvalidPackage(f'{where}: add the new bullet to an entry file, {ENTRY_FOLDER}/<issue>.md, not to '
+                             f'{CHANGELOG_PATH}; the release step moves it')
+    named = set()
+    for path, entry in sorted(entries.items()):
+        if not ENTRY_NAME.fullmatch(path):
+            raise InvalidPackage(f'{path}: name the entry file {ENTRY_FOLDER}/<issue>.md, or '
+                                 f'{ENTRY_FOLDER}/<issue>-<words>.md with lowercase words')
+        for number, _, line in entry_bullets(path, entry):
+            if line not in old_lines:
+                named.add(check_bullet(f'{path}:{number}', line, packages, risen))
+    named.discard(None)
     for name in sorted(set(risen) - named):
         labels = ', '.join(f'{HOST_LABELS[host]} {packages[name, host].manifest["version"]}'
                            for host in HOSTS if host in risen[name])
-        raise InvalidPackage(f'{CHANGELOG_PATH}: {name} version increased ({labels}); '
-                             'add a bullet for it under ## [Unreleased]')
+        raise InvalidPackage(f'{name} version increased ({labels}); '
+                             f'add a bullet for it to an entry file, {ENTRY_FOLDER}/<issue>.md')
 
 
-def validate_changelog(root, packages, previous, base, base_files):
-    path = root / CHANGELOG_PATH
+def check_release(text, old_entries, removed, changed):
+    """A branch that deletes an entry file of the merge base runs the release step: it moves each bullet of the
+    file into CHANGELOG.md and changes no other file."""
+    if not removed:
+        return
+    other = sorted(path for path in changed if path != CHANGELOG_PATH and path not in old_entries)
+    if other:
+        raise InvalidPackage(f'{removed[0]}: this branch deletes an entry file and changes {other[0]}; run the '
+                             'release step in a pull request of its own, or restore the entry file')
+    lines = set((text or '').splitlines())
+    for path in removed:
+        for number, _, line in entry_bullets(path, old_entries[path]):
+            if line not in lines:
+                raise InvalidPackage(f'{path}:{number}: this branch deletes the entry file, but {CHANGELOG_PATH} '
+                                     'lacks its bullet; run the release step, or restore the entry file')
+
+
+def read_text(root, path, revision=None):
     try:
-        text = path.read_text(encoding='utf-8') if path.is_file() else None
-        old_text = git(root, 'show', f'{base}:{CHANGELOG_PATH}').decode() if CHANGELOG_PATH in base_files else None
+        return (git(root, 'show', f'{revision}:{path}') if revision else (root / path).read_bytes()).decode('utf-8')
     except UnicodeError as error:
-        raise InvalidPackage(f'{CHANGELOG_PATH}: invalid UTF-8 text') from error
-    check_changelog(text, old_text, packages, previous)
+        raise InvalidPackage(f'{path}: invalid UTF-8 text') from error
 
 
-def validate_releases(root, packages, rules, files, base_ref):
+def validate_changelog(root, packages, previous, changes):
+    text = read_text(root, CHANGELOG_PATH) if (root / CHANGELOG_PATH).is_file() else None
+    old_text = read_text(root, CHANGELOG_PATH, changes.base) if CHANGELOG_PATH in changes.base_files else None
+    folder = ENTRY_FOLDER + '/'
+    old_entries = {path: read_text(root, path, changes.base) for path in sorted(changes.base_files)
+                   if path.startswith(folder)}
+    entries = {path: read_text(root, path) for path in changes.current if path.startswith(folder)}
+    removed = [path for path in old_entries if not (root / path).is_file()]
+    check_changelog(text, old_text, entries, old_entries, packages, previous)
+    check_release(text, old_entries, removed, changes.changed)
+
+
+@dataclass
+class Changes:
+    """The merge base of the branch with the target ref, its files and rules there, and the changed paths."""
+    base: str
+    base_files: set
+    old_rules: dict
+    changed: set  # each changed path, including deleted ones
+    current: set  # the changed paths that exist now
+
+
+def branch_changes(root, rules, base_ref):
     try:
         base = git(root, 'merge-base', 'HEAD', base_ref).decode().strip()
     except InvalidPackage as error:
         raise InvalidPackage(f'comparison baseline {base_ref!r} unavailable; fetch the target history or select an available --base. {error}') from error
-    previous = load_packages(root, base)
     base_files = set(git(root, 'ls-tree', '-r', '--name-only', '-z', base).decode().split('\0'))
     old_rules = validate_rules(read_json(root, RULES_PATH, base)) if RULES_PATH in base_files else rules
     changed = set(git(root, 'diff', '--name-only', '-z', '--no-renames', base, '--').decode().split('\0'))
     changed.update(git(root, 'ls-files', '--others', '--exclude-standard', '-z').decode().split('\0'))
-    current_changed = {path for path in changed if path and ((root / path).exists() or (root / path).is_symlink())}
+    changed.discard('')
+    current = {path for path in changed if (root / path).exists() or (root / path).is_symlink()}
+    return Changes(base, base_files, old_rules, changed, current)
+
+
+def package_changes(package, old, packages, previous, rules, changes):
+    """Return [(path, reason)] for each changed path that affects the host of package, in the current or base layout."""
+    current_hosts = [p for p in packages.values() if p.name == package.name]
+    old_hosts = [p for p in previous.values() if p.name == package.name]
+    return (affected_paths(package, changes.current, current_hosts, rules)
+            + affected_paths(old, changes.changed & changes.base_files, old_hosts, changes.old_rules))
+
+
+def changed_skills(root, package, old, files, changes, affected):
+    """Yield (name, path, base path, affected paths) for each skill with base history that an affected path changes."""
+    # Skills match by directory name, so a source move keeps their history; a new skill has none.
+    former = skill_files(old, changes.base_files)
+    for name, path in sorted(skill_files(package, files).items()):
+        if name not in former or not (root / path).is_file():
+            continue
+        folders = (path.removesuffix('SKILL.md'), former[name].removesuffix('SKILL.md'))
+        found = [change for change in affected if change[0].startswith(folders)]
+        if found:
+            yield name, path, former[name], found
+
+
+def validate_releases(root, packages, rules, files, base_ref):
+    changes = branch_changes(root, rules, base_ref)
+    previous = load_packages(root, changes.base)
     for key, package in packages.items():
         old = previous.get(key)
         if old is None:
             continue
-        current_hosts = [p for p in packages.values() if p.name == package.name]
-        old_hosts = [p for p in previous.values() if p.name == package.name]
-        affected = affected_paths(package, current_changed, current_hosts, rules) + affected_paths(old, changed & base_files, old_hosts, old_rules)
+        affected = package_changes(package, old, packages, previous, rules, changes)
         if affected and version(package.manifest['version']) <= version(old.manifest['version']):
             raise InvalidPackage(f'{package.name} [{package.host}]: version must increase above {old.manifest["version"]}; changed {affected[0][0]} ({affected[0][1]})')
-        # Skills match by directory name, so a source move keeps their history; a new skill has none.
-        former = skill_files(old, base_files)
-        for name, path in sorted(skill_files(package, files).items()):
-            if name not in former or not (root / path).is_file():
-                continue
-            folders = (path.removesuffix('SKILL.md'), former[name].removesuffix('SKILL.md'))
-            changes = [change for change in affected if change[0].startswith(folders)]
-            if not changes:
-                continue
-            new_value, old_value = skill_version(root, path), skill_version(root, former[name], base)
+        for name, path, former, found in changed_skills(root, package, old, files, changes, affected):
+            new_value, old_value = skill_version(root, path), skill_version(root, former, changes.base)
             if old_value and not new_value:
-                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} lost its version {old_value} in {path}; restore the version line with a greater version; changed {changes[0][0]} ({changes[0][1]})')
-            if new_value and old_value and version(new_value, path) <= version(old_value, former[name]):
-                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} version must increase above {old_value} in {path}; changed {changes[0][0]} ({changes[0][1]})')
-    validate_changelog(root, packages, previous, base, base_files)
+                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} lost its version {old_value} in {path}; restore the version line with a greater version; changed {found[0][0]} ({found[0][1]})')
+            if new_value and old_value and version(new_value, path) <= version(old_value, former):
+                raise InvalidPackage(f'{package.name} [{package.host}]: skill {name} version must increase above {old_value} in {path}; changed {found[0][0]} ({found[0][1]})')
+    validate_changelog(root, packages, previous, changes)
 
 
 def main():

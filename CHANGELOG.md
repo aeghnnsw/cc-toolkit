@@ -1,5 +1,8 @@
 # Changelog
 
+The entries of merged changes wait in entry files in `changelog.d/` until the release step
+moves them here. See [Changelog entries](CONTRIBUTING.md#changelog-entries).
+
 ## [Unreleased]
 
 ### Added

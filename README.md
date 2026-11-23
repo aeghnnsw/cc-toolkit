@@ -30,9 +30,12 @@ cc-toolkit/
 ├── CONTRIBUTING.md                   # Repository boundaries and verification
 ├── GLOSSARY.md                       # Glossary of agreed domain terms
 ├── CHANGELOG.md                      # Plugin and repository changes
+├── changelog.d/                      # Entry files of merged changes that wait for the release step
 ├── package-validation.json           # Package and release validation rules
 ├── scripts/validate_packages.py      # Package and release validator
-├── tests/                            # Root tests: validator, skill links, model pins, placeholders, agent fields
+├── scripts/next_versions.py          # Version script: next free versions above master
+├── scripts/release_changelog.py      # Release step: entry files into CHANGELOG.md
+├── tests/                            # Root tests: validator, release scripts, skill links, model pins, placeholders, agent fields
 ├── docs/
 │   ├── adr/                          # Accepted architecture decisions
 │   ├── agents/                       # Issue tracker, triage, domain, and retrospective conventions

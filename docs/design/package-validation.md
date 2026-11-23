@@ -1,5 +1,11 @@
 # Package and release validation
 
+> **Superseded in part (2026-11-23, issue
+> [#298](https://github.com/aeghnnsw/cc-toolkit/issues/298)).** New changelog
+> bullets go in entry files, and a new bullet in `CHANGELOG.md` fails. Read
+> [CHANGELOG checks](#changelog-checks) and
+> [ADR 0010](../adr/0010-use-entry-files-and-a-version-script.md).
+
 Tracked in [issue #206](https://github.com/aeghnnsw/cc-toolkit/issues/206),
 with delivery in [#207](https://github.com/aeghnnsw/cc-toolkit/issues/207),
 [#208](https://github.com/aeghnnsw/cc-toolkit/issues/208), and
@@ -211,24 +217,39 @@ Historical omissions do not create retroactive version requirements.
 
 ## CHANGELOG checks
 
-Release validation also checks the root `CHANGELOG.md`. A bullet is new when
-its exact text is not in the file at the merge base, so a moved bullet, such
-as one under a new dated heading, is not new, and an edited bullet is new.
-Existing bullets are not checked. Each other new line must be blank or a
-heading, so a continuation line or another list marker fails.
+Release validation also checks the root `CHANGELOG.md` and the entry files
+in `changelog.d/`
+([ADR 0010](../adr/0010-use-entry-files-and-a-version-script.md)). A bullet
+is new when its exact text is in neither `CHANGELOG.md` nor an entry file at
+the merge base. A moved bullet, such as one that the release step moves
+from an entry file into `CHANGELOG.md`, is not new, and an edited bullet is
+new. Existing bullets are not checked.
 
-Each new bullet must be under `## [Unreleased]` in `### Added`,
-`### Removed`, or `### Changed`, have at most 600 characters, and match the
+Each new or changed entry file must be named `changelog.d/<N>.md` or
+`changelog.d/<N>-<words>.md`, with lowercase words. Each of its lines must
+be blank, one of the headings `### Added`, `### Removed`, and
+`### Changed`, or a one-line bullet under one of them, and the file needs a
+bullet. Each new bullet must have at most 600 characters and match the
 [entry form](../../CONTRIBUTING.md#changelog-entries): `Repository:` or a
 registered plugin name with hosts and versions, then the change, then one
 ` See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).` link whose two
-numbers agree. The change text holds no other ` See [#`. A plugin bullet names the hosts in the order Claude Code,
-Codex, Antigravity, writes one version for adjacent hosts that ship the same
-version, gives each host its current manifest version, and names exactly the
-hosts whose version increased. A new host registration counts as an
-increase. Each plugin with an increased version needs a new bullet. When the
-base has `CHANGELOG.md` and the proposed tree does not, validation fails;
-when neither has it, the check is skipped.
+numbers agree. The change text holds no other ` See [#`. A plugin bullet
+names the hosts in the order Claude Code, Codex, Antigravity, writes one
+version for adjacent hosts that ship the same version, gives each host its
+current manifest version, and names exactly the hosts whose version
+increased. A new host registration counts as an increase. Each plugin with
+an increased version needs a new bullet in an entry file.
+
+A new line in `CHANGELOG.md` below its first `## ` heading must be blank or
+a heading; a new bullet there fails, because only the release step adds
+bullets to it. When the base has `CHANGELOG.md` and the proposed tree does
+not, validation fails; when neither has it, the changelog checks are
+skipped.
+
+A branch that deletes an entry file of the merge base runs the release
+step. It must change no file other than `CHANGELOG.md` and the entry files
+of the merge base, and `CHANGELOG.md` must hold each bullet of each deleted
+entry file.
 
 ## Adoption and verification
 
@@ -243,7 +264,10 @@ and hooks-only packages; Antigravity registration and shadowing; invalid
 metadata; missing and escaped resources; skill headers; shared and
 host-specific changes; exemptions; unknown files; plugin and skill version
 rules; resource changes and source moves; registration lifecycle; missing
-history; staged, unstaged, and new files; and new CHANGELOG bullets.
+history; staged, unstaged, and new files; new bullets of entry files and
+`CHANGELOG.md`; and branches that run the release step. The
+[release script tests](../../tests/test_release_scripts.py) run the release
+step, the version script, and a rebase of two branches with entry files.
 
 The [skill link test](../../tests/test_skill_links.py) imports the
 validator module. It reuses registry loading, skill discovery, rule
