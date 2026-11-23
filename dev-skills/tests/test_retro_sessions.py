@@ -313,11 +313,11 @@ class RetroSessionsTests(unittest.TestCase):
         self.assertEqual(set(manifest["repository"]["roots"]), {str(main), str(external)})
         self.assertEqual(manifest["counts"]["skipped_sources"], 2)
         self.assertEqual(summary["status"], "partial")
-        # The foreign folder is missing and beside the linked worktree.
+        # The foreign folder is missing and in the parent folder of the linked worktree.
         self.assertEqual([item["code"] for item in manifest["diagnostics"]], ["removed_worktree", "missing_cwd"])
 
     def linked_worktree(self):
-        """Register a linked worktree and return it with a missing folder beside it."""
+        """Register a linked worktree and return it with a missing folder in its parent folder."""
         message = self.base / "commit-message.txt"
         message.write_text("Initialize fixture\n")
         subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=Fixture", "-c",
@@ -331,18 +331,20 @@ class RetroSessionsTests(unittest.TestCase):
         source = self.transcript(self.claude, "removed/session.jsonl", [
             self.claude_message("in a subfolder", cwd=str(removed / "dev-skills")),
             self.claude_message("in the worktree", cwd=str(removed))])
-        summary, manifest, selected, _ = self.artifacts(self.run_cli("--through", "2026-01-03T00:00:00Z"))
-        self.assertEqual((summary["status"], selected), ("partial", []))
-        self.assertEqual(manifest["diagnostics"], [{
-            "path": str(source), "host": "claude", "code": "removed_worktree", "line": 1, "worktree": str(removed),
-            "message": "Pass this worktree path with --worktree to select these records.",
-            "count": 2, "lines": [1, 2]}])
-        self.assertIn("--worktree", manifest["limitations"][0])
-        # The option selects the sessions of each host under the removed path.
-        self.transcript(self.codex, "removed.jsonl", [
+        codex = self.transcript(self.codex, "removed.jsonl", [
             {"type": "session_meta", "payload": {"cwd": str(removed)}},
             {"type": "response_item", "timestamp": "2026-01-02T12:00:00Z", "payload": {
                 "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Codex"}]}}])
+        summary, manifest, selected, _ = self.artifacts(self.run_cli("--through", "2026-01-03T00:00:00Z"))
+        self.assertEqual((summary["status"], selected), ("partial", []))
+        message = "Pass this worktree path with --worktree to select these records."
+        self.assertEqual(manifest["diagnostics"], [
+            {"path": str(source), "host": "claude", "code": "removed_worktree", "line": 1,
+             "worktree": str(removed), "message": message, "count": 2, "lines": [1, 2]},
+            {"path": str(codex), "host": "codex", "code": "removed_worktree", "line": 2,
+             "worktree": str(removed), "message": message}])
+        self.assertIn("--worktree", manifest["limitations"][0])
+        # The option selects the sessions of each host under the removed path.
         antigravity = self.base / "antigravity"
         self.antigravity_database(antigravity, [self.antigravity_conversation(
             antigravity, "conv-removed", [str(removed)], [self.antigravity_step(0, "USER_INPUT", "Antigravity")])])

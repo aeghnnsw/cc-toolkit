@@ -241,9 +241,9 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
 
     CWD is the starting working folder. Antigravity records carry no cwd, so
     the caller gives the matched workspace folder. LINKED_PARENTS holds the
-    parent folder of each linked worktree that Git lists; a foreign record in
-    the window whose cwd is in a removed folder there gets a removed_worktree
-    diagnostic.
+    parent folder of each linked worktree that Git lists. A foreign record in
+    the window whose cwd is in a missing folder in one of these parent folders
+    gets a removed_worktree diagnostic.
     """
     timeline = []
     tool_names = {}
@@ -268,6 +268,16 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
             lines.append(line)
         else:
             item["omitted_line_references"] = item.get("omitted_line_references", 0) + 1
+
+    def record_instant(record):
+        """Return the time of RECORD as exact seconds, or None when it is invalid."""
+        try:
+            return timestamp(record[time_field])
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return None
+
+    def in_window(instant):
+        return (after is None or instant > after) and instant <= through
 
     ignored_types = {}
     counts = {"records": 0, "foreign_records": 0, "outside_window_records": 0,
@@ -316,22 +326,17 @@ def extract(stream, host, repository_roots, after, through, max_events, max_text
         if not any(current_path.is_relative_to(root) for root in repository_roots):
             counts["foreign_records"] += 1
             worktree = removed_worktree(current_path, linked_parents)
-            if worktree is not None:
-                try:
-                    instant = timestamp(record[time_field])
-                except (ValueError, TypeError, KeyError, AttributeError):
-                    instant = None
-                if instant is not None and (after is None or instant > after) and instant <= through:
-                    diagnose("removed_worktree", line, worktree=str(worktree),
-                             message="Pass this worktree path with --worktree to select these records.")
+            instant = None if worktree is None else record_instant(record)
+            if instant is not None and in_window(instant):
+                diagnose("removed_worktree", line, worktree=str(worktree),
+                         message="Pass this worktree path with --worktree to select these records.")
             continue
-        try:
-            instant = timestamp(record[time_field])
-        except (ValueError, TypeError, KeyError, AttributeError):
+        instant = record_instant(record)
+        if instant is None:
             selected = True
             diagnose("invalid_timestamp", line)
             continue
-        if (after is not None and instant <= after) or instant > through:
+        if not in_window(instant):
             counts["outside_window_records"] += 1
             continue
         selected = True
@@ -490,10 +495,11 @@ def main(argv=None):
         "antigravity-acp in each ~/.t3/userdata/providers/antigravity/<profile> "
         "folder. The manifest lists each root with its status. "
         "The repository roots are the worktrees that git worktree list shows and "
-        "each --worktree path. Without --worktree, a Claude Code or Codex source "
-        "with a record in the window whose cwd is in a missing folder in the same "
-        "parent folder as a linked worktree that Git lists gets a removed_worktree "
-        "diagnostic; its worktree field names the folder to pass with --worktree. "
+        "each --worktree path. Without --worktree, the script checks each Claude "
+        "Code or Codex record in the window whose cwd is outside the repository "
+        "roots. When that cwd is in a missing folder in the same parent folder as "
+        "a linked worktree that Git lists, the source gets a removed_worktree "
+        "diagnostic. Its worktree field names the folder to pass with --worktree. "
         f"With --after, a source modified {MTIME_STEP_SECONDS} s or more before that "
         "cutoff is not copied or read; counts.unchanged_sources counts it. "
         "Each selected source has a digest and a timeline: one tab-separated "
@@ -571,8 +577,8 @@ def main(argv=None):
     if not git_roots or "bare" in worktrees.split("\0"):
         parser.error("--repo must name a non-bare Git checkout")
     # Git lists the main worktree first. Its parent folder often holds
-    # unrelated projects, so only linked worktrees name the folders where a
-    # removed worktree is looked for.
+    # unrelated projects, so the script looks for a removed worktree only in
+    # the parent folders of linked worktrees.
     repo = git_roots[0]
     linked_parents = frozenset(root.parent for root in git_roots[1:])
     added_worktrees = list(dict.fromkeys(path.expanduser().resolve() for path in args.worktree))
@@ -678,10 +684,10 @@ def main(argv=None):
                 "limits": {"max_events": args.max_events, "max_text": args.max_text},
                 "roots": roots, "sources": sources, "diagnostics": diagnostics,
                 "limitations": ["A worktree that Git no longer lists is read only when --worktree names it. "
-                                "Without that option, a Claude Code or Codex record in the window whose cwd is "
-                                "in a missing folder in the same parent folder as a linked worktree that Git "
-                                "lists gets a removed_worktree diagnostic; other removed worktrees and "
-                                "Antigravity conversations get none.",
+                                "Without that option, a Claude Code or Codex record in the window can get a "
+                                "removed_worktree diagnostic. It gets one when its cwd is in a missing folder "
+                                "in the same parent folder as a linked worktree that Git lists. Other removed "
+                                "worktrees and Antigravity conversations get none.",
                                 "Copies are measured byte prefixes, not atomic filesystem snapshots.",
                                 f"A source modified {MTIME_STEP_SECONDS} s or more before --after is not read; "
                                 f"a record more than {MTIME_STEP_SECONDS} s later than its file's modification "

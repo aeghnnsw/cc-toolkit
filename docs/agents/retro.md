@@ -60,20 +60,21 @@ choose.
 
    The repository roots are the worktrees that `git worktree list` shows.
    T3 Code can remove the worktree of a finished thread, and Git then no
-   longer lists it. To read the sessions of a removed worktree,
-   pass its path with `--worktree`. The option is repeatable. It adds each
-   path to the repository roots, so the script selects the Claude Code,
-   Codex, and Antigravity sessions under it. A leader passes the worktree
-   paths of its runs. The manifest lists the added paths in
-   `repository.added_worktrees`.
+   longer lists it. To read the sessions of a removed worktree, pass its
+   path with `--worktree`. The option is repeatable. It adds each path to
+   the repository roots, so the script selects the Claude Code, Codex, and
+   Antigravity sessions under it. A leader is a session that starts
+   parallel runs; it passes the worktree paths of its runs. The manifest
+   lists the added paths in `repository.added_worktrees`.
 
-   Without the option, a Claude Code or Codex source gets a
-   `removed_worktree` diagnostic when a record in the window has a `cwd` in
-   a missing folder, and that folder is in the same parent folder as a
-   linked worktree that Git lists. The `worktree` field of the diagnostic
-   names that folder. Run the script again with `--worktree` and that path.
-   A removed worktree in another parent folder, and an Antigravity
-   conversation, get no such diagnostic.
+   Without the option, the script checks each Claude Code or Codex record
+   in the window whose `cwd` is outside the repository roots. When that
+   `cwd` is in a missing folder in the same parent folder as a linked
+   worktree that Git lists, the source gets a `removed_worktree`
+   diagnostic. The `worktree` field of the diagnostic names that folder.
+   Run the script again with `--worktree` and that path. A removed
+   worktree in another parent folder, and an Antigravity conversation, get
+   no such diagnostic.
 
    The manifest gives the exact `window.through` cutoff, the source limits,
    and the timeline and digest of each source. Read the timelines: one line
