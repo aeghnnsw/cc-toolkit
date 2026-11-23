@@ -27,6 +27,7 @@ Current decisions:
 - [Use a native Antigravity plugin layout](../adr/0006-antigravity-plugin-layout.md)
 - [Gate the project lead with a session-checked plugin hook](../adr/0007-gate-the-project-lead-with-a-session-checked-hook.md)
 - [Keep the lead state in the step script](../adr/0008-keep-project-lead-state-in-a-cli.md)
+- [Bind the lead state to its T3 thread, and find it in any worktree](../adr/0009-bind-the-lead-state-to-its-t3-thread.md)
 
 ## Host compatibility
 

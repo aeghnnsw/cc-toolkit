@@ -270,7 +270,8 @@ class GateTests(HookCase):
         self.check_shell((f"python3 {STEP_SCRIPT} task add fix-503 'Triage #503 (lean-tests)' --batch 2",
                           f'python3 "{STEP_SCRIPT}" show', f"python3 {STEP_SCRIPT} wait --task x --decisions 3",
                           f"python {self.installed} outcome 'a | b; c > d'", f"python3 {STEP_SCRIPT} plan extra",
-                          f'python3 {STEP_SCRIPT} criteria "Tests pass (all)"'),
+                          f'python3 {STEP_SCRIPT} criteria "Tests pass (all)"', f"python3 {STEP_SCRIPT} takeover",
+                          f"python3 {STEP_SCRIPT} init demo --also"),
                          allowed=True)
 
     def test_a_worktree_copy_of_the_step_script_is_blocked(self):

@@ -14,6 +14,12 @@ lead's working tree, where each host's sandbox lets a shell command write. A
 with the UTC time, appends it to events.jsonl, and refuses a transition that
 the life cycle does not allow and text over 200 characters. The state is
 independent of GTD.
+
+The lead state belongs to one T3 thread, its owner (issue #544): `init`
+records `T3CODE_THREAD_ID`, and only the owner changes or deletes the state.
+`takeover` moves the state to the current thread, such as a fork or a new
+thread in the lead's worktree. When `start` finds no lead state in its own
+checkout, it lists the lead states of the other worktrees, read-only.
 """
 
 from __future__ import annotations
@@ -64,7 +70,8 @@ the rest of its batch. A batch (--batch) only decides when its workers are
 closed out and settled.
 Decide reversible points yourself. Record the plan with these commands. Text
 is at most 200 characters; quote it with single quotes.
-init <slug>, once, after the user approves the outcome; outcome <text>;
+init <slug>, once, after the user approves the outcome; add --also only after
+the user confirms a second lead state; outcome <text>;
 criteria <text>; task add <name> <title> [--batch N] [--after NAME]
 [--kind work|check|closeout] [--of NAME] [--issue N] [--scientific];
 decision add <text>; decision drop <id>. A task name has lowercase letters,
@@ -199,7 +206,15 @@ Next: after a wake or a user message, t3_project_lead.py start.
 STATE_FILE = "state.json"
 EVENTS_FILE = "events.jsonl"
 LOCK_FILE = ".lock"
+# Schema 1 gained the optional fields "owner" and "takeover_due" in #544, so older code still reads it.
 SCHEMA = 1
+THREAD_VARIABLE = "T3CODE_THREAD_ID"
+TAKEOVER_LINE = ("Check for work this state does not name: t3_thread_list with includeSubagents, and "
+                 "pull_request_list. Record each worker with task add and task start, or add a waiting "
+                 "item.")
+RECOVERY = ("Recovery of a flagged lead: start a thread on another model with t3_thread_launch and "
+            "workspaceStrategy existing_worktree in this worktree, then run start and takeover in it. "
+            "Do not fork the flagged thread.")
 TEXT_LIMIT = 200
 LINK_LIMIT = 600
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
@@ -232,32 +247,99 @@ def parse_time(value: str) -> datetime.datetime:
     return datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
 
 
+def git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run git in `cwd` for the working tree there, not for one that the environment names."""
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
+    return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, env=env, timeout=10,
+                          check=False)
+
+
 def working_tree_top() -> str:
     """Return the top of the Git working tree that holds the current folder, or the folder."""
     cwd = os.getcwd()
-    env = {key: value for key, value in os.environ.items()
-           if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
     try:
-        result = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-                                capture_output=True, text=True, env=env, timeout=10, check=False)
+        result = git(cwd, "rev-parse", "--show-toplevel")
     except (OSError, subprocess.SubprocessError):
         return cwd
     top = result.stdout.strip()
     return top if result.returncode == 0 and top else cwd
 
 
-def find_lead(top: str) -> str | None:
-    """Return the lead folder in `top`, or None. More than one is an error."""
+def lead_folders(top: str) -> list[str]:
+    """Return the lead folders in `top`: .scratch/<YYYYMMDD>-lead-<slug>/ with a state file."""
     scratch = os.path.join(top, ".scratch")
     try:
         names = sorted(os.listdir(scratch))
     except OSError:
-        return None
-    folders = [os.path.join(scratch, name) for name in names
-               if FOLDER.fullmatch(name) and os.path.isfile(os.path.join(scratch, name, STATE_FILE))]
+        return []
+    return [os.path.join(scratch, name) for name in names
+            if FOLDER.fullmatch(name) and os.path.isfile(os.path.join(scratch, name, STATE_FILE))]
+
+
+def find_lead(top: str) -> str | None:
+    """Return the lead folder in `top`, or None. More than one is an error."""
+    folders = lead_folders(top)
     if len(folders) > 1:
-        raise Refused(f"more than one lead state in {scratch}: {', '.join(folders)}")
+        raise Refused(f"more than one lead state in {os.path.join(top, '.scratch')}: {', '.join(folders)}")
     return folders[0] if folders else None
+
+
+def worktree_tops(top: str) -> list[str]:
+    """Return the top of each worktree of the repository that holds `top`; raise OSError on failure."""
+    try:
+        result = git(top, "worktree", "list", "--porcelain")
+    except subprocess.SubprocessError as error:
+        raise OSError(str(error)) from None
+    if result.returncode:
+        raise OSError((result.stderr.strip().splitlines() or [f"git exited {result.returncode}"])[0])
+    return [line[len("worktree "):] for line in result.stdout.splitlines() if line.startswith("worktree ")]
+
+
+def last_change(folder: str, state: dict) -> str:
+    """Return the time of the last event in the history, else the time that the state was created."""
+    try:
+        with open(os.path.join(folder, EVENTS_FILE), encoding="utf-8") as handle:
+            lines = [line for line in handle.read().splitlines() if line.strip()]
+        return json.loads(lines[-1])["time"]
+    except (OSError, IndexError, KeyError, TypeError, ValueError):
+        return state.get("created") or "unknown"
+
+
+def plural(count: int, noun: str) -> str:
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def summary_line(folder: str, tree: str) -> str:
+    """Return one line on the lead state in `folder` of worktree `tree`, for the lookup."""
+    try:
+        state = load(folder)
+        owner = state.get("owner") or "no owner"
+        open_tasks = sum(task["state"] not in (CLOSED_OUT, SETTLED) for task in state["tasks"])
+        return (f"- {folder}: slug {state['slug']}, owner {owner}, last change {last_change(folder, state)}, "
+                f"{plural(open_tasks, 'open task')}, {plural(len(state['items']), 'waiting item')}. "
+                f"Worktree: {tree}")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, Refused) as error:
+        return f"- {folder}: cannot read the lead state ({error!r}). Worktree: {tree}"
+
+
+def other_leads(top: str) -> list[str]:
+    """Return one line for each lead state in the other worktrees of the repository, read-only.
+
+    Raise OSError when Git cannot list the worktrees.
+    """
+    lines = []
+    here = os.path.realpath(top)
+    for tree in worktree_tops(top):
+        if os.path.realpath(tree) == here:
+            continue
+        folders = lead_folders(tree)
+        if len(folders) > 1:
+            lines.append(f"- More than one lead state in {os.path.join(tree, '.scratch')}: "
+                         f"{', '.join(folders)}. Worktree: {tree}")
+        elif folders:
+            lines.append(summary_line(folders[0], tree))
+    return lines
 
 
 def load(folder: str) -> dict:
@@ -299,6 +381,30 @@ def locked(folder: str):
 
 
 # Checks of input.
+
+def current_thread() -> str:
+    """Return the T3 thread ID of this session, or an empty string."""
+    return os.environ.get(THREAD_VARIABLE, "").strip()
+
+
+def require_thread(command: str) -> str:
+    thread = current_thread()
+    if not thread:
+        raise Refused(f"{command} needs {THREAD_VARIABLE}, the ID of the T3 Code thread; run it in the "
+                      "lead's T3 Code thread")
+    return thread
+
+
+def check_owner(state: dict) -> None:
+    """Refuse a change unless this thread owns the lead state."""
+    owner, thread = state.get("owner"), current_thread()
+    if owner and thread == owner:
+        return
+    who = f"thread {thread}" if thread else f"a session without {THREAD_VARIABLE}"
+    owned = f"its owner is thread {owner}" if owner else "it has no owner, because an older script made it"
+    raise Refused(f"{who} cannot change this lead state: {owned}. To move the lead to this thread, run "
+                  f"takeover. {RECOVERY}")
+
 
 def text(value: str, what: str) -> str:
     value = " ".join(value.split())
@@ -398,11 +504,22 @@ def cmd_init(args) -> str:
     slug = args.slug
     if not SLUG.fullmatch(slug):
         raise Refused("a slug has lowercase letters, digits, and hyphens, at most 40 characters")
+    owner = require_thread("init")
     top = working_tree_top()
     existing = find_lead(top)
     if existing:
         raise Refused(f"a lead state already exists here: {existing}. Start this lead in its own "
                       "T3 worktree.")
+    if not args.also:
+        confirm = f"Only after the user confirms a second lead state, run init {slug} --also."
+        try:
+            others = other_leads(top)
+        except OSError as error:
+            raise Refused(f"could not list the worktrees, so another one may hold a lead state: {error}. "
+                          f"{confirm}") from None
+        if others:
+            raise Refused("\n".join(["another worktree holds a lead state:", *others,
+                                     f"Continue that lead in its own worktree. {confirm}"]))
     time = utc_now()
     folder = os.path.join(top, ".scratch", f"{time[:10].replace('-', '')}-lead-{slug}")
     if os.path.exists(folder):
@@ -410,11 +527,28 @@ def cmd_init(args) -> str:
     os.makedirs(folder)
     with open(os.path.join(folder, ".gitignore"), "w", encoding="utf-8") as handle:
         handle.write("*\n")
-    state = {"schema": SCHEMA, "slug": slug, "created": time, "outcome": None, "criteria": None,
-             "tasks": [], "items": [], "next_item": 1, "decisions": [], "next_decision": 1}
+    state = {"schema": SCHEMA, "slug": slug, "created": time, "owner": owner, "outcome": None,
+             "criteria": None, "tasks": [], "items": [], "next_item": 1, "decisions": [], "next_decision": 1}
     save(folder, state)
-    append_event(folder, {"time": time, "command": "init", "slug": slug})
+    append_event(folder, {"time": time, "command": "init", "slug": slug, "owner": owner})
     return f"Lead state created: {folder}"
+
+
+def cmd_takeover(args) -> str:
+    thread = require_thread("takeover")
+    folder = require_lead()
+    with locked(folder):
+        state = load(folder)
+        old = state.get("owner")
+        if old == thread:
+            return "This thread already owns the lead state; nothing changed."
+        state["owner"] = thread
+        # The first start of the new owner names the work that the state may not name.
+        state["takeover_due"] = True
+        time = utc_now()
+        save(folder, state)
+        append_event(folder, {"time": time, "command": "takeover", "old_owner": old, "owner": thread})
+    return f"Lead state taken over: owner {thread}, was {old or 'none'}. Run start."
 
 
 def change_outcome(state, args, time):
@@ -650,6 +784,7 @@ def run_change(args) -> str:
     folder = require_lead()
     with locked(folder):
         state = load(folder)
+        check_owner(state)
         time = utc_now()
         message, event = args.change(state, args, time)
         save(folder, state)
@@ -668,6 +803,7 @@ def cmd_finish(args) -> str:
     folder = require_lead()
     with locked(folder):
         state = load(folder)
+        check_owner(state)
         open_tasks = [task["name"] for task in state["tasks"] if task["state"] != SETTLED]
         if open_tasks or state["items"]:
             items = [str(item["number"]) for item in state["items"]]
@@ -730,7 +866,7 @@ def task_line(task: dict, now: datetime.datetime) -> str:
 
 
 def due_lines(state: dict) -> list[str]:
-    lines = []
+    lines = [TAKEOVER_LINE] if state.get("takeover_due") else []
     for batch in sorted({task["batch"] for task in state["tasks"]}):
         if needs_closeout(state, batch):
             prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
@@ -740,6 +876,9 @@ def due_lines(state: dict) -> list[str]:
     for task in state["tasks"]:
         if task["state"] == SETTLED:
             continue
+        if task["state"] == PAUSED:
+            lines.append(f"{task['name']} is paused: run task resume {task['name']} to plan it again, or "
+                         f"task cancel {task['name']}.")
         if task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None:
             if task["worker"]:
                 lines.append(f"Settle the worker of {task['name']}, then run task settled "
@@ -765,9 +904,13 @@ def due_lines(state: dict) -> list[str]:
 def view_lines(state: dict, folder: str) -> list[str]:
     time = utc_now()
     now = parse_time(time)
-    lines = [f"Lead state: {state['slug']}, {folder}", f"Now: {time}",
-             f"Outcome: {state['outcome'] or '(none)'}", f"Criteria: {state['criteria'] or '(none)'}",
-             "Tasks:"]
+    owner = state.get("owner")
+    lines = [f"Lead state: {state['slug']}, {folder}", f"Owner: {owner or 'none'}"]
+    if not owner or current_thread() != owner:
+        lines.append("This thread is not the owner: it can read the lead state but not change it. To move "
+                     "the lead to this thread, run takeover.")
+    lines += [f"Now: {time}", f"Outcome: {state['outcome'] or '(none)'}",
+              f"Criteria: {state['criteria'] or '(none)'}", "Tasks:"]
     shown = [task for task in state["tasks"] if task["state"] not in (CLOSED_OUT, SETTLED)]
     lines += [task_line(task, now) for task in shown] or ["- (none)"]
     closed = sum(task["state"] == CLOSED_OUT for task in state["tasks"])
@@ -809,13 +952,35 @@ def print_step(name: str) -> None:
     if folder is None:
         if name == "start":
             print()
-            print(f"No lead state in {top}. After the user approves the outcome, run: "
-                  f'python3 "{__file__}" init <slug>')
+            print("\n".join(lookup_lines(top)))
         return
     state = load(folder)
     lines = {"start": view_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
     print()
     print("\n".join(lines[name](state, folder)))
+    if name == "start" and state.get("takeover_due") and current_thread() == state.get("owner"):
+        # The owner saw the due line once; a failed write only prints it again at the next start.
+        with contextlib.suppress(OSError), locked(folder):
+            state = load(folder)
+            if state.pop("takeover_due", None) and current_thread() == state.get("owner"):
+                save(folder, state)
+
+
+def lookup_lines(top: str) -> list[str]:
+    """Return what `start` prints when its own working tree holds no lead state."""
+    init = (f"No lead state in {top}. After the user approves the outcome, run: "
+            f'python3 "{__file__}" init <slug>')
+    try:
+        others = other_leads(top)
+    except OSError as error:
+        return [f"Could not list the worktrees: {error}", init]
+    if not others:
+        return [init]
+    return [f"No lead state in {top}. Lead states in other worktrees of this repository:", *others,
+            "Continue that lead in its own worktree, and do not run init here. Three ways continue that "
+            "lead: change the provider of the lead thread; fork the lead thread; or start a thread with "
+            "t3_thread_launch and workspaceStrategy existing_worktree with the worktree that the list "
+            "names. In a fork or a new thread, run start, then takeover."]
 
 
 # Arguments.
@@ -837,10 +1002,14 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True, metavar="command")
     for name in STEPS:
         commands.add_parser(name, help=f"print the {name} step")
-    commands.add_parser("init", help="create the lead state").add_argument("slug")
+    init = commands.add_parser("init", help="create the lead state")
+    init.add_argument("slug")
+    init.add_argument("--also", action="store_true",
+                      help="create it while another worktree holds a lead state, after the user confirms")
     commands.add_parser("show", help="print the lead state")
     commands.add_parser("waiting", help="print what waits on the user")
     commands.add_parser("finish", help="delete the lead state when the project is done")
+    commands.add_parser("takeover", help="make this T3 thread the owner of the lead state")
     for name in ("outcome", "criteria"):
         commands.add_parser(name, help=f"set the {name}").add_argument("text")
     wait = commands.add_parser("wait", help="add an item that waits on the user")
@@ -896,6 +1065,8 @@ def main(argv: list[str] | None = None) -> int:
             print(cmd_init(args))
         elif args.command == "finish":
             print(cmd_finish(args))
+        elif args.command == "takeover":
+            print(cmd_takeover(args))
         elif args.command in ("show", "waiting"):
             folder = require_lead()
             state = load(folder)
