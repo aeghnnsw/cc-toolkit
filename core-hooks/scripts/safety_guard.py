@@ -1801,6 +1801,31 @@ def block_on_error(error, host, input_data):
     sys.exit(error_status(host))
 
 
+def log_allowed_call(host, input_data):
+    """Append the allowed tool call to `pre_tool_use.jsonl`.
+
+    The guard has already decided, and the log does not decide safety. So
+    when the write fails, the call still runs, and one warning line on
+    stderr names the error and the log file (#535). Stdout stays empty,
+    because Antigravity reads text on stdout as a decision.
+    """
+    log_file = None
+    try:
+        directory = host_log_dir(host, input_data, create=False)
+        if directory is None:
+            return
+        log_file = directory / 'pre_tool_use.jsonl'
+        directory.mkdir(parents=True, exist_ok=True)
+        append_log(log_file.name, input_data, directory)
+    except Exception as error:
+        print(
+            "WARNING: The core-hooks safety guard allowed this tool call but "
+            f"could not write its log. Log: {log_file or 'unknown'}. "
+            f"Error: {type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
+
+
 def main():
     # In Antigravity mode, stdout stays empty, because Antigravity reads text
     # on stdout as a decision. In Antigravity and Codex mode, a block is exit 3
@@ -1837,10 +1862,7 @@ def main():
             )
             sys.exit(block_status(host))
 
-        directory = host_log_dir(host, input_data)
-        if directory is not None:
-            append_log('pre_tool_use.jsonl', input_data, directory)
-
+        log_allowed_call(host, input_data)
         sys.exit(0)
 
     except Exception as error:

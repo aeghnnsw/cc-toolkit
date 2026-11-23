@@ -1047,22 +1047,51 @@ def configured_safety_command(hooks_path):
     )
 
 
+# Each host, its hook configuration file, a log fault, and the error that
+# the fault raises when the hook writes its log.
+LOG_FAULT_CASES = tuple(
+    (host, hooks_path, log_fault, error)
+    for host, hooks_path, _ in SCRIPT_ERROR_HOSTS
+    for log_fault, error in (
+        ("logs is a file", "FileExistsError"),
+        ("logs is read-only", "PermissionError"),
+    )
+)
+
+
+def bash_payload(command):
+    """Return a Bash PreToolUse payload whose `cwd` is the project."""
+    return json.dumps({
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "cwd": "PROJECT",
+    })
+
+
 class ScriptErrorTests(unittest.TestCase):
     """An error that the safety script catches blocks the tool call on every
-    host, because the guard cannot decide (#487)."""
+    host, because the guard cannot decide (#487). A failed log write after
+    the guard allows a call lets the call run with a warning (#535)."""
 
-    def run_configured_command(self, host, hooks_path, data, logs_is_a_file):
+    def run_configured_command(self, host, hooks_path, data, log_fault=None):
         """Run the safety command of `hooks_path` through `/bin/sh` as `host`
         does, with `data` on stdin and `<temp>/project` as the project.
-        `PROJECT` in `data` becomes the project path. With `logs_is_a_file`,
-        the hook cannot create its log directory."""
+        `PROJECT` in `data` becomes the project path. `log_fault` is None or
+        a log fault of `LOG_FAULT_CASES`. Return the result and the path of
+        the log file that the hook writes."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
             project = temp / "project"
             project.mkdir()
+            logs = project / "logs"
             data = data.replace("PROJECT", str(project))
-            if logs_is_a_file:
-                (project / "logs").write_text("")
+            if log_fault == "logs is a file":
+                logs.write_text("")
+            elif log_fault == "logs is read-only":
+                if os.geteuid() == 0:
+                    self.skipTest("root can write to a read-only folder")
+                logs.mkdir(mode=0o555)
             env = os.environ.copy()
             env.pop("CLAUDE_PROJECT_DIR", None)
             env.update({
@@ -1074,7 +1103,7 @@ class ScriptErrorTests(unittest.TestCase):
             })
             if host == "Claude Code":
                 env["CLAUDE_PROJECT_DIR"] = str(project)
-            return subprocess.run(
+            result = subprocess.run(
                 ["/bin/sh", "-c", configured_safety_command(hooks_path)],
                 input=data,
                 text=True,
@@ -1085,30 +1114,43 @@ class ScriptErrorTests(unittest.TestCase):
                 check=False,
                 timeout=60,
             )
+            return result, logs / "pre_tool_use.jsonl"
 
     def test_script_error_blocks_and_says_how_to_turn_off_the_plugin(self):
-        # Each fault: the error it raises, the payload, and whether `logs` is
-        # a file.
-        faults = (
-            ("JSONDecodeError", "not json", False),
-            ("FileExistsError", json.dumps({
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Bash",
-                "tool_input": {"command": "echo hello"},
-                "cwd": "PROJECT",
-            }), True),
-        )
         for host, hooks_path, turn_off in SCRIPT_ERROR_HOSTS:
-            for error, data, logs_is_a_file in faults:
-                with self.subTest(host=host, error=error):
-                    result = self.run_configured_command(
-                        host, hooks_path, data, logs_is_a_file
-                    )
-                    self.assertEqual(result.returncode, 2, result.stderr)
-                    self.assertEqual(result.stdout, "")
-                    self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)
-                    self.assertIn(error, result.stderr)
-                    self.assertIn(turn_off, result.stderr)
+            with self.subTest(host=host):
+                result, _ = self.run_configured_command(host, hooks_path, "not json")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertTrue(result.stderr.startswith("BLOCKED: "), result.stderr)
+                self.assertIn("JSONDecodeError", result.stderr)
+                self.assertIn(turn_off, result.stderr)
+
+    def test_failed_log_write_allows_the_call_with_one_warning_line(self):
+        for host, hooks_path, log_fault, error in LOG_FAULT_CASES:
+            with self.subTest(host=host, log_fault=log_fault):
+                result, log_file = self.run_configured_command(
+                    host, hooks_path, bash_payload("echo hello"), log_fault
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertTrue(result.stderr.startswith("WARNING: "), result.stderr)
+                self.assertEqual(result.stderr.count("\n"), 1, result.stderr)
+                self.assertIn(error, result.stderr)
+                self.assertIn(str(log_file), result.stderr)
+
+    def test_failed_log_write_keeps_a_block(self):
+        for host, hooks_path, log_fault, _ in LOG_FAULT_CASES:
+            with self.subTest(host=host, log_fault=log_fault):
+                result, _ = self.run_configured_command(
+                    host, hooks_path, bash_payload("rm -rf /"), log_fault
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertTrue(
+                    result.stderr.startswith("BLOCKED: Potentially dangerous rm"),
+                    result.stderr,
+                )
 
 
 if __name__ == "__main__":
