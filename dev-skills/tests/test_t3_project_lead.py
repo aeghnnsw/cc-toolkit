@@ -12,8 +12,9 @@ starts each task as soon as each task that it waits for is verified, with no
 batch wait and no worker limit. Issue #516 adds the lines for a PR that waits
 on checks: the worker line of `brief` and the lead line of `report`. Issue
 #544 adds `takeover`, the `--also` line of `plan`, and the skill line on
-deleting the lead thread. Agent behavior is checked by the scenario review in t3-project-lead-scenarios.md;
-the hook has its own tests in test_t3_project_lead_hook.py.
+deleting the lead thread. Agent behavior is checked by the scenario review in
+t3-project-lead-scenarios.md; the hook has its own tests in
+test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 

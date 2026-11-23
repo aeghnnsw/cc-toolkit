@@ -187,8 +187,9 @@ from a model family other than the main agent's.
 _Avoid_: Reviewer, skeptic
 
 **Flag**:
-A safeguard action by a model provider on one critic call or one worker, such
-as a policy error or a refusal.
+A safeguard action by a model provider on one critic call, one worker, or the
+thread of a project lead, such as a policy error or a refusal. A flagged lead
+is a project lead whose thread got a flag.
 _Avoid_: Safety stop, block
 
 **Starting model**:
@@ -291,10 +292,9 @@ _Avoid_: Approved
 **Settle**:
 To mark a worker's thread as finished in T3 Code. Settling removes no
 worktree: T3 Code removes a thread's worktree when the thread is deleted or
-its pull request merges, if its settings say so (`worktreeOnDelete`,
-`worktreeOnMerge`). A project lead settles the workers of a batch with a
-merged pull request only after the batch's close-out worker reports, because
-the close-out worker reads the workers' sessions.
+its pull request merges, if its settings say so. A project lead settles the
+workers of a batch with a merged pull request only after the batch's close-out
+worker reports, because the close-out worker reads the workers' sessions.
 _Avoid_: Archive
 
 **Lead state**:

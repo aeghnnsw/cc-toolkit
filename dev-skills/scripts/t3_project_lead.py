@@ -18,8 +18,10 @@ independent of GTD.
 The lead state belongs to one T3 thread, its owner (issue #544): `init`
 records `T3CODE_THREAD_ID`, and only the owner changes or deletes the state.
 `takeover` moves the state to the current thread, such as a fork or a new
-thread in the lead's worktree. When `start` finds no lead state in its own
-checkout, it lists the lead states of the other worktrees, read-only.
+thread in the lead's worktree. The first `start` of the new owner prints the
+takeover due line once, and appends that to events.jsonl. When `start` finds
+no lead state in its own working tree, it lists the lead states of the other
+worktrees, read-only.
 """
 
 from __future__ import annotations
@@ -212,9 +214,16 @@ THREAD_VARIABLE = "T3CODE_THREAD_ID"
 TAKEOVER_LINE = ("Check for work this state does not name: t3_thread_list with includeSubagents, and "
                  "pull_request_list. Record each worker with task add and task start, or add a waiting "
                  "item.")
-RECOVERY = ("Recovery of a flagged lead: start a thread on another model with t3_thread_launch and "
-            "workspaceStrategy existing_worktree in this worktree, then run start and takeover in it. "
-            "Do not fork the flagged thread.")
+RECOVERY = ("Recovery of a flagged lead: start a new thread bound to this worktree with t3_thread_launch "
+            "and workspaceStrategy existing_worktree, on another model. In it, run start, then takeover. "
+            "Do not fork the flagged thread: a fork copies the flagged context. Do not delete the flagged "
+            "thread before the takeover.")
+# What the lookup, the init refusal, and a change refusal in another worktree say about a lead state there.
+CONTINUE = ("Continue that lead in its own worktree. A lead can continue in three ways: change the provider "
+            "of the lead thread; fork the lead thread; or start a thread with t3_thread_launch and "
+            "workspaceStrategy existing_worktree with the worktree that the list names. In a fork or a new "
+            "thread, run start, then takeover.")
+NOT_A_REPOSITORY = "not a git repository"
 TEXT_LIMIT = 200
 LINK_LIMIT = 600
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
@@ -251,6 +260,7 @@ def git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     """Run git in `cwd` for the working tree there, not for one that the environment names."""
     env = {key: value for key, value in os.environ.items()
            if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")}
+    env["LC_ALL"] = "C"  # Git's messages in English, for outside_work_trees.
     return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, env=env, timeout=10,
                           check=False)
 
@@ -264,6 +274,15 @@ def working_tree_top() -> str:
         return cwd
     top = result.stdout.strip()
     return top if result.returncode == 0 and top else cwd
+
+
+def outside_work_trees(folder: str) -> bool:
+    """Return whether Git says that no Git work tree holds `folder`. Another Git failure returns False."""
+    try:
+        result = git(folder, "rev-parse", "--show-toplevel")
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode != 0 and NOT_A_REPOSITORY in result.stderr
 
 
 def lead_folders(top: str) -> list[str]:
@@ -323,11 +342,14 @@ def summary_line(folder: str, tree: str) -> str:
         return f"- {folder}: cannot read the lead state ({error!r}). Worktree: {tree}"
 
 
-def other_leads(top: str) -> list[str]:
+def other_lead_lines(top: str) -> list[str]:
     """Return one line for each lead state in the other worktrees of the repository, read-only.
 
-    Raise OSError when Git cannot list the worktrees.
+    A folder outside every Git work tree has no other worktree. Raise OSError when Git cannot list the
+    worktrees.
     """
+    if outside_work_trees(top):
+        return []
     lines = []
     here = os.path.realpath(top)
     for tree in worktree_tops(top):
@@ -513,13 +535,13 @@ def cmd_init(args) -> str:
     if not args.also:
         confirm = f"Only after the user confirms a second lead state, run init {slug} --also."
         try:
-            others = other_leads(top)
+            others = other_lead_lines(top)
         except OSError as error:
             raise Refused(f"could not list the worktrees, so another one may hold a lead state: {error}. "
                           f"{confirm}") from None
         if others:
             raise Refused("\n".join(["another worktree holds a lead state:", *others,
-                                     f"Continue that lead in its own worktree. {confirm}"]))
+                                     f"{CONTINUE} {confirm}"]))
     time = utc_now()
     folder = os.path.join(top, ".scratch", f"{time[:10].replace('-', '')}-lead-{slug}")
     if os.path.exists(folder):
@@ -543,7 +565,7 @@ def cmd_takeover(args) -> str:
         if old == thread:
             return "This thread already owns the lead state; nothing changed."
         state["owner"] = thread
-        # The first start of the new owner names the work that the state may not name.
+        # The takeover mark: the first start of the new owner prints the takeover due line.
         state["takeover_due"] = True
         time = utc_now()
         save(folder, state)
@@ -793,10 +815,19 @@ def run_change(args) -> str:
 
 
 def require_lead() -> str:
-    folder = find_lead(working_tree_top())
-    if folder is None:
-        raise Refused("no lead state in this working tree; run init <slug> first")
-    return folder
+    top = working_tree_top()
+    folder = find_lead(top)
+    if folder is not None:
+        return folder
+    try:
+        others = other_lead_lines(top)
+    except OSError as error:
+        raise Refused(f"no lead state in this working tree; the worktrees could not be listed: "
+                      f"{error}") from None
+    if others:
+        raise Refused("\n".join(["no lead state in this working tree. Lead states in other worktrees of this "
+                                 "repository:", *others, CONTINUE]))
+    raise Refused("no lead state in this working tree; run init <slug> first")
 
 
 def cmd_finish(args) -> str:
@@ -866,7 +897,8 @@ def task_line(task: dict, now: datetime.datetime) -> str:
 
 
 def due_lines(state: dict) -> list[str]:
-    lines = [TAKEOVER_LINE] if state.get("takeover_due") else []
+    # Only the owner can act on the takeover due line.
+    lines = [TAKEOVER_LINE] if state.get("takeover_due") and current_thread() == state.get("owner") else []
     for batch in sorted({task["batch"] for task in state["tasks"]}):
         if needs_closeout(state, batch):
             prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
@@ -904,9 +936,9 @@ def due_lines(state: dict) -> list[str]:
 def view_lines(state: dict, folder: str) -> list[str]:
     time = utc_now()
     now = parse_time(time)
-    owner = state.get("owner")
+    owner = state.get("owner") or None
     lines = [f"Lead state: {state['slug']}, {folder}", f"Owner: {owner or 'none'}"]
-    if not owner or current_thread() != owner:
+    if current_thread() != owner:
         lines.append("This thread is not the owner: it can read the lead state but not change it. To move "
                      "the lead to this thread, run takeover.")
     lines += [f"Now: {time}", f"Outcome: {state['outcome'] or '(none)'}",
@@ -959,11 +991,12 @@ def print_step(name: str) -> None:
     print()
     print("\n".join(lines[name](state, folder)))
     if name == "start" and state.get("takeover_due") and current_thread() == state.get("owner"):
-        # The owner saw the due line once; a failed write only prints it again at the next start.
+        # The owner saw the takeover due line once; a failed write only prints it again at the next start.
         with contextlib.suppress(OSError), locked(folder):
             state = load(folder)
             if state.pop("takeover_due", None) and current_thread() == state.get("owner"):
                 save(folder, state)
+                append_event(folder, {"time": utc_now(), "command": "start", "shown": "takeover due line"})
 
 
 def lookup_lines(top: str) -> list[str]:
@@ -971,16 +1004,13 @@ def lookup_lines(top: str) -> list[str]:
     init = (f"No lead state in {top}. After the user approves the outcome, run: "
             f'python3 "{__file__}" init <slug>')
     try:
-        others = other_leads(top)
+        others = other_lead_lines(top)
     except OSError as error:
         return [f"Could not list the worktrees: {error}", init]
     if not others:
         return [init]
     return [f"No lead state in {top}. Lead states in other worktrees of this repository:", *others,
-            "Continue that lead in its own worktree, and do not run init here. Three ways continue that "
-            "lead: change the provider of the lead thread; fork the lead thread; or start a thread with "
-            "t3_thread_launch and workspaceStrategy existing_worktree with the worktree that the list "
-            "names. In a fork or a new thread, run start, then takeover."]
+            f"{CONTINUE} Do not run init here."]
 
 
 # Arguments.

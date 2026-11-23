@@ -107,7 +107,7 @@ with the commands of `t3_project_lead.py`, in
 25. **PR waits on checks.** Matt-automode worker A opened PR 97 for issue 96.
     Its last message gives the PR URL and the full head SHA, and says that
     PR 97 waits on checks. The lead wakes.
-26. **New session in a new worktree.** The user invokes t3-project-lead in a
+26. **New thread in a new worktree.** The user invokes t3-project-lead in a
     new T3 thread, which has a new worktree. The user names no task. `start`
     prints no view: it lists one lead state in another worktree, with owner
     thread T1, two open tasks, and one waiting item.
@@ -143,8 +143,8 @@ with the commands of `t3_project_lead.py`, in
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
 | Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
-| New session in a new worktree | Tell the user that a lead state exists in the other worktree, with its slug, owner, open tasks, and waiting item, and give the three ways to continue that lead there: change the provider of thread T1, fork T1, or start a thread with `t3_thread_launch` and `existing_worktree` in that worktree. Ask the user which way to take. | Running `init` here; running `init --also` before the user confirms a second lead state; copying the lead state into this worktree. | The listing that `start` prints. |
-| Fork takes over | Run `takeover`, then `start`. Follow the due line of the first `start` after the takeover: check `t3_thread_list` with `includeSubagents` and `pull_request_list`, and record each worker that the lead state does not name with `task add` and `task start`, or add a waiting item. | Changing the lead state before the takeover; deleting thread T1, which uses the same worktree, before `finish`. | The view that `start` prints before and after the takeover, and the `takeover` output. |
+| New thread in a new worktree | Tell the user that a lead state exists in the other worktree, with its slug, owner, open tasks, and waiting item, and give the three ways to continue that lead there: change the provider of thread T1, fork T1, or start a thread with `t3_thread_launch` and `existing_worktree` in that worktree. Ask the user which way to take. | Running `init` here; running `init --also` before the user confirms a second lead state; copying the lead state into this worktree. | The listing that `start` prints. |
+| Fork takes over | Run `takeover`, then `start`. Follow the due line of the first `start` after the takeover: check `t3_thread_list` with `includeSubagents` and `pull_request_list`, and record each worker that the lead state does not name with `task add` and `task start`, or add a waiting item. | Changing the lead state before the takeover; starting a second worker for work that already runs. | The view that `start` prints before and after the takeover, and the `takeover` output. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
 
 ## Validation limits
@@ -186,16 +186,18 @@ after another clear case.
 worktrees with a set `T3CODE_THREAD_ID`. It checks the lookup from another
 worktree (path, slug, owner, last change, open tasks, waiting items, the
 worktree, and no `init` line), a worktree with more than one lead state, the
-`init` line when no worktree holds a lead state, and a listing problem. It
-checks the `init` refusal and `init --also`, the owner refusal of each change
-command and `finish`, `takeover` and its event, the refusal of `init` and
-`takeover` without `T3CODE_THREAD_ID`, the takeover due line on the first
-`start` of the new owner only, a state without an owner, and the due line of a
-paused task. `test_t3_project_lead.py` requires the `--also` line of `plan`,
+`init` line when no worktree holds a lead state, a Git failure, and `init` in
+a folder outside Git. It checks the `init` refusal and `init --also`, the
+refusal of a command in a worktree without a lead state, the owner refusal of
+each change command and `finish`, `takeover` and its event, the refusal of
+`init` and `takeover` without `T3CODE_THREAD_ID`, the takeover due line on the
+first `start` of the new owner only and its event, a state without an owner,
+and the due line of a paused task. `test_t3_project_lead.py` requires the `--also` line of `plan`,
 the `takeover` command, and the skill line on deleting the lead thread.
 `test_t3_project_lead_hook.py` shows that the hook passes `takeover` and
 `init <slug> --also`. Each new check failed against the b3c21a9 script and
-skill, except the hook check and the `init` line check, which passed before.
+skill, except the hook check, the `init` line check, and the check of `init`
+in a folder outside Git, which passed before.
 
 **Not shown.** No simulated or live review of cases 26 and 27 ran.
 
