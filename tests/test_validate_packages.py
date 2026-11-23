@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -460,14 +461,19 @@ class PackageValidationTests(unittest.TestCase):
 
     def reset_changelog(self):
         self.git('checkout', '-q', 'baseline', '--', 'CHANGELOG.md')
+        shutil.rmtree(self.root / 'changelog.d', ignore_errors=True)
 
-    def add_bullet(self, bullet, issue=2, section='### Changed'):
+    def add_bullet(self, bullet, issue=2, section='### Changed', path='changelog.d/2.md'):
+        """Add a bullet first in its section of an entry file, and the section when the file lacks it."""
         if issue:
             bullet += f' See [#{issue}](https://github.com/aeghnnsw/cc-toolkit/issues/{issue}).'
-        text = (self.root / 'CHANGELOG.md').read_text()
-        self.write('CHANGELOG.md', text.replace(f'{section}\n\n', f'{section}\n\n{bullet}\n', 1))
+        target = self.root / path
+        text = target.read_text() if target.exists() else ''
+        if f'{section}\n' not in text:
+            text += f'{section}\n\n'
+        self.write(path, text.replace(f'{section}\n\n', f'{section}\n\n{bullet}\n', 1))
 
-    def test_new_changelog_bullet_must_use_the_entry_form(self):
+    def test_new_entry_file_bullet_must_use_the_entry_form(self):
         self.changelog_baseline()
         self.add_bullet('- Repository: add a check.')
         self.assertEqual(self.run_check().returncode, 0)
@@ -483,7 +489,7 @@ class PackageValidationTests(unittest.TestCase):
             with self.subTest(bullet=bullet):
                 self.reset_changelog()
                 self.add_bullet(bullet, issue)
-                self.assert_failure('CHANGELOG.md:9: the new bullet breaks the entry form')
+                self.assert_failure('changelog.d/2.md:3: the new bullet breaks the entry form')
         linked = '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).'
         for index, bullet in enumerate(['* Repository: another marker.', linked + '\n  ' + 'y' * 600,
                                         linked + '\n#' + 'y' * 600]):
@@ -519,27 +525,56 @@ class PackageValidationTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_version_increase_needs_a_new_changelog_bullet(self):
+    def test_version_increase_needs_a_new_entry_file_bullet(self):
         self.changelog_baseline()
         self.bump()
         self.add_bullet('- Repository: a change.')
-        self.assert_failure('demo version increased (Claude Code 1.0.1); add a bullet for it under ## [Unreleased]')
+        self.assert_failure('demo version increased (Claude Code 1.0.1); add a bullet for it to an entry file, '
+                            'changelog.d/<issue>.md')
         (self.root / 'CHANGELOG.md').unlink()
         self.assert_failure('CHANGELOG.md: missing')
 
-    def test_new_changelog_bullet_length_and_placement(self):
+    def test_new_entry_file_bullet_length_and_placement(self):
         self.changelog_baseline()
         self.add_bullet('- Repository: ' + 'x' * 526 + '.')
         self.assertEqual(self.run_check().returncode, 0)
         self.add_bullet('- Repository: ' + 'y' * 527 + '.')
-        self.assert_failure('CHANGELOG.md:9: the new bullet has 601 characters; the limit is 600')
-        for section in ('### Fixed', '## 2026-11-22\n\n### Changed'):
-            with self.subTest(section=section):
+        self.assert_failure('changelog.d/2.md:3: the new bullet has 601 characters; the limit is 600')
+        linked = '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n'
+        for text, error in [
+            (f'### Fixed\n\n{linked}', 'changelog.d/2.md:1: an entry file has only the headings ### Added, '
+                                       '### Removed, and ### Changed'),
+            (f'## [Unreleased]\n\n### Changed\n\n{linked}', 'an entry file has only the headings'),
+            (linked, 'changelog.d/2.md:1: put the new bullet under ### Added, ### Removed, or ### Changed'),
+            ('### Changed\n\n', 'changelog.d/2.md: add a bullet, or delete the empty entry file'),
+        ]:
+            with self.subTest(text=text):
                 self.reset_changelog()
-                text = (self.root / 'CHANGELOG.md').read_text()
-                self.write('CHANGELOG.md', text + f'\n{section}\n\n- Repository: a change.'
-                           ' See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n')
-                self.assert_failure('put the new bullet under ## [Unreleased] in ### Added, ### Removed, or ### Changed')
+                self.write('changelog.d/2.md', text)
+                self.assert_failure(error)
+
+    def test_entry_file_name_starts_with_the_issue_number(self):
+        self.changelog_baseline()
+        for path in ('changelog.d/2-second-change.md', 'changelog.d/3.md'):
+            self.add_bullet('- Repository: a change.', path=path)
+        self.assertEqual(self.run_check().returncode, 0)
+        for path in ('changelog.d/notes.md', 'changelog.d/2.txt', 'changelog.d/2-Upper.md', 'changelog.d/sub/2.md'):
+            with self.subTest(path=path):
+                self.reset_changelog()
+                self.add_bullet('- Repository: a change.', path=path)
+                self.assert_failure(f'{path}: name the entry file changelog.d/<issue>.md')
+
+    def test_new_changelog_md_bullet_fails_and_preamble_prose_passes(self):
+        self.changelog_baseline()
+        text = (self.root / 'CHANGELOG.md').read_text()
+        self.write('CHANGELOG.md', text.replace('# Changelog\n', '# Changelog\n\nNew entries are in changelog.d/.\n'))
+        self.assertEqual(self.run_check().returncode, 0)
+        self.write('CHANGELOG.md', text.replace('### Changed\n\n', '### Changed\n\n- Repository: a change. '
+                                                'See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).\n'))
+        self.assert_failure('CHANGELOG.md:9: add the new bullet to an entry file, changelog.d/<issue>.md, '
+                            'not to CHANGELOG.md; the release step moves it')
+        self.write('CHANGELOG.md', text + '\n## 2026-11-22\n\nA paragraph.\n')
+        self.assert_failure('CHANGELOG.md:13: a new line must be a one-line bullet that starts with "- "')
 
     def test_moved_and_unchanged_changelog_bullets_are_not_checked(self):
         self.changelog_baseline()
@@ -548,6 +583,26 @@ class PackageValidationTests(unittest.TestCase):
         self.add_bullet('- Repository: a change.')
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_release_branch_moves_each_entry_file_bullet_and_changes_no_other_file(self):
+        self.changelog_baseline()
+        self.bump()
+        self.add_bullet('- demo (Claude Code 1.0.1): a change.')
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+        entry = (self.root / 'changelog.d/2.md').read_text()
+        bullet = entry.splitlines()[2]
+        text = (self.root / 'CHANGELOG.md').read_text()
+        (self.root / 'changelog.d/2.md').unlink()
+        self.assert_failure('changelog.d/2.md:3: this branch deletes the entry file, but CHANGELOG.md lacks its bullet')
+        self.write('CHANGELOG.md', text.replace('### Changed\n\n', f'### Changed\n\n{bullet}\n'))
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.write('demo/skills/greet/SKILL.md', '---\nname: greet\ndescription: Changed.\n---\n')
+        self.bump(value='1.0.2')
+        self.add_bullet('- demo (Claude Code 1.0.2): a change.', path='changelog.d/3.md')
+        self.assert_failure('changelog.d/2.md: this branch deletes an entry file and changes changelog.d/3.md; run '
+                            'the release step in a pull request of its own')
 
     def test_staged_unstaged_new_and_deleted_files_require_versions(self):
         for state in ('new', 'staged', 'unstaged', 'deleted'):

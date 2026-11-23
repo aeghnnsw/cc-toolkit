@@ -11,6 +11,8 @@ Issue #446: the retrospective runs the cutoff script that dev-skills ships, in
 every repository.
 Issue #458: phase 4 runs the phase gate and the glossary term scripts, and a
 full test suite runs through the suite lock script.
+Issue #298: after a rebase whose resolution changes only versions and
+changelog entries, only the version and changelog checks run again locally.
 Agent behavior is checked by the scenario review in
 matt-automode-scenarios.md.
 """
@@ -54,6 +56,12 @@ OLD_FIX_RULES = ("code changes need review against the same comparison commit",
                  "Give each fix one focused check")
 FIX_RULE = ("Give each failure one fix of any size, and run no review of the fix. When the fix "
             "does not close the failure, stop the ticket as in phase 5.")
+REBASE_RULE = ("When the repository has a script that sets the next free versions, the rule for "
+               "versions is to run it. When CI runs the suites on the PR, and the resolution of the "
+               "rebase changes no file other than versions and changelog entries, rerun locally only "
+               "the version and changelog checks, such as a package validator, and let CI run the "
+               "suites on the new head. Rerun a suite locally only when the resolution changes "
+               "another file.")
 PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
                      "antigravity-skills": "<plugin-root>"}
 SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec states what the "
@@ -147,6 +155,12 @@ class ReviewLoopIsBoundedTest(unittest.TestCase):
                 for old in OLD_FIX_RULES:
                     self.assertNotIn(old, flat(automode(host)))
                 self.assertIn(FIX_RULE, paragraph)
+
+    def test_a_rebase_reruns_only_the_version_and_changelog_checks(self) -> None:
+        for host in HOSTS:
+            paragraph = between(host, "For a rebase", "## Navigation retrospective")
+            with self.subTest(host=host):
+                self.assertIn(REBASE_RULE, paragraph)
 
     def test_the_spec_of_a_safety_check_change_fails_closed(self) -> None:
         for host in HOSTS:
