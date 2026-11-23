@@ -7,7 +7,10 @@ the working tree stays clean. No check touches another repository.
 
 from __future__ import annotations
 
+import fcntl
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -114,7 +117,41 @@ class RunSuiteTests(unittest.TestCase):
             self.assertIn(f"PID {first.pid} (", waiting)
             self.assertIn("-c", waiting)
             self.assertRegex(waiting, r"started \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
-        self.assertIn("a pass is recorded for tree", (self.tmp / "b.out").read_text())
+
+        # The stdout of each run keeps the lock wait in its last lines, for tail.
+        out = {name: (self.tmp / f"{name}.out").read_text().splitlines() for name in "abc"}
+        folder = re.escape(str(self.repo.resolve()))
+        wait_line = rf"Suite lock wait: \d+ s, held by PID {first.pid} \(.+\) in {folder}"
+        self.assertFalse([line for line in out["a"] if line.startswith("Suite lock wait")])
+        self.assertEqual(out["a"][-1], "Exit status: 0")
+        # B reused A's pass, so the wait line is its last line.
+        self.assertIn("a pass is recorded for tree", out["b"][-2])
+        self.assertRegex(out["b"][-1], f"^{wait_line}$")
+        # C ran its command, so the wait line comes just before the exit status.
+        self.assertRegex(out["c"][-2], f"^{wait_line}$")
+        self.assertEqual(out["c"][-1], "Exit status: 0")
+
+    def test_wait_line_names_the_first_and_the_last_holder(self):
+        # The test holds the lock, and before it releases the lock it writes the
+        # details of a later holder, as when runs queue. "" is not written yet.
+        first = {"pid": 11, "command": "first suite", "folder": "/first", "start": "s1"}
+        last = {"pid": 22, "command": "last suite", "folder": "/last", "start": "s2"}
+        cases = [(first, "PID 11 (first suite) in /first, and last by PID 22 (last suite) in /last"),
+                 (None, "PID 22 (last suite) in /last")]
+        self.release.touch()
+        for index, (details, holders) in enumerate(cases):
+            with open(self.repo / ".git" / "run-suite.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                lock.write(json.dumps(details) if details else "")
+                lock.flush()
+                waiting = self.start("--rerun", "--", *self.hold(), name=f"w{index}")
+                self.wait_for(self.tmp / f"w{index}.err", "waiting for the suite lock")
+                lock.seek(0)
+                lock.truncate()
+                lock.write(json.dumps(last))
+            self.assertEqual(waiting.wait(timeout=20), 0)
+            out = (self.tmp / f"w{index}.out").read_text().splitlines()
+            self.assertRegex(out[-2], rf"^Suite lock wait: \d+ s, held by {re.escape(holders)}$")
 
     def test_dirty_tree_runs_every_time_and_records_nothing(self):
         (self.repo / "untracked.txt").write_text("new\n")
