@@ -10,6 +10,9 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
 
 - Keep the main checkout, the Default Branch, and the worktree that the
   current session runs in: the top level of --repo.
+- Keep each worktree that holds a t3-project-lead state:
+  .scratch/<YYYYMMDD>-lead-<slug>/state.json, as t3_project_lead.py names it.
+  This rule applies in every mode, including --main-only.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
@@ -44,6 +47,9 @@ import re
 import subprocess
 import sys
 from typing import NoReturn
+
+# Python puts the folder of this script on sys.path, so the sibling module loads.
+from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
@@ -175,6 +181,20 @@ def worktree_list(repo: str) -> list[dict[str, str]]:
     return found
 
 
+def lead_state(root: str) -> str | None:
+    """Return the first t3-project-lead folder with a state file in root/.scratch, or None."""
+    scratch = os.path.join(root, ".scratch")
+    try:
+        names = sorted(os.listdir(scratch))
+    except OSError:
+        return None
+    for name in names:
+        folder = os.path.join(scratch, name)
+        if LEAD_FOLDER.fullmatch(name) and os.path.isfile(os.path.join(folder, LEAD_STATE_FILE)):
+            return folder
+    return None
+
+
 def default_branch(repo: str, remote: str, given: str | None) -> tuple[str, str]:
     """Return the Default Branch and the ref that shows what is in it."""
     name = given
@@ -252,6 +272,9 @@ def main() -> None:
             merged = (f"; {planner.branch(pr_head(branch), head)[1]}"
                       if branch and branch != default else "")
             plan[path] = (KEEP, f"the current session runs here{merged}")
+        elif (lead := lead_state(path)) is not None:
+            # An idle lead edits no tracked file, and no live session protects it (issue #543).
+            plan[path] = (KEEP, f"holds a lead state: {lead}")
         elif live_error is not None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
         elif path in live:

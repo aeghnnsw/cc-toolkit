@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.8.0
+version: 1.9.0
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 ---
 
@@ -37,7 +37,9 @@ The plan keeps the current worktree and each worktree that another live
 session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
 conversation of the last 60 minutes. It keeps a worktree with a detached HEAD
-or uncommitted changes. A branch is merged only when a merged PR of the
+or uncommitted changes. It keeps each worktree that holds the lead state of a
+project lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also with
+`--main-only`. A branch is merged only when a merged PR of the
 branch has the branch tip as its head commit (`headRefOid`). The plan keeps a
 branch whose tip is in the Default Branch without such a PR: the branch has
 no commit of its own, and a session may have just started there. When a check

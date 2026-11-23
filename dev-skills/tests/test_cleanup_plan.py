@@ -433,6 +433,52 @@ class DocumentedLocationCase(PlanTestCase):
         self.assertEqual(self.issues_read(), [])
 
 
+@NEEDS_LSOF_AND_GIT
+class LeadStateCases(PlanTestCase):
+    """Issue #543: merged worktrees with a t3-project-lead folder, with and without --main-only."""
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        worktrees = {}
+        for number, name in enumerate(("lead-a", "lead-b", "lead-c"), start=70):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+        cls.lead, cls.no_state, cls.other_name = worktrees.values()
+        cls.lead_folder = cls.lead_files(cls.lead, "20261122-lead-ops", "state.json")
+        cls.lead_files(cls.no_state, "20261122-lead-ops")
+        cls.lead_files(cls.other_name, "20261122-ops", "state.json")
+        cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
+
+    @staticmethod
+    def lead_files(root: Path, name: str, *extra: str) -> Path:
+        """Write the files of a lead folder, as t3_project_lead.py does, and the extra files."""
+        folder = root / ".scratch" / name
+        folder.mkdir(parents=True)
+        (folder / ".gitignore").write_text("*\n")
+        for file in ("events.jsonl", ".lock", *extra):
+            (folder / file).write_text("{}\n")
+        return folder
+
+    def test_keeps_a_merged_worktree_that_holds_a_lead_state_in_every_mode(self):
+        for mode, plan in self.plans.items():
+            self.plan = plan
+            with self.subTest(mode=mode):
+                self.assert_kept_with_branches(self.lead, "holds a lead state",
+                                               str(self.lead_folder))
+
+    def test_a_lead_folder_without_a_state_file_does_not_keep_the_worktree(self):
+        self.plan = self.plans["--main-only"]
+        self.assert_removed_with_branches(self.no_state, "merged PR #71")
+        # Without --main-only, the planning folder rule keeps the date-named folder.
+        self.plan = self.plans["default"]
+        self.assert_kept("worktree", self.no_state, "holds the kept planning folder")
+
+    def test_a_state_file_in_a_folder_with_another_name_does_not_keep_the_worktree(self):
+        self.plan = self.plans["--main-only"]
+        self.assert_removed_with_branches(self.other_name, "merged PR #72")
+
+
 @unittest.skipUnless(shutil.which("git"), "needs git")
 class NoPlanCases(unittest.TestCase):
     def setUp(self):
