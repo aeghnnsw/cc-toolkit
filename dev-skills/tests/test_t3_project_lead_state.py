@@ -3,7 +3,9 @@
 Each check builds a temporary Git repository and runs the script in it, as a
 project lead does. The checks read the script's output, exit status, and the
 files of the lead folder: the life cycle and its refusals, UTC times, the
-view, the due lines, what waits on the user, and finish.
+view, the due lines, what waits on the user, and finish. Issue #493 adds the
+tasks that are ready to start: a task starts as soon as each task that it waits
+for is verified, and does not wait for the rest of its batch.
 """
 
 from __future__ import annotations
@@ -187,6 +189,31 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "verified", "research")
         self.ok("task", "start", "impl", WORKER.format(2))
 
+    def test_a_task_is_ready_when_the_task_that_it_waits_for_is_verified(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "add", "b", "Task b")
+        self.ok("task", "add", "c", "Task c", "--after", "a")
+        self.ok("task", "add", "d", "Task d", "--after", "c")
+        view = self.ok("show")
+        for name in ("a", "b"):
+            self.assertIn(f"- {name} is ready to start: run t3_project_lead.py dispatch for it now.", view)
+        self.assertNotIn("c is ready", view)
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "start", "b", WORKER.format("b"))
+        self.assertNotIn("is ready to start", self.ok("show"))
+        self.ok("task", "pr", "a", "5")
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        # b of the same batch still runs: c is ready now, and d still waits for c.
+        self.assertEqual(self.ok("task", "verified", "a").strip(),
+                         "a is verified. Ready to start now: c.")
+        view = self.ok("show")
+        self.assertIn("- c is ready to start: run t3_project_lead.py dispatch for it now.", view)
+        self.assertNotIn("d is ready", view)
+        self.assertEqual(self.task("b")["state"], "running")
+        self.ok("task", "start", "c", WORKER.format("c"))
+        self.assertNotIn("is ready to start", self.ok("show"))
+
     def test_a_close_out_starts_only_for_a_verified_batch_with_a_merged_pr(self) -> None:
         self.ok("init", "demo")
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
@@ -225,6 +252,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "cancel", "research")
         self.ok("task", "settled", "research")
         self.refused("task", "start", "impl", WORKER.format(2), reason="impl waits for research")
+        self.assertNotIn("impl is ready", self.ok("show"))
 
     def test_no_task_joins_a_batch_whose_close_out_has_started(self) -> None:
         self.ok("init", "demo")
@@ -376,7 +404,7 @@ class LeadStateTests(unittest.TestCase):
 
     def test_decisions_are_added_and_dropped_by_id(self) -> None:
         self.ok("init", "demo")
-        self.assertIn("Decision D1 added.", self.ok("decision", "add", "Up to 4 workers at once."))
+        self.assertIn("Decision D1 added.", self.ok("decision", "add", "Squash each merge."))
         self.ok("decision", "add", "Merge one PR at a time.")
         self.ok("decision", "drop", "D1")
         self.refused("decision", "drop", "D1", reason="no decision D1")

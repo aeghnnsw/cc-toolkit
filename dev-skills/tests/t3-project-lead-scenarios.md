@@ -14,6 +14,7 @@ Issue [#530](https://github.com/aeghnnsw/cc-toolkit/issues/530) replaces
 the time limit of cases 15 and 17.
 Issue [#529](https://github.com/aeghnnsw/cc-toolkit/issues/529) adds the
 no-GTD-capture line to the briefs of cases 10, 13, 15, and 20.
+Issue [#493](https://github.com/aeghnnsw/cc-toolkit/issues/493) adds case 24.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -96,6 +97,9 @@ with the commands of `t3_project_lead.py`, in
     the main checkout to see which branch it is on. The hook blocks the call.
 23. **Restarted lead.** T3 restarted the lead's Claude Code process after a
     provider error. The user writes: "Status?"
+24. **Ready task.** Tasks A, B, and C are in batch 1, and C has `--after A`.
+    Workers A and B run. Worker A reports PASS, and its PR 95 merged with CI
+    passed. Worker B still runs.
 
 ## Expected results
 
@@ -124,6 +128,7 @@ with the commands of `t3_project_lead.py`, in
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
+| Ready task | Run the `verify` step for A, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
 
 ## Validation limits
 
@@ -139,6 +144,7 @@ No live run has shown these behaviors yet:
 - A Codex lead runs the skill.
 - A worker ends its turn at its round limit.
 - A lead keeps its state with the commands of `t3_project_lead.py`.
+- A lead starts a ready task while another task of its batch runs.
 - The lead hook records, blocks, and reminds in a live T3 lead session on
   Claude Code, Codex, or Antigravity. Its tests run the hook script with
   payloads in each host's form.
@@ -152,6 +158,19 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-23, issue #493
+
+**Static checks.** `test_t3_project_lead.py` requires the start rule in
+`plan`, `dispatch`, and `verify`: start each planned task as soon as each task
+that it waits for is verified, also while other workers run, and do not wait
+for the rest of its batch. It also requires the `plan` line that a batch only
+groups the tasks of one close-out worker. No step and no skill copy may make
+a task wait for its batch or for a free worker. `test_t3_project_lead_state.py`
+checks that `task verified` and the due lines name each planned task that
+`task start` would accept. Each new check failed against the 77b8c4b script.
+
+**Not shown.** No simulated or live review of case 24 ran.
 
 ### 2026-11-22, issue #520
 
