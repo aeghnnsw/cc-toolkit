@@ -5,9 +5,10 @@ hook's own copy or from a copy outside every Git work tree. In that session it
 allows the step script with arguments as one simple shell command and file
 reads in T3 attachments. It blocks every other shell command, file read, file
 edit, and native subagent call, and it reminds the lead to run `start` on each
-user message. Each test runs the hook as a process with a JSON payload on
-stdin, as Claude Code, Codex, and Antigravity do, and checks the exit status,
-stdout, stderr, and the state folder.
+user message. Issue #545 also blocks the T3 Code MCP calls that return issue
+or PR text, in the Claude Code and Codex names. Each test runs the hook as a
+process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
+do, and checks the exit status, stdout, stderr, and the state folder.
 """
 from __future__ import annotations
 
@@ -33,6 +34,24 @@ BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a
 REMINDER = ('This is a t3-project-lead session. Before anything else in this turn, run: '
             f'python3 "{STEP_SCRIPT}" start')
 DAY = 24 * 60 * 60
+TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
+             "pull_request_list, and pull_request_read with no include or with only checks. Give a triage "
+             "that needs issue text to a read-only worker.")
+# The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
+# keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
+# mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
+READ_ISSUE = {"claude": ("mcp__t3-code__read_issue",),
+              "codex": ("mcp__t3_code__read_issue", "mcp__t3_code_direct__read_issue",
+                        "mcp__0123456789ab__t3_code__read_issue")}
+PR_READ = {"claude": ("mcp__t3-code__pull_request_read",),
+           "codex": ("mcp__t3_code__pull_request_read", "mcp__t3_code_direct__pull_request_read",
+                     "mcp__0123456789ab__t3_code__pull_request_read")}
+
+
+def text_calls(names, inputs):
+    """Return (host, name, tool input) for each Claude Code and Codex name in `names` and each input."""
+    return [(host, name, tool_input) for host in ("claude", "codex") for name in names[host]
+            for tool_input in inputs]
 GIT = ("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
        "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main")
 # Git variables of a calling process would point the test repository elsewhere.
@@ -171,6 +190,15 @@ class SessionWithoutRecordTests(HookCase):
 
     def test_a_prompt_gets_no_reminder(self):
         self.check([(host, prompt_payload(host)) for host in ("claude", "codex")], allowed=True)
+
+    def test_issue_and_pr_text_reads_pass(self):
+        jobs = [(host, tool_payload(host, name, tool_input, self.main))
+                for host in ("claude", "codex")
+                for name, tool_input in ([(name, {"url": "https://github.com/o/r/issues/1"})
+                                          for name in READ_ISSUE[host]]
+                                         + [(name, {"include": ["body", "diff"]}) for name in PR_READ[host]])]
+        self.check(jobs, allowed=True)
+        self.assertFalse(self.state.exists())
 
     def test_antigravity_reads_the_conversation_id_not_a_session_id(self):
         self.record()
@@ -472,8 +500,42 @@ class GateTests(HookCase):
     def test_mcp_and_other_tools_pass(self):
         cases = (("claude", "mcp__t3-code__delegate_task"), ("claude", "TodoWrite"),
                  ("codex", "mcp__t3_code__t3_thread_list"), ("codex", "update_plan"),
-                 ("antigravity", "ask_question"))
+                 ("antigravity", "ask_question"), ("claude", "mcp__t3-code__list_issues"),
+                 ("claude", "mcp__t3-code__pull_request_list"), ("codex", "mcp__t3_code__list_issues"),
+                 ("codex", "mcp__t3_code__pull_request_list"))
         self.check([(host, tool_payload(host, name, {"x": 1}, self.main)) for host, name in cases], allowed=True)
+
+    def check_text_reads(self, cases, *, allowed):
+        """Check (host, name, tool input) calls; a blocked call names the reading rule (#545)."""
+        jobs = [(host, tool_payload(host, name, tool_input, self.main)) for host, name, tool_input in cases]
+        self.check(jobs, allowed=allowed)
+        if not allowed:
+            for host, payload in jobs:
+                with self.subTest(host=host, payload=payload):
+                    self.assertEqual(self.run_hook(host, payload).stderr.splitlines()[1], TEXT_LINE)
+
+    def test_read_issue_is_blocked(self):
+        self.check_text_reads(text_calls(READ_ISSUE, ({"url": "https://github.com/o/r/issues/1"}, {"key": "1"}, {})),
+                              allowed=False)
+
+    def test_pull_request_read_with_text_is_blocked(self):
+        includes = (["body"], ["comments"], ["threads"], ["diff"], ["checks", "body"], ["diff", "checks"],
+                    ["body", "comments", "threads", "diff"])
+        self.check_text_reads(text_calls(PR_READ, [{"number": 5, "include": include} for include in includes]),
+                              allowed=False)
+
+    def test_pull_request_read_without_text_passes(self):
+        inputs = ({}, {"number": 5}, {"include": ["checks"]}, {"number": 5, "include": ["checks", "checks"]},
+                  {"include": []}, {"repository": "o/r", "includeResolved": True})
+        self.check_text_reads(text_calls(PR_READ, inputs), allowed=True)
+
+    def test_an_unreadable_pull_request_read_is_blocked(self):
+        # The hook fails closed: an include that is not a list of strings, an unknown value, or a tool
+        # input that is not an object (Codex passes arguments that do not parse as a string).
+        inputs = ({"include": "body"}, {"include": "checks"}, {"include": None}, {"include": [1]},
+                  {"include": ["checks", None]}, {"include": {"checks": True}}, {"include": ["Body"]},
+                  {"include": ["files"]}, "{not json", ["include"], None)
+        self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
 
     def test_a_malformed_call_is_blocked(self):
         step = "python3 scripts/t3_project_lead.py show"
@@ -694,7 +756,7 @@ def matcher_names(entry):
 
 class HookFileTests(HookCase):
     CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
-                    "Agent", "Task"}
+                    "Agent", "Task", *READ_ISSUE["claude"], *PR_READ["claude"]}
     CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
@@ -721,6 +783,8 @@ class HookFileTests(HookCase):
         events = self.load("hooks/hooks.json")["hooks"]
         entry, command = self.entries(events, "PreToolUse")
         self.assertEqual(matcher_names(entry), self.CLAUDE_TOOLS)
+        # Claude Code reads a matcher of letters, digits, "_", "-", and "|" as a list of exact names.
+        self.assertRegex(entry["matcher"], r"^[A-Za-z0-9_|-]+$")
         self.assertEqual(command, '[ -f "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '
                                   'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" --host claude')
         self.assertEqual(self.entries(events, "UserPromptSubmit")[1], command)
@@ -735,6 +799,15 @@ class HookFileTests(HookCase):
         for name in self.CODEX_TOOLS:
             with self.subTest(name=name):
                 self.assertRegex(name, entry["matcher"])
+        # Codex reads a matcher with other characters than letters, digits, "_", and "|" as a regular
+        # expression that can match part of a name. Its environment form needs one (#545).
+        for name in (*READ_ISSUE["codex"], *PR_READ["codex"]):
+            with self.subTest(name=name):
+                self.assertRegex(name, entry["matcher"])
+        for name in ("mcp__t3_code__list_issues", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
+                     "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue"):
+            with self.subTest(name=name):
+                self.assertNotRegex(name, entry["matcher"])
         self.assertEqual(command, '[ -f "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '
                                   'python3 "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" --host codex')
         self.assertEqual(self.entries(events, "UserPromptSubmit")[1], command)

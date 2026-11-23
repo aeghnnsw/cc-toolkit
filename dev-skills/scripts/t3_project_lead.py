@@ -6,8 +6,8 @@ The first line of a step gives the script's path, so that an agent can run the
 next step after a context summary. The step text is the same for Claude Code,
 Codex, and Antigravity.
 
-The other commands keep the lead state (issue #530): the approved outcome, the
-tasks and their life cycle, the items that wait on the user, and the lead's
+The other commands keep the lead state (issue #530): the outcome the user
+named, the tasks and their life cycle, the items that wait on the user, and the lead's
 decisions. The state is in .scratch/<YYYYMMDD>-lead-<slug>/ at the top of the
 lead's working tree, where each host's sandbox lets a shell command write. A
 `.gitignore` of `*` keeps the folder out of Git. The script stamps each change
@@ -22,6 +22,13 @@ thread in the lead's worktree. The first `start` of the new owner prints the
 takeover due line once, and appends that to events.jsonl. When `start` finds
 no lead state in its own working tree, it lists the lead states of the other
 worktrees, read-only.
+
+With no lead state in any worktree, `start` tells a new lead to run `init` at
+once and then the discovery task (issue #545): a read-only task whose worker
+lists all open work in groups, with links only, so that no issue or PR text
+reaches the lead. The lead shows the list and asks no question. While the
+lead state has no outcome, a due line names the `discover` step, and no due
+line names `finish`.
 """
 
 from __future__ import annotations
@@ -44,7 +51,9 @@ Do only these lead actions yourself:
 2. Plan tasks, briefs, and lead decisions.
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
 watch PRs.
-4. Read worker messages and PR, issue, and CI state; no diff, code, or log.
+4. Read worker messages, and the state, labels, titles, and check counts of
+issues and PRs, not their text. Never call read_issue, or pull_request_read
+with an include other than checks. No diff, code, or log.
 5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set triage labels and issue state.
@@ -62,18 +71,38 @@ worker's status from memory.
 Next: t3_project_lead.py plan for new work; answer, verify, or flag for
 waiting, finished, or failed workers; else report.
 """,
+    "discover": """
+Until the discovery report, do not list issues yourself. Read no issue or PR
+text. When the user named the work, record it with outcome <text> and
+criteria <text>, and start no discovery task.
+Otherwise add the discovery task: task add discover 'Discover open work'.
+Start its worker as t3_project_lead.py dispatch says, with the read-only
+brief, no outcome, and the discovery brief below, copied exactly. In the last
+line of its brief, replace "with evidence and links" with "in the form above".
+When it reports, run task verified discover. Copy its lines into your report
+as they are, and end your turn. The list is not a waiting item: add no wait
+item or GTD capture for it. Do not ask the user to choose, with a question
+tool or in text. When the user names the work, run outcome <text> and
+criteria <text>. When discover is verified and the user named no work, start
+no second discovery.
+Next: t3_project_lead.py plan after the user names the work; else report.
+""",
     "plan": """
-Break the approved outcome into worker tasks with success criteria that a
-check can pass or fail. A task is one brief for one worker; it can cover
+Use this step when the lead state has an outcome; without one, run
+t3_project_lead.py discover first.
+Break the outcome the user named into worker tasks with success criteria
+that a check can pass or fail. A task is one brief for one worker; it can cover
 several issues. Give a task that needs another task's result, or edits the
 same files, --after that task. Start each planned task as soon as each task
 that it waits for is verified, also while other workers run; do not wait for
 the rest of its batch. A batch (--batch) only decides when its workers are
 closed out and settled.
+A triage that needs issue text is a read-only task: its worker recommends
+labels, and you set them.
 Decide reversible points yourself. Record the plan with these commands. Text
 is at most 200 characters; quote it with single quotes.
-init <slug>, once, after the user approves the outcome; add --also only after
-the user confirms a second lead state; outcome <text>;
+init <slug>, once, on the first start; add --also only after the user
+confirms a second lead state; outcome <text>, after the user names the work;
 criteria <text>; task add <name> <title> [--batch N] [--after NAME]
 [--kind work|check|closeout] [--of NAME] [--issue N] [--scientific];
 decision add <text>; decision drop <id>. A task name has lowercase letters,
@@ -92,8 +121,8 @@ Start each worker with delegate_task, isolation "worktree", and no role. Start
 every task this way, research and review tasks included. Never use your host's
 native subagent tool.
 Write the brief as t3_project_lead.py brief says, with its quoted lines copied
-exactly. Then add the task, its success criteria, the approved outcome, and
-your decisions. For a scientific task, give the issue link, not the content.
+exactly. Then add the task, its success criteria, the outcome the user named,
+and your decisions. For a scientific task, give the issue link, not the content.
 In the last line of its brief, replace "with evidence and links" with "in one
 line, with links. Keep scientific detail in this thread and the PR".
 For a task after a merged PR, name the PR, and tell the worker to start from
@@ -205,6 +234,19 @@ Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
 
+# What the discover step prints after its text: the brief of the discovery worker, which the lead
+# copies exactly (#545).
+DISCOVERY_BRIEF = """Discovery brief:
+"Collect each open issue with its labels, each open PR, each unsettled T3
+thread, and each worktree or branch with uncommitted or unpushed changes of
+this project, with its progress and the decisions that wait on the user. Page
+each list to its end. Change no file, branch, issue, label, PR, or thread.
+Put each item in one group. Report one line for each group, with its count
+and links only. Quote no issue or PR text, and keep the detail in this thread:
+- <short neutral title of the group> (<count>): <links>.
+- Waiting on the user: <links>.
+- Recommended order: <group titles>.\""""
+DISCOVERY_TASK = "discover"
 STATE_FILE = "state.json"
 EVENTS_FILE = "events.jsonl"
 LOCK_FILE = ".lock"
@@ -899,6 +941,14 @@ def task_line(task: dict, now: datetime.datetime) -> str:
 def due_lines(state: dict) -> list[str]:
     # Only the owner can act on the takeover due line.
     lines = [TAKEOVER_LINE] if state.get("takeover_due") and current_thread() == state.get("owner") else []
+    if not state["outcome"]:
+        # A wake after the discovery worker reports leads to the discover step, not to verify; after
+        # the report, only the user starts the work (#545).
+        if any(task["name"] == DISCOVERY_TASK and accepted(task) for task in state["tasks"]):
+            lines.append("No outcome yet, and discover is verified: start no second discovery. Wait until "
+                         "the user names the work.")
+        else:
+            lines.append("No outcome yet: run t3_project_lead.py discover.")
     for batch in sorted({task["batch"] for task in state["tasks"]}):
         if needs_closeout(state, batch):
             prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
@@ -928,7 +978,9 @@ def due_lines(state: dict) -> list[str]:
         if task is not None and task["state"] in DONE:
             lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
                          f"{item['number']}, or keep it.")
-    if state["tasks"] and not state["items"] and all(task["state"] == SETTLED for task in state["tasks"]):
+    # A lead state without an outcome has not started its work: a settled discovery task is not the end.
+    if (state["outcome"] and state["tasks"] and not state["items"]
+            and all(task["state"] == SETTLED for task in state["tasks"])):
         lines.append("Every task is settled and nothing waits: run t3_project_lead.py finish.")
     return lines
 
@@ -977,6 +1029,9 @@ def closeout_lines(state: dict, folder: str) -> list[str]:
 def print_step(name: str) -> None:
     print(f'Steps: "{__file__}"')
     print(STEPS[name].strip())
+    if name == "discover":
+        print()
+        print(DISCOVERY_BRIEF)
     if name not in ("start", "report", "closeout"):
         return
     top = working_tree_top()
@@ -1001,8 +1056,10 @@ def print_step(name: str) -> None:
 
 def lookup_lines(top: str) -> list[str]:
     """Return what `start` prints when its own working tree holds no lead state."""
-    init = (f"No lead state in {top}. After the user approves the outcome, run: "
-            f'python3 "{__file__}" init <slug>')
+    init = (f"No lead state in {top}. On this first start, run: "
+            f'python3 "{__file__}" init <slug>, with a slug that names the project or repository. '
+            "Then, unless the user named the work, start the discovery task as t3_project_lead.py discover "
+            "says, and come to the user only with its list of open work.")
     try:
         others = other_lead_lines(top)
     except OSError as error:
