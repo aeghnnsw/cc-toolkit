@@ -27,7 +27,8 @@ def _git_toplevel(cwd=None):
 
 
 def log_dir(base=None, create=True):
-    """Return the `logs` directory for this session and create it.
+    """Return the `logs` directory for this session, and create it unless
+    `create` is false.
 
     Claude Code gives hooks the project root in `CLAUDE_PROJECT_DIR`. Codex
     gives no project directory and runs hooks in the session `cwd`, so use
@@ -36,8 +37,7 @@ def log_dir(base=None, create=True):
     logs.
 
     With `base`, use the Git top level of `base`, or `base` itself outside a
-    Git repository, and ignore `CLAUDE_PROJECT_DIR`. With `create` false,
-    return the path and do not create the directory.
+    Git repository, and ignore `CLAUDE_PROJECT_DIR`.
     """
     if base is not None:
         root = _git_toplevel(base) or Path(base)

@@ -3,7 +3,7 @@
 > **Superseded in part (2026-11-22, issue #487).** An error that the
 > safety script catches blocks the tool call in Claude Code and Codex too,
 > not only in Antigravity. Read [Safety script errors](#safety-script-errors).
-
+>
 > **Superseded in part (2026-11-22, issue #535).** A failed log write after
 > the safety script allows a tool call no longer blocks the call. Read
 > [Log write errors](#log-write-errors).
@@ -109,5 +109,6 @@ every call that the script checks.
 
 A call that the script blocks stays blocked; the script writes no log for
 it. Every other error that the script catches still blocks, as
-[Safety script errors](#safety-script-errors) records. The logging script
-`post_tool_use.py` also lets the tool call run when its log write fails.
+[Safety script errors](#safety-script-errors) records. The PostToolUse
+logging script `post_tool_use.py` also ignores a failed log write, but it
+writes no warning.
