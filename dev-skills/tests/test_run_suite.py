@@ -1,4 +1,4 @@
-"""Command-line checks for run_suite.py, the suite lock and pass record.
+"""Command-line checks for run_suite.py, the suite locks and pass records.
 
 Each check builds a temporary Git repository and runs small python3 commands
 through the script. The commands write their log outside the repository, so
@@ -8,6 +8,7 @@ the working tree stays clean. No check touches another repository.
 from __future__ import annotations
 
 import fcntl
+import importlib.util
 import json
 import os
 import re
@@ -20,6 +21,9 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_suite.py"
+_spec = importlib.util.spec_from_file_location("run_suite", SCRIPT)
+RUN_SUITE = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(RUN_SUITE)
 
 # Log "start <tag>", wait until the release file exists, then log "end <tag>".
 HOLD = """
@@ -43,6 +47,14 @@ class Demo(unittest.TestCase):
 
     def test_error(self):
         raise RuntimeError("boom")
+"""
+
+ROOT_TESTS = """
+import unittest
+
+class Root(unittest.TestCase):
+    def test_pass(self):
+        pass
 """
 
 
@@ -75,13 +87,13 @@ class RunSuiteTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd or self.repo,
                               env=self.env, capture_output=True, text=True, timeout=30)
 
-    def start(self, *args: str, name: str) -> subprocess.Popen:
+    def start(self, *args: str, name: str, cwd: Path | None = None) -> subprocess.Popen:
         """Start the script in the background, with its output in files."""
         out = open(self.tmp / f"{name}.out", "w")
         err = open(self.tmp / f"{name}.err", "w")
         self.addCleanup(out.close)
         self.addCleanup(err.close)
-        process = subprocess.Popen([sys.executable, str(SCRIPT), *args], cwd=self.repo,
+        process = subprocess.Popen([sys.executable, str(SCRIPT), *args], cwd=cwd or self.repo,
                                    env=self.env, stdout=out, stderr=err)
         self.addCleanup(process.kill)
         return process
@@ -97,39 +109,75 @@ class RunSuiteTests(unittest.TestCase):
     def log_lines(self) -> list[str]:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
-    def test_second_run_waits_for_the_lock_then_reuses_the_pass(self):
-        # A holds the lock until the release file exists. B has A's command,
-        # and C has another command. Both start while A runs.
+    def suite_lock(self, command: list[str], folder: str = ".") -> Path:
+        """Return the lock file of a suite, as run_suite.py names it."""
+        return RUN_SUITE.suite_lock(self.repo / ".git", command, folder)
+
+    def test_same_suite_waits_then_reuses_the_pass_and_another_folder_does_not_wait(self):
+        # A holds its suite lock until the release file exists. B has A's
+        # command and folder, so it waits. C has A's command in folder sub,
+        # which is another suite, so it runs while A holds its lock.
         first = self.start("--", *self.hold("a"), name="a")
         self.wait_for(self.log, "start a")
         same = self.start("--", *self.hold("a"), name="b")
-        other = self.start("--", *self.hold("c"), name="c")
-        for name in ("b", "c"):
-            self.wait_for(self.tmp / f"{name}.err", "waiting for the suite lock")
+        other = self.start("--", *self.hold("a"), name="c", cwd=self.repo / "sub")
+        self.wait_for(self.tmp / "b.err", "waiting for the suite lock")
+        self.wait_for(self.log, "start a\nstart a\n")
         self.release.touch()
         for process in (first, same, other):
             self.assertEqual(process.wait(timeout=20), 0)
 
-        # C started after A ended, and B did not run A's command again.
-        self.assertEqual(self.log_lines(), ["start a", "end a", "start c", "end c"])
-        for name in ("b", "c"):
-            waiting = (self.tmp / f"{name}.err").read_text()
-            self.assertIn(f"PID {first.pid} (", waiting)
-            self.assertIn("-c", waiting)
-            self.assertRegex(waiting, r"started \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+        # B did not run A's command again: only A and C ran it.
+        self.assertEqual(sorted(self.log_lines()), ["end a", "end a", "start a", "start a"])
+        waiting = (self.tmp / "b.err").read_text()
+        self.assertIn(f"PID {first.pid} (", waiting)
+        self.assertIn("-c", waiting)
+        self.assertRegex(waiting, r"started \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+        self.assertNotIn("waiting", (self.tmp / "c.err").read_text())
 
-        # The stdout of each run keeps the lock wait in its last lines, for tail.
+        # B reused A's pass, so the wait line is its last line, for tail.
         out = {name: (self.tmp / f"{name}.out").read_text().splitlines() for name in "abc"}
         folder = re.escape(str(self.repo.resolve()))
         wait_line = rf"Suite lock wait: \d+ s, held by PID {first.pid} \(.+\) in {folder}"
-        self.assertFalse([line for line in out["a"] if line.startswith("Suite lock wait")])
-        self.assertEqual(out["a"][-1], "Exit status: 0")
-        # B reused A's pass, so the wait line is its last line.
         self.assertIn("a pass is recorded for tree", out["b"][-2])
         self.assertRegex(out["b"][-1], f"^{wait_line}$")
-        # C ran its command, so the wait line comes just before the exit status.
-        self.assertRegex(out["c"][-2], f"^{wait_line}$")
-        self.assertEqual(out["c"][-1], "Exit status: 0")
+        for name in ("a", "c"):
+            self.assertFalse([line for line in out[name] if line.startswith("Suite lock wait")])
+            self.assertEqual(out[name][-1], "Exit status: 0")
+
+    def test_root_suite_runs_while_a_dev_skills_suite_holds_its_lock(self):
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "test_root.py").write_text(ROOT_TESTS)
+        dev_skills = [sys.executable, "-m", "unittest", "discover", "-s", "dev-skills/tests",
+                      "-p", "test_*.py"]
+        with open(self.suite_lock(dev_skills), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            result = self.run_suite("--", sys.executable, "-m", "unittest", "discover",
+                                    "-s", "tests", "-p", "test_*.py")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Ran 1 test", result.stdout)
+        self.assertNotIn("waiting for the suite lock", result.stderr)
+        self.assertNotIn("Suite lock wait", result.stdout)
+
+    def test_pass_waits_for_the_pass_records_lock_and_keeps_the_other_records(self):
+        self.release.touch()
+        passes = self.repo / ".git" / "run-suite-passes.json"
+        earlier = {"tree": "earlier", "command": ["x"], "folder": ".", "time": "t1",
+                   "commit": "c1"}
+        passes.write_text(json.dumps([earlier]))
+        with open(self.repo / ".git" / "run-suite-passes.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            run = self.start("--", *self.hold(), name="r")
+            self.wait_for(self.tmp / "r.err", "waiting for the pass-records lock")
+            self.assertIsNone(run.poll())
+            # Another suite records its pass while it holds the lock.
+            concurrent = {**earlier, "tree": "concurrent", "time": "t2"}
+            passes.write_text(json.dumps([earlier, concurrent]))
+        self.assertEqual(run.wait(timeout=20), 0)
+        records = json.loads(passes.read_text())
+        self.assertEqual(records[:2], [earlier, concurrent])
+        self.assertEqual([entry["tree"] for entry in records[2:]],
+                         [self.git("rev-parse", "HEAD^{tree}")])
 
     def test_wait_line_names_the_first_and_the_last_holder(self):
         # The test holds the lock, and before it releases the lock it writes the
@@ -140,7 +188,7 @@ class RunSuiteTests(unittest.TestCase):
                  (None, "PID 22 (last suite) in /last")]
         self.release.touch()
         for index, (details, holders) in enumerate(cases):
-            with open(self.repo / ".git" / "run-suite.lock", "w") as lock:
+            with open(self.suite_lock(self.hold()), "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 lock.write(json.dumps(details) if details else "")
                 lock.flush()

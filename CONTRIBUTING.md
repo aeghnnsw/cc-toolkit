@@ -371,10 +371,11 @@ longer when other test runs share the machine. Of this time,
 `dev-skills/tests/test_lean_tests.py` about 1 minute.
 
 To run a full suite, put `python3 dev-skills/scripts/run_suite.py --` before
-its command. The script lets one full suite run at a time in all worktrees
-of the repository. It reports a pass recorded for the same clean tree
-instead of a new run, and it prints the failing tests and the exit status
-last.
+its command. The script takes one lock for each suite, a command in a
+folder, and all worktrees of the repository share each lock. So two runs of
+the same suite run one at a time, and different suites run in parallel. It
+reports a pass recorded for the same clean tree instead of a new run, and it
+prints the failing tests and the exit status last.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov, which the `dev-skills` command
