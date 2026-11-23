@@ -3,7 +3,9 @@
 Cases 1-16 come from the scenario review of repo-cleanup before issue #459:
 planning folders (#358), the worktrees that cleanup keeps (#419), and planning
 folders in worktrees (#421). Cases 17-19 come from issue #543: the worktrees
-that hold a lead state of t3-project-lead. Each check builds a temporary
+that hold a lead state of t3-project-lead. Cases 20-25 come from issue #528:
+branches with no commit of their own, and a worktree that contains another
+worktree; it also changed cases 7 and 16. Each check builds a temporary
 repository with a bare origin, runs the script with a fake gh (fake_gh.py),
 and reads the lines that it prints. The real live_worktrees.py runs, so most
 checks need lsof. Each class makes as few plan runs as it can, because each
@@ -16,9 +18,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -30,6 +34,7 @@ HOSTS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
          "antigravity-skills": "<plugin-root>"}
 NEEDS_LSOF_AND_GIT = unittest.skipUnless(shutil.which("lsof") and shutil.which("git"),
                                          "needs lsof and git")
+COMMIT_PULLS = r"repos/\{owner\}/\{repo\}/commits/[0-9a-f]{40}/pulls\?per_page=100"
 
 
 class Repo:
@@ -78,30 +83,42 @@ class Repo:
             proc.wait()
         shutil.rmtree(self.tmp, True)
 
-    def git(self, *args: str, cwd: Path | None = None) -> str:
-        result = subprocess.run(["git", *args], cwd=cwd or self.path, env=self.env,
+    def git(self, *args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
+        result = subprocess.run(["git", *args], cwd=cwd or self.path, env=env or self.env,
                                 capture_output=True, text=True, check=True)
         return result.stdout
 
     def tip(self, ref: str = "HEAD") -> str:
         return self.git("rev-parse", ref).strip()
 
-    def commit(self, cwd: Path, name: str) -> None:
+    def commit(self, cwd: Path, name: str, env: dict[str, str] | None = None) -> None:
         (cwd / name).write_text(f"{name}\n")
-        self.git("add", name, cwd=cwd)
-        self.git("commit", "-q", "-m", name, cwd=cwd)
+        self.git("add", name, cwd=cwd, env=env)
+        self.git("commit", "-q", "-m", name, cwd=cwd, env=env)
 
-    def worktree(self, name: str, own_commit: bool = True) -> Path:
-        """Add trees/<name> on a new branch from master, and push the branch."""
-        path = self.path / "trees" / name
-        self.git("worktree", "add", "-q", "-b", name, str(path), "master")
+    def worktree(self, name: str, own_commit: bool = True, start: str = "master",
+                 old: bool = False, parent: Path | None = None) -> Path:
+        """Add <parent>/<name> on a new branch from start, and push the branch.
+
+        The parent folder is trees/. An old branch has reflog entries of two
+        hours ago, so the plan reads it as created 120 minutes ago.
+        """
+        path = (parent or self.path / "trees") / name
+        env = dict(self.env, GIT_COMMITTER_DATE=f"{int(time.time()) - 7200} +0000") if old else None
+        self.git("worktree", "add", "-q", "-b", name, str(path), start, env=env)
         if own_commit:
-            self.commit(path, f"{name}.txt")
-        self.git("push", "-q", "origin", name)
+            self.commit(path, f"{name}.txt", env=env)
+        self.git("push", "-q", "origin", name, env=env)
         return path
 
     def record_pr(self, branch: str, number: int, head: str) -> None:
         self.gh_data["prs"].setdefault(branch, []).append({"number": number, "headRefOid": head})
+
+    def record_commit_pr(self, commit: str, number: int, merged: bool = True) -> None:
+        """Record a PR with the head commit, for the PRs of a commit on GitHub."""
+        self.gh_data.setdefault("commit_prs", {}).setdefault(commit, []).append(
+            {"number": number, "merged_at": "2026-11-23T10:00:00Z" if merged else None,
+             "head": {"sha": commit}})
 
     def squash_merge(self, branch: str, number: int, pr_head: str | None = None) -> None:
         """Squash-merge the branch into master; its PR has head branch pr_head or its name."""
@@ -317,7 +334,8 @@ class WorktreeCases(PlanTestCase):
         self.assert_kept_with_branches(self.feat_a, "live session", "session log")
 
     def test_case_07_keeps_a_new_branch_at_the_default_tip(self):
-        self.assert_kept_with_branches(self.feat_b, "no commit of its own")
+        self.assert_kept_with_branches(self.feat_b, "no commit of its own",
+                                       "less than 60 minutes ago")
 
     def test_case_08_removes_a_worktree_merged_with_a_merge_commit(self):
         self.assert_removed_with_branches(self.feat_c, "merged PR #51")
@@ -350,8 +368,10 @@ class WorktreeCases(PlanTestCase):
 
     def test_changes_nothing_and_runs_only_read_commands(self):
         self.assertEqual(self.before, self.after)
-        commands = {tuple(call[:2]) for call in self.repo.gh_calls()}
-        self.assertEqual(commands, {("pr", "list")})
+        for call in self.repo.gh_calls():
+            with self.subTest(call=call):
+                self.assertTrue(call[:2] == ["pr", "list"] or (
+                    len(call) == 2 and call[0] == "api" and re.fullmatch(COMMIT_PULLS, call[1])))
 
 
 @NEEDS_LSOF_AND_GIT
@@ -421,18 +441,29 @@ class DocumentedLocationCase(PlanTestCase):
     @classmethod
     def setUpClass(cls):
         repo = cls.repo = cls.make_repo()
-        cls.feat_e = repo.worktree("feat-e")
-        repo.squash_merge("feat-e", 60)
-        cls.feat_i = repo.worktree("feat-i")
-        repo.squash_merge("feat-i", 64)
+        worktrees = {}
+        for number, name in enumerate(("feat-e", "feat-i", "feat-j"), start=64):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+        cls.feat_e, cls.feat_i, cls.feat_j = worktrees.values()
         cls.metrics = repo.folder(cls.feat_i, "50-metrics")
+        cls.done = repo.folder(cls.feat_i, "51-done")
+        cls.other = repo.folder(cls.feat_j, "52-done")
+        cls.current = repo.folder(cls.feat_e, "53-done")
         repo.issue(50, "OPEN")
+        for number in (51, 52, 53):
+            repo.issue(number, "CLOSED", "COMPLETED")
         cls.plan = repo.plan("--main-only", cwd=cls.feat_e)
 
-    def test_case_16_inspects_only_the_main_checkout(self):
-        self.assert_removed_with_branches(self.feat_i, "merged PR #64")
-        self.assertNotIn(("folder", str(self.metrics)), self.plan)
-        self.assertEqual(self.issues_read(), [])
+    def test_case_16_keeps_a_worktree_with_a_kept_folder_and_removes_no_folder_outside_main(self):
+        self.assert_kept("folder", self.metrics, "issue #50 is open")
+        self.assert_kept_with_branches(self.feat_i, "holds the kept planning folder",
+                                       str(self.metrics))
+        self.assert_removed_with_branches(self.feat_j, "merged PR #66")
+        for folder in (self.done, self.other, self.current):
+            with self.subTest(folder=folder.name):
+                self.assertNotIn(("folder", str(folder)), self.plan)
+        self.assertEqual(self.issues_read(), ["50", "51", "52"])
 
 
 @NEEDS_LSOF_AND_GIT
@@ -466,10 +497,13 @@ class LeadStateCases(PlanTestCase):
                 self.assert_kept_with_branches(self.lead_a, "holds a lead state", str(self.state))
 
     def test_case_18_a_lead_folder_without_state_json_keeps_no_worktree_by_this_rule(self):
-        self.plan = self.plans["default"]
-        self.assertNotIn("holds a lead state", self.line("worktree", self.lead_b)[1])
-        self.plan = self.plans["--main-only"]
-        self.assert_removed_with_branches(self.lead_b, "merged PR #71")
+        # The folder still has no issue key, so the planning folder rule keeps the worktree.
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_kept("worktree", self.lead_b, "holds the kept planning folder",
+                                 "no issue key")
+                self.assertNotIn("holds a lead state", self.line("worktree", self.lead_b)[1])
 
     @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
     def test_case_19_keeps_a_worktree_whose_scratch_cannot_be_read(self):
@@ -477,6 +511,72 @@ class LeadStateCases(PlanTestCase):
             with self.subTest(mode=mode):
                 self.plan = plan
                 self.assert_kept_with_branches(self.lead_c, "cannot look for a lead state")
+
+
+@NEEDS_LSOF_AND_GIT
+class MergedTipCases(PlanTestCase):
+    """Cases 20-25: branches with no commit of their own, and a worktree in a worktree.
+
+    The t3-* branches have no commit of their own. Their tip is the head of
+    merged PR #80 of feat-p, which is not in the Default Branch, or the tip
+    of the Default Branch. An old branch was created two hours ago.
+    """
+
+    plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        repo.worktree("feat-p")
+        pr_head = repo.tip("feat-p")
+        repo.squash_merge("feat-p", 80)
+        repo.record_commit_pr(pr_head, 80)
+        cls.queued = repo.worktree("feat-q", old=True)
+        repo.record_commit_pr(repo.tip("feat-q"), 81, merged=False)
+        made = {}
+        for name, start, old in (("t3-pr-old", "feat-p", True), ("t3-main-old", "master", True),
+                                 ("t3-pr-new", "feat-p", False), ("t3-main-new", "master", False),
+                                 ("t3-pr-live", "feat-p", True), ("t3-main-live", "master", True),
+                                 ("t3-outer", "master", True)):
+            made[name] = repo.worktree(name, own_commit=False, start=start, old=old)
+        (cls.pr_old, cls.main_old, cls.pr_new, cls.main_new, cls.pr_live, cls.main_live,
+         cls.outer) = made.values()
+        cls.inner = repo.worktree("t3-inner", own_commit=False, old=True,
+                                  parent=cls.outer / "trees")
+        repo.start(cls.pr_live)
+        repo.start(cls.main_live)
+        cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
+        cls.plan = cls.plans["default"]
+
+    def test_case_20_removes_an_old_branch_at_the_head_of_another_branchs_merged_pr(self):
+        self.assert_removed_with_branches(self.pr_old, "no commit of its own",
+                                          "head commit of merged PR #80")
+
+    def test_case_21_removes_an_old_branch_at_a_default_branch_commit(self):
+        self.assert_removed_with_branches(self.main_old, "no commit of its own",
+                                          "in the Default Branch")
+
+    def test_case_22_keeps_such_a_branch_created_less_than_60_minutes_ago(self):
+        for worktree in (self.pr_new, self.main_new):
+            with self.subTest(worktree=worktree.name):
+                self.assert_kept_with_branches(worktree, "no commit of its own",
+                                               "less than 60 minutes ago")
+
+    def test_case_23_keeps_such_a_branch_with_a_live_session(self):
+        for worktree in (self.pr_live, self.main_live):
+            with self.subTest(worktree=worktree.name):
+                self.assert_kept_with_branches(worktree, "live session", "process")
+
+    def test_case_24_keeps_a_worktree_that_contains_another_worktree_in_every_mode(self):
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_kept_with_branches(self.outer, "contains the worktree",
+                                               str(self.inner))
+                self.assert_removed_with_branches(self.inner, "in the Default Branch")
+
+    def test_case_25_keeps_a_branch_whose_tip_is_the_head_of_an_open_pr(self):
+        self.assert_kept_with_branches(self.queued, "not merged")
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")

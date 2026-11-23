@@ -14,22 +14,27 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   .scratch/<YYYYMMDD>-lead-<slug>/state.json at its top, whatever
   --planning-location names, also with --main-only. Keep a worktree whose
   .scratch or lead folder cannot be read.
+- Keep each worktree whose folder contains another worktree that Git lists.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
-- A branch is merged only when a merged PR of the branch has the branch tip
-  as its head commit (headRefOid). Keep a branch whose tip is in the Default
-  Branch without such a PR: it has no commit of its own, and a session may
-  have just started there. Keep every other unmerged branch, and each branch
-  whose PR state cannot be read.
+- A branch is merged when a merged PR of the branch has the branch tip as its
+  head commit (headRefOid). A branch also has no commit of its own, and is
+  merged, when its tip is in the Default Branch or is the head commit of any
+  merged PR (gh api repos/{owner}/{repo}/commits/<tip>/pulls). Keep such a
+  branch when its reflog shows that it was created less than 60 minutes ago,
+  or when the reflog cannot be read. The reflog of a remote branch shows when
+  this clone first had it. Keep every other branch, and each branch whose PR
+  state cannot be read.
 - Inspect the planning folders: the entries of --planning-location in the main
   checkout, in the current worktree, and in each worktree that the plan would
   otherwise remove. With --main-only, inspect the planning folders of the main
-  checkout alone; the lead state rule above still keeps each worktree that
-  holds a lead state. Remove a folder whose issue is closed as completed. Keep the folders of open or
-  not-planned issues, entries with no issue key (such as a date key), and
-  folders whose issue state cannot be read. Keep each worktree that holds a
-  kept folder.
+  checkout and of each worktree that the plan would otherwise remove, and
+  remove no folder outside the main checkout. Remove a folder whose issue is
+  closed as completed. Keep the folders of open or not-planned issues, entries
+  with no issue key (such as a date key), and folders whose issue state cannot
+  be read. Keep each worktree that holds a kept folder, or whose planning
+  folder location cannot be read.
 - Keep the local and remote branch of each kept worktree, and the remote
   branch of each kept local branch: the remote branch with its name or its
   upstream. A branch's PRs are those whose head is its upstream branch, or
@@ -49,13 +54,17 @@ import re
 import stat
 import subprocess
 import sys
+import time
 from typing import NoReturn
 
-# Python puts the folder of this script on sys.path, so the sibling module loads.
+# Python puts the folder of this script on sys.path, so the sibling modules load.
+from live_worktrees import WINDOW_MINUTES
 from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
+# `git reflog show --date=unix --format=%gd` prints <name>@{<seconds since the epoch>}.
+REFLOG_TIME = re.compile(r"@\{(\d+)\}$")
 KEEP, REMOVE = "KEEP", "REMOVE"
 NOT_FOUND = (FileNotFoundError, NotADirectoryError)
 
@@ -111,6 +120,10 @@ class GitHub:
         return self.read("pr", "list", "--head", branch, "--state", "merged",
                          "--json", "number,headRefOid", "--limit", "100")
 
+    def commit_prs(self, commit: str) -> tuple[object, str | None]:
+        """Return the PRs of a commit; GitHub answers HTTP 422 for a commit that it lacks."""
+        return self.read("api", f"repos/{{owner}}/{{repo}}/commits/{commit}/pulls?per_page=100")
+
     def issue(self, number: int) -> tuple[object, str | None]:
         return self.read("issue", "view", str(number), "--json", "state,stateReason")
 
@@ -125,8 +138,26 @@ class Planner:
         return git(self.repo, "merge-base", "--is-ancestor", commit, self.default_ref,
                    check=False) is not None
 
-    def branch(self, name: str, tip: str) -> tuple[str, str]:
-        """Return the action and reason for a branch, from its merged PRs."""
+    def created(self, ref: str) -> tuple[int | None, str | None]:
+        """Return (the minutes since the oldest reflog entry of ref, None), or (None, the error)."""
+        output = git(self.repo, "reflog", "show", "--date=unix", "--format=%gd", ref, "--",
+                     check=False)
+        if output is None:
+            return None, f"git reflog show {ref} failed"
+        entries = output.split()
+        if not entries:
+            return None, f"the reflog of {ref} has no entry"
+        match = REFLOG_TIME.search(entries[-1])
+        if match is None:
+            return None, f"the reflog of {ref} has no time: {entries[-1]}"
+        return int((time.time() - int(match.group(1))) // 60), None
+
+    def branch(self, name: str, tip: str, ref: str) -> tuple[str, str]:
+        """Return the action and reason for a branch.
+
+        name is the head branch of the branch's PRs, and ref is the ref whose
+        reflog shows when the branch was created.
+        """
         prs, error = self.github.merged_prs(name)
         if error is not None:
             return KEEP, f"PR state cannot be read: {error}"
@@ -138,10 +169,29 @@ class Planner:
         others = "".join(
             f"; merged PR #{pr.get('number')} has head {str(pr.get('headRefOid'))[:7]}"
             for pr in prs)
+        not_merged = f"not merged: no merged PR has the tip {tip[:7]} as its head commit{others}"
         if self.in_default(tip):
-            return KEEP, (f"no commit of its own: the tip {tip[:7]} is in the Default Branch, "
-                          f"and no merged PR has it as its head commit{others}")
-        return KEEP, f"not merged: no merged PR has the tip {tip[:7]} as its head commit{others}"
+            where = "is in the Default Branch"
+        else:
+            pulls, error = self.github.commit_prs(tip)
+            if error is not None and "No commit found" in error:
+                return KEEP, not_merged
+            if error is not None:
+                return KEEP, f"PR state cannot be read: {error}"
+            heads = [pr.get("number") for pr in pulls if isinstance(pr, dict)
+                     and pr.get("merged_at") and isinstance(pr.get("head"), dict)
+                     and pr["head"].get("sha") == tip] if isinstance(pulls, list) else []
+            if not heads:
+                return KEEP, not_merged
+            where = f"is the head commit of merged PR #{heads[0]}"
+        reason = f"no commit of its own: the tip {tip[:7]} {where}{others}"
+        minutes, error = self.created(ref)
+        if error is not None:
+            return KEEP, f"{reason}, but its creation time cannot be read: {error}"
+        if minutes < WINDOW_MINUTES:
+            return KEEP, (f"{reason}, but its reflog shows that it was created {minutes} "
+                          f"minutes ago, less than {WINDOW_MINUTES} minutes ago")
+        return REMOVE, reason
 
     def folder(self, path: str) -> tuple[str, str]:
         """Return the action and reason for an entry of a planning folder location."""
@@ -278,6 +328,12 @@ def main() -> None:
         upstream = local.get(branch, ("", ""))[1]
         return upstream[len(remote_prefix):] if upstream.startswith(remote_prefix) else branch
 
+    # The worktrees that each worktree's folder contains: removing it would delete them.
+    real = {tree["path"]: os.path.realpath(tree["path"]) for tree in worktrees}
+    inside = {path: [other for other, other_real in real.items()
+                     if other_real.startswith(top + os.sep)]
+              for path, top in real.items()}
+
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
     for index, tree in enumerate(worktrees):
@@ -286,11 +342,13 @@ def main() -> None:
             plan[path] = (KEEP, "the main checkout")
         elif os.path.realpath(path) == current:
             # The merged PR of this worktree is often the work that cleanup reconciles.
-            merged = (f"; {planner.branch(pr_head(branch), head)[1]}"
+            merged = (f"; {planner.branch(pr_head(branch), head, f'refs/heads/{branch}')[1]}"
                       if branch and branch != default else "")
             plan[path] = (KEEP, f"the current session runs here{merged}")
         elif (lead := lead_state_reason(path)) is not None:
             plan[path] = (KEEP, lead)
+        elif inside[path]:
+            plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
         elif path in live:
@@ -306,20 +364,29 @@ def main() -> None:
             elif status.strip():
                 plan[path] = (KEEP, "uncommitted changes")
             else:
-                plan[path] = planner.branch(pr_head(branch), head)
+                plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
 
-    # The planning folders, and the worktrees that hold a kept one.
-    roots = [worktrees[0]["path"]]
-    if not args.main_only:
-        roots += [path for path, (action, _) in plan.items()
-                  if os.path.realpath(path) == current or action == REMOVE]
+    # The planning folders, and the worktrees that hold a kept one. With
+    # --main-only, a folder outside the main checkout gets a KEEP line or none.
+    main_path = worktrees[0]["path"]
+    roots = [main_path] + [path for path, (action, _) in plan.items() if action == REMOVE or (
+        not args.main_only and os.path.realpath(path) == current)]
     for root in dict.fromkeys(roots):
         location = os.path.join(root, args.planning_location)
-        if not os.path.isdir(location):
+        try:
+            names = sorted(os.listdir(location))
+        except NOT_FOUND:
             continue
-        for name in sorted(os.listdir(location)):
+        except OSError as error:
+            lines.append((KEEP, "folder", location, f"cannot be read: {error}"))
+            if plan[root][0] == REMOVE:
+                plan[root] = (KEEP, f"its planning folders cannot be read: {error}")
+            continue
+        for name in names:
             entry = os.path.join(location, name)
             action, reason = planner.folder(entry)
+            if action == REMOVE and args.main_only and root != main_path:
+                continue
             lines.append((action, "folder", entry, reason))
             if action == KEEP and plan[root][0] == REMOVE:
                 plan[root] = (KEEP, f"holds the kept planning folder {entry}: {reason}")
@@ -338,7 +405,8 @@ def main() -> None:
         if name == default:
             branches[name] = (KEEP, "the Default Branch")
         else:
-            branches[name] = worktree_branches.get(name) or planner.branch(pr_head(name), tip)
+            branches[name] = (worktree_branches.get(name)
+                              or planner.branch(pr_head(name), tip, f"refs/heads/{name}"))
         action, reason = branches[name]
         lines.append((action, "branch", name, reason))
         for remote_name in dict.fromkeys((name, pr_head(name))):
@@ -348,7 +416,7 @@ def main() -> None:
             continue
         kept = [owner for owner in locals_of.get(name, []) if branches[owner][0] == KEEP]
         if not kept:
-            action, reason = planner.branch(name, tip)
+            action, reason = planner.branch(name, tip, f"{remote_prefix}{name}")
         elif kept[0] == name:
             action, reason = branches[name]
         else:
