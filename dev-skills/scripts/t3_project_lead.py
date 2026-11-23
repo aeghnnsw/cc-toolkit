@@ -29,6 +29,14 @@ lists all open work in groups, with links only, so that no issue or PR text
 reaches the lead. The lead shows the list and asks no question. While the
 lead state has no outcome, a due line names the `discover` step, and no due
 line names `finish`.
+
+`start` prints a compact view (issue #555): the running and pr-open tasks, one
+line of counts, the due lines, and the waiting list; `show` prints every task
+and decision. `done` and `task pause|resume|verified|settled` take several
+arguments and make all changes under one lock, or none. `task start` and
+`task worker` record each worker's worktree, and `closeout` prints the paths
+for `retro_sessions.py --worktree` (issue #556). Without `--batch`, a work task
+joins a new batch once a PR of the highest batch merged (issue #560).
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -47,7 +56,8 @@ import tempfile
 STEPS = {
     "start": """
 Do only these lead actions yourself:
-1. Talk with the user: decisions, triage, priorities.
+1. Talk with the user in plain text, never with a question tool: decisions,
+triage, priorities.
 2. Plan tasks, briefs, and lead decisions.
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
 watch PRs.
@@ -64,7 +74,7 @@ write with content, to a worker with t3_project_lead.py dispatch. This
 overrides your host's guidance to do small work yourself. This step records
 this session as the lead: a hook blocks your other shell commands, file reads,
 and file edits.
-Run this step after each wake or user message.
+Run this step after each wake or user message. Run show for the full view.
 Read the last message of each worker of a running or pr-open task:
 t3_thread_list with includeSubagents, then t3_thread_read. Never state a
 worker's status from memory.
@@ -96,7 +106,8 @@ several issues. Give a task that needs another task's result, or edits the
 same files, --after that task. Start each planned task as soon as each task
 that it waits for is verified, also while other workers run; do not wait for
 the rest of its batch. A batch (--batch) only decides when its workers are
-closed out and settled.
+closed out and settled. Without --batch, a work task joins a new batch once a
+PR of the highest batch merged.
 A triage that needs issue text is a read-only task: its worker recommends
 labels, and you set them.
 Decide reversible points yourself. Record the plan with these commands. Text
@@ -129,7 +140,9 @@ For a task after a merged PR, name the PR, and tell the worker to start from
 the default branch that contains it.
 Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
-Then run task start <name> <worker link> [--branch NAME].
+Then run task start <name> <worker link> --worktree <path> [--branch NAME].
+Take the path from the delegate_task result, or from worktreePath of
+t3_thread_read.
 Next: t3_project_lead.py report while workers run.
 """,
     "brief": """
@@ -142,6 +155,9 @@ Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."
 For a read-only task (audit, research, or check), write no line 1, keep line 2,
 and name what the worker must not change.
 Every brief also says: "Add no GTD capture; report what waits on the user."
+and "Ask the user your questions in this thread, with AskUserQuestion or your
+host's question tool, also before you delete outside your worktree or change
+user or host settings."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -155,9 +171,11 @@ Next: t3_project_lead.py dispatch.
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
 the user. Settle it only when the user cancels its task. Do not answer its
-questions. Keep no detail of them: lead the user to the worker's thread.
+questions, with t3_pending_request or otherwise, and do not ask them again,
+with a question tool or in text. Keep no detail of them: give the user the
+worker's thread link.
 In this turn, run wait --task <name> --decisions <N>. The script adds the
-worker's link. Run done <number> when the worker resumes or finishes.
+worker's link. Run done <number>... when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes.
 Next: t3_project_lead.py report.
@@ -171,8 +189,8 @@ worker with delegate_task, isolation "worktree", no role, and a Claude Code
 provider on claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude
 Code form, the branch, PR, and issue from start and pull_request_list, and
 "Continue from this state." Do not read the flagged thread or give its link.
-Run task worker <name> <new link>, and settle the flagged thread that it
-names.
+Run task worker <name> <new link> --worktree <path>, with the path as
+dispatch says, and settle the flagged thread that it names.
 Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
@@ -204,15 +222,16 @@ t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode and the
 budget. Write: "Add no GTD capture; report what waits on the user." Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
-leader of these runs:", with this thread's link and the worker links and merged
-PRs below. Then write: "After the retrospective, run
+leader of these runs:", with this thread's link and the worker links, worktree
+paths, and merged PRs below. Then write: "Pass each worktree path to
+retro_sessions.py with --worktree." and "After the retrospective, run
 repo-cleanup." and "List the lead thread's tool calls other than T3, GitHub,
 and GTD tools and t3_project_lead.py. Its history with real times is in:"
 with the history path below. For a batch with a scientific task, add: "Reply
 in one line, with links."
 When it reports, run task verified <name>; the batch's verified tasks are then
 closed out. Settle each worker that a due line lists with t3_thread_organize,
-and run task settled <name>; never reuse one.
+and run task settled <name>...; never reuse one.
 Next: t3_project_lead.py report.
 """,
     "report": """
@@ -282,6 +301,8 @@ ACCEPTED = (VERIFIED, CLOSED_OUT, SETTLED)
 ACTIVE = (RUNNING, PR_OPEN)
 # A task that needs no more work: accepted or cancelled.
 DONE = ACCEPTED + (CANCELLED,)
+# The states that the compact view counts, in life-cycle order.
+OTHER_STATES = (PLANNED, PAUSED, MERGED, VERIFIED, CLOSED_OUT, CANCELLED, SETTLED)
 
 
 class Refused(Exception):
@@ -489,6 +510,13 @@ def worker_link(value: str) -> str:
     return link(value, "worker link")
 
 
+def worktree_path(value: str) -> str:
+    """Return the worktree path of a worker, for the close-out (#556)."""
+    if not os.path.isabs(value) or len(value) > LINK_LIMIT or any(char in value for char in "\n\r"):
+        raise Refused(f"the worktree must be an absolute path of at most {LINK_LIMIT} characters on one line")
+    return value
+
+
 def find_task(state: dict, name: str) -> dict:
     for task in state["tasks"]:
         if task["name"] == name:
@@ -635,8 +663,12 @@ def change_task_add(state, args, time):
     highest = max((task["batch"] for task in state["tasks"]), default=1)
     if args.batch is not None:
         batch = args.batch
+    elif closeout_started(state, highest) or (args.kind == "work" and merged_prs(state, highest)):
+        # A batch stops growing when its first PR merges (#560), so its close-out waits only for the
+        # tasks that it had then. Check and close-out tasks keep the highest batch.
+        batch = highest + 1
     else:
-        batch = highest + 1 if closeout_started(state, highest) else highest
+        batch = highest
     if not 1 <= batch <= highest + 1:
         raise Refused(f"the batch must be from 1 to {highest + 1}")
     if closeout_started(state, batch):
@@ -656,7 +688,7 @@ def change_task_add(state, args, time):
     task = {"name": name, "title": title, "kind": args.kind, "of": args.of, "batch": batch,
             "after": list(dict.fromkeys(args.after)), "issues": list(dict.fromkeys(args.issue)),
             "scientific": args.scientific, "state": PLANNED, "worker": None, "branch": None,
-            "started": None, "prs": [], "changed": time}
+            "worktrees": [], "started": None, "prs": [], "changed": time}
     state["tasks"].append(task)
     return f"Task {name} added to batch {batch}.", {"task": name, "to": PLANNED, "batch": batch,
                                                      "kind": args.kind}
@@ -705,17 +737,23 @@ def change_task_start(state, args, time):
         raise Refused(reason)
     task["worker"] = worker_link(args.worker)
     task["branch"] = link(args.branch, "branch") if args.branch else None
+    worktree = worktree_path(args.worktree) if args.worktree else None
+    task["worktrees"] = [worktree] if worktree else []
     task["started"] = time
-    event = move(task, RUNNING, time, worker=task["worker"], branch=task["branch"])
+    event = move(task, RUNNING, time, worker=task["worker"], branch=task["branch"], worktree=worktree)
     return f"{task['name']} is running.", event
 
 
 def change_task_worker(state, args, time):
     task = find_task(state, args.name)
     require(task, ACTIVE, "task worker")
+    worktree = worktree_path(args.worktree) if args.worktree else None
     old, task["worker"] = task["worker"], worker_link(args.worker)
+    # The replaced worker's path stays: the close-out reads its sessions too (#556).
+    paths = task.get("worktrees") or []
+    task["worktrees"] = paths + [worktree] if worktree and worktree not in paths else paths
     event = {"task": task["name"], "from": task["state"], "to": task["state"], "old_worker": old,
-             "worker": task["worker"]}
+             "worker": task["worker"], "worktree": worktree}
     return f"{task['name']} has a new worker. Settle the replaced worker now: {old}", event
 
 
@@ -758,7 +796,7 @@ def change_task_verified(state, args, time):
             other["state"], other["changed"] = CLOSED_OUT, time
         event["closed_out"] = [other["name"] for other in closed]
         message += f" Batch {task['batch']} is closed out: {', '.join(event['closed_out']) or 'no task'}."
-    return " ".join([message, *ready_lines(state)]), event
+    return message, event
 
 
 def change_task_settled(state, args, time):
@@ -845,15 +883,23 @@ def change_decision_drop(state, args, time):
 
 
 def run_change(args) -> str:
+    """Make the change for each argument, then save once; a refusal of one argument saves nothing."""
     folder = require_lead()
+    key = SEVERAL.get(args.label)
+    calls = ([argparse.Namespace(**{**vars(args), key: value}) for value in dict.fromkeys(getattr(args, key))]
+             if key else [args])
     with locked(folder):
         state = load(folder)
         check_owner(state)
         time = utc_now()
-        message, event = args.change(state, args, time)
+        results = [args.change(state, call, time) for call in calls]
+        messages = [message for message, _ in results]
+        if args.label == "task verified":
+            messages += ready_lines(state)
         save(folder, state)
-        append_event(folder, {"time": time, "command": args.label, **event})
-    return message
+        for _, event in results:
+            append_event(folder, {"time": time, "command": args.label, **event})
+    return " ".join(messages)
 
 
 def require_lead() -> str:
@@ -955,12 +1001,14 @@ def due_lines(state: dict) -> list[str]:
             lines.append(f"Batch {batch}: every task is verified; merged PRs {prs}. Run "
                          "t3_project_lead.py closeout.")
     lines += ready_lines(state)
+    # One line for all paused tasks, so that the view does not grow with them (#555).
+    paused = [task["name"] for task in state["tasks"] if task["state"] == PAUSED]
+    if paused:
+        lines.append(f"Paused: {', '.join(paused)}. Run task resume <name>... to plan them again, or task "
+                     "cancel <name>.")
     for task in state["tasks"]:
         if task["state"] == SETTLED:
             continue
-        if task["state"] == PAUSED:
-            lines.append(f"{task['name']} is paused: run task resume {task['name']} to plan it again, or "
-                         f"task cancel {task['name']}.")
         if task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None:
             if task["worker"]:
                 lines.append(f"Settle the worker of {task['name']}, then run task settled "
@@ -985,16 +1033,31 @@ def due_lines(state: dict) -> list[str]:
     return lines
 
 
-def view_lines(state: dict, folder: str) -> list[str]:
-    time = utc_now()
-    now = parse_time(time)
+def header_lines(state: dict, folder: str, time: str) -> list[str]:
+    """Return the lines that each view prints before its tasks."""
     owner = state.get("owner") or None
     lines = [f"Lead state: {state['slug']}, {folder}", f"Owner: {owner or 'none'}"]
     if current_thread() != owner:
         lines.append("This thread is not the owner: it can read the lead state but not change it. To move "
                      "the lead to this thread, run takeover.")
-    lines += [f"Now: {time}", f"Outcome: {state['outcome'] or '(none)'}",
-              f"Criteria: {state['criteria'] or '(none)'}", "Tasks:"]
+    return lines + [f"Now: {time}", f"Outcome: {state['outcome'] or '(none)'}",
+                    f"Criteria: {state['criteria'] or '(none)'}"]
+
+
+def end_lines(state: dict) -> list[str]:
+    """Return the due lines and the waiting list, which each view prints last."""
+    due = due_lines(state)
+    lines = ["Due:", *(f"- {line}" for line in due)] if due else []
+    # The empty line ends the list above, so that Markdown does not join the waiting list to it.
+    return lines + [""] + waiting_lines(state)
+
+
+def view_lines(state: dict, folder: str) -> list[str]:
+    """Return the full view that `show` prints: every task that is not closed out or settled, and
+    every decision."""
+    time = utc_now()
+    now = parse_time(time)
+    lines = header_lines(state, folder, time) + ["Tasks:"]
     shown = [task for task in state["tasks"] if task["state"] not in (CLOSED_OUT, SETTLED)]
     lines += [task_line(task, now) for task in shown] or ["- (none)"]
     closed = sum(task["state"] == CLOSED_OUT for task in state["tasks"])
@@ -1002,12 +1065,22 @@ def view_lines(state: dict, folder: str) -> list[str]:
         lines.append(f"Closed out, worker not settled: {closed} task{'s' if closed > 1 else ''}.")
     lines.append("Decisions:")
     lines += [f"- {decision['id']} {decision['text']}" for decision in state["decisions"]] or ["- (none)"]
-    due = due_lines(state)
-    if due:
-        lines.append("Due:")
-        lines += [f"- {line}" for line in due]
-    # The empty line ends the list above, so that Markdown does not join the waiting list to it.
-    return lines + [""] + waiting_lines(state)
+    return lines + end_lines(state)
+
+
+def compact_lines(state: dict, folder: str) -> list[str]:
+    """Return the compact view that `start` prints (#555): the running and pr-open tasks, and one
+    line that counts the other tasks by state and the decisions, so that it does not grow with
+    them."""
+    time = utc_now()
+    now = parse_time(time)
+    lines = header_lines(state, folder, time) + ["Running and pr-open tasks:"]
+    lines += [task_line(task, now) for task in state["tasks"] if task["state"] in ACTIVE] or ["- (none)"]
+    others = [task["state"] for task in state["tasks"] if task["state"] not in ACTIVE]
+    counts = ", ".join(f"{others.count(name)} {name}" for name in OTHER_STATES if name in others)
+    lines.append(f"Other tasks: {counts or 'none'}. Decisions: {len(state['decisions'])}. Run show to list "
+                 "them.")
+    return lines + end_lines(state)
 
 
 def closeout_lines(state: dict, folder: str) -> list[str]:
@@ -1018,8 +1091,12 @@ def closeout_lines(state: dict, folder: str) -> list[str]:
             continue
         workers = [task["worker"] for task in batch_tasks(state, batch)
                    if task["worker"] and task is not closeout]
+        # A state from before #556 has no worktree paths.
+        paths = dict.fromkeys(path for task in batch_tasks(state, batch) if task is not closeout
+                              for path in task.get("worktrees") or [])
         prs = ", ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
         lines += [f"Batch {batch}:", f"Workers: {' '.join(workers) or '(none)'}",
+                  f"Worktrees: {' '.join(shlex.quote(path) for path in paths) or '(none recorded)'}",
                   f"Merged PRs in merge order: {prs}"]
     if lines:
         lines.append(f"History: {os.path.join(folder, EVENTS_FILE)}")
@@ -1042,7 +1119,7 @@ def print_step(name: str) -> None:
             print("\n".join(lookup_lines(top)))
         return
     state = load(folder)
-    lines = {"start": view_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
+    lines = {"start": compact_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
     print()
     print("\n".join(lines[name](state, folder)))
     if name == "start" and state.get("takeover_due") and current_thread() == state.get("owner"):
@@ -1082,6 +1159,9 @@ TASK_CHANGES = {
     "resume": change_task_resume,
 }
 DECISION_CHANGES = {"add": change_decision_add, "drop": change_decision_drop}
+# The commands that take one or more arguments (#555), with the name of the argument.
+SEVERAL = {"done": "number", "task pause": "name", "task resume": "name", "task verified": "name",
+           "task settled": "name"}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1105,7 +1185,7 @@ def parser() -> argparse.ArgumentParser:
     wait.add_argument("--decisions", type=int)
     wait.add_argument("--link")
     wait.add_argument("--recommend")
-    commands.add_parser("done", help="remove an answered item").add_argument("number", type=int)
+    commands.add_parser("done", help="remove answered items").add_argument("number", type=int, nargs="+")
 
     task = commands.add_parser("task", help="change a task").add_subparsers(
         dest="action", required=True, metavar="action")
@@ -1122,9 +1202,11 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("name")
     start.add_argument("worker")
     start.add_argument("--branch")
+    start.add_argument("--worktree")
     worker = task.add_parser("worker")
     worker.add_argument("name")
     worker.add_argument("worker")
+    worker.add_argument("--worktree")
     pr = task.add_parser("pr")
     pr.add_argument("name")
     pr.add_argument("number", type=int)
@@ -1132,8 +1214,9 @@ def parser() -> argparse.ArgumentParser:
     merged.add_argument("name")
     merged.add_argument("number", type=int)
     merged.add_argument("commit")
-    for name in ("verified", "settled", "cancel", "pause", "resume"):
-        task.add_parser(name).add_argument("name")
+    for name in ("verified", "settled", "pause", "resume"):
+        task.add_parser(name).add_argument("name", nargs="+")
+    task.add_parser("cancel").add_argument("name")
 
     decision = commands.add_parser("decision", help="add or drop a decision").add_subparsers(
         dest="action", required=True, metavar="action")

@@ -12,6 +12,10 @@ the lead state to its T3 thread (`T3CODE_THREAD_ID`), adds `takeover`, and
 lists the lead states of the other worktrees, which the checks make with
 `git worktree add`. Issue #545 tells a new lead to run `init` and the
 discovery task, and names the `discover` step while no outcome is set.
+Issue #555 makes the view of `start` compact, gives all paused tasks one due
+line, and lets `done` and `task pause|resume|verified|settled` take several
+arguments. Issue #556 records each worker's worktree, and issue #560 starts a
+new batch for a work task once a PR of the highest batch merged.
 """
 
 from __future__ import annotations
@@ -648,8 +652,9 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("task", "add", "a", "Task a")
         self.ok("task", "pause", "a")
-        paused = "- a is paused: run task resume a to plan it again, or task cancel a."
-        view = self.ok("start")
+        paused = "- Paused: a. Run task resume <name>... to plan them again, or task cancel <name>."
+        self.assertIn(paused, self.ok("start"))
+        view = self.ok("show")
         self.assertIn("- a (batch 1) paused: Task a.", view)
         self.assertIn(paused, view)
         self.refused("task", "start", "a", WORKER.format(1), reason="a is paused")
@@ -664,6 +669,124 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "cancel", "b")
         self.assertIn("- Settle the worker of b, then run task settled b:", self.ok("show"))
         self.ok("task", "settled", "b")
+
+    def test_start_prints_a_compact_view_that_does_not_grow(self) -> None:
+        # The start view keeps the running and pr-open tasks, the due lines, and the waiting list, and
+        # counts the other tasks and the decisions on one line (#555).
+        self.ok("init", "demo")
+        self.ok("outcome", "Ship it.")
+        self.ok("task", "add", "run", "Running task")
+        self.ok("task", "start", "run", WORKER.format("run"))
+        self.ok("task", "add", "pr", "Task with a PR")
+        self.ok("task", "start", "pr", WORKER.format("pr"))
+        self.ok("task", "pr", "pr", "4")
+        self.ok("task", "add", "next", "Ready task", "--batch", "1")
+        self.ok("wait", "Approve the release?")
+        before = self.ok("start").splitlines()
+        for index in range(10):
+            self.merged_task(f"v{index}", str(10 + index))
+            self.ok("decision", "add", f"Decision {index}.")
+        after = self.ok("start").splitlines()
+        self.assertEqual(len(after), len(before))
+        view = "\n".join(after)
+        self.assertRegex(view, r"\n- run \(batch 1\) running, \d+ min: Running task\. Worker: ")
+        self.assertRegex(view, r"\n- pr \(batch 1\) pr-open, \d+ min: Task with a PR\. PRs: #4 open\. ")
+        self.assertIn("\nOther tasks: 1 planned, 10 verified. Decisions: 10. Run show to list them.\n", view)
+        self.assertIn("\n- next is ready to start: run t3_project_lead.py dispatch for it now.\n", view)
+        self.assertTrue(view.endswith("\n\nWaiting on you (1):\n- 1: Approve the release?"))
+        self.assertNotIn("v0", view)
+        self.assertNotIn("Decision 0", view)
+        # show still lists every task and decision.
+        full = self.ok("show")
+        for index in range(10):
+            with self.subTest(index=index):
+                self.assertIn(f"- v{index} (batch 1) verified: Title of v{index}.", full)
+                self.assertIn(f"- D{index + 1} Decision {index}.", full)
+        self.assertIn("- next (batch 1) planned: Ready task.", full)
+
+    def test_several_arguments_change_under_one_lock(self) -> None:
+        # done and the task state commands take one or more arguments, with one event each (#555).
+        self.ok("init", "demo")
+        for name in ("a", "b", "c"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.ok("wait", "First?")
+        self.ok("wait", "Second?")
+        self.ok("wait", "Third?")
+        self.assertEqual(self.ok("done", "1", "3").strip(), "Item 1 is done. Item 3 is done.")
+        self.assertEqual([item["number"] for item in json.loads(self.state_text())["items"]], [2])
+        self.assertEqual(self.ok("task", "pause", "a", "b").strip(), "a is paused. b is paused.")
+        self.ok("task", "resume", "a", "b")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "start", "b", WORKER.format("b"))
+        self.assertEqual(self.ok("task", "verified", "a", "b").strip(), "a is verified. b is verified. c is "
+                         "ready to start: run t3_project_lead.py dispatch for it now.")
+        self.ok("task", "start", "c", WORKER.format("c"))
+        self.ok("task", "verified", "c")
+        self.ok("task", "settled", "a", "b")
+        self.assertEqual([self.task(name)["state"] for name in ("a", "b", "c")], ["settled", "settled", "verified"])
+        changes = [(event["command"], event.get("task", event.get("item"))) for event in self.events()
+                   if event["command"] in ("done", "task pause", "task resume", "task verified", "task settled")]
+        self.assertEqual(changes, [("done", 1), ("done", 3), ("task pause", "a"), ("task pause", "b"),
+                                   ("task resume", "a"), ("task resume", "b"), ("task verified", "a"),
+                                   ("task verified", "b"), ("task verified", "c"), ("task settled", "a"),
+                                   ("task settled", "b")])
+
+    def test_a_refused_argument_of_several_changes_nothing(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "add", "b", "Task b")
+        self.ok("task", "start", "b", WORKER.format("b"))
+        self.ok("wait", "First?")
+        self.refused("done", "1", "9", reason="no waiting item 9")
+        self.refused("task", "pause", "a", "missing", reason="no task named missing")
+        self.refused("task", "pause", "a", "b", reason="b is running; task pause needs planned")
+        self.refused("task", "verified", "b", "a", reason="a is planned")
+        self.refused("task", "settled", "b", "a", reason="b is running")
+        self.assertEqual(self.task("a")["state"], "planned")
+
+    def test_task_verified_names_each_ready_task_once(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "add", "b", "Task b")
+        self.ok("task", "add", "c", "Task c", "--after", "a", "--after", "b")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "start", "b", WORKER.format("b"))
+        self.assertEqual(self.ok("task", "verified", "a", "b").strip(), "a is verified. b is verified. c is "
+                         "ready to start: run t3_project_lead.py dispatch for it now.")
+
+    def test_a_worker_records_its_worktree(self) -> None:
+        # The close-out reads the sessions of each worktree, also of a replaced worker (#556).
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.assertEqual(self.task("a")["worktrees"], [])
+        for path in ("relative/path", "/two\nlines", "/" + "x" * 600):
+            with self.subTest(path=path):
+                self.refused("task", "start", "a", WORKER.format(1), "--worktree", path,
+                             reason="the worktree must be an absolute path of at most 600 characters on one line")
+        self.ok("task", "start", "a", WORKER.format(1), "--worktree", "/wt/a1")
+        self.assertEqual(self.events()[-1]["worktree"], "/wt/a1")
+        self.ok("task", "worker", "a", WORKER.format(2))
+        self.ok("task", "worker", "a", WORKER.format(3), "--worktree", "/wt/a3")
+        self.refused("task", "worker", "a", WORKER.format(4), "--worktree", "wt", reason="an absolute path")
+        self.assertEqual(self.task("a")["worktrees"], ["/wt/a1", "/wt/a3"])
+        self.assertEqual(self.events()[-1]["worktree"], "/wt/a3")
+
+    def test_a_work_task_joins_a_new_batch_after_a_merge(self) -> None:
+        # A batch stops growing when its first PR merges (#560).
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "pr", "a", "5")
+        self.assertIn("Task b added to batch 1.", self.ok("task", "add", "b", "Task b"))
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        # Check and close-out tasks keep the highest batch.
+        self.assertIn("Task k added to batch 1.", self.ok("task", "add", "k", "Check a", "--kind", "check",
+                                                         "--of", "a"))
+        self.assertIn("Task c added to batch 2.", self.ok("task", "add", "c", "Task c"))
+        self.assertEqual(self.task("c")["batch"], 2)
+        self.assertIn("Task d added to batch 1.", self.ok("task", "add", "d", "Task d", "--batch", "1"))
+        # Batch 2 has no merged PR, so the next work task joins it.
+        self.assertIn("Task e added to batch 2.", self.ok("task", "add", "e", "Task e"))
 
     def test_decisions_are_added_and_dropped_by_id(self) -> None:
         self.ok("init", "demo")

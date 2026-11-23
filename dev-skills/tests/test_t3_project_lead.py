@@ -14,14 +14,19 @@ on checks: the worker line of `brief` and the lead line of `report`. Issue
 #544 adds `takeover`, the `--also` line of `plan`, and the skill line on
 deleting the lead thread. Issue #545 adds the `discover` step with its
 links-only report form, runs `init` on the first `start`, and keeps issue and
-PR text out of the lead. Agent behavior is checked by the scenario review in
-t3-project-lead-scenarios.md; the hook has its own tests in
+PR text out of the lead. Issue #554 adds the worker line on questions to the
+user, and keeps the lead from answering or asking a worker's question again,
+and from any question tool. Issue #555 adds the `show` line of `start`, issue
+#556 the worktree paths of `dispatch`, `flag`, and `closeout`, and issue #560
+the default batch of `plan`. Agent behavior is checked by the scenario review
+in t3-project-lead-scenarios.md; the hook has its own tests in
 test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
 import functools
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -39,8 +44,9 @@ STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "outcome", "c
 NO_STATE = tempfile.TemporaryDirectory()
 # An agent reads a whole step after each wake, so each step stays short. Issue #545 took `start`
 # from 210 words to 230 with the reading rule, and `plan` from 186 to 226 with the discover, init, and
-# triage lines.
-STEP_WORD_LIMIT = 230
+# triage lines. #554, #555, and #560 took `start` to 244 words with the plain-text rule and the show
+# line, `plan` to 243 with the default batch, and `brief` to 237 with the worker's question line.
+STEP_WORD_LIMIT = 245
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -57,7 +63,7 @@ PLUGIN_ROOT_LINE = "`<plugin-root>` is two levels above this folder."
 BODY_WORD_LIMIT = 300
 # The actions that the lead does itself, in the order that `start` prints them (#520).
 LEAD_ACTIONS = (
-    "1. Talk with the user: decisions, triage, priorities.",
+    "1. Talk with the user in plain text, never with a question tool: decisions, triage, priorities.",
     "2. Plan tasks, briefs, and lead decisions.",
     "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
     "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
@@ -97,6 +103,10 @@ REPORT_FORM = ("Put each item in one group. Report one line for each group, with
                "titles>.\"")
 # The lead copies the discovery brief into a worker's brief; like a step, it stays short.
 DISCOVERY_BRIEF_WORD_LIMIT = 120
+# A worker asks the user in its own thread, where an approval counts for it (#554).
+WORKER_QUESTIONS = ('"Ask the user your questions in this thread, with AskUserQuestion or your host\'s '
+                    'question tool, also before you delete outside your worktree or change user or host '
+                    'settings."')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -108,6 +118,8 @@ REQUIRED = {
               "Read the last message of each worker of a running or pr-open task: "
               "t3_thread_list with includeSubagents, then t3_thread_read.",
               "Never state a worker's status from memory.",
+              # start prints a compact view (#555).
+              "Run this step after each wake or user message. Run show for the full view.",
               READING_RULE],
     "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
                  "When the user named the work, record it with outcome <text> and criteria <text>, and start "
@@ -139,7 +151,9 @@ REQUIRED = {
              "A triage that needs issue text is a read-only task: its worker recommends labels, and you "
              "set them.",
              # A second lead state needs the user's confirmation (#544).
-             "add --also only after the user confirms a second lead state"],
+             "add --also only after the user confirms a second lead state",
+             # A batch stops growing when its first PR merges (#560).
+             "Without --batch, a work task joins a new batch once a PR of the highest batch merged."],
     "dispatch": [START_RULE,
                  "A due line names each task that is ready to start.",
                  "Start no second worker for work that already runs",
@@ -151,7 +165,9 @@ REQUIRED = {
                  "tell the worker to start from the default branch that contains it",
                  'In the last line of its brief, replace "with evidence and links" with "in one '
                  'line, with links. Keep scientific detail in this thread and the PR".',
-                 "Then run task start <name> <worker link> [--branch NAME]."],
+                 # The close-out passes each worker's worktree to retro_sessions.py (#556).
+                 "Then run task start <name> <worker link> --worktree <path> [--branch NAME]. Take the "
+                 "path from the delegate_task result, or from worktreePath of t3_thread_read."],
     "brief": ["Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
               "When grilling must lead to implementation, end line 1 with:",
               'Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."',
@@ -162,15 +178,18 @@ REQUIRED = {
               'remains."',
               "For a code change: one full review and one fix of any size, then merge. Only "
               "a blocking problem of matt-automode phase 5 stops the merge.",
-              f"Every brief also says: {NO_GTD_CAPTURE}",
+              f"Every brief also says: {NO_GTD_CAPTURE} and {WORKER_QUESTIONS}",
               f"Add: {PR_WAIT_WORKER}"],
-    "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
+    # The lead neither answers a worker's question nor asks it again (#554).
+    "answer": ["Settle it only when the user cancels its task. Do not answer its questions, with "
+               "t3_pending_request or otherwise, and do not ask them again, with a question tool or in text. "
+               "Keep no detail of them: give the user the worker's thread link.",
                "Ask the user to answer in the worker's thread",
-               "Keep no detail of them: lead the user to the worker's thread.",
                "In this turn, run wait --task <name> --decisions <N>.",
-               "Run done <number> when the worker resumes or finishes."],
+               "Run done <number>... when the worker resumes or finishes."],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
+             "Run task worker <name> <new link> --worktree <path>, with the path as dispatch says,",
              "Otherwise, or after a second flag, the task waits on the user."],
     "verify": ["Use this step when a worker or a read-only worker reports PASS or ISSUES.",
                "Only the user, or the agent that started this thread, carries the user's "
@@ -194,12 +213,14 @@ REQUIRED = {
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",
                  '"After the retrospective, run repo-cleanup."',
+                 "with this thread's link and the worker links, worktree paths, and merged PRs below.",
+                 '"Pass each worktree path to retro_sessions.py with --worktree."',
                  "List the lead thread's tool calls other than T3, GitHub, and GTD tools and "
                  "t3_project_lead.py.",
                  "When it reports, run task verified <name>; the batch's verified tasks are then "
                  "closed out.",
                  "Settle each worker that a due line lists with t3_thread_organize, and run task "
-                 "settled <name>; never reuse one."],
+                 "settled <name>...; never reuse one."],
     "report": ['End with the "Waiting on you" list below, copied as it is.',
                "Name no detail of a worker's decisions.",
                PR_WAIT_LEAD,
@@ -452,6 +473,63 @@ class StepTests(unittest.TestCase):
         result = run("merge")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid choice", result.stderr)
+
+
+class CloseoutPathTests(unittest.TestCase):
+    """The close-out lines name each worker's worktree for retro_sessions.py --worktree (#556)."""
+
+    def setUp(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        # A folder outside every Git work tree holds the lead state.
+        self.folder = Path(temp.name).resolve()
+        self.env = dict(os.environ, T3CODE_THREAD_ID="thread-lead", GIT_CEILING_DIRECTORIES=str(self.folder.parent))
+
+    def lead(self, *args: str) -> str:
+        result = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True,
+                                cwd=self.folder, env=self.env, check=False)
+        self.assertEqual(result.returncode, 0, f"{args}: {result.stderr}")
+        return result.stdout
+
+    def batch_lines(self) -> list[str]:
+        lines = self.lead("closeout").splitlines()
+        return lines[lines.index("Batch 1:"):]
+
+    def test_closeout_names_each_worktree_also_of_a_replaced_worker(self) -> None:
+        self.lead("init", "demo")
+        for name in ("a", "b", "close-1"):
+            self.lead("task", "add", name, f"Task {name}", "--kind", "closeout" if name == "close-1" else "work")
+        self.lead("task", "start", "a", "t3://a", "--worktree", "/wt/t3-a")
+        self.lead("task", "start", "b", "t3://b1", "--worktree", "/wt/t3 b1")
+        # The flag step replaces b's worker; the path of the replaced worker stays (#556).
+        self.lead("task", "worker", "b", "t3://b2", "--worktree", "/wt/t3-b2")
+        for name, number in (("a", "5"), ("b", "6")):
+            self.lead("task", "pr", name, number)
+            self.lead("task", "merged", name, number, "abcdef1")
+        self.lead("task", "verified", "a", "b")
+        lines = self.batch_lines()
+        self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3://a t3://b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
+                                     "Merged PRs in merge order: #5, #6"])
+        # The close-out worker's own worktree is not in its brief.
+        self.lead("task", "start", "close-1", "t3://c", "--worktree", "/wt/t3-c")
+        self.assertNotIn("/wt/t3-c", self.lead("closeout"))
+
+    def test_a_state_without_worktree_paths_still_prints_its_close_out(self) -> None:
+        self.lead("init", "demo")
+        self.lead("task", "add", "a", "Task a")
+        self.lead("task", "start", "a", "t3://a")
+        self.lead("task", "pr", "a", "5")
+        self.lead("task", "merged", "a", "5", "abcdef1")
+        self.lead("task", "verified", "a")
+        # A lead state from before #556 has no "worktrees" field.
+        (state_file,) = self.folder.glob(".scratch/*-lead-demo/state.json")
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        for task in state["tasks"]:
+            del task["worktrees"]
+        state_file.write_text(json.dumps(state), encoding="utf-8")
+        self.assertEqual(self.batch_lines()[:4], ["Batch 1:", "Workers: t3://a", "Worktrees: (none recorded)",
+                                                  "Merged PRs in merge order: #5"])
+        self.assertIn("Lead state: demo", self.lead("start"))
 
 
 if __name__ == "__main__":

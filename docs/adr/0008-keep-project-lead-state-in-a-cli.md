@@ -24,6 +24,10 @@
 > clean branch with no commit of its own after 60 minutes, and in every mode
 > reads the planning folders of each worktree that it would remove. Read
 > [Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).
+>
+> **Superseded in part (2026-11-23, issue #555).** `start` prints a compact
+> view; `show` prints the full view. Read
+> [The compact start view](#the-compact-start-view).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -57,7 +61,9 @@ merged pull request before the batch's close-out task is verified. It stamps
 each change with the real UTC time, refuses text over 200 characters, and
 prints a short view. `start` prints the step text, the UTC time, the view,
 the due lines, and the list of what waits on the user, so that the lead
-copies that list and does not write it from memory. `finish` deletes the lead
+copies that list and does not write it from memory. (Superseded in part by
+#555: `start` prints a compact view; read
+[The compact start view](#the-compact-start-view).) `finish` deletes the lead
 state only when each task is in the `settled` state and nothing waits on the
 user.
 
@@ -236,3 +242,35 @@ A lead folder has a date key, not an issue key, so the planning folder rule
 also keeps a worktree that holds one. The lead state rule above stays,
 because it also applies when `--planning-location` names another folder.
 `dev-skills/tests/test_cleanup_plan.py` checks each rule.
+
+## The compact start view
+
+Added on 2026-11-23 for
+[#555](https://github.com/aeghnnsw/cc-toolkit/issues/555),
+[#556](https://github.com/aeghnnsw/cc-toolkit/issues/556), and
+[#560](https://github.com/aeghnnsw/cc-toolkit/issues/560).
+
+The lead runs `start` after each wake and each user message, and `start`
+printed every task that was not closed out or settled and every decision. In
+one lead session, its output grew from 1,319 to 10,894 characters over 68
+calls, 67% of the characters of all tool results, and the context was
+compacted twice.
+
+So `start` prints a compact view: the lines before the tasks, the running and
+pr-open tasks, one line that counts the other tasks by state and the
+decisions, the due lines, and the waiting list. All paused tasks share one
+due line. `show` prints the full view. `done`, `task pause`, `task resume`,
+`task verified`, and `task settled` take several arguments; the script makes
+all their changes under one lock with one save, and appends one event for
+each argument. When it refuses one argument, it saves nothing.
+
+`task start` and `task worker` record a worker's worktree path
+(`--worktree`), and `closeout` prints the paths of each worker of the batch,
+also of a replaced worker, so that the close-out worker passes them to
+`retro_sessions.py --worktree`. T3 Code removes a settled worker's worktree,
+and without the path the retrospective missed its sessions.
+
+`task add` without `--batch` puts a work task in a new batch once a pull
+request of the highest batch merged. So the close-out of a batch waits only
+for the tasks that it had when its first pull request merged. Check and
+close-out tasks still go to the highest batch.
