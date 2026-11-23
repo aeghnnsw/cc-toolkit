@@ -1,6 +1,6 @@
 ---
 name: statusline-setup
-version: 2.0.2
+version: 2.1.0
 description: This skill should be used when the user asks to "set up statusline", "configure statusline", "install statusline", "set up status bar", or wants to configure the Claude Code statusline with model info, git status, context/rate-limit bars, prompt-cache state, and session token and cost totals.
 ---
 
@@ -73,11 +73,24 @@ Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`, then set the `statusLi
 
 ### Step 3: Verify
 
-Inform the user that the statusline is configured. Changes take effect on the next Claude Code session (restart required).
+Run these commands. They print the `statusLine.command` value of `settings.json`, then pipe a sample input into the installed script and print its 3 lines. The sample session has 113,800 input tokens and a 1,000,000-token context window:
+
+```bash
+dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+jq -er '.statusLine.command' "$dir/settings.json" || echo "FAIL: cannot read statusLine.command from $dir/settings.json"
+sample='{"session_id":"statusline-setup-check","context_window":{"context_window_size":1000000,"total_input_tokens":113800}}'
+out=$(printf '%s\n' "$sample" | bash "$dir/statusline-command.sh") || echo "FAIL: statusline-command.sh exited with status $?"
+printf '%s\n' "$out"
+case $out in *'(113.8K/'*) ;; *) echo 'FAIL: line 2 shows no context limit' ;; esac
+```
+
+Show the user the command value and the 3 statusline lines. Line 2 shows `Context … (113.8K/<limit>)`, where `<limit>` is the auto-compact trigger (see [What It Does](#what-it-does)). For example, `autoCompactWindow` 400000 gives `367.0K`, and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` 40 lowers it to `152.0K`.
+
+The check fails when the output has a `FAIL:` line, or when the command value is not the Step 2 value. Report a failed check to the user as a failure, with the output, and do not tell the user that the statusline is configured. Otherwise, tell the user that the statusline is configured. Changes take effect on the next Claude Code session (restart required).
 
 ## Updating
 
-To install changes from a new plugin version, re-run Step 1 above.
+To install changes from a new plugin version, re-run Step 1 and Step 3 above.
 
 ## Uninstall
 
