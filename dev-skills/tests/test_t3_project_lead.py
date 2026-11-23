@@ -105,7 +105,7 @@ REPORT_FORM = ("Put each item in one group. Report one line for each group, with
 DISCOVERY_BRIEF_WORD_LIMIT = 120
 # A worker asks the user in its own thread, where an approval counts for it (#554).
 WORKER_QUESTIONS = ('"Ask the user your questions in this thread, with AskUserQuestion or your host\'s '
-                    'question tool, also before you delete outside your worktree or change user or host '
+                    'question tool. Ask also before you delete outside your worktree or change user or host '
                     'settings."')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
@@ -182,7 +182,7 @@ REQUIRED = {
               f"Add: {PR_WAIT_WORKER}"],
     # The lead neither answers a worker's question nor asks it again (#554).
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions, with "
-               "t3_pending_request or otherwise, and do not ask them again, with a question tool or in text. "
+               "t3_pending_request or otherwise. Do not ask them again, with a question tool or in text. "
                "Keep no detail of them: give the user the worker's thread link.",
                "Ask the user to answer in the worker's thread",
                "In this turn, run wait --task <name> --decisions <N>.",
@@ -207,8 +207,10 @@ REQUIRED = {
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
                "names."],
     "closeout": ["--kind closeout, unless a due line names a planned one.",
-                 "From t3_project_lead.py brief, use only line 1 for matt-automode and the "
-                 "budget.",
+                 # The close-out worker runs repo-cleanup, so it also asks the user in its thread (#554).
+                 "From t3_project_lead.py brief, use only line 1 for matt-automode, the budget, and the "
+                 "line \"Ask the user your questions ...\": repo-cleanup deletes outside the worker's "
+                 "worktree.",
                  f"Write: {NO_GTD_CAPTURE}",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",

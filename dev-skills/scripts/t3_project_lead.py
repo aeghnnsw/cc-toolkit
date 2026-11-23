@@ -156,8 +156,8 @@ For a read-only task (audit, research, or check), write no line 1, keep line 2,
 and name what the worker must not change.
 Every brief also says: "Add no GTD capture; report what waits on the user."
 and "Ask the user your questions in this thread, with AskUserQuestion or your
-host's question tool, also before you delete outside your worktree or change
-user or host settings."
+host's question tool. Ask also before you delete outside your worktree or
+change user or host settings."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -171,9 +171,9 @@ Next: t3_project_lead.py dispatch.
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
 the user. Settle it only when the user cancels its task. Do not answer its
-questions, with t3_pending_request or otherwise, and do not ask them again,
-with a question tool or in text. Keep no detail of them: give the user the
-worker's thread link.
+questions, with t3_pending_request or otherwise. Do not ask them again, with a
+question tool or in text. Keep no detail of them: give the user the worker's
+thread link.
 In this turn, run wait --task <name> --decisions <N>. The script adds the
 worker's link. Run done <number>... when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
@@ -219,8 +219,9 @@ names. Otherwise report.
 Add one close-out task for the batch with task add <name> <title> --batch N
 --kind closeout, unless a due line names a planned one. Start its worker as
 t3_project_lead.py dispatch says.
-From t3_project_lead.py brief, use only line 1 for matt-automode and the
-budget. Write: "Add no GTD capture; report what waits on the user." Then write:
+From t3_project_lead.py brief, use only line 1 for matt-automode, the budget,
+and the line "Ask the user your questions ...": repo-cleanup deletes outside
+the worker's worktree. Write: "Add no GTD capture; report what waits on the user." Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
 leader of these runs:", with this thread's link and the worker links, worktree
 paths, and merged PRs below. Then write: "Pass each worktree path to

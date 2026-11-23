@@ -21,8 +21,8 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. Other tools pass, and so do MCP tools, except the reads of issue
-  and PR text and the questions below. A blocked call exits 2 with the reason on stderr. A call
-  that the hook cannot check also exits 2.
+  and PR text and the questions below. A blocked call exits 2 with the
+  reason on stderr. A call that the hook cannot check also exits 2.
 - Issue and PR text (issue #545): a lead that read open issues itself was
   flagged by the model provider's safeguards, and a flag stops the whole lead
   thread. So in a recorded session, the hook blocks two T3 Code MCP tools:

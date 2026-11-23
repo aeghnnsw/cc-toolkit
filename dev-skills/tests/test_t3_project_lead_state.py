@@ -782,9 +782,10 @@ class LeadStateTests(unittest.TestCase):
         # Check and close-out tasks keep the highest batch.
         self.assertIn("Task k added to batch 1.", self.ok("task", "add", "k", "Check a", "--kind", "check",
                                                          "--of", "a"))
+        # --batch with the highest batch, which has a merged PR, still adds to it.
+        self.assertIn("Task d added to batch 1.", self.ok("task", "add", "d", "Task d", "--batch", "1"))
         self.assertIn("Task c added to batch 2.", self.ok("task", "add", "c", "Task c"))
         self.assertEqual(self.task("c")["batch"], 2)
-        self.assertIn("Task d added to batch 1.", self.ok("task", "add", "d", "Task d", "--batch", "1"))
         # Batch 2 has no merged PR, so the next work task joins it.
         self.assertIn("Task e added to batch 2.", self.ok("task", "add", "e", "Task e"))
 

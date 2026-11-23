@@ -267,8 +267,9 @@ each argument. When it refuses one argument, it saves nothing.
 `task start` and `task worker` record a worker's worktree path
 (`--worktree`), and `closeout` prints the paths of each worker of the batch,
 also of a replaced worker, so that the close-out worker passes them to
-`retro_sessions.py --worktree`. T3 Code removes a settled worker's worktree,
-and without the path the retrospective missed its sessions.
+`retro_sessions.py --worktree`. T3 Code can remove a worker's worktree
+before the close-out, for example when its pull request merges, and without
+the path the retrospective missed its sessions.
 
 `task add` without `--batch` puts a work task in a new batch once a pull
 request of the highest batch merged. So the close-out of a batch waits only
