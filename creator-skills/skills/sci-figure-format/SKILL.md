@@ -1,6 +1,6 @@
 ---
 name: sci-figure-format
-version: 1.0.1
+version: 1.0.2
 description: Use when creating or reviewing scientific figures for publication, including journal dimensions, resolution, file formats, typography, line weights, colorblind-safe palettes, and Nature, Science, ACS, or RSC requirements.
 ---
 
@@ -20,7 +20,7 @@ This table gives the one value of each rule. The other sections refer to it.
 | **Font** | Helvetica or Arial; 6-8 pt target, 5 pt hard minimum (Nature/ACS requirement); panel labels (a, b, c) 8-10 pt bold |
 | **Resolution** | At the final print size: 300 DPI minimum for photos; 600 DPI minimum for line art and for combination figures (photos with lines or text). Use the journal's value when it asks for more |
 | **Format** | PDF (vector, preferred) or EPS for graphs; TIFF for photos and other raster images; no JPEG (lossy compression) |
-| **Width** | 3.5" (9 cm, single column) or 7" (18 cm, double column) |
+| **Width** | 3.5" (9 cm, single column) or 7" (18 cm, double column). When the journal gives a width, use that width |
 | **Height** | ≤10" |
 | **Line weight** | ≥0.5 pt; 1-1.5 pt preferred |
 
