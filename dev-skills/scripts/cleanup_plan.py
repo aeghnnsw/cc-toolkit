@@ -24,8 +24,9 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   whose PR state cannot be read.
 - Inspect the planning folders: the entries of --planning-location in the main
   checkout, in the current worktree, and in each worktree that the plan would
-  otherwise remove. With --main-only, inspect the main checkout alone. Remove
-  a folder whose issue is closed as completed. Keep the folders of open or
+  otherwise remove. With --main-only, inspect the planning folders of the main
+  checkout alone; the lead state rule above still keeps each worktree that
+  holds a lead state. Remove a folder whose issue is closed as completed. Keep the folders of open or
   not-planned issues, entries with no issue key (such as a date key), and
   folders whose issue state cannot be read. Keep each worktree that holds a
   kept folder.

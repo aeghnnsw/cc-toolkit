@@ -4,6 +4,11 @@
 > hook also passes the calls of a gtd-inbox capture. Read
 > [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
 > in ADR 0007.
+>
+> **Superseded in part (2026-11-23, issue #543).** repo-cleanup keeps each
+> worktree that holds a lead state by a rule of its own, in every mode, and a
+> test checks the rule. Read
+> [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -103,10 +108,9 @@ Consequences:
 - The lead state is lost when the lead's worktree is removed before `finish`.
   repo-cleanup keeps a worktree with a live session, and keeps a branch that
   no merged PR has as its head, so it keeps a lead worktree. This comes from
-  the repo-cleanup text; it was not tested. (Added by
-  [#543](https://github.com/aeghnnsw/cc-toolkit/issues/543): `cleanup_plan.py`
-  keeps each worktree that holds a lead state, in every mode, including
-  `--main-only`, and a test checks this rule.)
+  the repo-cleanup text; it was not tested. (Superseded: repo-cleanup keeps
+  each worktree that holds a lead state, in every mode; read
+  [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).)
 - The script cannot see T3 threads. The lead still records each wait itself
   with `wait`, and ends it with `done`.
 - No command imports `lead.md`. A live lead enters its open state once, with
@@ -120,3 +124,22 @@ Consequences:
   data; read
   [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
   in ADR 0007.)
+
+## Cleanup of a lead worktree
+
+Added on 2026-11-23 for
+[#543](https://github.com/aeghnnsw/cc-toolkit/issues/543).
+
+`cleanup_plan.py`, the plan that repo-cleanup acts on, keeps each worktree
+that holds `.scratch/<YYYYMMDD>-lead-<slug>/state.json` at its top, in every
+mode, including `--main-only`. The reason is "holds a lead state". When the
+plan cannot read that `.scratch` or a lead folder, it keeps the worktree,
+because it cannot tell whether the worktree holds a lead state.
+`dev-skills/tests/test_cleanup_plan.py` checks the rule.
+
+A lead edits no tracked file, so Git reports its worktree as clean. Before,
+two other rules kept a lead worktree that no session had used in the last 60
+minutes: no merged PR had its branch tip as its head, and its date-named
+folder had no issue key. #528 would mark such a branch as merged, and
+`--main-only` does not read the planning folders of a worktree. Then cleanup
+could remove the worktree and the lead state with it.
