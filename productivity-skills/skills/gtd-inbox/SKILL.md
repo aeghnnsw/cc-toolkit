@@ -8,12 +8,13 @@ Manage raw GTD captures in the configured Supabase store. Save captures
 immediately. Keep their wording and scope.
 
 A subagent, or a child task that another agent started, adds no agent
-capture and deletes no done agent capture. It reads no GTD contract and no
-GTD data for agent captures. It reports to its parent the items that wait
-on the user and the work that it did, and the parent decides which agent
+capture and deletes no done agent capture. For agent captures, it reads
+neither the cloud operating contract nor the shared planning policy below,
+and it reads no GTD data. It reports to its parent the items that wait on
+the user and the work that it did, and the parent decides which agent
 captures to add or delete. A request that the user makes directly in a
-child task, such as "capture X", is not an agent capture: follow it as
-below.
+child task, such as "capture X", is not an agent capture. Follow it as any
+other request.
 
 Before any operation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
