@@ -172,8 +172,24 @@ class RendererTests(RendererCase):
         self.assertTrue(lines)
         for line in lines:
             with self.subTest(line=line):
-                self.assertRegex(line, r"gtd_sql\.py\S*\s+--config\s+<private-binding-copy\.json>\s+"
-                                       r"(?:read|get|receipt|apply)\s")
+                self.assertRegex(line, r"gtd_sql\.py\S*\s+(?:--config\s+<private-binding-copy\.json>\s+"
+                                       r"(?:read|get|receipt|apply)|uuid)\s")
+
+    def test_uuid_makes_new_random_ids_without_a_binding(self):
+        missing = self.root / "missing.json"
+        for args, count in (((), 1), (("--count", "3"), 3), (("--count", "100"), 100)):
+            with self.subTest(args=args):
+                process = subprocess.run([sys.executable, str(SCRIPT), "--config", str(missing), "uuid", *args],
+                                         text=True, capture_output=True, timeout=10)
+                self.assertEqual(process.returncode, 0, process.stderr)
+                result = json.loads(process.stdout)
+                self.assertEqual(set(result), {"uuids"})
+                ids = [uuid.UUID(value) for value in result["uuids"]]
+                self.assertEqual(len(set(ids)), count)
+                self.assertTrue(all(value.version == 4 and str(value) in result["uuids"] for value in ids))
+        for count in ("0", "101", "-1"):
+            with self.subTest(count=count):
+                self.assertIn("no UUID was made", self.cli("uuid", "--count", count, ok=False))
 
 
 class DatabaseCase(RendererCase):

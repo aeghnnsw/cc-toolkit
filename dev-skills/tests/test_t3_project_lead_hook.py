@@ -593,6 +593,8 @@ class GtdInboxTests(HookCase):
         prefix = "uv run --no-project --python '>=3.11' python"
         allowed = (("claude", "Bash", {"command": f"{prefix} {self.script} --config {self.private}/b.json read "
                                                   "--kind inbox --limit 50"}),
+                   ("claude", "Bash", {"command": f"{prefix} {self.script} uuid --count 2"}),
+                   ("codex", "Bash", {"command": f"{prefix} {self.script} uuid"}),
                    ("claude", "Bash", {"command": f"uv run -q --no-cache --no-project --python=3.13 python3 "
                                                   f"'{self.script}' apply {self.private}/held.json"}),
                    ("codex", "Bash", {"command": f"uv run --offline --quiet --no-project --python '>=3.11' "
@@ -617,6 +619,7 @@ class GtdInboxTests(HookCase):
                    ("claude", "Bash", {"command": f"{prefix} {self.script} read > {self.private}/out.json"}),
                    ("claude", "Bash", {"command": f"UV_CACHE_DIR=/tmp/x {prefix} {self.script} read"}),
                    ("codex", "Bash", {"command": "uv pip install requests"}),
+                   ("claude", "Bash", {"command": "uuidgen"}),
                    ("codex", "Bash", {"command": "uv run --no-project --python"}),
                    ("antigravity", "run_command", {"CommandLine": f"{prefix} {self.script} read && ls"}))
         self.check_gtd(allowed, blocked)

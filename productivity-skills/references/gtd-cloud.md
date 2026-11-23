@@ -83,6 +83,7 @@ uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --
 uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> get <item-uuid>
 uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> receipt <request-uuid>
 uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py --config <private-binding-copy.json> apply <private-request-file.json>
+uv run --no-project --python '>=3.11' python <plugin-root>/scripts/gtd_sql.py uuid --count 2
 ```
 
 The renderer returns one JSON object with `project_id` and `query`. Pass both
@@ -92,6 +93,11 @@ renderer error occurs before a database call; report it without claiming a
 read or save. Each SQL query returns one row containing the result envelope.
 For reads, require status `ok`; `inventory_changed` invalidates the inventory.
 For `get`, status `missing` means the item was not found for this owner.
+
+The `uuid` command makes new random UUIDs. It reads no file and returns no
+query, so it needs no `--config`. `--count` sets the number of UUIDs, from 1
+to 100. The default is 1. The command prints one JSON object:
+`{"uuids": [...]}`.
 
 ## Read the complete inventory
 
@@ -138,9 +144,10 @@ project-status policy and human readiness decisions.
 
 ## Apply an authorized change
 
-Prepare one private JSON request file before the first call. Supply a stable
-request UUID and stable UUIDs for new items. Keep it for verification and
-uncertain-response retries. The file contains `request_id` and an
+Prepare one private JSON request file before the first call. Make the request
+UUID and the UUID of each new item with the `uuid` command. Never write a UUID
+by hand. Write the UUIDs into the file, so that a retry reuses them. Keep the
+file for verification and uncertain-response retries. The file contains `request_id` and an
 `operations` array with 1 to 20 entries. For example:
 
 ```json
