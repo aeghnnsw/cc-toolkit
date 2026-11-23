@@ -100,6 +100,7 @@ thread with the matt-automode skill of dev-skills."
 Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."
 For a read-only task (audit, research, or check), write no line 1, keep line 2,
 and name what the worker must not change.
+Every brief also says: "Add no GTD capture; report what waits on the user."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -156,9 +157,10 @@ close-out. Otherwise dispatch, or report.
 Add one close-out task for the batch with task add <name> <title> --batch N
 --kind closeout, and start its worker as t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode and the
-budget. Then write: "Run only the Navigation retrospective of matt-automode,
-once, in place of the leader of these runs:", with this thread's link and the
-worker links and merged PRs below. Then write: "After the retrospective, run
+budget. Write: "Add no GTD capture; report what waits on the user." Then write:
+"Run only the Navigation retrospective of matt-automode, once, in place of the
+leader of these runs:", with this thread's link and the worker links and merged
+PRs below. Then write: "After the retrospective, run
 repo-cleanup." and "List the lead thread's tool calls other than T3, GitHub,
 and GTD tools and t3_project_lead.py. Its history with real times is in:"
 with the history path below. For a batch with a scientific task, add: "Reply

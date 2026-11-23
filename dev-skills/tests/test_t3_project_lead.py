@@ -58,7 +58,9 @@ LEAD_ACTIONS = (
     "8. Keep agent captures of what waits on the user when your instructions ask for them. "
     "Write gtd-inbox files with your edit tool, not the shell.",
 )
-# Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, and #520.
+# Lines that each step must keep, from the decisions of issues #448, #468, #476, #478, #520, and
+# #529. Each brief, the close-out brief too, tells its worker to add no GTD capture (#529).
+NO_GTD_CAPTURE = '"Add no GTD capture; report what waits on the user."'
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -93,7 +95,8 @@ REQUIRED = {
               '"At the limit, end your turn and report where you are, with links and what '
               'remains."',
               "For a code change: one full review and one fix of any size, then merge. Only "
-              "a blocking problem of matt-automode phase 5 stops the merge."],
+              "a blocking problem of matt-automode phase 5 stops the merge.",
+              f"Every brief also says: {NO_GTD_CAPTURE}"],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
                "Keep no detail of them: lead the user to the worker's thread.",
@@ -114,6 +117,7 @@ REQUIRED = {
                "Run task verified <name>. Settle its worker only when a due line lists it."],
     "closeout": ["From t3_project_lead.py brief, use only line 1 for matt-automode and the "
                  "budget.",
+                 f"Write: {NO_GTD_CAPTURE}",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",
                  '"After the retrospective, run repo-cleanup."',
