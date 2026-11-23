@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render connected Supabase tool arguments, and make new GTD IDs. Python 3.11+. No network access."""
+"""Render connected Supabase tool arguments, and make new GTD UUIDs. Python 3.11+. No network access."""
 
 import argparse
 import base64
@@ -230,7 +230,7 @@ def main():
     commands.add_parser("uuid").add_argument("--count", type=int, default=1)
     args = parser.parse_args()
     if args.command == "uuid":
-        # New request and item IDs (issue #541); the command reads no file and needs no binding.
+        # New request and item UUIDs (issue #541); the command reads no file and needs no binding.
         if not 1 <= args.count <= 100:
             parser.exit(2, "gtd_sql: --count must be 1 through 100; no UUID was made.\n")
         print(json.dumps({"uuids": [str(uuid.uuid4()) for _ in range(args.count)]}))

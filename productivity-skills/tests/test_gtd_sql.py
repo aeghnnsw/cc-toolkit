@@ -172,8 +172,8 @@ class RendererTests(RendererCase):
         self.assertTrue(lines)
         for line in lines:
             with self.subTest(line=line):
-                self.assertRegex(line, r"gtd_sql\.py\S*\s+--config\s+<private-binding-copy\.json>\s+"
-                                       r"(?:read|get|receipt|apply|uuid)\s")
+                self.assertRegex(line, r"gtd_sql\.py\S*\s+(?:--config\s+<private-binding-copy\.json>\s+"
+                                       r"(?:read|get|receipt|apply)|uuid)\s")
 
     def test_uuid_makes_new_random_ids_without_a_binding(self):
         missing = self.root / "missing.json"
