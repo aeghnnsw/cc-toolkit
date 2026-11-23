@@ -4,6 +4,10 @@
 > hook also passes the calls of a gtd-inbox capture. Read
 > [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
 > in ADR 0007.
+>
+> **Superseded in part (2026-11-23, issue #543).** repo-cleanup keeps each
+> worktree that holds a lead state, in every mode, and a test checks this
+> rule. Read [Cleanup keeps a lead worktree](#cleanup-keeps-a-lead-worktree).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -103,7 +107,9 @@ Consequences:
 - The lead state is lost when the lead's worktree is removed before `finish`.
   repo-cleanup keeps a worktree with a live session, and keeps a branch that
   no merged PR has as its head, so it keeps a lead worktree. This comes from
-  the repo-cleanup text; it was not tested.
+  the repo-cleanup text; it was not tested. (Superseded: repo-cleanup keeps
+  each worktree that holds a lead state; read
+  [Cleanup keeps a lead worktree](#cleanup-keeps-a-lead-worktree).)
 - The script cannot see T3 threads. The lead still records each wait itself
   with `wait`, and ends it with `done`.
 - No command imports `lead.md`. A live lead enters its open state once, with
@@ -117,3 +123,28 @@ Consequences:
   data; read
   [GTD agent captures](0007-gate-the-project-lead-with-a-session-checked-hook.md#gtd-agent-captures)
   in ADR 0007.)
+
+## Cleanup keeps a lead worktree
+
+Added on 2026-11-23 for
+[#543](https://github.com/aeghnnsw/cc-toolkit/issues/543).
+
+In every mode, including `--main-only`, `cleanup_plan.py` keeps each worktree
+that holds a lead state: `.scratch/<YYYYMMDD>-lead-<slug>/state.json`. It
+finds the lead state with `find_lead` of `t3_project_lead.py`. The plan line
+gives the reason `holds a lead state: <folder>`. When a worktree holds more
+than one lead state, the plan also keeps it, and the reason names the
+folders. `dev-skills/tests/test_cleanup_plan.py` checks the rule with and
+without `--main-only`.
+
+The earlier rules kept the worktree of an idle lead only by chance. An idle
+lead edits no tracked file, so `git status --porcelain` reports its worktree
+clean. The live-session check does not protect an idle lead: its last
+session log can be older than the 60-minute window. T3 Code can start the
+branch of a lead worktree at the head commit of a merged PR of another
+branch, with no commit of its own. The branch rule keeps such a branch as
+not merged, and
+[#528](https://github.com/aeghnnsw/cc-toolkit/issues/528) proposes to treat
+it as merged. Then only the planning folder read keeps the worktree, because
+the lead folder has a date key. `--main-only` skips that read, so cleanup
+could remove the worktree and the lead state.

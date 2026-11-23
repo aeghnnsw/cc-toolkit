@@ -2,7 +2,8 @@
 """Print the repo-cleanup plan: KEEP or REMOVE, with the reason, for each item.
 
 repo-cleanup acts only on the REMOVE lines. This script removes nothing: it
-runs git, read-only gh commands, and live_worktrees.py, which is next to it.
+runs git, read-only gh commands, and live_worktrees.py, and it finds a lead
+state with t3_project_lead.py. Both scripts are next to it.
 
 Each line has four tab-separated fields: KEEP or REMOVE; the kind (folder,
 worktree, branch, or remote-branch); the folder path, the worktree path as
@@ -10,9 +11,9 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
 
 - Keep the main checkout, the Default Branch, and the worktree that the
   current session runs in: the top level of --repo.
-- Keep each worktree that holds a t3-project-lead state:
-  .scratch/<YYYYMMDD>-lead-<slug>/state.json, as t3_project_lead.py names it.
-  This rule applies in every mode, including --main-only.
+- In every mode, including --main-only, keep each worktree that holds a
+  t3-project-lead state: .scratch/<YYYYMMDD>-lead-<slug>/state.json, as
+  t3_project_lead.py finds it.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
@@ -23,8 +24,9 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   whose PR state cannot be read.
 - Inspect the planning folders: the entries of --planning-location in the main
   checkout, in the current worktree, and in each worktree that the plan would
-  otherwise remove. With --main-only, inspect the main checkout alone. Remove
-  a folder whose issue is closed as completed. Keep the folders of open or
+  otherwise remove. With --main-only, inspect the planning folders of the main
+  checkout alone; the lead state rule still reads each worktree. Remove a
+  folder whose issue is closed as completed. Keep the folders of open or
   not-planned issues, entries with no issue key (such as a date key), and
   folders whose issue state cannot be read. Keep each worktree that holds a
   kept folder.
@@ -49,7 +51,7 @@ import sys
 from typing import NoReturn
 
 # Python puts the folder of this script on sys.path, so the sibling module loads.
-from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
+from t3_project_lead import Refused, find_lead
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
@@ -182,17 +184,11 @@ def worktree_list(repo: str) -> list[dict[str, str]]:
 
 
 def lead_state(root: str) -> str | None:
-    """Return the first t3-project-lead folder with a state file in root/.scratch, or None."""
-    scratch = os.path.join(root, ".scratch")
+    """Return the t3-project-lead folder in root, the error for more than one, or None."""
     try:
-        names = sorted(os.listdir(scratch))
-    except OSError:
-        return None
-    for name in names:
-        folder = os.path.join(scratch, name)
-        if LEAD_FOLDER.fullmatch(name) and os.path.isfile(os.path.join(folder, LEAD_STATE_FILE)):
-            return folder
-    return None
+        return find_lead(root)
+    except Refused as error:
+        return str(error)
 
 
 def default_branch(repo: str, remote: str, given: str | None) -> tuple[str, str]:

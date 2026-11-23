@@ -441,13 +441,15 @@ class LeadStateCases(PlanTestCase):
     def setUpClass(cls):
         repo = cls.repo = cls.make_repo()
         worktrees = {}
-        for number, name in enumerate(("lead-a", "lead-b", "lead-c"), start=70):
+        for number, name in enumerate(("lead-a", "lead-b", "lead-c", "lead-d"), start=70):
             worktrees[name] = repo.worktree(name)
             repo.squash_merge(name, number)
-        cls.lead, cls.no_state, cls.other_name = worktrees.values()
+        cls.lead, cls.no_state, cls.state_in_non_lead_folder, cls.two_leads = worktrees.values()
         cls.lead_folder = cls.lead_files(cls.lead, "20261122-lead-ops", "state.json")
         cls.lead_files(cls.no_state, "20261122-lead-ops")
-        cls.lead_files(cls.other_name, "20261122-ops", "state.json")
+        cls.lead_files(cls.state_in_non_lead_folder, "20261122-ops", "state.json")
+        for name in ("20261122-lead-ops", "20261123-lead-docs"):
+            cls.lead_files(cls.two_leads, name, "state.json")
         cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
 
     @staticmethod
@@ -467,16 +469,22 @@ class LeadStateCases(PlanTestCase):
                 self.assert_kept_with_branches(self.lead, "holds a lead state",
                                                str(self.lead_folder))
 
-    def test_a_lead_folder_without_a_state_file_does_not_keep_the_worktree(self):
+    def test_keeps_a_merged_worktree_that_holds_more_than_one_lead_state(self):
+        self.plan = self.plans["--main-only"]
+        self.assert_kept_with_branches(self.two_leads, "holds a lead state",
+                                       "more than one lead state")
+
+    def test_main_only_removes_a_worktree_whose_lead_folder_has_no_state_file(self):
         self.plan = self.plans["--main-only"]
         self.assert_removed_with_branches(self.no_state, "merged PR #71")
-        # Without --main-only, the planning folder rule keeps the date-named folder.
+
+    def test_default_mode_keeps_a_lead_folder_without_a_state_file_as_a_planning_folder(self):
         self.plan = self.plans["default"]
         self.assert_kept("worktree", self.no_state, "holds the kept planning folder")
 
-    def test_a_state_file_in_a_folder_with_another_name_does_not_keep_the_worktree(self):
+    def test_a_state_file_in_a_folder_with_a_non_lead_name_does_not_keep_the_worktree(self):
         self.plan = self.plans["--main-only"]
-        self.assert_removed_with_branches(self.other_name, "merged PR #72")
+        self.assert_removed_with_branches(self.state_in_non_lead_folder, "merged PR #72")
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")

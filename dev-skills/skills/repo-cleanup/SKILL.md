@@ -25,11 +25,12 @@ tab-separated fields: `KEEP` or `REMOVE`; the kind (`folder`, `worktree`,
 plan covers every worktree, local branch, and remote branch, including those
 that a calling workflow did not name. A user request can limit this scope.
 
-- Add `--main-only` when the repository documents its planning folder
-  location in the main checkout. Add `--planning-location <folder>` when the
-  documented location is not `.scratch`. Otherwise the plan inspects
-  `.scratch/<issue>-<slug>/` in the main checkout, in the current worktree,
-  and in each worktree that it would otherwise remove.
+- When the repository documents its planning folder location in the main
+  checkout, add `--main-only`. The plan then inspects the planning folders
+  of the main checkout alone. When the documented location is not
+  `.scratch`, add `--planning-location <folder>`. Without `--main-only`, the
+  plan inspects `.scratch/<issue>-<slug>/` in the main checkout, in the
+  current worktree, and in each worktree that it would otherwise remove.
 - Add `--remote <name>` when the upstream remote is not `origin`.
 - If the command fails, remove nothing and report the error.
 
@@ -37,13 +38,13 @@ The plan keeps the current worktree and each worktree that another live
 session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
 conversation of the last 60 minutes. It keeps a worktree with a detached HEAD
-or uncommitted changes. It keeps each worktree that holds the lead state of a
-project lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also with
-`--main-only`. A branch is merged only when a merged PR of the
-branch has the branch tip as its head commit (`headRefOid`). The plan keeps a
-branch whose tip is in the Default Branch without such a PR: the branch has
-no commit of its own, and a session may have just started there. When a check
-cannot run, the plan keeps the item and gives the error as the reason.
+or uncommitted changes. In every mode, including `--main-only`, it keeps each
+worktree that holds a lead state: `.scratch/<YYYYMMDD>-lead-<slug>/state.json`.
+A branch is merged only when a merged PR of the branch has the branch tip as
+its head commit (`headRefOid`). The plan keeps a branch whose tip is in the
+Default Branch without such a PR: the branch has no commit of its own, and a
+session may have just started there. When a check cannot run, the plan keeps
+the item and gives the error as the reason.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent
