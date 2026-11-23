@@ -51,8 +51,8 @@ Run this step after each wake or user message.
 Read the last message of each worker of a running or pr-open task:
 t3_thread_list with includeSubagents, then t3_thread_read. Never state a
 worker's status from memory.
-Next: t3_project_lead.py plan for new work; answer, verify, or flag for a
-waiting, finished, or failed worker.
+Next: t3_project_lead.py plan for new work; answer, verify, or flag for
+waiting, finished, or failed workers; else report.
 """,
     "plan": """
 Break the approved outcome into worker tasks with success criteria that a
@@ -79,24 +79,22 @@ also while other workers run; do not wait for the rest of its batch. A due
 line names each task that is ready to start.
 Start no second worker for work that already runs: check t3_thread_list with
 includeSubagents, and pull_request_list.
-Start each worker with delegate_task and isolation "worktree". Start every
-task this way, research and review tasks included. Never use your host's native
-subagent tool.
+Start each worker with delegate_task, isolation "worktree", and no role. Start
+every task this way, research and review tasks included. Never use your host's
+native subagent tool.
 Write the brief as t3_project_lead.py brief says, with its quoted lines copied
 exactly. Then add the task, its success criteria, the approved outcome, and
-your decisions. For a scientific task, give the issue link, not the content.
+your decisions. For a scientific task, give the issue link, not the content,
+and in the last line, replace "with evidence and links" with "in one line, with
+links. Keep scientific detail in this thread and the PR".
 For a task after a merged PR, name the PR, and tell the worker to start from
 the default branch that contains it.
 Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
-Then run task start <name> <worker link> [--branch NAME]. Later, run task pr
-<name> <number> for each PR, and task merged <name> <number> <commit> after
-each merge.
-Next: t3_project_lead.py report while workers run. After a wake or a user
-message: t3_project_lead.py start.
+Then run task start <name> <worker link> [--branch NAME].
+Next: t3_project_lead.py report while workers run.
 """,
     "brief": """
-Omit role in delegate_task.
 Line 1 loads the skill for the worker's host: Claude Code /dev-skills:<skill>,
 Codex $dev-skills:<skill>, Antigravity /<skill>. Use grill-with-research for
 an open design, else matt-automode. When grilling must lead to implementation,
@@ -109,11 +107,11 @@ Every brief also says: "Add no GTD capture; report what waits on the user."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
-a blocking problem of matt-automode phase 5 stops the merge.
+a blocking problem of matt-automode phase 5 stops the merge. Add: "When your
+PR waits on checks, report its URL and full head SHA, and end your turn. Do
+not poll or search for a watch tool. Merge when the lead resumes you."
 Last line: "Report PASS, ISSUES, or BLOCKED, with evidence and links. Number
-each decision that waits on the user." For a scientific task, replace "with
-evidence and links" with "in one line, with links. Keep scientific detail in
-this thread and the PR".
+each decision that waits on the user."
 Next: t3_project_lead.py dispatch.
 """,
     "answer": """
@@ -131,8 +129,8 @@ A flag is a failed worker whose message says its safeguards flagged the
 session (Claude Code), that content was flagged for a risk (Codex), or that
 the Antigravity quota is reached (how T3 shows a refusal).
 If it ran on another model and claude-sonnet-5-5 is available, start a new
-worker with delegate_task, isolation "worktree", and a Claude Code provider on
-claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude Code
+worker with delegate_task, isolation "worktree", no role, and a Claude Code
+provider on claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude Code
 form, the branch, PR, and issue from start and pull_request_list, and
 "Continue from this state." Do not read the flagged thread or give its link.
 Run task worker <name> <new link>, and settle the flagged thread that it
@@ -182,6 +180,9 @@ Next: t3_project_lead.py report.
     "report": """
 First check the workers of running and pr-open tasks with t3_thread_list and
 includeSubagents; run t3_project_lead.py verify for each that finished.
+For each PR that a worker opens, run task pr <name> <number>, and after its
+merge, task merged <name> <number> <commit>. When a worker reports that its PR
+waits on checks, watch the PR, and resume the worker when the checks finish.
 Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
@@ -617,7 +618,7 @@ def change_wait(state, args, time):
             "opened": time}
     state["items"].append(item)
     state["next_item"] += 1
-    return f"Item {item['number']} added: {item_line(item)}", {"item": item["number"], "to": "open",
+    return f"Item {item['number']} added: {item_text(item)}", {"item": item["number"], "to": "open",
                                                               "task": item["task"]}
 
 
@@ -677,23 +678,30 @@ def cmd_finish(args) -> str:
 
 # Views.
 
-def item_line(item: dict) -> str:
-    line = f"{item['number']} " + (f"[{item['task']}] " if item["task"] else "")
-    line += item["text"].rstrip(".") + "."
+def sentence(value: str) -> str:
+    """Return the text with a period added, unless it already ends in ".", "?", or "!"."""
+    return value if value.endswith((".", "?", "!")) else value + "."
+
+
+def item_text(item: dict) -> str:
+    """Return a waiting item without its number."""
+    line = (f"[{item['task']}] " if item["task"] else "") + sentence(item["text"])
     if item["decisions"] and not item["text"].endswith(("decision", "decisions")):
         line += f" Decisions: {item['decisions']}."
     if item["recommend"]:
-        line += f" Lead recommends: {item['recommend'].rstrip('.')}."
+        line += f" Lead recommends: {sentence(item['recommend'])}"
     if item["link"]:
         line += f" {item['link']}"
     return line
 
 
 def waiting_lines(state: dict) -> list[str]:
+    """Return the waiting list. Each item is a bullet that keeps its number as text (#534): a
+    Markdown renderer renumbers a numbered list from its first number."""
     items = state["items"]
     if not items:
         return ["Waiting on you: nothing."]
-    return [f"Waiting on you ({len(items)}):"] + [item_line(item) for item in items]
+    return [f"Waiting on you ({len(items)}):"] + [f"- {item['number']}: {item_text(item)}" for item in items]
 
 
 def task_line(task: dict, now: datetime.datetime) -> str:
@@ -703,7 +711,7 @@ def task_line(task: dict, now: datetime.datetime) -> str:
     if task["state"] in ACTIVE and task["started"]:
         minutes = int((now - parse_time(task["started"])).total_seconds() // 60)
         line += f", {minutes} min"
-    line += f": {task['title'].rstrip('.')}."
+    line += f": {sentence(task['title'])}"
     if task["scientific"]:
         line += " Scientific."
     if task["issues"]:
@@ -770,7 +778,8 @@ def view_lines(state: dict, folder: str) -> list[str]:
     if due:
         lines.append("Due:")
         lines += [f"- {line}" for line in due]
-    return lines + waiting_lines(state)
+    # The empty line ends the list above, so that Markdown does not join the waiting list to it.
+    return lines + [""] + waiting_lines(state)
 
 
 def closeout_lines(state: dict, folder: str) -> list[str]:

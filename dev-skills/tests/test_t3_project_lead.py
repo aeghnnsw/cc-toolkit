@@ -9,8 +9,9 @@ check a result, and adds the close-out worker and the lead hook. Issue #530
 moves the lead state into the script's commands and drops the time limit; the
 state commands have their own tests in test_t3_project_lead_state.py. Issue #493
 starts each task as soon as each task that it waits for is verified, with no
-batch wait and no worker limit. Agent behavior
-is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
+batch wait and no worker limit. Issue #516 adds the lines for a PR that
+waits on checks: the worker line of `brief` and the lead line of `report`.
+Agent behavior is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
 its own tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
@@ -67,6 +68,12 @@ NO_GTD_CAPTURE = '"Add no GTD capture; report what waits on the user."'
 # (#493).
 START_RULE = ("Start each planned task as soon as each task that it waits for is verified, also "
               "while other workers run; do not wait for the rest of its batch.")
+# A worker whose PR waits on checks ends its turn; the lead watches the PR and resumes the worker
+# (#516).
+PR_WAIT_WORKER = ('"When your PR waits on checks, report its URL and full head SHA, and end your '
+                  'turn. Do not poll or search for a watch tool. Merge when the lead resumes you."')
+PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR, and resume the "
+                "worker when the checks finish.")
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -88,15 +95,16 @@ REQUIRED = {
     "dispatch": [START_RULE,
                  "A due line names each task that is ready to start.",
                  "Start no second worker for work that already runs",
-                 'Start each worker with delegate_task and isolation "worktree".',
+                 'Start each worker with delegate_task, isolation "worktree", and no role.',
                  "Start every task this way, research and review tasks included. Never use your "
                  "host's native subagent tool.",
                  '"You may start your own subagents. Keep your report short, and leave the '
                  'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
+                 'in the last line, replace "with evidence and links" with "in one line, with '
+                 'links. Keep scientific detail in this thread and the PR".',
                  "Then run task start <name> <worker link> [--branch NAME]."],
-    "brief": ["Omit role in delegate_task",
-              "Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
+    "brief": ["Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
               "When grilling must lead to implementation, end line 1 with:",
               'Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."',
               "For a read-only task (audit, research, or check), write no line 1, keep line 2, and "
@@ -106,7 +114,8 @@ REQUIRED = {
               'remains."',
               "For a code change: one full review and one fix of any size, then merge. Only "
               "a blocking problem of matt-automode phase 5 stops the merge.",
-              f"Every brief also says: {NO_GTD_CAPTURE}"],
+              f"Every brief also says: {NO_GTD_CAPTURE}",
+              f"Add: {PR_WAIT_WORKER}"],
     "answer": ["Settle it only when the user cancels its task. Do not answer its questions.",
                "Ask the user to answer in the worker's thread",
                "Keep no detail of them: lead the user to the worker's thread.",
@@ -144,6 +153,7 @@ REQUIRED = {
                  "settled <name>; never reuse one."],
     "report": ['End with the "Waiting on you" list below, copied as it is.',
                "Name no detail of a worker's decisions.",
+               PR_WAIT_LEAD,
                "When a due line says to run finish, run it, then settle this thread.",
                "Next: after a wake or a user message, t3_project_lead.py start.",
                "Make no promise that needs a signal from the middle of a worker's run."],
