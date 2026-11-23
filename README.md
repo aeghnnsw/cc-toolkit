@@ -111,6 +111,13 @@ project-eval has no Codex copy by decision ([#313](https://github.com/aeghnnsw/c
 - **step-workflow**
 - **t3-project-lead**
 
+**t3-project-lead threads:** The lead state belongs to one T3 thread, the lead thread. Delete the lead thread only after `finish`: when T3's `worktreeOnDelete` setting is on, T3 removes a thread's worktree, and the lead state in it, when the thread is deleted. A provider or model change keeps the thread, so the lead needs no step. Run `takeover` once in a fork of the lead thread, or in a new thread bound to the lead's worktree; not after a provider change. When `start` finds no lead state in its own worktree, it lists the lead states of the other worktrees; continue that lead in its own worktree. When the lead thread is flagged:
+
+1. Start a new thread bound to the lead's worktree, with `t3_thread_launch` and `workspaceStrategy` `existing_worktree`, on another model.
+2. In the new thread, run `start`, then `takeover`.
+3. Do not fork the flagged thread: a fork copies the flagged context.
+4. Do not delete the flagged thread before the takeover.
+
 ### Creator Skills (`creator-skills`)
 Scientific content creation for figures and presentations.
 

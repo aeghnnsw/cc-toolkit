@@ -23,6 +23,10 @@ Run a step again whenever you need its text, for example after a context
 summary. The script also keeps the lead state: change it only with the
 script's commands, and read it with `start` or `show`.
 
+Delete the lead thread only after `finish`. When T3's `worktreeOnDelete`
+setting is on, T3 removes a thread's worktree, and the lead state in it, when
+the thread is deleted.
+
 When `delegate_task` is not a declared tool, call it the way T3's instructions
 say, such as through a deferred-tool search. Do not use a terminal fallback:
 the hook blocks it. When the call still fails, say that this skill needs T3

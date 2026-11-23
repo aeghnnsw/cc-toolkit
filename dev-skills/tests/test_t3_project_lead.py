@@ -10,9 +10,11 @@ moves the lead state into the script's commands and drops the time limit; the
 state commands have their own tests in test_t3_project_lead_state.py. Issue #493
 starts each task as soon as each task that it waits for is verified, with no
 batch wait and no worker limit. Issue #516 adds the lines for a PR that waits
-on checks: the worker line of `brief` and the lead line of `report`. Agent
-behavior is checked by the scenario review in t3-project-lead-scenarios.md;
-the hook has its own tests in test_t3_project_lead_hook.py.
+on checks: the worker line of `brief` and the lead line of `report`. Issue
+#544 adds `takeover`, the `--also` line of `plan`, and the skill line on
+deleting the lead thread. Agent behavior is checked by the scenario review in
+t3-project-lead-scenarios.md; the hook has its own tests in
+test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
@@ -29,8 +31,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
 STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "closeout", "report")
 # The commands that keep the lead state (#530), after the steps.
-STATE_COMMANDS = ("init", "show", "waiting", "finish", "outcome", "criteria", "wait", "done", "task",
-                  "decision")
+STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "outcome", "criteria", "wait", "done",
+                  "task", "decision")
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
 # An agent reads a whole step after each wake, so each step stays short.
@@ -91,7 +93,9 @@ REQUIRED = {
              START_RULE,
              "A batch (--batch) only decides when its workers are closed out and settled.",
              "Text is at most 200 characters",
-             "init <slug>, once, after the user approves the outcome"],
+             "init <slug>, once, after the user approves the outcome",
+             # A second lead state needs the user's confirmation (#544).
+             "add --also only after the user confirms a second lead state"],
     "dispatch": [START_RULE,
                  "A due line names each task that is ready to start.",
                  "Start no second worker for work that already runs",
@@ -255,6 +259,12 @@ class SkillCopyTests(unittest.TestCase):
                               "task to a worker, even a small one. Running `start` records this "
                               "session as the lead: a dev-skills hook then blocks your other "
                               "shell commands, file reads, and file edits.", shared_text(host))
+
+    def test_skill_keeps_the_lead_thread_until_finish(self) -> None:
+        # With worktreeOnDelete, T3 removes a thread's worktree, and the lead state, with the thread (#544).
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn("Delete the lead thread only after `finish`.", shared_text(host))
 
     def test_skill_tries_the_t3_fallback_before_it_stops(self) -> None:
         self.assertIn("When `delegate_task` is not a declared tool, call it the way T3's "

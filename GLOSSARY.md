@@ -187,8 +187,9 @@ from a model family other than the main agent's.
 _Avoid_: Reviewer, skeptic
 
 **Flag**:
-A safeguard action by a model provider on one critic call or one worker, such
-as a policy error or a refusal.
+A safeguard action by a model provider on one critic call, one worker, or the
+thread of a project lead, such as a policy error or a refusal. A flagged lead
+is a project lead whose thread got a flag.
 _Avoid_: Safety stop, block
 
 **Starting model**:
@@ -243,10 +244,11 @@ _Avoid_: Cluster, direction
 ## Project-lead language
 
 **Project lead**:
-A T3 Code session that runs the t3-project-lead skill. It talks with the
-user, plans the project's work, starts each task in a worker, and judges the
-workers' reports. It gives every other task to a worker, even a small fix or
-a check of a result.
+A T3 Code thread that runs the t3-project-lead skill and owns one lead state.
+It talks with the user, plans the project's work, starts each task in a
+worker, and judges the workers' reports. It gives every other task to a
+worker, even a small fix or a check of a result. A change of provider or model
+keeps the thread as the lead; a fork becomes the lead only by a takeover.
 _Avoid_: Orchestrator, director, coordinator
 
 **Worker**:
@@ -288,15 +290,23 @@ requests merges. Only the user approves; a project lead verifies.
 _Avoid_: Approved
 
 **Settle**:
-To mark a worker's thread as finished in T3 Code. T3 Code can then remove the
-thread's worktree. So a project lead settles the workers of a batch with a
-merged pull request only after the batch's close-out worker reports.
+To mark a worker's thread as finished in T3 Code. Settling removes no
+worktree: T3 Code removes a thread's worktree when the thread is deleted or
+its pull request merges, if its settings say so. A project lead settles the
+workers of a batch with a merged pull request only after the batch's close-out
+worker reports, because the close-out worker reads the workers' sessions.
 _Avoid_: Archive
 
 **Lead state**:
 The record of a project lead's outcome, success criteria, tasks, waiting items,
 and decisions. The project lead changes it only through its step script.
 _Avoid_: lead.md, lead notes
+
+**Takeover**:
+The move of a lead state to another T3 Code thread, such as a fork of the
+project lead or a new thread in the lead's worktree. After it, the earlier
+thread can read the lead state but cannot change it.
+_Avoid_: Handoff
 
 **Waiting item**:
 An entry in the lead state for something that only the user can give: a

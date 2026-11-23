@@ -9,6 +9,12 @@
 > worktree that holds a lead state by a rule of its own, in every mode, and a
 > test checks the rule. Read
 > [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).
+>
+> **Superseded in part (2026-11-23, issue #544).** `start` also changes the
+> lead state once after a takeover: it removes the takeover mark and appends
+> one event. Read
+> [`start` after a takeover](0009-bind-the-lead-state-to-its-t3-thread.md#start-after-a-takeover)
+> in ADR 0009.
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -26,7 +32,10 @@ worktree cannot write, so about 45 of those calls ran with the sandbox off
 ([#530](https://github.com/aeghnnsw/cc-toolkit/issues/530)). Its nine steps
 still print text, and new commands change the state: `init`, `outcome`,
 `criteria`, `task`, `wait`, `done`, `decision`, `show`, `waiting`, and
-`finish`. The project lead changes its state only through these commands.
+`finish`. (Superseded in part by #544: `start` also changes the state once
+after a takeover; read
+[`start` after a takeover](0009-bind-the-lead-state-to-its-t3-thread.md#start-after-a-takeover)
+in ADR 0009.) The project lead changes its state only through these commands.
 This supersedes the rule of ADR 0007 that the step script only prints.
 
 The script keeps the life cycle of each task and refuses every transition

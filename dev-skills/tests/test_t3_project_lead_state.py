@@ -7,7 +7,10 @@ view, the due lines, what waits on the user, and finish. Issue #493 adds the
 tasks that are ready to start: a task starts as soon as each task that it waits
 for is verified, and does not wait for the rest of its batch. Issue #534 prints
 the waiting list as Markdown bullets that keep the item numbers, and adds a
-period only to text that does not end in ".", "?", or "!".
+period only to text that does not end in ".", "?", or "!". Issue #544 binds
+the lead state to its T3 thread (`T3CODE_THREAD_ID`), adds `takeover`, and
+lists the lead states of the other worktrees, which the checks make with
+`git worktree add`.
 """
 
 from __future__ import annotations
@@ -26,6 +29,35 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "t3_project_lead.py"
 UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 WORKER = "t3-thread://v2/env/thread-{}"
+# The T3 thread of the lead in each check, and another thread, such as a fork (#544).
+OWNER = "thread-lead"
+OTHER = "thread-fork"
+TAKEOVER_LINE = ("Check for work this state does not name: t3_thread_list with includeSubagents, and "
+                 "pull_request_list. Record each worker with task add and task start, or add a waiting "
+                 "item.")
+# What the script says about a lead state in another worktree, and how a flagged lead recovers.
+CONTINUE = ("Continue that lead in its own worktree. A lead can continue in three ways: change the provider "
+            "of the lead thread; fork the lead thread; or start a thread with t3_thread_launch and "
+            "workspaceStrategy existing_worktree with the worktree that the list names. In a fork or a new "
+            "thread, run start, then takeover.")
+RECOVERY = ("Recovery of a flagged lead: start a new thread bound to this worktree with t3_thread_launch and "
+            "workspaceStrategy existing_worktree, on another model. In it, run start, then takeover. Do not "
+            "fork the flagged thread: a fork copies the flagged context. Do not delete the flagged thread "
+            "before the takeover.")
+# Each command that changes or deletes the lead state, with arguments that it would accept.
+CHANGE_COMMANDS = (
+    ("outcome", "Ship it."), ("criteria", "Tests pass."), ("wait", "Approve it?"), ("done", "1"),
+    ("decision", "add", "Squash."), ("decision", "drop", "D1"), ("task", "add", "b", "Task b"),
+    ("task", "start", "a", WORKER.format(1)), ("task", "worker", "a", WORKER.format(2)),
+    ("task", "pr", "a", "5"), ("task", "merged", "a", "5", "abcdef1"), ("task", "verified", "a"),
+    ("task", "settled", "a"), ("task", "cancel", "a"), ("task", "pause", "a"), ("task", "resume", "a"),
+    ("finish",),
+)
+
+
+def words(text: str) -> str:
+    """Return the text on one line, so that line wrapping does not change a match."""
+    return " ".join(text.split())
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")
@@ -36,24 +68,45 @@ class LeadStateTests(unittest.TestCase):
         self.repo = self.tmp / "repo"
         (self.repo / "sub").mkdir(parents=True)
         self.env = dict(os.environ, GIT_CONFIG_GLOBAL=str(self.tmp / "gitconfig"),
-                        GIT_CONFIG_NOSYSTEM="1", GIT_CEILING_DIRECTORIES=str(self.tmp))
+                        GIT_CONFIG_NOSYSTEM="1", GIT_CEILING_DIRECTORIES=str(self.tmp),
+                        T3CODE_THREAD_ID=OWNER)
         subprocess.run(["git", "init", "-q"], cwd=self.repo, env=self.env, check=True)
 
-    def run_lead(self, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    def run_lead(self, *args: str, cwd: Path | None = None, thread: str | None = OWNER,
+                 path: str | None = None) -> subprocess.CompletedProcess[str]:
+        """Run the script in the T3 thread `thread`; None runs it without T3CODE_THREAD_ID. `path`
+        replaces PATH."""
+        env = {key: value for key, value in self.env.items() if key != "T3CODE_THREAD_ID"}
+        if thread is not None:
+            env["T3CODE_THREAD_ID"] = thread
+        if path is not None:
+            env["PATH"] = path
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd or self.repo,
-                              env=self.env, capture_output=True, text=True, check=False)
+                              env=env, capture_output=True, text=True, check=False)
 
-    def ok(self, *args: str) -> str:
-        result = self.run_lead(*args)
+    def ok(self, *args: str, cwd: Path | None = None, thread: str | None = OWNER) -> str:
+        result = self.run_lead(*args, cwd=cwd, thread=thread)
         self.assertEqual(result.returncode, 0, f"{args}: {result.stderr}")
         return result.stdout
 
-    def refused(self, *args: str, reason: str) -> None:
-        before = self.state_text()
-        result = self.run_lead(*args)
+    def refused(self, *args: str, reason: str, thread: str | None = OWNER) -> str:
+        before = (self.state_text(), self.events())
+        result = self.run_lead(*args, thread=thread)
         self.assertEqual(result.returncode, 1, f"{args}: {result.stdout}")
-        self.assertIn(reason, result.stderr)
-        self.assertEqual(self.state_text(), before, "a refused command changed the state")
+        self.assertIn(reason, words(result.stderr))
+        self.assertEqual((self.state_text(), self.events()), before, "a refused command changed the state")
+        return words(result.stderr)
+
+    def worktree(self, name: str) -> Path:
+        """Add a linked worktree of the repository, as T3 Code makes for a new thread."""
+        if not subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], cwd=self.repo, env=self.env,
+                              capture_output=True, check=False).stdout:
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q",
+                            "--allow-empty", "-m", "init"], cwd=self.repo, env=self.env, check=True)
+        path = self.tmp / name
+        subprocess.run(["git", "worktree", "add", "-q", "-b", name, str(path)], cwd=self.repo,
+                       env=self.env, check=True)
+        return path
 
     def folder(self) -> Path:
         (folder,) = (self.repo / ".scratch").glob("*-lead-*")
@@ -79,9 +132,152 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "verified", name)
 
     def test_start_without_a_lead_state_prints_how_to_create_one(self) -> None:
-        output = self.ok("start")
-        self.assertIn("Do only these lead actions yourself:", output)
+        other = self.worktree("b")
+        for where in (self.repo, other):
+            with self.subTest(where=where.name):
+                output = self.ok("start", cwd=where)
+                self.assertIn("Do only these lead actions yourself:", output)
+                self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
+                self.assertNotIn("other worktrees", output)
+
+    def test_a_git_failure_prints_a_listing_problem_and_refuses_init(self) -> None:
+        no_git = self.tmp / "no-git"
+        no_git.mkdir()
+        output = self.run_lead("start", path=str(no_git)).stdout
+        self.assertIn("Could not list the worktrees: ", output)
         self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
+        result = self.run_lead("init", "demo", path=str(no_git))
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("could not list the worktrees, so another one may hold a lead state", result.stderr)
+        self.assertIn("Only after the user confirms a second lead state, run init demo --also.",
+                      words(result.stderr))
+        self.assertFalse((self.repo / ".scratch").exists())
+
+    def test_a_folder_outside_git_has_no_other_worktree(self) -> None:
+        plain = self.tmp / "plain"
+        plain.mkdir()
+        output = self.ok("start", cwd=plain)
+        self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
+        self.assertNotIn("Could not list", output)
+        self.assertIn("Lead state created: ", self.ok("init", "demo", cwd=plain))
+        self.assertIn("Lead state: demo, ", self.ok("show", cwd=plain))
+
+    def test_start_in_another_worktree_lists_the_lead_state_and_offers_no_init(self) -> None:
+        self.ok("init", "demo")
+        for name in ("a", "b", "c"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.ok("task", "cancel", "c")
+        self.ok("task", "settled", "c")
+        self.ok("wait", "Approve the release?")
+        other = self.worktree("b")
+        output = self.ok("start", cwd=other)
+        line = (f"- {self.folder()}: slug demo, owner {OWNER}, last change {self.events()[-1]['time']}, "
+                f"2 open tasks, 1 waiting item. Worktree: {self.repo}")
+        self.assertIn(line + "\n", output)
+        self.assertIn(f"{CONTINUE} Do not run init here.", words(output))
+        self.assertNotIn("init <slug>", output)
+        self.assertFalse((other / ".scratch").exists(), "the lookup wrote to the new worktree")
+        shutil.copytree(self.folder(), self.folder().with_name("20260101-lead-old"))
+        self.assertIn(f"- More than one lead state in {self.repo / '.scratch'}: ",
+                      self.ok("start", cwd=other))
+
+    def test_init_refuses_a_second_lead_state_without_also(self) -> None:
+        self.ok("init", "demo")
+        other = self.worktree("b")
+        result = self.run_lead("init", "second", cwd=other)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        for text in ("another worktree holds a lead state", f"- {self.folder()}: slug demo, owner {OWNER}",
+                     f"{CONTINUE} Only after the user confirms a second lead state, run init second --also."):
+            with self.subTest(text=text):
+                self.assertIn(text, words(result.stderr))
+        self.assertFalse((other / ".scratch").exists())
+        self.assertIn("Lead state created: ", self.ok("init", "second", "--also", cwd=other))
+        self.assertIn("Lead state: second, ", self.ok("start", cwd=other))
+        self.assertIn("Lead state: demo, ", self.ok("start"))
+
+    def test_a_command_in_another_worktree_names_its_lead_state_not_init(self) -> None:
+        self.ok("init", "demo")
+        other = self.worktree("b")
+        for args in (("takeover",), ("show",), ("outcome", "Ship it.")):
+            with self.subTest(args=args):
+                result = self.run_lead(*args, cwd=other, thread=OTHER)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                stderr = words(result.stderr)
+                self.assertIn("no lead state in this working tree. Lead states in other worktrees of this "
+                              f"repository: - {self.folder()}: slug demo, owner {OWNER}", stderr)
+                self.assertIn(CONTINUE, stderr)
+                self.assertNotIn("run init", stderr)
+        self.assertFalse((other / ".scratch").exists())
+        self.assertEqual(json.loads(self.state_text())["owner"], OWNER)
+
+    def test_init_and_takeover_need_the_t3_thread_id(self) -> None:
+        for thread in (None, "", " "):
+            with self.subTest(thread=thread):
+                result = self.run_lead("init", "demo", thread=thread)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("init needs T3CODE_THREAD_ID", result.stderr)
+                self.assertFalse((self.repo / ".scratch").exists())
+        self.ok("init", "demo")
+        self.assertEqual(json.loads(self.state_text())["owner"], OWNER)
+        for thread in (None, ""):
+            with self.subTest(thread=thread):
+                self.refused("takeover", thread=thread, reason="takeover needs T3CODE_THREAD_ID")
+
+    def test_only_the_owner_changes_the_state_until_a_takeover(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        for args in CHANGE_COMMANDS:
+            with self.subTest(args=args):
+                stderr = self.refused(*args, thread=OTHER, reason=f"its owner is thread {OWNER}")
+                self.assertIn("To move the lead to this thread, run takeover.", stderr)
+                self.assertIn(RECOVERY, stderr)
+        self.assertIn("Lead state: demo", self.ok("show", thread=OTHER))
+        self.ok("waiting", thread=OTHER)
+        self.assertIn(f"Lead state taken over: owner {OTHER}, was {OWNER}.",
+                      self.ok("takeover", thread=OTHER))
+        self.assertEqual(json.loads(self.state_text())["owner"], OTHER)
+        event = self.events()[-1]
+        self.assertEqual({key: event[key] for key in ("command", "old_owner", "owner")},
+                         {"command": "takeover", "old_owner": OWNER, "owner": OTHER})
+        for args in CHANGE_COMMANDS:
+            with self.subTest(args=args, after="takeover"):
+                self.refused(*args, reason=f"its owner is thread {OTHER}")
+        self.ok("outcome", "Ship it.", thread=OTHER)
+
+    def test_the_first_start_after_a_takeover_names_the_work_to_check(self) -> None:
+        self.ok("init", "demo")
+        self.assertIn(f"Owner: {OWNER}\n", self.ok("start"))
+        self.assertNotIn(TAKEOVER_LINE, words(self.ok("start")))
+        before = (self.state_text(), self.events())
+        self.assertIn("This thread already owns the lead state; nothing changed.", self.ok("takeover"))
+        self.assertEqual((self.state_text(), self.events()), before)
+        self.ok("takeover", thread=OTHER)
+        # The earlier owner reads the state, but only the owner sees the due line, which it can act on.
+        view = words(self.ok("start"))
+        self.assertIn(f"Owner: {OTHER} This thread is not the owner: it can read the lead state but not "
+                      "change it. To move the lead to this thread, run takeover.", view)
+        self.assertNotIn(TAKEOVER_LINE, view)
+        self.assertEqual(self.events()[-1]["command"], "takeover")
+        self.assertIn(f"- {TAKEOVER_LINE}", words(self.ok("start", thread=OTHER)))
+        event = self.events()[-1]
+        self.assertEqual({key: event[key] for key in ("command", "shown")},
+                         {"command": "start", "shown": "takeover due line"})
+        view = self.ok("start", thread=OTHER)
+        self.assertNotIn(TAKEOVER_LINE, words(view))
+        self.assertNotIn("is not the owner", view)
+        self.assertEqual(self.events()[-1], event)
+
+    def test_a_state_without_an_owner_needs_one_takeover(self) -> None:
+        self.ok("init", "demo")
+        state = json.loads(self.state_text())
+        del state["owner"]
+        (self.folder() / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        self.assertIn("Owner: none", self.ok("start"))
+        stderr = self.refused("outcome", "Ship it.", reason="it has no owner")
+        self.assertIn("run takeover", stderr)
+        self.assertIn(f"Lead state taken over: owner {OWNER}, was none.", self.ok("takeover"))
+        self.assertIsNone(self.events()[-1]["old_owner"])
+        self.ok("outcome", "Ship it.")
 
     def test_init_creates_one_folder_that_git_ignores(self) -> None:
         self.ok("init", "demo")
@@ -421,9 +617,13 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("task", "add", "a", "Task a")
         self.ok("task", "pause", "a")
-        self.assertIn("- a (batch 1) paused: Task a.", self.ok("show"))
+        paused = "- a is paused: run task resume a to plan it again, or task cancel a."
+        view = self.ok("start")
+        self.assertIn("- a (batch 1) paused: Task a.", view)
+        self.assertIn(paused, view)
         self.refused("task", "start", "a", WORKER.format(1), reason="a is paused")
         self.ok("task", "resume", "a")
+        self.assertNotIn(paused, self.ok("show"))
         self.assertIn("It has no worker: run task settled a.", self.ok("task", "cancel", "a"))
         self.assertEqual(self.task("a")["state"], "cancelled")
         self.assertIn("- a has no worker: run task settled a.", self.ok("show"))
