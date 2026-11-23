@@ -6,6 +6,14 @@ description: "Use when capturing thoughts or tasks into the GTD inbox, when the 
 Manage raw GTD captures in the configured Supabase store. Save captures
 immediately. Keep their wording and scope.
 
+A subagent, or a child task that another agent started, adds no agent
+capture and deletes no done agent capture. It reads no GTD contract and no
+GTD data for agent captures. It reports to its parent the items that wait
+on the user and the work that it did, and the parent decides which agent
+captures to add or delete. A request that the user makes directly in a
+child task, such as "capture X", is not an agent capture: follow it as
+below.
+
 Before any operation, read the [cloud operating contract](../../references/gtd-cloud.md)
 and [shared planning policy](../../references/gtd-planning.md). Use the cloud
 contract for the GTD binding, connector calls, UUIDs, revisions, atomic
@@ -88,8 +96,8 @@ Add no agent capture for these items:
 - An item that GTD already holds: a pending inbox item or an open action
   with the same `Source` link and the same decision, finding, or result.
 
-A subagent, or a child task that another agent started, adds no agent
-capture. It reports the items to its parent, and the parent adds them.
+A subagent or a child task adds no agent capture; see the rule at the
+start of this skill.
 
 Write a one-line title that names the decision or the review and its
 source reference, for example `Decide the access rule for agent captures
@@ -138,9 +146,8 @@ Decide only from this conversation: the user's answer and the work that
 you or your subagents did after it. Read no other source to decide, such
 as a pull request or an issue; `gtd-process` checks those. Keep the
 capture pending when some of its work still waits, or when you are not
-sure that all of it is done. A subagent, or a child task that another
-agent started, deletes no capture. It reports the work that it did to its
-parent, and the parent decides.
+sure that all of it is done. A subagent or a child task deletes no done
+agent capture; see the rule at the start of this skill.
 
 Delete only a pending inbox item with a `Source` line and `Proposed` lines
 in its notes. Use a soft delete of its UUID at its current revision under
