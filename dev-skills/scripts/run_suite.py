@@ -26,8 +26,15 @@ reuses the pass of that head. --rerun always runs the command.
 
 Output. The command's stdout and stderr stream together as the command runs.
 Then the script prints a summary: the failing test IDs and the totals lines of
-unittest and pytest output, and last the exit status. For other output, the
-summary has only the exit status.
+unittest and pytest output, the lock wait, and last the exit status. For other
+output, the summary has no failing tests or totals. The lock wait is one line,
+only after the script waited for the lock: "Suite lock wait: <N> s, held by
+PID <pid> (<command>) in <folder>", with the wait time in whole seconds and the
+holder that the stderr line names. When a later run held the lock last, the
+line adds ", and last by PID <pid> (<command>) in <folder>". When the first
+holder had not written its details, the line names the last holder; when
+neither had, it names "another run". A run that reuses a recorded pass prints
+no summary; after a wait, it prints the lock wait as its last line.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -44,6 +51,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
@@ -60,6 +68,8 @@ UNITTEST_TOTALS = re.compile(r"Ran \d+ tests? in \S+|OK|OK \(.*\)|FAILED \(.*\)"
 PYTEST_FAILURE = re.compile(r"(FAILED|ERROR) (\S.*?)(?: - .*)?")
 # pytest: "==== 1 failed, 2 passed in 0.12s ====", with or without the equals signs.
 PYTEST_TOTALS = re.compile(r"(?:=+ )?(?:\d+ \w+(?:, \d+ \w+)*|no tests ran) in \d[\d.]*s\b.*")
+# The lock wait line shows a line break of a holder's command as \n.
+ESCAPE_LINE_BREAKS = str.maketrans({"\n": "\\n", "\r": "\\r"})
 
 
 def now() -> str:
@@ -82,28 +92,54 @@ def clean_tree() -> str | None:
     return git("rev-parse", "HEAD^{tree}")
 
 
-def take_lock(common: Path, command: list[str]) -> TextIO:
-    """Take the repository lock, and wait for it when another run holds it."""
+def read_holder(handle: TextIO) -> dict | None:
+    """Return the details that the last holder wrote to the lock file, or None."""
+    handle.seek(0)
+    try:
+        holder = json.loads(handle.read())
+        return {name: holder[name] for name in ("pid", "command", "folder", "start")}
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def describe(holder: dict | None) -> str:
+    """Name a lock holder by its PID, command, and folder."""
+    if holder is None:
+        return "another run (its details are not written yet)"
+    return f"PID {holder['pid']} ({holder['command']}) in {holder['folder']}"
+
+
+def take_lock(common: Path, command: list[str]) -> tuple[TextIO, str | None]:
+    """Take the repository lock, and wait for it when another run holds it.
+
+    Return the lock file, and after a wait the lock wait line of the summary.
+    """
     handle = open(common / LOCK, "a+")
+    wait_line = None
     try:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        handle.seek(0)
-        try:
-            holder = json.loads(handle.read())
-            who = (f"PID {holder['pid']} ({holder['command']}) in {holder['folder']}, "
-                   f"started {holder['start']}")
-        except (ValueError, KeyError, TypeError):
-            who = "another run (its details are not written yet)"
-        print(f"run_suite: waiting for the suite lock, held by {who}", file=sys.stderr, flush=True)
+        first = read_holder(handle)
+        started = f", started {first['start']}" if first else ""
+        print(f"run_suite: waiting for the suite lock, held by {describe(first)}{started}",
+              file=sys.stderr, flush=True)
+        begin = time.monotonic()
         fcntl.flock(handle, fcntl.LOCK_EX)
+        seconds = round(time.monotonic() - begin)
+        # Holders do not clear the lock file, so it now names the last holder.
+        last = read_holder(handle)
+        holders = describe(first or last)
+        if first and last and last != first:
+            holders += f", and last by {describe(last)}"
+        wait_line = f"Suite lock wait: {seconds} s, held by {holders}".translate(
+            ESCAPE_LINE_BREAKS)
     # The lock file holds the details of its holder, for runs that wait.
     handle.seek(0)
     handle.truncate()
     handle.write(json.dumps({"pid": os.getpid(), "command": shlex.join(command),
                              "folder": os.getcwd(), "start": now()}))
     handle.flush()
-    return handle
+    return handle, wait_line
 
 
 def load_passes(path: Path) -> list[dict]:
@@ -186,7 +222,7 @@ def main() -> None:
     passes_file = Path(common) / PASSES
     folder = Path(os.path.relpath(Path.cwd().resolve(), Path(top).resolve())).as_posix()
 
-    lock = take_lock(Path(common), command)
+    lock, wait_line = take_lock(Path(common), command)
     tree = clean_tree()
     key = {"tree": tree, "command": command, "folder": folder}
     if tree and not args.rerun:
@@ -195,6 +231,8 @@ def main() -> None:
                 print(f"run_suite: a pass is recorded for tree {tree[:12]} at {entry.get('time')} "
                       f"(commit {str(entry.get('commit'))[:12]}), so the command did not run. "
                       f"Use --rerun to run it again.", flush=True)
+                if wait_line:
+                    print(wait_line, flush=True)
                 sys.exit(0)
     commit = git("rev-parse", "HEAD")
 
@@ -213,6 +251,8 @@ def main() -> None:
         lines += [f"Failing tests ({len(failures)}):"] + [f"  {failure}" for failure in failures]
     if totals:
         lines += ["Totals:"] + [f"  {total}" for total in totals]
+    if wait_line:
+        lines.append(wait_line)
     lines.append(f"Exit status: {status}")
     print("\n".join(lines), flush=True)
     sys.exit(status)
