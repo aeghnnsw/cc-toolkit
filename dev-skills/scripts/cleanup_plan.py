@@ -10,6 +10,10 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
 
 - Keep the main checkout, the Default Branch, and the worktree that the
   current session runs in: the top level of --repo.
+- Keep each worktree that holds a lead state of t3-project-lead:
+  .scratch/<YYYYMMDD>-lead-<slug>/state.json at its top, whatever
+  --planning-location names, also with --main-only. Keep a worktree whose
+  .scratch or lead folder cannot be read.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
@@ -41,13 +45,17 @@ import datetime
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from typing import NoReturn
 
+from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
+
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
 KEEP, REMOVE = "KEEP", "REMOVE"
+NOT_FOUND = (FileNotFoundError, NotADirectoryError)
 
 
 def fail(message: str) -> NoReturn:
@@ -163,6 +171,33 @@ class Planner:
         return KEEP, f"issue #{number} has state {state}"
 
 
+def lead_state(root: str) -> str | None:
+    """Return the reason to keep a worktree that holds a lead state, or None.
+
+    An error other than a missing file keeps the worktree, because the plan
+    cannot tell whether the worktree holds a lead state.
+    """
+    scratch = os.path.join(root, ".scratch")
+    try:
+        names = sorted(os.listdir(scratch))
+    except NOT_FOUND:
+        return None
+    except OSError as error:
+        return f"cannot look for a lead state: {error}"
+    for name in names:
+        if not LEAD_FOLDER.fullmatch(name):
+            continue
+        folder = os.path.join(scratch, name)
+        try:
+            if stat.S_ISREG(os.stat(os.path.join(folder, LEAD_STATE_FILE)).st_mode):
+                return f"holds a lead state: {folder}"
+        except NOT_FOUND:
+            continue
+        except OSError as error:
+            return f"cannot look for a lead state: {error}"
+    return None
+
+
 def worktree_list(repo: str) -> list[dict[str, str]]:
     """Return each worktree with its path, HEAD, and branch; the main checkout comes first."""
     found: list[dict[str, str]] = []
@@ -252,6 +287,8 @@ def main() -> None:
             merged = (f"; {planner.branch(pr_head(branch), head)[1]}"
                       if branch and branch != default else "")
             plan[path] = (KEEP, f"the current session runs here{merged}")
+        elif (lead := lead_state(path)) is not None:
+            plan[path] = (KEEP, lead)
         elif live_error is not None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
         elif path in live:

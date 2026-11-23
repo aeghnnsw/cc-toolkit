@@ -103,7 +103,10 @@ Consequences:
 - The lead state is lost when the lead's worktree is removed before `finish`.
   repo-cleanup keeps a worktree with a live session, and keeps a branch that
   no merged PR has as its head, so it keeps a lead worktree. This comes from
-  the repo-cleanup text; it was not tested.
+  the repo-cleanup text; it was not tested. (Added by
+  [#543](https://github.com/aeghnnsw/cc-toolkit/issues/543): `cleanup_plan.py`
+  keeps each worktree that holds a lead state, in every mode, including
+  `--main-only`, and a test checks this rule.)
 - The script cannot see T3 threads. The lead still records each wait itself
   with `wait`, and ends it with `done`.
 - No command imports `lead.md`. A live lead enters its open state once, with
