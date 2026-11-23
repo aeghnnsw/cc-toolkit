@@ -9,6 +9,9 @@ The data file has these optional keys:
 
 - "fail": an error message; every command prints it and exits 1.
 - "prs": merged PRs by head branch, for `gh pr list --head B --state merged`.
+- "commit_prs": the PRs of each commit, by its full SHA, for
+  `gh api repos/{owner}/{repo}/commits/<sha>/pulls...`. A commit that is not
+  a key gets the HTTP 422 error of GitHub for a commit that it lacks.
 - "pr_view": PRs by the argument of `gh pr view`.
 - "issues": issues by the argument of `gh issue view`, a number or a URL.
 - "comments": pages of repository comments, for
@@ -69,6 +72,14 @@ def main() -> int:
     if args[:2] == ["pr", "list"] and merged_numbers:
         print(json.dumps([{"number": number} for number in data.get("merged", [])]))
         return 0
+    commit = re.fullmatch(r"repos/\{owner\}/\{repo\}/commits/([0-9a-f]{40})/pulls(\?.*)?",
+                          args[1]) if args[:1] == ["api"] and len(args) == 2 else None
+    if commit and commit.group(1) in data.get("commit_prs", {}):
+        print(json.dumps(data["commit_prs"][commit.group(1)]))
+        return 0
+    if commit:
+        print(f"gh: No commit found for SHA: {commit.group(1)} (HTTP 422)", file=sys.stderr)
+        return 1
     comments = [arg for arg in args if arg.startswith("repos/{owner}/{repo}/issues/comments")]
     if args[:1] == ["api"] and "--paginate" in args and comments:
         sys.stdout.write("".join(json.dumps(page) for page in data.get("comments", [[]])))

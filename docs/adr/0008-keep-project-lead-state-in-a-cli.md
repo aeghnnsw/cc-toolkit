@@ -19,6 +19,11 @@
 > **Superseded in part (2026-11-23, issue #545).** The step script has ten
 > steps: the `discover` step starts the discovery task of a new lead. Read
 > [The discover step](#the-discover-step).
+>
+> **Superseded in part (2026-11-23, issue #528).** repo-cleanup removes a
+> clean branch with no commit of its own after 60 minutes, and in every mode
+> reads the planning folders of each worktree that it would remove. Read
+> [Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -125,7 +130,10 @@ Consequences:
   no merged PR has as its head, so it keeps a lead worktree. This comes from
   the repo-cleanup text; it was not tested. (Superseded: repo-cleanup keeps
   each worktree that holds a lead state, in every mode; read
-  [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).)
+  [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree). Superseded in
+  part by #528: repo-cleanup removes a clean branch with no commit of its own
+  after 60 minutes; read
+  [Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).)
 - The script cannot see T3 threads. The lead still records each wait itself
   with `wait`, and ends it with `done`.
 - No command imports `lead.md`. A live lead enters its open state once, with
@@ -157,7 +165,10 @@ two other rules kept a lead worktree that no session had used in the last 60
 minutes: no merged PR had its branch tip as its head, and its date-named
 folder had no issue key. #528 would mark such a branch as merged, and
 `--main-only` does not read the planning folders of a worktree. Then cleanup
-could remove the worktree and the lead state with it.
+could remove the worktree and the lead state with it. (Superseded in part by
+#528: `--main-only` now reads the planning folders of each worktree that the
+plan would remove; read
+[Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).)
 
 ## The discover step
 
@@ -186,3 +197,42 @@ never their text. In a recorded session, the hook of
 the T3 Code MCP tool `read_issue`, and `pull_request_read` with an `include`
 other than `checks`, in Claude Code and Codex. Antigravity has no known hook
 payload for MCP calls, so there only the step text holds the rule.
+
+## Cleanup of a branch with no commit of its own
+
+Added on 2026-11-23 for
+[#528](https://github.com/aeghnnsw/cc-toolkit/issues/528).
+
+T3 Code starts each new thread branch at the commit of the checkout that
+starts it: the head of a merged PR, or a commit of the Default Branch. Such a
+branch has no commit of its own. Before, the plan kept it: no merged PR of
+that branch had its tip as its head commit, and for a tip in the Default
+Branch, a session might have just started there. One close-out kept 20
+worktrees and 21 branches for this reason, and the list grew with each batch.
+
+Now a branch has no commit of its own when its tip is in the Default Branch
+or is the head commit of any merged PR. The plan finds that PR with
+`gh api repos/{owner}/{repo}/commits/<tip>/pulls`, filtered to merged PRs
+whose head is the tip. It treats such a branch as merged, but keeps it when
+its reflog shows that it was created less than 60 minutes ago, or when the
+reflog cannot be read. The live session check, and this 60-minute rule for
+a session that has just started, replace the rule that kept such a branch
+because a session may have just started there. The Default Branch case is
+needed too: new threads start at Default Branch commits, so without it the
+same `KEEP` lines would appear again.
+
+More clean worktrees are now removal candidates, and a clean worktree can
+still hold work that Git ignores. Two rules keep that work:
+
+- The plan keeps a worktree whose folder contains another worktree that Git
+  lists, and the reason names that worktree. `git worktree remove` of the
+  outer worktree would delete the inner one.
+- In every mode, including `--main-only`, the plan reads the planning
+  folders of each worktree that it would remove, and keeps the worktree when
+  one of its folders is kept. With `--main-only`, it removes no planning
+  folder outside the main checkout.
+
+A lead folder has a date key, not an issue key, so the planning folder rule
+also keeps a worktree that holds one. The lead state rule above stays,
+because it also applies when `--planning-location` names another folder.
+`dev-skills/tests/test_cleanup_plan.py` checks each rule.

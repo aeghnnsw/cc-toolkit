@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.9.0
+version: 1.10.0
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 ---
 
@@ -27,9 +27,12 @@ that a calling workflow did not name. A user request can limit this scope.
 
 - Add `--main-only` when the repository documents its planning folder
   location in the main checkout. Add `--planning-location <folder>` when the
-  documented location is not `.scratch`. Otherwise the plan inspects
-  `.scratch/<issue>-<slug>/` in the main checkout, in the current worktree,
-  and in each worktree that it would otherwise remove.
+  documented location is not `.scratch`. The plan inspects the planning
+  folders, `.scratch/<issue>-<slug>/` by default, in the main checkout, in
+  the current worktree, and in each worktree that it would otherwise remove,
+  and keeps a worktree that holds a kept folder. With `--main-only`, it does
+  not inspect the current worktree, and it removes no folder outside the main
+  checkout.
 - Add `--remote <name>` when the upstream remote is not `origin`.
 - If the command fails, remove nothing and report the error.
 
@@ -38,12 +41,15 @@ session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
 conversation of the last 60 minutes. It keeps each worktree that holds a
 lead state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`,
-also with `--main-only`. It keeps a worktree with a detached HEAD or
-uncommitted changes. A branch is merged only when a merged PR of the branch
-has the branch tip as its head commit (`headRefOid`). The plan keeps a branch
-whose tip is in the Default Branch without such a PR: the branch has no
-commit of its own, and a session may have just started there. When a check
-cannot run, the plan keeps the item and gives the error as the reason.
+also with `--main-only`. It keeps a worktree whose folder contains another
+worktree that Git lists. It keeps a worktree with a detached HEAD or
+uncommitted changes. A branch is merged when a merged PR of the branch has
+the branch tip as its head commit (`headRefOid`). The plan also treats a
+branch as merged when its tip is in the Default Branch or is the head commit
+of any merged PR: such a branch has no commit of its own. The plan keeps such
+a branch when its reflog shows that it was created less than 60 minutes ago.
+When a check cannot run, the plan keeps the item and gives the error as the
+reason.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent
