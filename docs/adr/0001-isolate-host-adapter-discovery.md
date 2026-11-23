@@ -4,6 +4,10 @@
 > safety script catches blocks the tool call in Claude Code and Codex too,
 > not only in Antigravity. Read [Safety script errors](#safety-script-errors).
 
+> **Superseded in part (2026-11-22, issue #535).** A failed log write after
+> the safety script allows a tool call no longer blocks the call. Read
+> [Log write errors](#log-write-errors).
+
 Core Hooks ships host-specific manifests and hook configurations alongside
 shared scripts so each host can load its own installed copy independently.
 Claude Code and Codex use their native plugin-root locators; neither adapter
@@ -76,10 +80,12 @@ Added on 2026-11-22 for
 
 An error that the safety script catches blocks the tool call in Claude
 Code, Codex, and Antigravity. Examples are unreadable input and a failed log
-write. Where a safety check cannot decide, it blocks, and an error is such a
-case. The script writes the error and the host's way to turn off Core Hooks
-to stderr, so that a bug in the guard does not leave the user with no way to
-run a command. It exits 2 in Claude Code, which blocks on 2. In Codex and
+write. (Superseded in part: a failed log write after the script allows a
+call lets the call run; read [Log write errors](#log-write-errors).) Where a
+safety check cannot decide, it blocks, and an error is such a case. The
+script writes the error and the host's way to turn off Core Hooks to stderr,
+so that a bug in the guard does not leave the user with no way to run a
+command. It exits 2 in Claude Code, which blocks on 2. In Codex and
 Antigravity mode, it exits 1, and the wrapper blocks with the failure line.
 
 The script catches the errors after it starts. A failure before that, such
@@ -88,3 +94,20 @@ Codex and Antigravity wrappers block it. The Claude Code configuration has
 no wrapper, so Claude Code lets the tool call run unless the status is 2.
 The git policy script is unchanged: an error exits 1, so Codex and
 Antigravity block, and Claude Code lets the tool call run.
+
+## Log write errors
+
+Added on 2026-11-22 for
+[#535](https://github.com/aeghnnsw/cc-toolkit/issues/535).
+
+The safety script writes its log after it decides to allow a tool call.
+When that write fails, the call runs. The script exits 0 with empty stdout
+on each host and writes one warning line to stderr that names the error and
+the log file. The log does not decide safety: the check has decided before
+the write. Before, a log folder that the script could not write blocked
+every call that the script checks.
+
+A call that the script blocks stays blocked; the script writes no log for
+it. Every other error that the script catches still blocks, as
+[Safety script errors](#safety-script-errors) records. The logging script
+`post_tool_use.py` also lets the tool call run when its log write fails.

@@ -26,7 +26,7 @@ def _git_toplevel(cwd=None):
     return Path(toplevel)
 
 
-def log_dir(base=None):
+def log_dir(base=None, create=True):
     """Return the `logs` directory for this session and create it.
 
     Claude Code gives hooks the project root in `CLAUDE_PROJECT_DIR`. Codex
@@ -36,7 +36,8 @@ def log_dir(base=None):
     logs.
 
     With `base`, use the Git top level of `base`, or `base` itself outside a
-    Git repository, and ignore `CLAUDE_PROJECT_DIR`.
+    Git repository, and ignore `CLAUDE_PROJECT_DIR`. With `create` false,
+    return the path and do not create the directory.
     """
     if base is not None:
         root = _git_toplevel(base) or Path(base)
@@ -47,25 +48,26 @@ def log_dir(base=None):
         else:
             root = _git_toplevel() or Path.cwd()
     path = root / "logs"
-    path.mkdir(parents=True, exist_ok=True)
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def host_log_dir(host, input_data=None):
+def host_log_dir(host, input_data=None, create=True):
     """Return the `logs` directory for a hook run on `host`, or None.
 
     Antigravity runs hooks from the plugin root, and the hook environment
     can keep a `CLAUDE_PROJECT_DIR` of another session. So in Antigravity
     mode the logs go under the project directory in the payload `cwd`. A
     payload without an absolute `cwd` of an existing directory gives None:
-    the hook writes no log.
+    the hook writes no log. `create` is as in `log_dir()`.
     """
     if host != ANTIGRAVITY:
-        return log_dir()
+        return log_dir(create=create)
     cwd = input_data.get("cwd") if isinstance(input_data, dict) else None
     if not isinstance(cwd, str) or not os.path.isabs(cwd) or not os.path.isdir(cwd):
         return None
-    return log_dir(cwd)
+    return log_dir(cwd, create=create)
 
 
 def append_log(name, record, directory=None):
