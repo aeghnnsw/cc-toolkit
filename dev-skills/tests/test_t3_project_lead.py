@@ -12,7 +12,9 @@ starts each task as soon as each task that it waits for is verified, with no
 batch wait and no worker limit. Issue #516 adds the lines for a PR that waits
 on checks: the worker line of `brief` and the lead line of `report`. Issue
 #544 adds `takeover`, the `--also` line of `plan`, and the skill line on
-deleting the lead thread. Agent behavior is checked by the scenario review in
+deleting the lead thread. Issue #545 adds the `discover` step with its
+links-only report form, runs `init` on the first `start`, and keeps issue and
+PR text out of the lead. Agent behavior is checked by the scenario review in
 t3-project-lead-scenarios.md; the hook has its own tests in
 test_t3_project_lead_hook.py.
 """
@@ -29,14 +31,15 @@ import unittest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
-STEPS = ("start", "plan", "dispatch", "brief", "answer", "flag", "verify", "closeout", "report")
+STEPS = ("start", "discover", "plan", "dispatch", "brief", "answer", "flag", "verify", "closeout", "report")
 # The commands that keep the lead state (#530), after the steps.
 STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "outcome", "criteria", "wait", "done",
                   "task", "decision")
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
-# An agent reads a whole step after each wake, so each step stays short.
-STEP_WORD_LIMIT = 210
+# An agent reads a whole step after each wake, so each step stays short. The reading rule of #545
+# took `start` from 210 words to 230.
+STEP_WORD_LIMIT = 230
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -56,7 +59,9 @@ LEAD_ACTIONS = (
     "1. Talk with the user: decisions, triage, priorities.",
     "2. Plan tasks, briefs, and lead decisions.",
     "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
-    "4. Read worker messages and PR, issue, and CI state; no diff, code, or log.",
+    "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
+    "their text. Never call read_issue, or pull_request_read with an include other than checks. No "
+    "diff, code, or log.",
     "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
     "7. Set triage labels and issue state.",
@@ -76,6 +81,13 @@ PR_WAIT_WORKER = ('"When your PR waits on checks, report its URL and full head S
                   'turn. Do not poll or search for a watch tool. Merge when the lead resumes you."')
 PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR, and resume the "
                 "worker when the checks finish.")
+# The lead reads no issue or PR text (#545): a lead that read issues was flagged. Only this rule may
+# name read_issue.
+READING_RULE = "Never call read_issue, or pull_request_read with an include other than checks."
+# The links-only report of the discovery task (#545).
+REPORT_FORM = ("Report only links, in this form, and quote no issue or PR text; keep the detail in this "
+               "thread: - Outcome <N>: <short neutral title>: <issue and PR links in the recommended "
+               "order>. - Outside any outcome: <links of open PRs and unsettled threads>.\"")
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -86,14 +98,34 @@ REQUIRED = {
               "Run this step after each wake or user message.",
               "Read the last message of each worker of a running or pr-open task: "
               "t3_thread_list with includeSubagents, then t3_thread_read.",
-              "Never state a worker's status from memory."],
-    "plan": ["A task is one brief for one worker; it can cover several issues.",
+              "Never state a worker's status from memory.",
+              READING_RULE],
+    "discover": ["Use this step until the user approves an outcome. Read no issue or PR text yourself.",
+                 "When the user named the work, propose it as the outcome, and start no discovery task.",
+                 "Otherwise add the discovery task: task add discover 'Discover open work'.",
+                 "Start its worker as t3_project_lead.py dispatch says, with the read-only brief.",
+                 '"Collect the open issues with their labels, the open PRs, and the unsettled T3 '
+                 'threads of this project. Change no file, branch, issue, label, PR, or thread. Propose '
+                 'one to three outcomes.',
+                 REPORT_FORM,
+                 'In its last line, replace "with evidence and links" with "in the form above".',
+                 "When it reports, run task verified discover. Propose its outcomes to the user with your "
+                 "recommendation, as the report gives them. When the user approves one, run outcome "
+                 "<text> and criteria <text>.",
+                 "Next: t3_project_lead.py plan after the approval; else report."],
+    "plan": ["Use this step after the user approves an outcome; without one, run t3_project_lead.py "
+             "discover first.",
+             "A task is one brief for one worker; it can cover several issues.",
              "Give a task that needs another task's result, or edits the same files, --after "
              "that task.",
              START_RULE,
              "A batch (--batch) only decides when its workers are closed out and settled.",
              "Text is at most 200 characters",
-             "init <slug>, once, after the user approves the outcome",
+             # init runs on the first start, before the discovery task; outcome waits for the user (#545).
+             "init <slug>, once, on the first start;",
+             "outcome <text>, after the user approves it;",
+             "A triage that needs issue text is a read-only task: its worker recommends labels, and you "
+             "set them.",
              # A second lead state needs the user's confirmation (#544).
              "add --also only after the user confirms a second lead state"],
     "dispatch": [START_RULE,
@@ -169,7 +201,13 @@ FORBIDDEN_LINES = ("Fix a small non-scientific finding yourself",
                    "Check a non-scientific result against its criteria on the artifact")
 # Text that no step may print after #530: the lead state replaced lead.md, and a
 # brief names only a round limit.
-RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit")
+RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
+                # init no longer waits for the approved outcome (#545).
+                "init <slug>, once, after the user approves the outcome",
+                "After the user approves the outcome, run")
+# Text that tells the lead to read issue or PR text (#545). No step may print it.
+TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
+              "include diff", "issue body", "PR body", "read the issue", "read the PR")
 # Text that makes a task wait for its batch or for a free worker (#493). No step and no skill copy
 # may have it.
 BATCH_WAIT_TEXT = ("start together", "slot", "worker limit", "wave")
@@ -302,8 +340,21 @@ class StepTests(unittest.TestCase):
                     self.assertNotIn(term, text.lower())
 
     def test_start_without_a_lead_state_tells_how_to_create_one(self) -> None:
-        self.assertIn("No lead state in ", step("start"))
-        self.assertIn(f'run: python3 "{SCRIPT}" init <slug>', step("start"))
+        # A new lead runs init at once, then the discovery task, and asks the user only with its
+        # proposals (#545).
+        text = words(step("start"))
+        self.assertIn("No lead state in ", text)
+        self.assertIn(f'. On this first start, run: python3 "{SCRIPT}" init '
+                      "<slug>, with a slug that names the project or repository. Then, unless the user named "
+                      "the work, start the discovery task as t3_project_lead.py discover says, and come to "
+                      "the user only with its proposals.", text)
+
+    def test_no_step_tells_the_lead_to_read_issue_or_pr_text(self) -> None:
+        for name in STEPS:
+            text = words(step(name)).replace(READING_RULE, "")
+            for phrase in TEXT_READS:
+                with self.subTest(step=name, text=phrase):
+                    self.assertNotIn(phrase, text)
 
     def test_no_step_tells_the_lead_to_do_a_worker_task(self) -> None:
         for name in STEPS:

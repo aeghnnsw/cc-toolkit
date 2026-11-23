@@ -10,7 +10,8 @@ the waiting list as Markdown bullets that keep the item numbers, and adds a
 period only to text that does not end in ".", "?", or "!". Issue #544 binds
 the lead state to its T3 thread (`T3CODE_THREAD_ID`), adds `takeover`, and
 lists the lead states of the other worktrees, which the checks make with
-`git worktree add`.
+`git worktree add`. Issue #545 tells a new lead to run `init` and the
+discovery task, and names the `discover` step while no outcome is set.
 """
 
 from __future__ import annotations
@@ -138,6 +139,9 @@ class LeadStateTests(unittest.TestCase):
                 output = self.ok("start", cwd=where)
                 self.assertIn("Do only these lead actions yourself:", output)
                 self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
+                self.assertIn("On this first start, run: ", output)
+                self.assertIn("start the discovery task as t3_project_lead.py discover says, and come to the "
+                              "user only with its proposals.", words(output))
                 self.assertNotIn("other worktrees", output)
 
     def test_a_git_failure_prints_a_listing_problem_and_refuses_init(self) -> None:
@@ -589,6 +593,18 @@ class LeadStateTests(unittest.TestCase):
         self.ok("done", "1")
         self.assertIn("Every task is settled and nothing waits: run t3_project_lead.py finish.",
                       self.ok("show"))
+
+    def test_a_state_without_an_outcome_names_the_discover_step(self) -> None:
+        # A wake after the discovery worker reports leads to its proposals (#545).
+        due = "- No approved outcome: run t3_project_lead.py discover."
+        self.ok("init", "demo")
+        self.assertIn(due, self.ok("start"))
+        self.ok("task", "add", "discover", "Discover open work")
+        self.ok("task", "start", "discover", WORKER.format(1))
+        self.assertIn(due, self.ok("show"))
+        self.ok("task", "verified", "discover")
+        self.ok("outcome", "Fix the audit themes.")
+        self.assertNotIn("No approved outcome", self.ok("start"))
 
     def test_merge_order_follows_the_merge_times(self) -> None:
         self.ok("init", "demo")

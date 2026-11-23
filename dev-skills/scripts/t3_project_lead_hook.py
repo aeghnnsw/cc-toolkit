@@ -20,8 +20,20 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   also through one cat, head, tail, wc, ls, grep, or `sed -n` command. It
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
-  state. MCP tools and other tools pass. A blocked call exits 2 with the
-  reason on stderr. A call that the hook cannot check also exits 2.
+  state. Other tools pass, and so do MCP tools, except the reads of issue
+  and PR text below. A blocked call exits 2 with the reason on stderr. A call
+  that the hook cannot check also exits 2.
+- Issue and PR text (issue #545): a lead that read open issues itself was
+  flagged by the model provider's safeguards, and a flag stops the whole lead
+  thread. So in a recorded session, the hook blocks two T3 Code MCP tools:
+  `read_issue`, which always returns the body and the comments, and
+  `pull_request_read` unless its `include` is absent or lists only `checks`.
+  When the hook cannot read `include` as a list of strings, it blocks. Claude
+  Code names the tools `mcp__t3-code__<tool>`. Codex changes `-` to `_`, as in
+  `mcp__t3_code__<tool>`, and its sessions also use the server key
+  `t3-code-direct`. A read-only worker reads the text instead. Antigravity has
+  no known hook payload for MCP calls, so there only the step text holds the
+  rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -61,6 +73,9 @@ ALLOWED = {
              "or request, new or replacing one) at an absolute path outside every Git work tree. "
              "Change the lead state with t3_project_lead.py commands."),
     "agent": "Start a worker with delegate_task, as t3_project_lead.py dispatch says.",
+    "text": ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
+             "pull_request_list, and pull_request_read with no include or with only checks. Give a "
+             "triage that needs issue text to a read-only worker."),
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
 }
@@ -73,6 +88,10 @@ READ_TOOLS = frozenset({"Read", "Grep", "Glob", "read_file", "view_file", "view_
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file",
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
+# T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
+# mcp__<server>__<tool>. The include values that pull_request_read may give without PR text.
+T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
+PR_INCLUDE = frozenset({"checks"})
 # Path arguments: Claude Code first, then Antigravity.
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
@@ -214,6 +233,7 @@ def gate(payload, host, folder, session):
     name, arguments = tool_call(payload, host)
     if name in AGENT_TOOLS or name.endswith("spawn_agent"):
         raise Blocked("agent")
+    check_text_read(t3_tool(name), arguments)
     cwd = payload_cwd(payload)
     if name == "apply_patch" or name in EDIT_TOOLS:
         # Only t3_project_lead.py writes the lead state; the lead writes only gtd-inbox files.
@@ -224,7 +244,7 @@ def gate(payload, host, folder, session):
     elif name in READ_TOOLS:
         kind = "read"
     else:
-        return  # MCP tools and all other tools pass.
+        return  # Other MCP tools and all other tools pass.
     if not isinstance(arguments, dict):
         raise Blocked(kind)
     if kind == "shell":
@@ -236,6 +256,35 @@ def gate(payload, host, folder, session):
             raise Blocked(kind)
     default = cwd if name in ("Grep", "Glob") else None
     check_reads(tool_paths(arguments, default), cwd)
+
+
+def t3_tool(name):
+    """Return the tool name of a T3 Code MCP call, such as `read_issue`, or None."""
+    if not name.startswith("mcp__"):
+        return None
+    server, _, tool = name[len("mcp__"):].rpartition("__")
+    return tool if server.replace("-", "_") in T3_SERVERS else None
+
+
+def check_text_read(tool, arguments):
+    """Raise Blocked when a T3 Code MCP call can return issue or PR text (issue #545).
+
+    `read_issue` always returns the body and the comments. `pull_request_read`
+    passes only when its `include` is absent or a list of strings that are all
+    in PR_INCLUDE; any other input fails closed.
+    """
+    if tool == "read_issue":
+        raise Blocked("text")
+    if tool != "pull_request_read":
+        return
+    if not isinstance(arguments, dict):
+        raise Blocked("text")
+    if "include" not in arguments:
+        return
+    include = arguments["include"]
+    if not isinstance(include, list) or not all(isinstance(value, str) and value in PR_INCLUDE
+                                                for value in include):
+        raise Blocked("text")
 
 
 def tool_paths(arguments, default):

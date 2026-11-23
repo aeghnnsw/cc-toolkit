@@ -22,6 +22,11 @@ thread in the lead's worktree. The first `start` of the new owner prints the
 takeover due line once, and appends that to events.jsonl. When `start` finds
 no lead state in its own working tree, it lists the lead states of the other
 worktrees, read-only.
+
+With no lead state in any worktree, `start` tells a new lead to run `init` at
+once and then the discovery task (issue #545): a read-only worker that reports
+only links, so that no issue or PR text reaches the lead. While the lead state
+has no outcome, a due line names the `discover` step.
 """
 
 from __future__ import annotations
@@ -44,7 +49,9 @@ Do only these lead actions yourself:
 2. Plan tasks, briefs, and lead decisions.
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
 watch PRs.
-4. Read worker messages and PR, issue, and CI state; no diff, code, or log.
+4. Read worker messages, and the state, labels, titles, and check counts of
+issues and PRs, not their text. Never call read_issue, or pull_request_read
+with an include other than checks. No diff, code, or log.
 5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set triage labels and issue state.
@@ -62,7 +69,28 @@ worker's status from memory.
 Next: t3_project_lead.py plan for new work; answer, verify, or flag for
 waiting, finished, or failed workers; else report.
 """,
+    "discover": """
+Use this step until the user approves an outcome. Read no issue or PR text
+yourself. When the user named the work, propose it as the outcome, and start
+no discovery task.
+Otherwise add the discovery task: task add discover 'Discover open work'.
+Start its worker as t3_project_lead.py dispatch says, with the read-only
+brief. The brief says: "Collect the open issues with their labels, the open
+PRs, and the unsettled T3 threads of this project. Change no file, branch,
+issue, label, PR, or thread. Propose one to three outcomes. Report only links,
+in this form, and quote no issue or PR text; keep the detail in this thread:
+- Outcome <N>: <short neutral title>: <issue and PR links in the recommended
+order>.
+- Outside any outcome: <links of open PRs and unsettled threads>."
+In its last line, replace "with evidence and links" with "in the form above".
+When it reports, run task verified discover. Propose its outcomes to the user
+with your recommendation, as the report gives them. When the user approves
+one, run outcome <text> and criteria <text>.
+Next: t3_project_lead.py plan after the approval; else report.
+""",
     "plan": """
+Use this step after the user approves an outcome; without one, run
+t3_project_lead.py discover first.
 Break the approved outcome into worker tasks with success criteria that a
 check can pass or fail. A task is one brief for one worker; it can cover
 several issues. Give a task that needs another task's result, or edits the
@@ -70,10 +98,12 @@ same files, --after that task. Start each planned task as soon as each task
 that it waits for is verified, also while other workers run; do not wait for
 the rest of its batch. A batch (--batch) only decides when its workers are
 closed out and settled.
+A triage that needs issue text is a read-only task: its worker recommends
+labels, and you set them.
 Decide reversible points yourself. Record the plan with these commands. Text
 is at most 200 characters; quote it with single quotes.
-init <slug>, once, after the user approves the outcome; add --also only after
-the user confirms a second lead state; outcome <text>;
+init <slug>, once, on the first start; add --also only after the user
+confirms a second lead state; outcome <text>, after the user approves it;
 criteria <text>; task add <name> <title> [--batch N] [--after NAME]
 [--kind work|check|closeout] [--of NAME] [--issue N] [--scientific];
 decision add <text>; decision drop <id>. A task name has lowercase letters,
@@ -899,6 +929,9 @@ def task_line(task: dict, now: datetime.datetime) -> str:
 def due_lines(state: dict) -> list[str]:
     # Only the owner can act on the takeover due line.
     lines = [TAKEOVER_LINE] if state.get("takeover_due") and current_thread() == state.get("owner") else []
+    if not state["outcome"]:
+        # A wake after the discovery worker reports must lead to its proposals, not to verify (#545).
+        lines.append("No approved outcome: run t3_project_lead.py discover.")
     for batch in sorted({task["batch"] for task in state["tasks"]}):
         if needs_closeout(state, batch):
             prs = " ".join(f"#{pr['number']}" for pr in merged_prs(state, batch))
@@ -1001,8 +1034,10 @@ def print_step(name: str) -> None:
 
 def lookup_lines(top: str) -> list[str]:
     """Return what `start` prints when its own working tree holds no lead state."""
-    init = (f"No lead state in {top}. After the user approves the outcome, run: "
-            f'python3 "{__file__}" init <slug>')
+    init = (f"No lead state in {top}. On this first start, run: "
+            f'python3 "{__file__}" init <slug>, with a slug that names the project or repository. '
+            "Then, unless the user named the work, start the discovery task as t3_project_lead.py discover "
+            "says, and come to the user only with its proposals.")
     try:
         others = other_lead_lines(top)
     except OSError as error:
