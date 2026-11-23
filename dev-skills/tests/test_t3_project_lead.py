@@ -9,10 +9,10 @@ check a result, and adds the close-out worker and the lead hook. Issue #530
 moves the lead state into the script's commands and drops the time limit; the
 state commands have their own tests in test_t3_project_lead_state.py. Issue #493
 starts each task as soon as each task that it waits for is verified, with no
-batch wait and no worker limit. Issue #516 adds the lines for a PR that
-waits on checks: the worker line of `brief` and the lead line of `report`.
-Agent behavior is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
-its own tests in test_t3_project_lead_hook.py.
+batch wait and no worker limit. Issue #516 adds the lines for a PR that waits
+on checks: the worker line of `brief` and the lead line of `report`. Agent
+behavior is checked by the scenario review in t3-project-lead-scenarios.md;
+the hook has its own tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
@@ -101,8 +101,8 @@ REQUIRED = {
                  '"You may start your own subagents. Keep your report short, and leave the '
                  'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
-                 'in the last line, replace "with evidence and links" with "in one line, with '
-                 'links. Keep scientific detail in this thread and the PR".',
+                 'In the last line of its brief, replace "with evidence and links" with "in one '
+                 'line, with links. Keep scientific detail in this thread and the PR".',
                  "Then run task start <name> <worker link> [--branch NAME]."],
     "brief": ["Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
               "When grilling must lead to implementation, end line 1 with:",
@@ -133,7 +133,8 @@ REQUIRED = {
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
                "Fix and check nothing yourself.",
-               "Run task verified <name>. Settle its worker only when a due line lists it.",
+               "Record merged PRs (task pr, task merged), then run task verified <name>. Settle "
+               "its worker only when a due line lists it.",
                START_RULE,
                "The task verified output names each such task and its step.",
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "

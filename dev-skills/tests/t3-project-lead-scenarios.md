@@ -15,8 +15,8 @@ the time limit of cases 15 and 17.
 Issue [#529](https://github.com/aeghnnsw/cc-toolkit/issues/529) adds the
 no-GTD-capture line to the briefs of cases 10, 13, 15, and 20.
 Issue [#493](https://github.com/aeghnnsw/cc-toolkit/issues/493) adds case 24.
-Issue [#516](https://github.com/aeghnnsw/cc-toolkit/issues/516) changes case 17
-and adds case 25.
+Issue [#516](https://github.com/aeghnnsw/cc-toolkit/issues/516) changes cases
+17 and 24, and adds case 25.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -133,7 +133,7 @@ with the commands of `t3_project_lead.py`, in
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
-| Ready task | Run the `verify` step for A, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
+| Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
 
 ## Validation limits
@@ -174,8 +174,9 @@ tells a code-change worker to report the PR URL and full head SHA and end its
 turn when its PR waits on checks, and the `report` line that tells the lead to
 watch the PR and resume the worker when the checks finish. To keep each step
 within 210 words, `dispatch` takes "no role" and the scientific last line from
-`brief`, and `report` takes `task pr` and `task merged` from `dispatch`. The
-tests pin the moved `dispatch` lines. `test_t3_project_lead_state.py` checks
+`brief`. `report` and `verify` take `task pr` and `task merged` from
+`dispatch`; `verify` records the merged PRs before `task verified`. The tests
+pin the moved lines. `test_t3_project_lead_state.py` checks
 the waiting list as `- <number>: <text>` bullets in `waiting`, `start`, `show`,
 and `report`, the empty line before it, and the period rule for item text,
 recommendations, and task titles. The new checks failed against the f6bb8cb
