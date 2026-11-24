@@ -16,11 +16,20 @@ Issue #555 makes the view of `start` compact, gives all paused tasks one due
 line, and lets `done` and `task pause|resume|verified|settled` take several
 arguments. Issue #556 records each worker's worktree, and issue #560 starts a
 new batch for a work task once a PR of the highest batch merged.
+
+Issue #568: most checks call the script's `main()` in this process, with the
+check's environment and folder, because a new Python process for each of
+about 400 commands made the module slow.
+`test_the_command_line_runs_as_a_process` runs the script as a process, as a
+lead does.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import importlib.util
+import io
 import json
 import os
 import re
@@ -30,8 +39,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "t3_project_lead.py"
+_SPEC = importlib.util.spec_from_file_location("t3_project_lead_under_test", SCRIPT)
+LEAD = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(LEAD)
 UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 WORKER = "t3-thread://v2/env/thread-{}"
 # The T3 thread of the lead in each check, and another thread, such as a fork (#544).
@@ -82,16 +95,31 @@ class LeadStateTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q"], cwd=self.repo, env=self.env, check=True)
 
     def run_lead(self, *args: str, cwd: Path | None = None, thread: str | None = OWNER,
-                 path: str | None = None) -> subprocess.CompletedProcess[str]:
+                 path: str | None = None, process: bool = False) -> subprocess.CompletedProcess[str]:
         """Run the script in the T3 thread `thread`; None runs it without T3CODE_THREAD_ID. `path`
-        replaces PATH."""
+        replaces PATH. The script's `main()` runs in this process, with the environment and the folder
+        of a process (#568); `process` runs the script as a process instead."""
         env = {key: value for key, value in self.env.items() if key != "T3CODE_THREAD_ID"}
         if thread is not None:
             env["T3CODE_THREAD_ID"] = thread
         if path is not None:
             env["PATH"] = path
-        return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd or self.repo,
-                              env=env, capture_output=True, text=True, check=False)
+        if process:
+            return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd or self.repo,
+                                  env=env, capture_output=True, text=True, check=False)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        folder = os.getcwd()
+        try:
+            os.chdir(cwd or self.repo)
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(sys, "argv", [str(SCRIPT)]), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                try:
+                    code = LEAD.main(list(args))
+                except SystemExit as exit_:
+                    code = exit_.code if isinstance(exit_.code, int) else 1
+        finally:
+            os.chdir(folder)
+        return subprocess.CompletedProcess([str(SCRIPT), *args], code, stdout.getvalue(), stderr.getvalue())
 
     def ok(self, *args: str, cwd: Path | None = None, thread: str | None = OWNER) -> str:
         result = self.run_lead(*args, cwd=cwd, thread=thread)
@@ -139,6 +167,24 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "pr", name, pr)
         self.ok("task", "merged", name, pr, "abcdef1")
         self.ok("task", "verified", name, "--decisions", "0")
+
+    def test_the_command_line_runs_as_a_process(self) -> None:
+        # The other checks call main() in this process (#568). This one runs the script as a lead does,
+        # and checks that each exit status and stream of the process matches the in-process call.
+        for args in (("init", "demo"), ("task", "add", "a", "Title")):
+            result = self.run_lead(*args, process=True)
+            self.assertEqual((result.returncode, result.stderr), (0, ""), args)
+        start = self.run_lead("start", process=True)
+        self.assertEqual((start.returncode, start.stderr), (0, ""))
+        self.assertEqual(start.stdout.splitlines()[0], f'Steps: "{SCRIPT}"')
+        self.assertIn("\n- a (batch 1) planned: Title", start.stdout + self.ok("show"))
+        for args, code in ((("task", "start", "missing", WORKER.format(1)), 1), (("merge",), 2)):
+            with self.subTest(args=args):
+                result = self.run_lead(*args, process=True)
+                inside = self.run_lead(*args)
+                self.assertEqual((result.returncode, inside.returncode), (code, code), result.stderr)
+                self.assertEqual((result.stdout, result.stderr), (inside.stdout, inside.stderr))
+                self.assertTrue(result.stderr)
 
     def test_start_without_a_lead_state_prints_how_to_create_one(self) -> None:
         other = self.worktree("b")
