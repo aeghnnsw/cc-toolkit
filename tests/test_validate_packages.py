@@ -559,12 +559,12 @@ class PackageValidationTests(unittest.TestCase):
                 self.write('changelog.d/2.md', text)
                 self.assert_failure(error)
 
-    def add_plugin(self, name='other'):
-        """Register a new Claude Code plugin; its new registration needs a bullet at version 1.0.0."""
+    def add_plugin(self):
+        """Register the Claude Code plugin other; its new registration needs a bullet at version 1.0.0."""
         registry = self.read_json('.claude-plugin/marketplace.json')
-        registry['plugins'].append({'name': name, 'source': f'./{name}'})
+        registry['plugins'].append({'name': 'other', 'source': './other'})
         self.write('.claude-plugin/marketplace.json', registry)
-        self.write(f'{name}/.claude-plugin/plugin.json', {'name': name, 'version': '1.0.0'})
+        self.write('other/.claude-plugin/plugin.json', {'name': 'other', 'version': '1.0.0'})
 
     def test_branch_adds_at_most_one_bullet_for_each_plugin_and_one_repository_bullet(self):
         self.changelog_baseline()

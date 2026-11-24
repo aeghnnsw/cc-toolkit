@@ -435,12 +435,12 @@ ENTRY_NAME = re.compile(r'changelog\.d/[0-9]+(?:-[a-z0-9]+)*\.md')
 CHANGELOG_LIMIT = 600
 CHANGELOG_SECTIONS = ('### Added', '### Removed', '### Changed')
 HOST_LABELS = {'claude': 'Claude Code', 'codex': 'Codex', 'antigravity': 'Antigravity'}
-CHANGELOG_SEVERAL = ('For a pull request that closes several issues, name the other issues inline and link the lowest '
-                     'issue number, which also names the entry file: '
-                     '- Repository: <change> (#M, #K). See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
+CHANGELOG_SEVERAL_ISSUES = ('For a pull request that closes several issues, name the other issues inline and link the '
+                            'lowest issue number, which also names the entry file: '
+                            '- Repository: <change> (#M, #K). See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
 CHANGELOG_FORM = ('- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).'
                   ' or - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N). '
-                  + CHANGELOG_SEVERAL)
+                  + CHANGELOG_SEVERAL_ISSUES)
 CHANGELOG_BULLET = re.compile(
     r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): (?:(?! See \[#).)+'
     r' See \[#(?P<issue>\d+)\]\(https://github\.com/aeghnnsw/cc-toolkit/issues/(?P=issue)\)\.')
@@ -578,7 +578,7 @@ def check_changelog(text, old_text, entries, old_entries, packages, previous):
             raise InvalidPackage(f'{found[1]}: this branch adds a second {name or "Repository"} bullet; {found[0]} has '
                                  'the first. A branch adds at most one new bullet for each plugin and one new '
                                  'Repository bullet, across all entry files and headings; join the bullets. '
-                                 + CHANGELOG_SEVERAL)
+                                 + CHANGELOG_SEVERAL_ISSUES)
     named = set(places) - {None}
     for name in sorted(set(risen) - named):
         labels = ', '.join(f'{HOST_LABELS[host]} {packages[name, host].manifest["version"]}'

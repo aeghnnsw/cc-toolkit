@@ -220,11 +220,10 @@ feature pull request does not edit `CHANGELOG.md`. The pull request adds
 its bullets in a new entry file, `changelog.d/<N>.md`, where `<N>` is the
 number of the linked issue. When the pull request closes several issues,
 it adds one entry file, and `<N>` is the lowest issue number. When another
-change already uses that name,
-add lowercase words, as in `changelog.d/<N>-<words>.md`. Two pull requests
-thus add different files, and a rebase does not conflict in a changelog
-file. The [release step](#release-step) moves the bullets into
-`CHANGELOG.md`.
+change already uses that name, add lowercase words, as in
+`changelog.d/<N>-<words>.md`. Two pull requests thus add different files,
+and a rebase does not conflict in a changelog file. The
+[release step](#release-step) moves the bullets into `CHANGELOG.md`.
 
 An entry file holds one or more of the headings `### Added`, `### Removed`,
 and `### Changed`, each with its bullets:
@@ -237,8 +236,8 @@ and `### Changed`, each with its bullets:
 ```
 
 For a pull request that closes several issues, each bullet names the other
-issues inline as bare `(#N)` and ends with one `See` link to the lowest
-issue number:
+issues inline as bare numbers without a link, as in `(#555, #556)`. The
+bullet ends with one `See` link to the lowest issue number:
 
 ```markdown
 - Repository: <change> (#555, #556). See [#554](https://github.com/aeghnnsw/cc-toolkit/issues/554).
@@ -258,8 +257,7 @@ plugin and other files outside it, write one plugin entry and one
 plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
 tickets, link the ticket. When the pull request closes several issues,
-link the lowest issue number, the number that also names the entry file,
-and name the other issues inline.
+link the lowest issue number, as the form above shows.
 
 The package validator checks each new bullet: a bullet whose text is not in
 `CHANGELOG.md` or in an entry file at the merge base. An edited bullet is
