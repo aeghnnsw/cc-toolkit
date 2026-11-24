@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from package_support import ROOT, git_files, validator
+from package_support import ROOT, validator
 
 
 def unregistered(files, sources):
@@ -21,7 +21,8 @@ def unregistered(files, sources):
 class RegisteredSkillsTests(unittest.TestCase):
     def test_skills_are_in_registered_plugins(self):
         sources = {package.source for package in validator.load_packages(ROOT).values()}
-        self.assertEqual(unregistered(git_files(ROOT), sources), [],
+        tracked = validator.git(ROOT, 'ls-files', '-z').decode().split('\0')  # a local untracked draft can stay
+        self.assertEqual(unregistered(tracked, sources), [],
                          'delete a retired plugin folder from master and keep it at a tag, or register the plugin')
 
     def test_fixture(self):

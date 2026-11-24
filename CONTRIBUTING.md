@@ -61,6 +61,9 @@ registered for Antigravity when it holds `.antigravity-plugin/plugin.json`.
   a plugin for Antigravity, add its Antigravity manifest.
 - When you add, remove, or rename a plugin or a skill, update its entries in
   [README.md](README.md).
+- To retire a plugin, tag the last commit that has it, then delete its
+  folder from master. `tests/test_registered_skills.py` fails on a tracked
+  `SKILL.md` outside a registered plugin directory.
 - Before you change component paths, read the plugin's host-specific
   manifests and [host ownership](docs/design/package-validation.md#host-ownership).
 
