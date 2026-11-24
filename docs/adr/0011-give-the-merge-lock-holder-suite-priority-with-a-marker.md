@@ -40,11 +40,11 @@ Decisions:
    marker gives no priority. So does a marker that is not a JSON object with
    both fields, that has a time in another form or after the current time,
    or that names a folder that does not exist. A run in the named worktree
-   does not wait. `run_suite.py` compares the two paths after it resolves
-   symbolic links on both sides, so two forms of one path match. researcher
-   stores a resolved path. No marker makes a run wait longer than the
-   freshness limit, and the marker wait holds no lock, so it cannot cause a
-   deadlock.
+   does not wait. `run_suite.py` checks whether the named folder is the
+   worktree root, so a path through a symbolic link or in another letter
+   case names the same worktree. researcher stores a resolved path. No
+   marker state makes a run wait more than 60 minutes after its `started`
+   time, and the marker wait holds no lock, so it cannot cause a deadlock.
 5. **Every suite of the other worktrees waits.** While a fresh marker names
    another worktree, each `run_suite.py` run waits, not only the runs of one
    suite. The merge-lock tool cannot name the suites of the holder: when it

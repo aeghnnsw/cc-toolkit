@@ -28,12 +28,13 @@ lock, for every suite, and reads the marker again each second. After it
 takes the suite lock, the script reads the marker again. When a fresh marker
 names another worktree, it releases the suite lock and waits again. A run
 whose command already runs is not stopped. A run in the named worktree does
-not wait. The script compares the two paths after it resolves symbolic
-links. A missing, unreadable, or stale marker gives no priority. So does a
-marker that is not a JSON object with both fields, that has a time in
-another form or after the current time, or that names a folder that does
-not exist. When the marker wait starts, the script prints one line to
-stderr with the named worktree and the time that the marker gives.
+not wait: the script compares the folder that the marker names with the
+worktree root, so a path through a symbolic link or in another letter case
+names the same worktree. A missing, unreadable, or stale marker gives no
+priority. So does a marker that is not a JSON object with both fields, that
+has a time in another form or after the current time, or that names a folder
+that does not exist. When the marker wait starts, the script prints one line
+to stderr with the named worktree and the time that the marker gives.
 
 Recorded pass. A run passes when the command exits 0. When the working tree
 was clean (git status --porcelain printed nothing, untracked files included)
@@ -60,15 +61,15 @@ unittest and pytest output, the marker wait, the lock wait, and last the exit
 status. For other output, the summary has no failing tests or totals. The
 marker wait is one line, only after the script waited for a priority marker:
 "Priority marker wait: <N> s, for <worktree>", with the total wait time in
-whole seconds and the worktree that the first stderr line names. The lock
-wait is one line, only after the script waited for the suite lock:
-"Suite lock wait: <N> s, held by PID <pid> (<command>) in <folder>", with the
-total wait time in whole seconds and the holder that the first stderr line
-names. When a later run held the lock last, the line adds
-", and last by PID <pid> (<command>) in <folder>". When the first holder had
-not written its details, the line names the last holder; when neither had, it
-names "another run". A run that reuses a recorded pass prints no summary;
-after a wait, it prints the wait lines as its last lines.
+whole seconds and the worktree that the first stderr line about the marker
+names. The lock wait is one line, only after the script waited for the suite
+lock: "Suite lock wait: <N> s, held by PID <pid> (<command>) in <folder>",
+with the total wait time in whole seconds and the holder that the first
+stderr line about the suite lock names. When a later run held the lock last,
+the line adds ", and last by PID <pid> (<command>) in <folder>". When the
+first holder had not written its details, the line names the last holder;
+when neither had, it names "another run". A run that reuses a recorded pass
+prints no summary; after a wait, it prints the wait lines as its last lines.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -99,7 +100,7 @@ PRIORITY_FRESH = 60 * 60
 # While it waits for a priority marker, the script reads it this often, in seconds.
 PRIORITY_POLL = 1.0
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-TIME_FORM = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+TIME_PATTERN = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 # The script keeps only the newest records.
 KEEP = 200
 
@@ -157,7 +158,7 @@ def suite_lock_path(common: Path, suite: dict) -> Path:
     return common / f"run-suite-{digest[:16]}.lock"
 
 
-def priority_holder(common: Path, top: str) -> dict | None:
+def priority_marker(common: Path, top: str) -> dict | None:
     """Return a fresh priority marker that names another worktree, or None.
 
     A missing, unreadable, stale, or malformed marker, and a marker that names
@@ -166,18 +167,21 @@ def priority_holder(common: Path, top: str) -> dict | None:
     try:
         marker = json.loads((common / PRIORITY).read_text())
         worktree, started = marker["worktree"], marker["started"]
-        if not TIME_FORM.fullmatch(started):
+        if not TIME_PATTERN.fullmatch(started):
             return None
         when = datetime.strptime(started, TIME_FORMAT).replace(tzinfo=timezone.utc)
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
         return None
     age = (datetime.now(timezone.utc) - when).total_seconds()
     if not 0 <= age < PRIORITY_FRESH:
         return None
-    if not isinstance(worktree, str) or not os.path.isabs(worktree) \
-            or not os.path.isdir(worktree):
+    if not isinstance(worktree, str) or not os.path.isabs(worktree):
         return None
-    if os.path.realpath(worktree) == os.path.realpath(top):
+    try:
+        # The same folder, also through a symbolic link or in another letter case.
+        if not os.path.isdir(worktree) or os.path.samefile(worktree, top):
+            return None
+    except OSError:
         return None
     return {"worktree": worktree, "started": started}
 
@@ -188,13 +192,13 @@ def wait_for_priority(common: Path, top: str) -> tuple[float, str | None]:
     Return the seconds of the wait and the worktree that the marker named, or
     0 and None when the script did not wait.
     """
-    marker = priority_holder(common, top)
+    marker = priority_marker(common, top)
     if marker is None:
         return 0.0, None
     print(f"run_suite: waiting for the priority marker, which names {marker['worktree']}, "
           f"started {marker['started']}", file=sys.stderr, flush=True)
     begin = time.monotonic()
-    while priority_holder(common, top) is not None:
+    while priority_marker(common, top) is not None:
         time.sleep(PRIORITY_POLL)
     return time.monotonic() - begin, marker["worktree"]
 
@@ -222,12 +226,13 @@ def take_lock(path: Path, command: list[str], common: Path,
             begin = time.monotonic()
             fcntl.flock(handle, fcntl.LOCK_EX)
             lock_seconds += time.monotonic() - begin
+            if not lock_waited:
+                first = holder
             lock_waited = True
-            first = first or holder
             # Holders do not clear the lock file, so it now names the last holder.
             last = read_holder(handle)
         # A marker can appear while the run waits for the suite lock.
-        if priority_holder(common, top) is None:
+        if priority_marker(common, top) is None:
             break
         handle.close()
     wait_lines = []

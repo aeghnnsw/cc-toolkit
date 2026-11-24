@@ -337,8 +337,12 @@ class PriorityMarkerTests(GitRepoTestCase):
             "no worktree": {"started": fresh},
             "another time form": {"worktree": repo, "started": fresh.replace("T", " ")},
             "a relative path": {"worktree": "repo", "started": fresh},
+            "deeply nested JSON": "[" * 200000 + "]" * 200000,
             "a gone worktree": {"worktree": str(self.tmp / "gone"), "started": fresh},
             "this worktree": {"worktree": str(self.other), "started": fresh},
+            # On a file system that ignores letter case, this names this worktree.
+            "this worktree in capitals": {"worktree": str(self.other.with_name("OTHER")),
+                                          "started": fresh},
             "unreadable": "a folder",
         }
         for case, marker in cases.items():
