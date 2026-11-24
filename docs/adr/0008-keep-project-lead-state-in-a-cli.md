@@ -172,7 +172,9 @@ Added on 2026-11-23 for
 that holds `.scratch/<YYYYMMDD>-lead-<slug>/state.json` at its top, in every
 mode, including `--main-only`. The reason is "holds a lead state". When the
 plan cannot read that `.scratch` or a lead folder, it keeps the worktree,
-because it cannot tell whether the worktree holds a lead state.
+because it cannot tell whether the worktree holds a lead state. (Since #575,
+it also keeps every other worktree that it would remove; read
+[The worktrees of lead tasks](#the-worktrees-of-lead-tasks).)
 `dev-skills/tests/test_cleanup_plan.py` checks the rule.
 
 A lead edits no tracked file, so Git reports its worktree as clean. Before,

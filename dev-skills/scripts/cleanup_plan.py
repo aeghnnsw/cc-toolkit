@@ -230,7 +230,7 @@ class Planner:
         return KEEP, f"issue #{number} has state {state}"
 
 
-def lead_states(root: str) -> tuple[list[str], str | None]:
+def find_lead_folders(root: str) -> tuple[list[str], str | None]:
     """Return (the lead folders at the top of root, None), or ([], the error).
 
     A lead folder is .scratch/<YYYYMMDD>-lead-<slug>/ with a state file. Unlike
@@ -260,7 +260,7 @@ def lead_states(root: str) -> tuple[list[str], str | None]:
     return found, None
 
 
-def recorded_worktrees(folders: list[str]) -> tuple[dict[str, str], str | None]:
+def unsettled_task_worktrees(folders: list[str]) -> tuple[dict[str, str], str | None]:
     """Return the worktrees that the tasks of the lead states record (#575).
 
     The result is ({real path: the reason to keep it}, None), with the error of
@@ -373,16 +373,16 @@ def main() -> None:
               for path, top in real.items()}
 
     # The lead states in each checkout, and the worktrees that their tasks record (#575).
-    leads = {tree["path"]: lead_states(tree["path"]) for tree in worktrees}
-    recorded, lead_error = recorded_worktrees(
-        [folder for folders, _ in leads.values() for folder in folders])
-    lead_error = next((error for _, error in leads.values() if error), None) or lead_error
+    lead_scans = {tree["path"]: find_lead_folders(tree["path"]) for tree in worktrees}
+    recorded, lead_error = unsettled_task_worktrees(
+        [folder for folders, _ in lead_scans.values() for folder in folders])
+    lead_error = next((error for _, error in lead_scans.values() if error), None) or lead_error
 
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
     for index, tree in enumerate(worktrees):
         path, head, branch = tree["path"], tree.get("HEAD", ""), tree.get("branch")
-        held, scan_error = leads[path]
+        held, scan_error = lead_scans[path]
         if index == 0:
             plan[path] = (KEEP, "the main checkout")
         elif os.path.realpath(path) == current:
@@ -394,8 +394,8 @@ def main() -> None:
             plan[path] = (KEEP, scan_error)
         elif held:
             plan[path] = (KEEP, f"holds a lead state: {held[0]}")
-        elif os.path.realpath(path) in recorded:
-            plan[path] = (KEEP, recorded[os.path.realpath(path)])
+        elif real[path] in recorded:
+            plan[path] = (KEEP, recorded[real[path]])
         elif inside[path]:
             plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:

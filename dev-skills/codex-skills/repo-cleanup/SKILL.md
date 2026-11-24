@@ -44,16 +44,16 @@ conversation of the last 60 minutes. It keeps each worktree that holds a lead
 state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also
 with `--main-only`. It reads each lead state, also the one in the main
 checkout, and keeps each worktree whose path a task records while the task is
-not `settled`. When a `.scratch` folder or a lead state cannot be read, the
-plan keeps every worktree that it would otherwise remove. It keeps a worktree
-whose folder contains another worktree that Git lists. It keeps a worktree
-with a detached HEAD or uncommitted changes. A branch is merged when a merged
-PR of the branch has the branch tip as its head commit (`headRefOid`). The
-plan also treats a branch as merged when its tip is in the Default Branch or
-is the head commit of any merged PR: such a branch has no commit of its own.
-The plan keeps such a branch when its reflog shows that it was created less
-than 60 minutes ago. When a check cannot run, the plan keeps the item and
-gives the error as the reason.
+not `settled`. When a `.scratch` folder, a lead folder, or a lead state
+cannot be read, the plan keeps every worktree that it would otherwise remove.
+It keeps a worktree whose folder contains another worktree that Git lists. It
+keeps a worktree with a detached HEAD or uncommitted changes. A branch is
+merged when a merged PR of the branch has the branch tip as its head commit
+(`headRefOid`). The plan also treats a branch as merged when its tip is in
+the Default Branch or is the head commit of any merged PR: such a branch has
+no commit of its own. The plan keeps such a branch when its reflog shows that
+it was created less than 60 minutes ago. When a check cannot run, the plan
+keeps the item and gives the error as the reason.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent
