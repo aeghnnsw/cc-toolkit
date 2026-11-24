@@ -20,8 +20,10 @@ The checks skip front matter and fenced code blocks; the link and phrase
 checks also skip inline code.
 
 Only broken-link and broken-anchor findings fail. The other findings are
-for judgment: a phrase can be part of a forward-looking pointer, and a doc
-can name a path that the reader creates.
+for judgment: a phrase can be part of a forward-looking pointer or a false
+match in current-state text, and a doc can name a path that the reader
+creates. "used to" after a form of "be", as in "is used to check", is not a
+history phrase.
 
 Exit status: 0 with no broken link or anchor, 1 with one or more, 2 on an
 error, such as a doc that is not a UTF-8 text file.
@@ -41,7 +43,8 @@ HISTORY = (
     r"previously",
     r"formerly",
     r"originally",
-    r"used to",
+    # After a form of "be", as in "is used to check", "used to" states a current purpose.
+    r"".join(rf"(?<!\b{verb} )" for verb in ("is", "are", "was", "were", "be", "been", "being")) + r"used to",
     r"no longer",
     r"we (?:changed|switched|moved|replaced|removed|renamed|dropped)",
     r"(?:was|were|has been|have been) (?:changed|renamed|replaced|removed|moved|dropped)",

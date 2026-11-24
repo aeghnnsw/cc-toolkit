@@ -39,6 +39,10 @@ USER_INVOKED_STOP = "- The resolver exits with status 3: a Matt skill is user-in
 PLANNING_HEADING = "## Planning folder"
 PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
                      "antigravity-skills": "<plugin-root>"}
+# Issue #463: zsh stops at an unquoted "[--issue", so the command has no optional brackets, and
+# the script prints the next free step prefix, which differs from grilling's on a later run.
+LEAVE_OUT_ISSUE = "without `--issue <issue>` until an issue exists, then again:"
+NEXT_FREE_STEP = "It prints the folder and the next free `dev-skills:step-workflow` prefix, which grilling takes."
 RETRO_HEADING = "## Navigation retrospective"
 # Issue #458: the retrospective reads the sessions of every host, including
 # Antigravity, with the session script that dev-skills ships.
@@ -124,9 +128,12 @@ class GrillWithResearchTest(unittest.TestCase):
     def test_each_copy_makes_the_planning_folder_with_the_script(self) -> None:
         for host in HOSTS:
             section = sections(wrapper(host)[1])[PLANNING_HEADING]
-            command = f'python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/planning_folder.py" <slug> [--issue <issue>]'
+            command = f'python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/planning_folder.py" <slug> --issue <issue>'
             with self.subTest(host=host):
                 self.assertIn(f"```bash\n{command}\n```", section)
+                self.assertIn(LEAVE_OUT_ISSUE, " ".join(section.split()))
+                self.assertIn(NEXT_FREE_STEP, " ".join(section.split()))
+                self.assertNotIn("[--", section)
                 self.assertNotIn("<YYYYMMDD>", section)
                 self.assertNotIn("rename it", section)
 
@@ -170,7 +177,10 @@ class MattAutomodeUsesTheWrapperTest(unittest.TestCase):
             plan = " ".join(sections(automode(host))["## Plan and decide"].split())
             with self.subTest(host=host):
                 self.assertIn(f'`python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/planning_folder.py" <slug> '
-                              "[--issue <issue>]` prints.", plan)
+                              "--issue <issue>` prints.", plan)
+                self.assertIn("Leave out `--issue <issue>` until an issue exists, then run the command "
+                              "again with it.", plan)
+                self.assertNotIn("[--", plan)
                 self.assertNotIn('"Planning folder"', plan)
 
 

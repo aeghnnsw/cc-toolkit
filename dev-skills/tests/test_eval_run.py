@@ -3,7 +3,7 @@
 check reads a run folder of evaluator results (E<N>.md) and verifier results
 (V-E<N>-<b>.md). path prints the default report path. lint checks a report
 against references/report-format.md. Each check runs the script on fixture
-files in a temporary folder.
+files in a temporary folder. Both SKILL.md copies run the script.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1] / "skills" / "project-eval"
 SCRIPT = SKILL / "scripts" / "eval_run.py"
+ANTIGRAVITY_SKILL = SKILL.parents[1] / "antigravity-skills" / "project-eval"
 
 E1 = """\
 1. **Findings**:
@@ -201,6 +202,33 @@ class EvalRunTests(unittest.TestCase):
         self.assertIn("E3.md: 1 finding; stop reason: partial: turn limit", lines)
         self.assertEqual(lines[-1], "Status: Incomplete (3 findings not verified; E1, E2, E3 partial)")
 
+    def test_check_reads_the_stop_reason_after_a_code_block_with_no_closing_fence(self):
+        e1 = ("### E1-1. Token leak (Major)\n  ```\n  secret = load(\n"
+              "**Stop reason**: partial: turn limit, no answer\n")
+
+        code, problems, lines = self.check(E1=e1)
+
+        self.assertEqual((code, problems), (1, [
+            'PROBLEM E1.md:2: no "```" line closes this code fence; add one where the code ends']))
+        self.assertIn("E1.md: 1 finding; stop reason: partial: turn limit, no answer", lines)
+        self.assertEqual(self.check(E1=e1.replace("load(\n", "load(\n  ```\n"))[:2], (0, []))
+
+    def test_check_reports_a_finding_that_is_not_a_heading(self):
+        e1 = ("- **E1-1. Missing auth check (Major)**\n"
+              "1. E1-2 - No rate limit (Minor)\n"
+              "### E1-3. A heading (Minor)\n"
+              "E1-1 and E1-3 are about the same handler.\n"
+              "**Stop reason**: deadline\n")
+
+        code, problems, lines = self.check(E1=e1)
+
+        malformed = 'malformed finding: write it as the heading "### E1-<k>. <Title> (<Severity>)"'
+        self.assertEqual((code, problems), (1, [
+            f"PROBLEM E1.md:1: {malformed}; use the free ID E1-4",
+            f"PROBLEM E1.md:2: {malformed}; use the free ID E1-5",
+        ]))
+        self.assertIn("E1.md: 1 finding; stop reason: deadline", lines)
+
     def test_check_reports_bad_verdict_lines_and_findings_with_no_verdict(self):
         e1 = "".join(f"### E1-{k}. Finding {k} (Major)\n" for k in range(1, 6)) + "**Stop reason**: deadline\n"
         verdicts = ("E1-1 | Confirmed | Major\n"
@@ -289,6 +317,7 @@ class EvalRunTests(unittest.TestCase):
         valid = VALID_REPORT.format(run=self.run_dir)
         report = f"docs/eval/{REPORT}"
         heading = f'{report}:33: the finding heading is not "### F<k>. <Title> (<Severity>, <Confirmed or Plausible>)"'
+        status = f"{report}:8: the Status field does not match the Summary and the Evaluators field; write"
         cases = (
             ("title", "# Project Evaluation: the auth module", "# Evaluation",
              f'{report}: the first line is not "# Project Evaluation: <target>"'),
@@ -322,8 +351,15 @@ class EvalRunTests(unittest.TestCase):
              heading, f"{report}: the Summary counts 1 Minor Plausible, and the Findings section has 0"),
             ("Rejected rows", "Rejected: 1.", "Rejected: 2.",
              f"{report}: the Summary counts 2 Rejected, and the Rejected Findings table has 1 rows"),
-            ("Not verified rows", "Not verified: 1.", "Not verified: 2.",
-             f"{report}: the Summary counts 2 Not verified, and the Not Verified Findings table has 1 rows"),
+            ("Not verified rows", "| E2-2 | The token never expires | No verdict after the retry. |\n",
+             "| E2-2 | The token never expires | No verdict after the retry. |\n| E2-3 | Another | None. |\n",
+             f"{report}: the Summary counts 1 Not verified, and the Not Verified Findings table has 2 rows"),
+            ("Status count", "(1 finding not verified;", "(2 findings not verified;",
+             f'{status} "Incomplete (1 finding not verified; E2 partial)"'),
+            ("Status partial", "(partial: turn limit)", "(deadline)",
+             f'{status} "Incomplete (1 finding not verified)"'),
+            ("unclosed code fence", "- **Other areas**: none\n", "- **Other areas**: none\n\n```\ncode\n",
+             f'{report}:57: no "```" line closes this code fence; add one where the code ends'),
             ("Coverage field", "- **Other areas**: none\n", "",
              f'{report}: the Coverage section has no "- **Other areas**:" line'),
         )
@@ -338,7 +374,8 @@ class EvalRunTests(unittest.TestCase):
         report = f"docs/eval/{REPORT}"
         coverage = valid[valid.index("## Coverage"):]
         out_of_order = valid.replace(coverage, "").replace("## Summary", coverage + "\n## Summary")
-        all_verified = valid.replace("Not verified: 1.", "Not verified: 0.")
+        all_verified = valid.replace("Not verified: 1.", "Not verified: 0.").replace(
+            "(1 finding not verified; E2 partial)", "(E2 partial)")
         no_section = valid[:valid.index("## Not Verified")] + coverage
 
         self.assertEqual(self.lint(out_of_order), (1, [
@@ -349,7 +386,7 @@ class EvalRunTests(unittest.TestCase):
         self.assertEqual(self.lint(no_section), (1, [
             f'PROBLEM {report}: the Summary counts 1 Not verified, and there is no "## Not Verified Findings" '
             "section"]))
-        self.assertEqual(self.lint(no_section.replace("Not verified: 1.", "Not verified: 0.")), (0, []))
+        self.assertEqual(self.lint(all_verified[:all_verified.index("## Not Verified")] + coverage), (0, []))
 
     def test_lint_checks_the_default_name_unless_the_path_is_custom(self):
         valid = VALID_REPORT.format(run=self.run_dir)
@@ -383,6 +420,14 @@ class EvalRunTests(unittest.TestCase):
         self.assertEqual(tuple(re.findall(r"^## (.+)$", "## " + body, re.M)), eval_run.SECTIONS)
         self.assertEqual(tuple(re.findall(r"^- \*\*(.+?)\*\*:", coverage, re.M)), eval_run.COVERAGE_FIELDS)
         self.assertIn("- **Run results**: <RUN path>", header)
+
+    def test_both_skill_copies_run_the_script(self):
+        for skill in (SKILL, ANTIGRAVITY_SKILL):
+            with self.subTest(skill=str(skill.relative_to(SKILL.parents[1]))):
+                text = " ".join((skill / "SKILL.md").read_text().split())
+                self.assertTrue((skill / "scripts" / "eval_run.py").is_file())
+                for command in ("check <RUN>", "path <slug>", "lint <report path>"):
+                    self.assertIn(f"`python3 <skill-dir>/scripts/eval_run.py {command}`", text)
 
 
 if __name__ == "__main__":

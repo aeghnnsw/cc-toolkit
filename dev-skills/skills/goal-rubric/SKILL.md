@@ -67,6 +67,8 @@ The rubric also has one stop clause: a turn or time cap, such as "or stop after 
 
 ## Condition Framing
 
+Keep each condition within 4,000 characters, the Claude Code `/goal` limit. The rubric check fails a longer condition for every tool.
+
 - Claude Code: one condition string. Phrase it so that the proof appears in the transcript, for example: `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
 - Codex and Antigravity: a condition in four parts:
   1. What to achieve: the criteria, each named so that it is one item of a checklist.

@@ -39,10 +39,11 @@ Use `dev-skills:step-workflow` for numbered planning files and the session task
 list, within repository layout rules. Keep the planning files in the planning
 folder, in the checkout where the session started: the location that the
 repository documents, or the folder that
-`python3 "<plugin-root>/scripts/planning_folder.py" <slug> [--issue <issue>]` prints.
-When the documentation names another checkout, use that one. Run the command
-again with `--issue` once an issue exists. Cite sources for consequential
-claims. Mark replaced decisions as superseded and link their replacements.
+`python3 "<plugin-root>/scripts/planning_folder.py" <slug> --issue <issue>` prints.
+When the documentation names another checkout, use that one. Leave out
+`--issue <issue>` until an issue exists, then run the command again with it.
+Cite sources for consequential claims. Mark replaced decisions as superseded
+and link their replacements.
 
 For unfinished grilling, use [`grill-with-research`](../grill-with-research/SKILL.md)
 and answer its questions and confirmations yourself instead of asking the user.

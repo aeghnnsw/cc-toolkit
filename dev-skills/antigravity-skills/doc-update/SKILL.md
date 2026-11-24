@@ -96,7 +96,7 @@ Here `<skill-dir>` is this skill's directory. The check prints one finding per l
 
 - `broken-link` or `broken-anchor`: a relative link, or its `#anchor`, does not resolve. Fix it. The check exits 1 while one remains.
 - `path`: a relative path in inline code does not exist from the doc's folder or from the repository root. Fix it, unless the path is relative to another folder or names a file that the reader creates.
-- `history`: a backward-narrative phrase. Move the history to the changelog (Step 5) and keep the current state, unless the phrase is part of a forward-looking pointer.
+- `history`: a backward-narrative phrase. Move the history to the changelog (Step 5) and keep the current state. Keep the phrase when it is part of a forward-looking pointer, or when it is a false match in current-state text, such as "the previously saved state".
 - `see-above`: a vague reference. Replace it with an explicit reference.
 
 The phrase lists do not find every backward narrative or vague reference; read for the others. When the check exits 2 or cannot run, report the reason and check the links and paths by reading.
@@ -113,7 +113,7 @@ Score the updated doc against the rubric below. Auto-fix any safe residuals foun
 | 6 | Conciseness | No redundancy, filler, or marketing; minimal tokens for the meaning. |
 | 7 | Completeness | Prerequisites, happy path, examples, and error/edge cases covered. |
 | 8 | Consistency | Uniform terminology, naming, and formatting across the doc set. |
-| 9 | No embedded history | No backward narrative in prose; history lives in the CHANGELOG; each remaining `history` finding is part of a forward-looking pointer. |
+| 9 | No embedded history | No backward narrative in prose; history lives in the CHANGELOG; each remaining `history` finding is part of a forward-looking pointer or a false match in current-state text, and the report gives the reason. |
 
 ### 7. Report
 

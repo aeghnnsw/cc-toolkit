@@ -119,11 +119,12 @@ When an evaluator finishes:
    `**Stop reason**: partial: <reason>` yourself, for example with the
    reason `turn limit, no answer`.
 4. Run `python3 <skill-dir>/scripts/eval_run.py check <RUN>`. It prints a
-   `PROBLEM` line for each finding with no ID, a duplicate ID, or a
-   malformed ID, and for a missing or unknown stop reason.
-5. Fix each `PROBLEM` line about `E<N>.md` in that file: write the free ID
-   that the line names in the finding heading, or append the stop reason.
-   Then run `check` again.
+   `PROBLEM` line for each finding with no ID, a duplicate ID, a malformed
+   ID, or no heading, for a code fence that no line closes, and for a
+   missing or unknown stop reason.
+5. Fix each `PROBLEM` line about `E<N>.md` in that file: write the finding
+   heading with the free ID that the line names, close the code fence, or
+   append the stop reason. Then run `check` again.
 6. Split its findings into batches of at most 10.
 7. Send one verifier for each batch:
 
@@ -158,9 +159,9 @@ When a verifier finishes:
 When every evaluator and verifier has finished:
 
 1. Read the saved results in `<RUN>`.
-2. Run `check` again. Use its `Status` line in the report. Its summary
-   counts each finding ID, before you merge duplicates. A `PROBLEM` line
-   about a `V-E<N>-<b>.md` file can remain after the retries of step 4.
+2. Run `check` again. Its summary and `Status` line count each finding ID,
+   before you merge duplicates. A `PROBLEM` line about a `V-E<N>-<b>.md`
+   file can remain after the retries of step 4.
 3. For the default report path, run
    `python3 <skill-dir>/scripts/eval_run.py path <slug>` in the project
    root. It prints the first free path by the name rules in
@@ -168,7 +169,9 @@ When every evaluator and verifier has finished:
    earlier reports with the same slug.
 4. Write the report in the format of `report-format.md`. Merge duplicates,
    use the verified severities, and list Rejected and Not verified findings
-   in their own sections. The Run results field gives the `<RUN>` path.
+   in their own sections. Count the Summary after the merge. The Status
+   gives the Not verified count of the Summary and the partial evaluators.
+   The Run results field gives the `<RUN>` path.
 5. Save the report at the report path.
 6. Run `python3 <skill-dir>/scripts/eval_run.py lint <report path>`. Add
    `--custom-path` when the user or a calling skill named the path. Fix

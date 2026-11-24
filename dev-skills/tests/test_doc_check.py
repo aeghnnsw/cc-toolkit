@@ -131,6 +131,19 @@ class PhraseTests(unittest.TestCase):
         code, findings, output = run_check({"README.md": doc}, "README.md")
         self.assertEqual((code, findings), (0, set()), output)
 
+    def test_used_to_after_a_form_of_be_is_not_history(self):
+        # "is used to check" states a current purpose; "previously" still needs the agent's judgment.
+        doc = (
+            "# Check\n\n"
+            "The script is used to check links. It loads the previously saved state.\n"
+            "Links are used to navigate. It was used to test, and they were used to test.\n"
+            "It can be used to test, has been used to test, and is being used to test.\n"
+        )
+        code, findings, output = run_check({"README.md": doc}, "README.md")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(findings, {("README.md", 3, "history")}, output)
+        self.assertIn('README.md:3: history: "previously"\n', output)
+
     def test_a_vague_reference_is_reported_and_does_not_fail(self):
         doc = "# Install\n\nSet the port (see above).\n\nAs mentioned earlier, run the build.\n"
         code, findings, output = run_check({"README.md": doc}, "README.md")

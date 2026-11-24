@@ -45,16 +45,16 @@ citable scientific result needs a cited run.
 ## Planning folder
 
 Use the repository's documented planning folder. Otherwise, run this command in
-the checkout where the session started, and again with `--issue` once an issue
-exists:
+the checkout where the session started, without `--issue <issue>` until an
+issue exists, then again:
 
 ```bash
-python3 "<plugin-root>/scripts/planning_folder.py" <slug> [--issue <issue>]
+python3 "<plugin-root>/scripts/planning_folder.py" <slug> --issue <issue>
 ```
 
-It prints the folder and the grilling step's `dev-skills:step-workflow` prefix.
-If it adds `/.scratch/` to Git's `info/exclude` file, tell the user. Nothing
-outside the folder links to it.
+It prints the folder and the next free `dev-skills:step-workflow` prefix, which
+grilling takes. Tell the user when it changes `info/exclude`. Nothing outside
+the folder links to it.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
 `<step>_<n>_<name>`.

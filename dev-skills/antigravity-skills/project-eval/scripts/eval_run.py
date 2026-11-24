@@ -15,9 +15,16 @@ and stop reason, and a PROBLEM line for each of these:
   not "E<N>-<k>. ". The line names a free ID to use. A finding heading is a
   heading outside a code block that starts with an ID, such as "E2-3", or
   ends with a severity in parentheses.
+- A finding in E<N>.md that is not a heading: a line outside a code block
+  that starts with an ID after list markers and emphasis, and then has
+  ".", ":", or ")", or ends with a severity in parentheses. The line names
+  a free ID to use.
+- A code fence in E<N>.md that no line closes. It hides the lines after
+  it.
 - An evaluator result with no "Stop reason" line, or with a stop reason
   that is not "deadline", "two angles with nothing new", or
-  "partial: <reason>". The last "Stop reason" line of a file counts.
+  "partial: <reason>". The last "Stop reason" line of a file counts, also
+  in a code block.
 - A verdict line with fewer than four fields, a verdict for an ID that no
   E<N>.md has, a verdict that is not Confirmed, Plausible, or Rejected, a
   Confirmed or Plausible verdict whose severity does not start with
@@ -26,9 +33,9 @@ and stop reason, and a PROBLEM line for each of these:
   "|"-separated field is an ID.
 
 A finding with no verdict, or with only bad verdict lines, has no verdict.
-check then prints the "No verdict" IDs, the Summary of report-format.md
-counted by finding ID, and the Status line of the report. An evaluator with
-no valid stop reason counts as partial.
+check then prints the "No verdict" IDs, and the Summary and the Status of
+report-format.md counted by finding ID, before duplicates merge. An
+evaluator with no valid stop reason counts as partial.
 
 path prints the default report path for the slug: docs/eval/ in the current
 folder, the current local time, and a -N suffix when the name is taken. It
@@ -37,10 +44,12 @@ words joined by hyphens, and it does not end in a number.
 
 lint checks a report in the format of report-format.md: the default name
 (skip this with --custom-path), the title, the header fields, the sections
-and their order, the Summary rows, and the counts of the Summary against
-the finding headings and the tables. The Earlier reports field names each
-report in the same folder that has the same slug and an earlier name, or
-says "none". The Run results field names a folder that exists.
+and their order, the Summary rows, the counts of the Summary against the
+finding headings and the tables, and code fences that no line closes.
+The Earlier reports field names each report in the same folder that has the
+same slug and an earlier name, or says "none". The Run results field names
+a folder that exists. The Status field gives the Not verified count of the
+Summary and the partial evaluators of the Evaluators field.
 
 Exit status: 0 when the command prints no PROBLEM line; 1 when it prints
 one; 2 for a usage error, such as a run folder with no E<N>.md file.
@@ -71,6 +80,8 @@ EVALUATOR_FILE = re.compile(r"^E([1-9]\d*)\.md$")
 FINDING_ID = re.compile(r"^(E([1-9]\d*)-([1-9]\d*))\.\s+\S")
 ID_START = re.compile(r"^E\d", re.IGNORECASE)
 SEVERITY_END = re.compile(r"\((?:Critical|Major|Minor)\b[^)]*\)$", re.IGNORECASE)
+LOOSE_FINDING = re.compile(r"^[\s>#]*(?:(?:[-*+]|\d+[.)])\s+)?[*_`]*E\d+-\d+(.*)$", re.IGNORECASE)
+PARTIAL = re.compile(r"\bE([1-9]\d*)\b[^;]*\(partial\b", re.IGNORECASE)
 VERDICT_ID = re.compile(r"^E[1-9]\d*-[1-9]\d*$")
 SEVERITY_WORD = re.compile(r"[*_`\s]*([A-Za-z]+)")
 LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
@@ -98,9 +109,12 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def prose_lines(text: str):
-    """Yield the number and text of each line outside fenced code blocks."""
-    fence = ""
+def prose_lines(text: str) -> tuple[list[tuple[int, str]], tuple[int, str] | None]:
+    """Return the number and text of each line outside fenced code blocks.
+
+    Also return the line number and mark of a fence that no line closes, or None.
+    """
+    lines, fence, start = [], "", 0
     for number, line in enumerate(text.splitlines(), 1):
         match = FENCE.match(line)
         if fence:
@@ -108,9 +122,15 @@ def prose_lines(text: str):
             if match and set(mark) == {fence[0]} and len(mark) >= len(fence):
                 fence = ""
         elif match:
-            fence = match.group(1)
+            fence, start = match.group(1), number
         else:
-            yield number, line
+            lines.append((number, line))
+    return lines, (start, fence) if fence else None
+
+
+def open_fence(name: str, fence: tuple[int, str]) -> str:
+    number, mark = fence
+    return f'{name}:{number}: no "{mark}" line closes this code fence; add one where the code ends'
 
 
 def clean(value: str) -> str:
@@ -130,24 +150,30 @@ def table_cells(line: str) -> list[str]:
 # check
 
 
-def finding_headings(text: str):
-    """Yield the line number and text of each finding heading."""
-    for number, line in prose_lines(text):
+def finding_lines(lines: list[tuple[int, str]]):
+    """Yield the line number of each finding line, and its title, or None for a finding that is not a heading."""
+    for number, line in lines:
         match = HEADING.match(line)
         if match and len(match.group(1)) > 1:
             title = match.group(2).strip("*_ ")
             if ID_START.match(title) or SEVERITY_END.search(title):
                 yield number, title
+            continue
+        loose = LOOSE_FINDING.match(line)
+        rest = re.sub(r"[*_`]", "", loose.group(1)).strip() if loose else ""
+        if rest[:1] in (".", ":", ")") or SEVERITY_END.search(rest):
+            yield number, None
 
 
 def stop_reason(text: str) -> tuple[int, str] | None:
     """Return the line number and value of the last stop reason, or None.
 
     The value follows "Stop reason:" on its line, or is the next nonblank line
-    after a "Stop reason" label or heading.
+    after a "Stop reason" label or heading. A line in a code block counts, so
+    a stop reason after a code fence that no line closes counts.
     """
     found, label = None, False
-    for number, line in prose_lines(text):
+    for number, line in enumerate(text.splitlines(), 1):
         if label and line.strip():
             found, label = (number, clean(line)), False
             continue
@@ -161,9 +187,13 @@ def stop_reason(text: str) -> tuple[int, str] | None:
 def check_evaluator(n: int, path: Path, problems: list[str]) -> tuple[list[str], str, bool]:
     """Return the finding IDs, the stop reason, and whether the evaluator is partial."""
     text = read(path)
+    lines, fence = prose_lines(text)
     ids: dict[str, int] = {}
     bad = []
-    for number, title in finding_headings(text):
+    for number, title in finding_lines(lines):
+        if title is None:
+            bad.append((number, f'malformed finding: write it as the heading "### E{n}-<k>. <Title> (<Severity>)"'))
+            continue
         match = FINDING_ID.match(title)
         if match and int(match.group(2)) == n:
             if match.group(1) in ids:
@@ -179,6 +209,8 @@ def check_evaluator(n: int, path: Path, problems: list[str]) -> tuple[list[str],
     for number, problem in bad:
         problems.append(f"{path.name}:{number}: {problem}; use the free ID E{n}-{free}")
         free += 1
+    if fence:
+        problems.append(open_fence(path.name, fence))
     stop = stop_reason(text)
     if stop is None:
         problems.append(f'{path.name}: no stop reason; append the line "**Stop reason**: partial: <reason>"')
@@ -344,7 +376,8 @@ def lint_name(report: Path, problems: list[str]) -> None:
         problems.append(f"{report}: the -N suffix starts at -2, and a slug does not end in a number")
 
 
-def lint_header(report: Path, header: list[tuple[int, str]], problems: list[str]) -> dict[str, str]:
+def lint_header(report: Path, header: list[tuple[int, str]], problems: list[str]) -> dict[str, tuple[int, str]]:
+    """Check the header fields; return the line number and value of each field that has a value."""
     fields: dict[str, tuple[int, str]] = {}
     for number, line in header:
         match = FIELD.match(line)
@@ -387,7 +420,7 @@ def lint_header(report: Path, header: list[tuple[int, str]], problems: list[str]
         for name in sorted(named - set(expected)):
             problems.append(f"{report}:{number}: Earlier reports names {name}, which is not an earlier report "
                             f"with the slug {parsed[1]} in {report.parent}")
-    return values
+    return {name: field for name, field in fields.items() if field[1]}
 
 
 def lint(report: Path, custom_path: bool) -> int:
@@ -396,7 +429,9 @@ def lint(report: Path, custom_path: bool) -> int:
     problems: list[str] = []
     if not custom_path:
         lint_name(report, problems)
-    lines = list(prose_lines(read(report)))
+    lines, fence = prose_lines(read(report))
+    if fence:
+        problems.append(open_fence(str(report), fence))
     if not next((TITLE.match(line) for _, line in lines if line.strip()), None):
         problems.append(f'{report}: the first line is not "# Project Evaluation: <target>"')
     header: list[tuple[int, str]] = []
@@ -415,7 +450,7 @@ def lint(report: Path, custom_path: bool) -> int:
                 body = sections[name] = []
         else:
             body.append((number, line))
-    lint_header(report, header, problems)
+    fields = lint_header(report, header, problems)
 
     for name in SECTIONS:
         if name not in sections and name != "Not Verified Findings":
@@ -470,6 +505,13 @@ def lint(report: Path, custom_path: bool) -> int:
         elif unverified and table_rows(sections["Not Verified Findings"]) != unverified:
             problems.append(f"{report}: the Summary counts {unverified} Not verified, and the Not Verified "
                             f"Findings table has {table_rows(sections['Not Verified Findings'])} rows")
+        if "Evaluators" in fields and STATUS.match(fields.get("Status", (0, ""))[1]):
+            partial = sorted({int(n) for n in PARTIAL.findall(fields["Evaluators"][1])})
+            expected = status(unverified, partial)
+            number, value = fields["Status"]
+            if value != expected:
+                problems.append(f'{report}:{number}: the Status field does not match the Summary and the '
+                                f'Evaluators field; write "{expected}"')
 
     coverage = {match.group(1) for _, line in sections.get("Coverage", []) if (match := FIELD.match(line))}
     for name in COVERAGE_FIELDS:

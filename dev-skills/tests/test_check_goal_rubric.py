@@ -64,6 +64,15 @@ class ValidRubricTests(unittest.TestCase):
                 self.assertEqual(status, 0, lines)
                 self.assertTrue(lines[-1].startswith("rubric: 1 criterion, "), lines)
 
+    def test_each_skill_copy_runs_the_check_and_states_its_limit(self):
+        for skill in SKILL_COPIES:
+            with self.subTest(skill=skill.relative_to(PLUGIN_ROOT).as_posix()):
+                text = " ".join(skill.read_text(encoding="utf-8").split())
+                self.assertIn("python3 <skill-dir>/scripts/check_goal_rubric.py <rubric-file>", text)
+                self.assertTrue((skill.parent / "scripts" / "check_goal_rubric.py").is_file())
+                self.assertIn("Keep each condition within 4,000 characters, the Claude Code `/goal` limit. "
+                              "The rubric check fails a longer condition for every tool.", text)
+
     def test_a_condition_of_4000_characters_in_a_fence_passes(self):
         status, lines = run_check(rubric(condition="```text\n" + "x" * 4000 + "\n```\n"))
         self.assertEqual(status, 0, lines)

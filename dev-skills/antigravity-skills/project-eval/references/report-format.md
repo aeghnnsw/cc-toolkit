@@ -125,5 +125,6 @@ Rules:
   `deadline`, `two angles with nothing new`, or `partial: <reason>`.
 - The status is Incomplete when a finding is not verified or an evaluator is
   partial. In the parentheses, name only the causes that apply, for example
-  `Incomplete (E3 partial)`.
+  `Incomplete (E3 partial)`. The count of findings not verified is the Not
+  verified count of the Summary, after duplicates merge.
 - Omit the Not Verified Findings section when every finding has a verdict.
