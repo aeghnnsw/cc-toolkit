@@ -42,6 +42,11 @@
 > list also records a session. Read
 > [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
 > in ADR 0007.
+>
+> **Superseded in part (2026-11-24, issue #578).** The cleanup plan also
+> keeps each worktree that an unsettled T3 Code thread owns, read with the
+> `t3` CLI. Read
+> [The worktrees of T3 Code threads](#the-worktrees-of-t3-code-threads).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -418,7 +423,8 @@ the plan keeps every worktree that it would otherwise remove, and the reason
 gives the error: a call that cannot run, a non-zero exit status (also the
 launcher's 127, "T3 Code has moved or been removed"), a timeout of 10
 seconds, output that is not JSON, or a missing `threadId`, `settled`, or
-`thread.worktreePath`. When T3 Code changes the "No T3 Code project matches"
+`thread.worktreePath`, or one of another type, such as a `settled` that is
+not a boolean. When T3 Code changes the "No T3 Code project matches"
 text, this rule applies too.
 
 The CLI asks the running T3 Code server. On 2026-11-24, `t3` v0.1.11 with a

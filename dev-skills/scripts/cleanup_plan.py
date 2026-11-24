@@ -26,8 +26,8 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   `settled: false`, and match the real path of `thread.worktreePath`. Without
   a CLI, or when the list prints "No T3 Code project matches", this rule keeps
   nothing. When a t3 call fails, times out after 10 seconds, prints no JSON,
-  or lacks a key, keep every worktree that the plan would otherwise remove,
-  with the error. The CLI asks the running T3 Code server: while the T3 Code
+  or lacks a key or a value of the expected type, keep every worktree that the
+  plan would otherwise remove, with the error. The CLI asks the running T3 Code server: while the T3 Code
   app is closed, it fails (t3 v0.1.11), so the plan keeps every such worktree.
   `thread list` hides delegate_task workers, so only a lead state keeps the
   worktree of such a worker.
@@ -453,7 +453,7 @@ def main() -> None:
         [folder for folders, _ in lead_scans.values() for folder in folders])
     lead_error = next((error for _, error in lead_scans.values() if error), None) or lead_error
     # The worktrees that unsettled T3 Code threads own (#578).
-    threads, thread_error = unsettled_thread_worktrees(worktrees[0]["path"])
+    thread_worktrees, thread_error = unsettled_thread_worktrees(worktrees[0]["path"])
 
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
@@ -473,8 +473,8 @@ def main() -> None:
             plan[path] = (KEEP, f"holds a lead state: {held[0]}")
         elif real[path] in recorded:
             plan[path] = (KEEP, recorded[real[path]])
-        elif real[path] in threads:
-            plan[path] = (KEEP, threads[real[path]])
+        elif real[path] in thread_worktrees:
+            plan[path] = (KEEP, thread_worktrees[real[path]])
         elif inside[path]:
             plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:

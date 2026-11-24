@@ -4,8 +4,8 @@ The tests put a `t3` wrapper that runs this file first on PATH, or name the
 wrapper with T3CODE_CLI_PATH. It answers `t3 thread list --json --project P`
 and `t3 thread show --json --messages 1 T` from the JSON file that
 FAKE_T3_DATA names, and appends each argument list to the file that
-FAKE_T3_LOG names. The errors copy those of t3 v0.1.11. Any other command
-fails.
+FAKE_T3_LOG names. The errors copy those of the t3 CLI that T3 Code ships.
+Any other command fails.
 
 The data file has these optional keys:
 
