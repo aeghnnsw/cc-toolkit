@@ -16,14 +16,13 @@ Resolve the path of each `SKILL.md`. `<plugin-root>` is two levels above this
 folder:
 
 ```bash
-python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity \
+python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity --model-invoked \
   mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
-Read only the frontmatter of each resolved `SKILL.md` first. In these cases,
-stop and report the blocker; use no other workflow:
+In these cases, stop and report the blocker; use no other workflow:
 
-- The frontmatter sets `disable-model-invocation: true`.
+- The resolver exits with status 3: a Matt skill is user-invoked.
 - A Matt skill cannot load.
 
 Otherwise, read and follow each resolved `SKILL.md`.
@@ -45,12 +44,17 @@ citable scientific result needs a cited run.
 
 ## Planning folder
 
-Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the
-checkout where the session started. Until an issue exists, use
-`.scratch/<YYYYMMDD>-<slug>/`, then rename it. If Git does not ignore
-`.scratch/`, add `/.scratch/` to Git's `info/exclude` file and tell the user.
-Nothing outside the folder links to it. Use `dev-skills:step-workflow` prefixes:
-grilling is the next free step.
+Use the repository's documented planning folder. Otherwise, run this command in
+the checkout where the session started, and again with `--issue` once an issue
+exists:
+
+```bash
+python3 "<plugin-root>/scripts/planning_folder.py" <slug> [--issue <issue>]
+```
+
+It prints the folder and the grilling step's `dev-skills:step-workflow` prefix.
+If it adds `/.scratch/` to Git's `info/exclude` file, tell the user. Nothing
+outside the folder links to it.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
 `<step>_<n>_<name>`.

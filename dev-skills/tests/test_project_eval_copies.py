@@ -7,6 +7,9 @@ tests/test_host_copies.py compares the files that both skill copies have.
 The calibration examples of real issues in both copies follow the evidence
 rule, because evaluators copy them. The Set Up block of each copy runs in
 bash and zsh with TMPDIR set, and writes the run state under TMPDIR (#457).
+The two Claude Code agents have one tools line, with no tool that writes
+files and with the browser tool prefixes that the SKILL.md "Browser Servers"
+section lists.
 """
 
 from __future__ import annotations
@@ -28,11 +31,16 @@ AGENTS = PLUGIN_ROOT / "claude-agents"
 # A location that a verifier can check: `path:N` or `path:N-M`, a URL, or a command.
 CHECKABLE_LOCATION = re.compile(r"`[^`\s]+:\d+(?:-\d+)?`|https?://\S+|command `[^`]+`")
 
+# Tools that write files: evaluators and verifiers return their results as text.
+WRITE_TOOLS = ("Write", "Edit", "NotebookEdit")
+BROWSER_PREFIX = re.compile(r"`(mcp__[^`<>\s]+__\*)`")
+
 SKILL_DIR_SENTENCE = "`<skill-dir>` is the parent of the `references/` folder that holds this file."
 COMMON_SUBSTITUTIONS = (
     ("${CLAUDE_PLUGIN_ROOT}/skills/project-eval/references/", "<skill-dir>/references/"),
     ("The dispatch prompt gives you:", "The prompt that started you gives you:"),
 )
+EVAL_AGENTS = ("project-evaluator.md", "finding-verifier.md")
 REFERENCES = {
     "evaluator.md": ("project-evaluator.md", COMMON_SUBSTITUTIONS + (
         ("have an app URL.", "have an app URL and the session has browser tools."),
@@ -65,6 +73,35 @@ def translated(text: str, substitutions) -> str:
         assert old in text, f"substitution source not found: {old}"
         text = text.replace(old, new)
     return text
+
+
+def tools(agent: str) -> list[str]:
+    """Return the entries of the tools line in the frontmatter of an agent file."""
+    frontmatter = agent.split("---\n", 2)[1]
+    lines = [line for line in frontmatter.splitlines() if line.startswith("tools:")]
+    assert len(lines) == 1, f"{len(lines)} tools lines"
+    return [entry.strip() for entry in lines[0][len("tools:"):].split(",")]
+
+
+def browser_prefixes(skill: str) -> list[str]:
+    """Return the browser tool prefixes that the Browser Servers section of SKILL.md lists."""
+    section = skill.split("\n## Browser Servers\n", 1)[1].split("\n## ", 1)[0]
+    return sorted(BROWSER_PREFIX.findall(section))
+
+
+def tools_problems(agents: dict[str, str], skill: str) -> list[str]:
+    """Return the problems of the tools lines of the agent files against SKILL.md."""
+    lines = {name: tools(text) for name, text in agents.items()}
+    prefixes = browser_prefixes(skill)
+    problems = []
+    if len({tuple(line) for line in lines.values()}) > 1:
+        problems.append("the tools lines differ: " + "; ".join(f"{n}: {', '.join(t)}" for n, t in lines.items()))
+    for name, line in lines.items():
+        problems += [f"{name} has {tool}" for tool in line if tool.split("(")[0] in WRITE_TOOLS]
+        browser = sorted(tool for tool in line if tool.startswith("mcp__"))
+        if browser != prefixes:
+            problems.append(f"{name} has the browser tools {browser}, and Browser Servers lists {prefixes}")
+    return problems
 
 
 def real_issue_examples(text: str):
@@ -141,6 +178,36 @@ class ProjectEvalCopiesTest(unittest.TestCase):
                     self.assertRegex(location, CHECKABLE_LOCATION)
                     self.assertTrue(any(line.startswith("Evidence:") for line in lines),
                                     "no Evidence field")
+
+    def test_agent_tools_lines_write_no_file_and_match_the_browser_servers(self) -> None:
+        agents = {name: (AGENTS / name).read_text() for name in EVAL_AGENTS}
+        self.assertEqual(tools_problems(agents, (CLAUDE_SKILL / "SKILL.md").read_text()), [])
+
+    def test_tools_check_fails_on_a_planted_tool_or_a_dropped_prefix(self) -> None:
+        agents = {name: (AGENTS / name).read_text() for name in EVAL_AGENTS}
+        skill = (CLAUDE_SKILL / "SKILL.md").read_text()
+        drop = (", mcp__playwright__*", "")
+        cases = (
+            ("Write in one agent", {"finding-verifier.md": ("tools: Read,", "tools: Read, Write,")},
+             ["the tools lines differ", "finding-verifier.md has Write"]),
+            ("Edit and NotebookEdit in both agents",
+             {name: ("WebSearch,", "WebSearch, Edit, NotebookEdit,") for name in EVAL_AGENTS},
+             [f"{name} has {tool}" for name in EVAL_AGENTS for tool in ("Edit", "NotebookEdit")]),
+            ("a prefix dropped from one agent", {"project-evaluator.md": drop},
+             ["the tools lines differ", "project-evaluator.md has the browser tools"]),
+            ("a prefix dropped from both agents", {name: drop for name in EVAL_AGENTS},
+             [f"{name} has the browser tools" for name in EVAL_AGENTS]),
+        )
+        for name, edits, expected in cases:
+            with self.subTest(name):
+                planted = dict(agents)
+                for agent, (old, new) in edits.items():
+                    self.assertIn(old, planted[agent])
+                    planted[agent] = planted[agent].replace(old, new, 1)
+                problems = tools_problems(planted, skill)
+                self.assertEqual(len(problems), len(expected), problems)
+                for problem, start in zip(problems, expected):
+                    self.assertTrue(problem.startswith(start), problem)
 
 
 if __name__ == "__main__":

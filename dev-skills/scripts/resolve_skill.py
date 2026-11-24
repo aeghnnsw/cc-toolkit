@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """Print the SKILL.md path of each named plugin skill.
 
-Usage: resolve_skill.py [--host claude|codex|antigravity] PLUGIN:SKILL...
+Usage: resolve_skill.py [--host claude|codex|antigravity] [--model-invoked] PLUGIN:SKILL...
 
 For each name that resolves, print "PLUGIN:SKILL /absolute/path/SKILL.md".
 For each name that fails, print one stderr line that names the cause, and
-continue with the next name. Exit 0 when every name resolves, 1 when any
-name fails, and 2 on a usage error.
+continue with the next name.
+
+With --model-invoked, also check that the model can start each skill that
+resolves. A Claude Code or Antigravity skill is user-invoked when the
+frontmatter of its SKILL.md sets disable-model-invocation: true. A Codex
+skill is user-invoked when agents/openai.yaml in its folder sets
+allow_implicit_invocation: false under policy:. For a user-invoked skill,
+print "PLUGIN:SKILL is user-invoked on HOST" and the setting to stderr, in
+place of its path.
+
+Exit status: 0 when every name resolves; 1 when any name fails; 3 when every
+name resolves, but --model-invoked finds a user-invoked skill; 2 on a usage
+error.
 
 Claude Code (default): read installed_plugins.json in the plugins directory.
 Like Claude Code, use CLAUDE_CODE_PLUGIN_CACHE_DIR as that directory when it
@@ -43,6 +54,7 @@ Antigravity.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -50,8 +62,11 @@ import sys
 from pathlib import Path
 from typing import Callable, Iterable, NamedTuple
 
-USAGE = "usage: resolve_skill.py [--host claude|codex|antigravity] PLUGIN:SKILL..."
+USAGE = "resolve_skill.py [--host claude|codex|antigravity] [--model-invoked] PLUGIN:SKILL..."
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
+USER_INVOKED = 3  # the exit status when --model-invoked finds a user-invoked skill
+HOST_NAMES = {"claude": "Claude Code", "codex": "Codex", "antigravity": "Antigravity"}
+CODEX_POLICY = Path("agents") / "openai.yaml"
 
 
 class ResolveError(Exception):
@@ -332,25 +347,87 @@ def resolve(name: str, host: Host) -> Path:
     return path.resolve()
 
 
+def yaml_value(line: str, key: str) -> str | None:
+    """Return the value of a "KEY: VALUE" line in lowercase, without quotes or a comment."""
+    match = re.fullmatch(rf"{re.escape(key)}\s*:\s+(.*?)(?:\s+#.*)?", line.strip())
+    return match.group(1).strip("'\"").lower() if match else None
+
+
+def frontmatter(path: Path) -> list[str]:
+    """Return the frontmatter lines of a SKILL.md file, or [] when it has none."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].rstrip() != "---":
+        return []
+    for end, line in enumerate(lines[1:], 1):
+        if line.rstrip() == "---":
+            return lines[1:end]
+    return []
+
+
+def codex_user_invoked(policy: Path) -> bool:
+    """Return whether the openai.yaml file sets allow_implicit_invocation: false under policy:."""
+    section, indent = None, None
+    for line in policy.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        depth = len(line) - len(line.lstrip())
+        if depth == 0:
+            section, _, rest = line.partition(":")
+            indent = None
+            # The flow form: policy: {allow_implicit_invocation: false}
+            if section.strip() == "policy" and re.search(
+                    r"[{,]\s*allow_implicit_invocation\s*:\s*['\"]?false\b", rest, flags=re.I):
+                return True
+        elif section is not None and section.strip() == "policy":
+            indent = depth if indent is None else indent  # The first key under policy: sets the indent.
+            if depth == indent and yaml_value(line, "allow_implicit_invocation") == "false":
+                return True
+    return False
+
+
+def user_invoked(path: Path, host: str) -> str | None:
+    """Return the setting that makes the skill at PATH user-invoked on HOST, or None."""
+    try:
+        if host == "codex":
+            policy = path.parent / CODEX_POLICY
+            if policy.is_file() and codex_user_invoked(policy):
+                return f"{policy} sets allow_implicit_invocation: false under policy:"
+            return None
+        if any(yaml_value(line, "disable-model-invocation") == "true" for line in frontmatter(path)
+               if not line[:1].isspace()):
+            return f"{path} sets disable-model-invocation: true"
+    except (OSError, UnicodeDecodeError) as error:
+        raise ResolveError(f"cannot read the invocation setting of {path} ({error})") from error
+    return None
+
+
 def main(argv: list[str]) -> int:
-    args = argv[1:]
-    host = "claude"
-    if args[:1] == ["--host"]:
-        if len(args) < 2 or args[1] not in HOSTS:
-            print(USAGE, file=sys.stderr)
-            return 2
-        host, args = args[1], args[2:]
-    if not args or any(not re.fullmatch(r"[^:\s]+:[^:\s]+", a) for a in args):
-        print(USAGE, file=sys.stderr)
-        return 2
-    failed = False
-    for name in args:
+    parser = argparse.ArgumentParser(prog="resolve_skill.py", usage=USAGE, description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--host", choices=HOSTS, default="claude", help="the host whose layout to read")
+    parser.add_argument("--model-invoked", action="store_true",
+                        help=f"exit {USER_INVOKED} when a skill is user-invoked on the host")
+    parser.add_argument("names", nargs="+", metavar="PLUGIN:SKILL")
+    args = parser.parse_args(argv[1:])
+    if any(not re.fullmatch(r"[^:\s]+:[^:\s]+", name) for name in args.names):
+        parser.error("name each skill as PLUGIN:SKILL")
+    host = HOSTS[args.host]
+    failed = blocked = False
+    for name in args.names:
         try:
-            print(f"{name} {resolve(name, HOSTS[host])}")
+            path = resolve(name, host)
+            setting = user_invoked(path, args.host) if args.model_invoked else None
         except ResolveError as error:
             print(f"resolve_skill: {name}: {error}", file=sys.stderr)
             failed = True
-    return 1 if failed else 0
+            continue
+        if setting:
+            print(f"resolve_skill: {name} is user-invoked on {HOST_NAMES[args.host]}: {setting}",
+                  file=sys.stderr)
+            blocked = True
+        else:
+            print(f"{name} {path}")
+    return 1 if failed else USER_INVOKED if blocked else 0
 
 
 if __name__ == "__main__":

@@ -686,7 +686,159 @@ class AntigravityResolveTest(ResolverCase):
                 self.assertEqual(completed.stdout, f"matt:retro {expected}\n")
 
 
+class ModelInvokedTest(ResolverCase):
+    """Issue #463: --model-invoked exits 3 for a skill that the model cannot start on the host."""
+
+    def skill_with(self, root: Path, relative: str, frontmatter: str = "", body: str = "") -> Path:
+        return write(root / relative / "SKILL.md", f"---\nname: x\n{frontmatter}---\n{body}").resolve()
+
+    def codex_skill(self, policy: str | None) -> Path:
+        path = self.codex_install("matt", "1.0.0", "grilling")
+        if policy is not None:
+            write(path.parent / "agents" / "openai.yaml", policy)
+        self.codex_config('[plugins."matt@market"]\nenabled = true\n')
+        return path
+
+    def test_claude_frontmatter_that_disables_model_invocation_exits_3(self):
+        root = self.install_root("matt")
+        retro = make_skill(root, "skills/retro")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+        for setting in ("true", "true  # user only", '"true"', "True"):
+            with self.subTest(setting=setting):
+                path = self.skill_with(root, "skills/grilling", f"disable-model-invocation: {setting}\n")
+
+                completed = self.run_resolver("--model-invoked", "matt:grilling", "matt:retro")
+
+                self.assertEqual(completed.returncode, 3, completed.stderr)
+                self.assertEqual(completed.stdout, f"matt:retro {retro}\n")
+                self.assertIn(f"matt:grilling is user-invoked on Claude Code: {path} sets "
+                              "disable-model-invocation: true", completed.stderr)
+
+    def test_without_the_flag_a_user_invoked_skill_still_resolves(self):
+        root = self.install_root("matt")
+        path = self.skill_with(root, "skills/grilling", "disable-model-invocation: true\n")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+
+        completed = self.run_resolver("matt:grilling")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, f"matt:grilling {path}\n")
+
+    def test_a_setting_that_is_false_or_outside_the_frontmatter_allows_the_model(self):
+        root = self.install_root("matt")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+        cases = {
+            "false": ("disable-model-invocation: false\n", ""),
+            "in the body": ("", "disable-model-invocation: true\n"),
+            "nested": ("metadata:\n  disable-model-invocation: true\n", ""),
+            "commented out": ("# disable-model-invocation: true\n", ""),
+        }
+        for label, (frontmatter, body) in cases.items():
+            with self.subTest(label):
+                path = self.skill_with(root, "skills/grilling", frontmatter, body)
+
+                completed = self.run_resolver("--model-invoked", "matt:grilling")
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertEqual(completed.stdout, f"matt:grilling {path}\n")
+
+    def test_codex_policy_that_disallows_implicit_invocation_exits_3(self):
+        for policy in ("interface:\n  display_name: G\n\npolicy:\n  allow_implicit_invocation: false\n",
+                       "policy:  # explicit only\n    allow_implicit_invocation: false  # see #365\n",
+                       "policy: {allow_implicit_invocation: false}\n"):
+            with self.subTest(policy=policy):
+                path = self.codex_skill(policy)
+
+                completed = self.run_resolver("--host", "codex", "--model-invoked", "matt:grilling")
+
+                self.assertEqual(completed.returncode, 3, completed.stderr)
+                self.assertEqual(completed.stdout, "")
+                self.assertIn(f"matt:grilling is user-invoked on Codex: {path.parent / 'agents' / 'openai.yaml'} "
+                              "sets allow_implicit_invocation: false under policy:", completed.stderr)
+
+    def test_codex_reads_only_the_policy_key_of_openai_yaml(self):
+        cases = {
+            "no file": None,
+            "true": "policy:\n  allow_implicit_invocation: true\n",
+            "other section": "interface:\n  allow_implicit_invocation: false\n",
+            "nested deeper": "policy:\n  products:\n    allow_implicit_invocation: false\n",
+        }
+        for label, policy in cases.items():
+            with self.subTest(label):
+                shutil.rmtree(self.codex_home, ignore_errors=True)
+                path = self.codex_skill(policy)
+
+                completed = self.run_resolver("--host", "codex", "--model-invoked", "matt:grilling")
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertEqual(completed.stdout, f"matt:grilling {path}\n")
+
+    def test_codex_ignores_the_claude_frontmatter_setting(self):
+        path = self.codex_skill(None)
+        path.write_text("---\nname: grilling\ndisable-model-invocation: true\n---\n", encoding="utf-8")
+
+        completed = self.run_resolver("--host", "codex", "--model-invoked", "matt:grilling")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_antigravity_frontmatter_that_disables_model_invocation_exits_3(self):
+        (self.workdir / ".git").mkdir()
+        root = self.home / ".gemini" / "config" / "plugins" / "matt"
+        write(root / ".antigravity-plugin" / "plugin.json", json.dumps({"name": "matt"}))
+        path = self.skill_with(root, "skills/grilling", "disable-model-invocation: true\n")
+
+        completed = self.run_resolver("--host", "antigravity", "--model-invoked", "matt:grilling")
+
+        self.assertEqual(completed.returncode, 3, completed.stderr)
+        self.assertIn(f"matt:grilling is user-invoked on Antigravity: {path} sets disable-model-invocation: true",
+                      completed.stderr)
+
+    def test_a_failed_name_wins_over_a_user_invoked_skill(self):
+        root = self.install_root("matt")
+        self.skill_with(root, "skills/grilling", "disable-model-invocation: true\n")
+        self.claude_plugin("matt", [{"scope": "user", "installPath": str(root)}])
+
+        completed = self.run_resolver("--model-invoked", "matt:grilling", "matt:missing")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("matt:grilling is user-invoked", completed.stderr)
+        self.assertIn("matt:missing: skill missing not found", completed.stderr)
+
+    def test_repository_copies_report_their_pinned_policy_on_every_host(self):
+        # tests/test_host_copies.py pins grill-with-research as model-invoked and gtd-setup as user-invoked.
+        repo = PLUGIN_ROOT.parent
+        (self.workdir / ".git").mkdir()
+        for plugin in ("dev-skills", "productivity-skills"):
+            self.claude_plugin(plugin, [{"scope": "user", "installPath": str(repo / plugin)}])
+            cache = self.codex_home / "plugins" / "cache" / "market" / plugin
+            cache.mkdir(parents=True)
+            (cache / "1.0.0").symlink_to(repo / plugin, target_is_directory=True)
+            agy = self.home / ".gemini" / "config" / "plugins"
+            agy.mkdir(parents=True, exist_ok=True)
+            (agy / plugin).symlink_to(repo / plugin, target_is_directory=True)
+        self.codex_config('[plugins."dev-skills@market"]\nenabled = true\n'
+                          '[plugins."productivity-skills@market"]\nenabled = true\n')
+        folders = {"claude": "skills", "codex": "codex-skills", "antigravity": "antigravity-skills"}
+        for host, folder in folders.items():
+            with self.subTest(host=host):
+                completed = self.run_resolver("--host", host, "--model-invoked", "dev-skills:grill-with-research",
+                                              "productivity-skills:gtd-setup")
+
+                grill = (repo / "dev-skills" / folder / "grill-with-research" / "SKILL.md").resolve()
+                self.assertEqual(completed.returncode, 3, completed.stderr)
+                self.assertEqual(completed.stdout, f"dev-skills:grill-with-research {grill}\n")
+                self.assertIn("productivity-skills:gtd-setup is user-invoked on", completed.stderr)
+
+
 class UsageTest(ResolverCase):
+    def test_help_documents_the_user_invoked_exit_status(self):
+        completed = self.run_resolver("--help")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("--model-invoked", completed.stdout)
+        self.assertIn("3 when every name resolves, but --model-invoked finds a user-invoked skill",
+                      " ".join(completed.stdout.split()))
+
     def test_bad_arguments_are_a_usage_error(self):
         for args in ((), ("no-colon",), ("--host", "other", "matt:retro"), (":retro",)):
             with self.subTest(args=args):
