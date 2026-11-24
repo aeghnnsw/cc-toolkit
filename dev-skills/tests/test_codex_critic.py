@@ -575,7 +575,7 @@ class CodexCriticTest(unittest.TestCase):
         self.assertFalse(self.record.exists())
         self.assertEqual((self.workdir / "msg.txt").read_text(encoding="utf-8"), STALE_REPLY)
 
-    def test_a_kill_of_the_starting_command_keeps_the_start_lock_until_its_supervisor_wrote_call_json(self):
+    def test_a_killed_or_busy_start_keeps_the_start_lock_and_wait_reports_running_until_call_json(self):
         self.prepare_call(step=0.5, sleep=2, events=[THREAD_STARTED], reply="first reply")
         paused, resume = self.workdir.parent / "paused", self.workdir.parent / "resume"
         starter = subprocess.Popen([sys.executable, "-c", PAUSER, str(SCRIPT), "call.json", str(paused), str(resume),
@@ -588,9 +588,15 @@ class CodexCriticTest(unittest.TestCase):
         self.assertNotEqual(supervisor, starter.pid)
         starter.kill()
         starter.communicate(timeout=scaled(10))
+        # The start deleted call.json, and its supervisor holds the start lock: a call starts (#538).
+        self.assertFalse((self.workdir / "call.json").exists())
+        self.assertEqual(self.run_wait(step=0.5), (1, f"exit=- model={CRITIC_MODEL} status=running"))
+        self.assertEqual(self.seconds, 0)
         self.assertEqual(self.run_runner("kickoff"), (1, f"exit=2 model={CRITIC_MODEL} status=error:busy"))
+        self.assertEqual(self.run_wait(step=0.5), (1, f"exit=- model={CRITIC_MODEL} status=running"))
         resume.touch()
-        # The supervisor releases the start lock only after it wrote call.json; wait needs call.json.
+        # The supervisor releases the start lock only after it wrote call.json, so a wait that finds
+        # the lock free and call.json missing can report that no call was started.
         self.assertTrue(wait_for(lambda: not self.lock_held("start.lock")), "the supervisor kept the start lock")
         call_json = self.workdir / "call.json"
         self.assertTrue(call_json.exists(), "call.json is missing after the supervisor released the start lock")
