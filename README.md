@@ -45,8 +45,7 @@ cc-toolkit/
 ├── creator-skills/                   # Scientific content creation plugin
 ├── dev-skills/                       # Development workflow plugin
 ├── productivity-skills/              # Personal productivity plugin
-├── pymol-skills/                     # PyMOL molecular visualization plugin
-└── task-loop/                        # Not in the marketplaces; see its README
+└── pymol-skills/                     # PyMOL molecular visualization plugin
 ```
 
 Each plugin directory holds `.claude-plugin/plugin.json`, a
