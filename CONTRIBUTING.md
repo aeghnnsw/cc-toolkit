@@ -36,7 +36,6 @@ does not set the minimum for installed plugins.
 | Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
 | [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
 | [PyMOL Skills: MCP bridge](pymol-skills/pymol_mcp_server.py) | 3.10 | `mcp[cli]>=1.0.0,<2`. |
-| [Retained task-loop code](task-loop/cli/task-loop) (retired plugin) | 3.11 | The CLI needs `httpx>=0.27`; hooks and sync helpers use the standard library. |
 
 The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
 minimum; the bridge requirement does not apply to that separate process.
@@ -62,6 +61,9 @@ registered for Antigravity when it holds `.antigravity-plugin/plugin.json`.
   a plugin for Antigravity, add its Antigravity manifest.
 - When you add, remove, or rename a plugin or a skill, update its entries in
   [README.md](README.md).
+- To retire a plugin, tag the last commit that has it, then delete its
+  folder from master. `tests/test_registered_skills.py` fails on a tracked
+  `SKILL.md` outside a registered plugin directory.
 - Before you change component paths, read the plugin's host-specific
   manifests and [host ownership](docs/design/package-validation.md#host-ownership).
 
@@ -205,12 +207,10 @@ and the other worktrees under `trees/` and `.claude/worktrees/`; pass
 `--untracked` to include new files.
 
 The entries in `CHANGELOG.md` and `changelog.d/` can describe replaced
-behavior. The `task-loop/` folder is
-[not in the marketplaces](task-loop/README.md#status), but its copies of
-shared skills match many terms. To search current text only, exclude them:
+behavior. To search current text only, exclude them:
 
 ```bash
-git grep -n <term> -- ':!CHANGELOG.md' ':!changelog.d' ':!task-loop'
+git grep -n <term> -- ':!CHANGELOG.md' ':!changelog.d'
 ```
 
 ## Changelog entries
@@ -367,7 +367,6 @@ change from the repository root:
 | `allowed-models.json`, a `pressure-test` `SKILL.md`, or code or a test in `dev-skills` | `uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'` |
 | Code or a test in `cc-customize`, `core-hooks`, `creator-skills`, or `pymol-skills` | `python3 -m unittest discover -s <plugin>/tests -p 'test_*.py'` |
 | Code or a test in `productivity-skills` | `uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'` |
-| Code or a test in `task-loop` | `uv run --no-project --python '>=3.11' --with 'httpx>=0.27' python -m unittest discover -s task-loop/tests -p 'test_*.py'` |
 | A GitHub Actions workflow | Validate the YAML. Check its triggers and permissions against the intended behavior. |
 
 `agy plugin validate` warns about a skill-name collision for each Claude

@@ -27,7 +27,7 @@ def problems(root):
     found = []
     for name in sorted(git_files(root)):
         path = root / name
-        if not CLAUDE_COPY.match(name) or name.startswith('task-loop/') or not path.is_file():
+        if not CLAUDE_COPY.match(name) or not path.is_file():
             continue
         try:
             lines = path.read_text(encoding='utf-8').splitlines()
