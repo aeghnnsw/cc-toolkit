@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# ///
 """Render connected Supabase tool arguments, and make new GTD UUIDs. Python 3.11+. No network access."""
 
 import argparse

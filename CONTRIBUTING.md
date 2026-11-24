@@ -13,6 +13,8 @@ the surrounding code style. Do not reformat unrelated code.
 Wrap ordinary prose in `CLAUDE.md` and `CONTRIBUTING.md` at 78 characters.
 Exempt headings, tables, links, and code examples, including inline commands.
 Other Markdown files follow their surrounding style.
+[tests/test_prose_width.py](tests/test_prose_width.py) checks this rule and
+prints `file:line:width` for each line to rewrap.
 
 Prefer the Python standard library for helpers. Preserve existing
 standard-library-only entry points. The table below names the current
@@ -22,9 +24,17 @@ the plugin. Test dependencies are separate from runtime dependencies.
 ### Python requirements
 
 These are declared minimum versions, not a tested compatibility matrix.
-Where no minimum is declared, check the affected script and its caller
-before using newer Python features. The root tooling's Python requirement
-does not set the minimum for installed plugins.
+The root tooling's Python requirement does not set the minimum for
+installed plugins. A plugin script declares its minimum in a
+`requires-python = ">=X.Y"` line of PEP 723 inline script metadata.
+Without that line, its minimum is 3.9, the version of `/usr/bin/python3`
+on macOS.
+[tests/test_script_python_floor.py](tests/test_script_python_floor.py) parses
+each shipped Python file at its minimum, and fails on an `X | Y` annotation
+that Python 3.9 evaluates. It also fails when plugin text runs a script
+above 3.9 with a bare `python3`; run it as
+`uv run --no-project --python '>=X.Y' python <script>`. The test does not
+find newer runtime APIs, such as `tomllib`.
 
 | Component | Declared minimum | Python dependencies and exceptions |
 | --- | --- | --- |
@@ -33,12 +43,13 @@ does not set the minimum for installed plugins.
 | [Productivity Skills: GTD SQL renderer](productivity-skills/scripts/gtd_sql.py) | 3.11 | Standard library. The connected Supabase tool executes the prepared SQL. |
 | [Dev Skills: lean-tests](dev-skills/skills/lean-tests/SKILL.md) | 3.9 | CLI helpers use the standard library. Target test runs need `pytest`; coverage runs also need `pytest-cov` and `coverage`. |
 | [Dev Skills: retrospective session script](dev-skills/scripts/retro_sessions.py) | 3.9 | Standard library. |
-| Other Dev Skills helpers and templates | No common minimum declared | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
+| Other Dev Skills helpers and templates | 3.9 | Standard library. The [scientific project template](dev-skills/skills/sci-project-layout/templates/paths.py) uses Python 3.9 APIs. |
 | [Creator Skills: slide linter](creator-skills/skills/sci-slides/SKILL.md) | 3.9 | Standard library. |
 | [PyMOL Skills: MCP bridge](pymol-skills/pymol_mcp_server.py) | 3.10 | `mcp[cli]>=1.0.0,<2`. |
 
-The PyMOL socket plugin runs in PyMOL's own interpreter. It has no declared
-minimum; the bridge requirement does not apply to that separate process.
+The PyMOL socket plugin runs in PyMOL's own interpreter. It declares no
+minimum, so the test parses it at 3.9. The bridge requirement does not
+apply to that separate process.
 Productivity Skills also uses Swift for native Calendar.
 CC Customize uses Bash and `jq`, with Git for status information.
 Dev Skills `repo-cleanup` runs `lsof` and `ps` to find live sessions.
@@ -61,6 +72,10 @@ registered for Antigravity when it holds `.antigravity-plugin/plugin.json`.
   a plugin for Antigravity, add its Antigravity manifest.
 - When you add, remove, or rename a plugin or a skill, update its entries in
   [README.md](README.md).
+- When you rename or remove a skill or an agent, update each
+  `<plugin>:<name>` reference to it.
+  [tests/test_skill_references.py](tests/test_skill_references.py) fails on
+  a reference that names no skill or agent of a plugin in this marketplace.
 - To retire a plugin, tag the last commit that has it, then delete its
   folder from master. `tests/test_registered_skills.py` fails on a tracked
   `SKILL.md` outside a registered plugin directory.
@@ -96,6 +111,10 @@ Codex manifest's `interface.longDescription` describes the purposes of the
 plugin's skills, add the purpose of the new skill. When a change alters the
 purpose of a skill, update that purpose in `longDescription` and in the
 README **Skills:** line.
+[tests/test_readme_catalog.py](tests/test_readme_catalog.py) checks the
+README lists against the skill folders of each host. Its `LONG_DESCRIPTION`
+table gives the phrase of `longDescription` that names the purpose of each
+Codex skill; add an entry for a new Codex skill.
 
 - **Frontmatter.** Claude copies carry `name`, `description`, and usually
   `version`. Codex copies carry only `name` and `description`. Antigravity
@@ -112,8 +131,15 @@ README **Skills:** line.
   policy of each skill in its `PINNED_POLICY`, such as repo-cleanup, which
   workflows run.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
-  can be bash or zsh. Write each block to run in both shells. For a test
-  that runs a skill's blocks in bash and zsh, see
+  can be bash or zsh. Write each block to run in both shells, with the BSD
+  tools of macOS and the GNU tools of Linux. Make a temporary file or
+  folder with `mktemp -d "${TMPDIR:-/tmp}/<name>.XXXXXX"`. Write a
+  placeholder without a space, such as `<work-dir>`.
+  [tests/test_skill_shell_blocks.py](tests/test_skill_shell_blocks.py)
+  parses each shell block of a shipped Markdown file with `bash -n` and
+  `zsh -n`, and runs the Core Hooks zsh trap check on it.
+  [tests/test_mktemp_form.py](tests/test_mktemp_form.py) checks each
+  `mktemp` call. For a test that runs a skill's blocks, see
   `dev-skills/tests/test_pressure_test_models.py`.
 - **Paths.** A link relative to `SKILL.md` reads the same in every copy. A
   plugin-root path differs: `${CLAUDE_PLUGIN_ROOT}/...` in the Claude copy,
@@ -361,7 +387,7 @@ change from the repository root:
 | Markdown prose | `python3 dev-skills/scripts/avoid_terms.py --base origin/master`. Where a listed line names a glossary concept, use the glossary term. |
 | A skill | Check its frontmatter and invocation guidance. |
 | A plugin file, an entry file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
-| A skill, an agent, a root Python helper or test, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
+| A skill, an agent, a plugin Python file, a root Python helper or test, `README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a Codex manifest, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |
 | A Codex copy of a skill | `uv run --no-project --with pyyaml python "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" <plugin>/codex-skills/<name>` |
 | A plugin with an Antigravity manifest, when `agy` is installed | `agy plugin validate <plugin>` |
 | `allowed-models.json`, a `pressure-test` `SKILL.md`, or code or a test in `dev-skills` | `uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'` |

@@ -1,5 +1,6 @@
 """Public renderer and synthetic PostgreSQL contract tests. No hosted services."""
 
+import ast
 import base64
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -165,6 +166,22 @@ class RendererTests(RendererCase):
         self.assertIn(" ".join(shlex.quote(arg) for arg in (
             "uv", "run", "--no-project", "--python", ">=3.11", "python", str(SCRIPT),
             "--config", str(self.config), "read", "--limit", "1")), error)
+
+    def test_python_before_3_11_guard_runs_without_an_old_interpreter(self):
+        # The test above skips without Python 3.6 through 3.10 on PATH (#457). Python 3.9, the macOS python3,
+        # reaches the guard only when it parses the module, and this interpreter reports a Python 3.10.
+        ast.parse(SCRIPT.read_text(encoding="utf-8"), feature_version=(3, 6))
+        code = ("import runpy, sys; sys.version_info = (3, 10, 0, 'final', 0); sys.argv = sys.argv[1:]; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')")
+        process = subprocess.run(
+            [sys.executable, "-c", code, str(SCRIPT), "--config", str(self.config), "read", "--limit", "1"],
+            text=True, capture_output=True, timeout=10)
+        self.assertEqual((process.returncode, process.stdout), (1, ""), process.stderr)
+        self.assertTrue(process.stderr.startswith("gtd_sql: needs Python 3.11 or newer;"), process.stderr)
+        self.assertIn("No SQL was sent.", process.stderr)
+        self.assertIn(" ".join(shlex.quote(arg) for arg in (
+            "uv", "run", "--no-project", "--python", ">=3.11", "python", str(SCRIPT),
+            "--config", str(self.config), "read", "--limit", "1")), process.stderr)
 
     def test_cloud_contract_commands_pass_a_private_binding_copy(self):
         lines = [line for line in (PLUGIN / "references" / "gtd-cloud.md").read_text().splitlines()

@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""Check a shell command for six zsh traps before it runs.
+"""Check a shell command for six zsh traps and three BSD tool traps before it runs.
 
 1. zsh replaces an unquoted word `=name` with the path of the command
    `name` (`=ls` gives `/bin/ls`). For `=====` or `==`, no such command
@@ -24,6 +24,11 @@
    `tail` succeeds. The check covers `pytest`, `python -m unittest`, and
    the package validator `validate_packages.py` when their output goes
    through a pipe to `tail` or `head`.
+7. macOS has BSD tools, which reject some GNU options. BSD `head` rejects
+   a count of 0, as in `head -0` or `head -n 0`. BSD `cat` has no `-A`,
+   `-E`, `-T`, or long option, as in `cat -A`. Some macOS releases have
+   no `timeout` command, so the check warns about `timeout` when no
+   `timeout` command is on `PATH`.
 
 The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
 `--host claude` or `--host codex`, it quotes missing-command separators in
@@ -50,7 +55,8 @@ corrected command, and it blocks a command with any other trap, with the
 trap messages on stderr. It skips the glob check: the check reads the
 files before the command runs, so it can block a command that first
 creates the files, and no warning can replace the block. It also skips
-the pipefail check, which must not block a command.
+the pipefail check and the `head` and `cat` checks, which must not block
+a command: GNU tools accept those options.
 """
 
 import glob
@@ -172,6 +178,30 @@ TEST_MODULES = {"pytest", "unittest"}
 # Words after which a test program is a command, as in `uv run pytest`.
 RUN_WORDS = {"run", "uvx"}
 PYTHON_RE = re.compile(r"python[0-9.]*")
+HEAD_WARNING = (
+    "BSD tool trap: BSD `head`, as on macOS, rejects the count 0 in "
+    "`head {option}`. It prints \"illegal line count -- 0\" or \"illegal "
+    "byte count -- 0\" and exits 1. To discard the output, redirect it to "
+    "/dev/null. To print lines, give a count of 1 or more."
+)
+# A `head` option that holds the count 0, such as `-0`, `-n0`, or
+# `--lines=0`; and the options whose next word is the count.
+HEAD_ZERO_RE = re.compile(r"-[nc]?0+|--(?:lines|bytes)=0+")
+HEAD_COUNT_OPTIONS = {"-n", "-c", "--lines", "--bytes"}
+CAT_WARNING = (
+    "BSD tool trap: BSD `cat`, as on macOS, has no option `{option}`, so "
+    "the command fails with \"illegal option\". BSD `cat` accepts only "
+    "-b, -e, -l, -n, -s, -t, -u, and -v. To show tabs and line ends, use "
+    "`cat -vet`."
+)
+# A GNU `cat` option that BSD `cat` lacks: -A, -E, -T, or a long option.
+GNU_CAT_OPTION_RE = re.compile(r"-[A-Za-z]*[AET][A-Za-z]*|--.+")
+TIMEOUT_WARNING = (
+    "BSD tool trap: no `timeout` command is on PATH, so the shell stops "
+    "this command with \"command not found\". Some macOS releases have no "
+    "`timeout`. Leave it out, and give the time limit to the tool that "
+    "runs the command."
+)
 
 
 # One shell word as written, quotes included. `quoted_space` is true when a
@@ -209,6 +239,12 @@ class Findings:
         # (test, pager) of each test command whose output goes through a
         # pipe to `tail` or `head` while `pipefail` is off.
         self.hidden_statuses = []
+        # The options of `head` with the count 0, such as `-n 0`.
+        self.head_zero_counts = []
+        # The GNU options of `cat`, such as `-A`.
+        self.gnu_cat_options = []
+        # True when a command runs `timeout`.
+        self.timeout = False
 
 
 def _double_quote_end(text, index, bodies):
@@ -493,8 +529,35 @@ def _test_command(words):
     return None
 
 
+def _record_bsd_options(words, findings):
+    """Add the BSD tool traps of one command to `findings`.
+
+    `words` start at the command name. A `--` word ends the options. A path
+    to `timeout`, such as `/usr/bin/timeout`, is not a trap.
+    """
+    if not words:
+        return
+    if words[0] == "timeout":
+        findings.timeout = True
+    name = os.path.basename(words[0])
+    if name not in ("head", "cat"):
+        return
+    arguments = words[1:]
+    for index, word in enumerate(arguments):
+        if word == "--":
+            return
+        following = arguments[index + 1] if index + 1 < len(arguments) else ""
+        if name == "cat" and GNU_CAT_OPTION_RE.fullmatch(word):
+            findings.gnu_cat_options.append(word)
+        elif name == "head" and HEAD_ZERO_RE.fullmatch(word):
+            findings.head_zero_counts.append(word)
+        elif name == "head" and word in HEAD_COUNT_OPTIONS and re.fullmatch(r"0+", following):
+            findings.head_zero_counts.append(f"{word} {following}")
+
+
 def _end_command(words, operator, piped_test, findings):
-    """Record the pipefail findings of one command that ends at `operator`.
+    """Record the pipefail and BSD tool findings of one command that ends at
+    `operator`.
 
     `piped_test` is the test word of an earlier command of the pipeline.
     Returns the test word that the next command of the pipeline reads, or
@@ -502,6 +565,7 @@ def _end_command(words, operator, piped_test, findings):
     """
     words = _command_words(words)
     name = os.path.basename(words[0]) if words else ""
+    _record_bsd_options(words, findings)
     if name in ("set", "setopt", "unsetopt"):
         for previous, word in zip(words, words[1:]):
             if word.lower().replace("_", "") == "pipefail":
@@ -687,9 +751,10 @@ def zsh_traps(command, cwd=None, host=None):
     or a `for` list, as in `set -- $pr`. An array is split in zsh too.
     `cwd` is the directory where the command runs. The glob check uses it
     unless the command changes the directory. The glob and pipefail checks
-    do not run when `host` is "antigravity". A parameter flag is a trap only
-    when `host` is "claude", because only the Claude Code safety check
-    rejects it.
+    do not run when `host` is "antigravity", and neither do the `head` and
+    `cat` checks. A parameter flag is a trap only when `host` is "claude",
+    because only the Claude Code safety check rejects it. `timeout` is a
+    trap only when no `timeout` command is on PATH.
     """
     findings = Findings()
     _analyze(command, findings, 0)
@@ -725,6 +790,12 @@ def zsh_traps(command, cwd=None, host=None):
     if findings.hidden_statuses and host != ANTIGRAVITY:
         test, pager = findings.hidden_statuses[0]
         traps.append(Trap(PIPEFAIL_WARNING.format(test=test, pager=pager), False))
+    if findings.head_zero_counts and host != ANTIGRAVITY:
+        traps.append(Trap(HEAD_WARNING.format(option=findings.head_zero_counts[0]), False))
+    if findings.gnu_cat_options and host != ANTIGRAVITY:
+        traps.append(Trap(CAT_WARNING.format(option=findings.gnu_cat_options[0]), False))
+    if findings.timeout and shutil.which("timeout") is None:
+        traps.append(Trap(TIMEOUT_WARNING, False))
     return traps
 
 

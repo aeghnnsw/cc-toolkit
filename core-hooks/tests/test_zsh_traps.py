@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -218,6 +219,37 @@ PIPEFAIL_SAFE = [
     "echo hi # pytest | tail",
 ]
 
+# BSD `head` and `cat`, as on macOS, reject these GNU options (#457). The
+# value is the tool and the option that the warning names.
+BSD_TRAPS = {
+    "head -0 a.txt": ("head", "-0"),
+    "head -n 0 a.txt": ("head", "-n 0"),
+    "head -n0 a.txt": ("head", "-n0"),
+    "head -c 0 a.txt": ("head", "-c 0"),
+    "head --lines=0 a.txt": ("head", "--lines=0"),
+    "printf 'a\\n' | head -n 0": ("head", "-n 0"),
+    "cat -A a.txt": ("cat", "-A"),
+    "cat -vET a.txt": ("cat", "-vET"),
+    "cat --show-all a.txt": ("cat", "--show-all"),
+    "x=$(cat -A a.txt)": ("cat", "-A"),
+}
+
+BSD_SAFE = [
+    "head -5 a.txt",
+    "head -n 10 a.txt",
+    "head -c 100 a.txt",
+    "cat -vet a.txt",
+    "cat -n a.txt",
+    "cat -- -A",
+    "tail -n 0 a.txt",
+    "echo 'cat -A a.txt'",
+    "grep -n 'head -0' a.txt",
+    "cat <<'EOF'\nhead -0 a.txt\nEOF",
+]
+
+# Commands that run `timeout`; the check warns when no `timeout` is on PATH.
+TIMEOUT_TRAPS = ["timeout 5 make test", "cd x && timeout 5 make", "x=$(timeout 1 true)"]
+
 
 def glob_directory(temp_dir):
     """Fill `temp_dir` with `a.txt` and `sub/b.md`, and return its path."""
@@ -391,6 +423,57 @@ class ZshTrapTests(unittest.TestCase):
                 self.assertNotIn("updatedInput", output)
                 self.assertIn("set -o pipefail;", output["additionalContext"])
                 self.assertEqual(response["systemMessage"], output["additionalContext"])
+
+    def test_warns_about_a_gnu_option_that_bsd_tools_reject(self):
+        for command, (tool, option) in BSD_TRAPS.items():
+            for host in (None, "claude", "codex"):
+                with self.subTest(command=command, host=host):
+                    traps = zsh_traps.zsh_traps(command, host=host)
+                    self.assertEqual([trap.blocks for trap in traps], [False], traps)
+                    expected = f"`head {option}`" if tool == "head" else f"option `{option}`"
+                    self.assertIn(expected, traps[0].message)
+
+    def test_gives_no_bsd_finding_for_bsd_options_or_literal_text(self):
+        for command in BSD_SAFE:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command, host="claude"), [])
+
+    def test_skips_the_head_and_cat_checks_for_antigravity(self):
+        # GNU tools accept these options, so the check must not block them.
+        for command in BSD_TRAPS:
+            with self.subTest(command=command):
+                self.assertEqual(zsh_traps.zsh_traps(command, host="antigravity"), [])
+
+    @unittest.skipUnless(sys.platform == "darwin", "the BSD head and cat ship with macOS")
+    def test_bsd_cases_fail_with_the_macos_tools(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "a.txt").write_text("a\tb\n")
+            for command in BSD_TRAPS:
+                with self.subTest(command=command):
+                    bsd = command.replace("head ", "/usr/bin/head ").replace("cat ", "/bin/cat ")
+                    result = subprocess.run(["/bin/sh", "-c", bsd], text=True, capture_output=True,
+                                            cwd=temp_dir, check=False, timeout=30)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn("illegal", result.stderr)
+            fix = subprocess.run(["/bin/cat", "-vet", "a.txt"], text=True, capture_output=True,
+                                 cwd=temp_dir, check=True, timeout=30)
+            self.assertEqual(fix.stdout, "a^Ib$\n")
+
+    def test_warns_about_timeout_only_without_a_timeout_command(self):
+        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.dict(os.environ, {"PATH": temp_dir}):
+            for command in TIMEOUT_TRAPS:
+                for host in (None, "claude", "codex", "antigravity"):
+                    with self.subTest(command=command, host=host):
+                        traps = zsh_traps.zsh_traps(command, host=host)
+                        self.assertEqual([trap.blocks for trap in traps], [False], traps)
+                        self.assertIn("no `timeout` command is on PATH", traps[0].message)
+            self.assertEqual(zsh_traps.zsh_traps("make timeout; echo 'timeout 5'; /opt/bin/timeout 5 x"), [])
+            executable = Path(temp_dir, "timeout")
+            executable.write_text("#!/bin/sh\nexit 0\n")
+            executable.chmod(0o755)
+            for command in TIMEOUT_TRAPS:
+                with self.subTest(command=command, on_path=True):
+                    self.assertEqual(zsh_traps.zsh_traps(command), [])
 
     @unittest.skipUnless(ZSH, "zsh is not installed")
     def test_modifier_cases_change_the_value_in_zsh(self):
@@ -755,7 +838,9 @@ class ZshTrapTests(unittest.TestCase):
 
     def test_hook_gives_the_agent_a_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            for command, text in ((EQUALS_FOUND, "Quote the word"), ("ls *.md", "matches no file")):
+            for command, text in (
+                (EQUALS_FOUND, "Quote the word"), ("ls *.md", "matches no file"), ("cat -A a.txt", "`cat -vet`"),
+            ):
                 with self.subTest(command=command):
                     result = run_hook(command, cwd=temp_dir)
                     self.assertEqual(result.returncode, 0, result.stderr)
