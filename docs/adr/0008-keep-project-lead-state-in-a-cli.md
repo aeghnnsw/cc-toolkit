@@ -237,6 +237,8 @@ has the tools, and it needs one `t3_thread_read` call for each thread.
 [#578](https://github.com/aeghnnsw/cc-toolkit/issues/578) tracks that option.
 Until then, an unsettled T3 Code thread that no lead state records has only
 the 60-minute live session check.
+(Superseded in part by #578: the plan now reads the T3 Code threads with the
+`t3` CLI; read [The worktrees of T3 Code threads](#the-worktrees-of-t3-code-threads).)
 
 ## The discover step
 
@@ -388,3 +390,53 @@ the rule of [The discover step](#the-discover-step): the discovery list is not
 a waiting item. It says to write no other list of decisions for the user. The
 due line of `finish` names that rule first. `finish` prints no waiting list,
 because it runs only when the list is empty.
+
+## The worktrees of T3 Code threads
+
+Added on 2026-11-24 for
+[#578](https://github.com/aeghnnsw/cc-toolkit/issues/578).
+
+A T3 Code thread that no lead state records had only the 60-minute live
+session check. After that window, the plan removed its worktree when the
+worktree was clean and its branch merged. On 2026-11-24, 1 such worktree,
+`t3-6c6c2af8`, belonged to an unsettled top-level thread.
+
+Now the plan reads the T3 Code threads with the `t3` CLI. T3 Code is not a
+host; the CLI is an optional source of keep evidence. The CLI is
+`T3CODE_CLI_PATH` when it is set, else `t3` on `PATH`. The plan runs
+`t3 thread list --json --project <main checkout>` once. For each row with
+`settled: false`, it runs `t3 thread show --json --messages 1 <threadId>`.
+It keeps each worktree whose real path equals the real path of
+`thread.worktreePath`, and the reason is `T3 thread <id> is not settled`. A
+thread with no worktree path keeps nothing. The plan has no `--keep` flag,
+because it reads the thread state itself.
+
+When the plan finds no CLI, this rule keeps nothing, and the other rules
+decide. When the list prints "No T3 Code project matches", the repository is
+no T3 Code project, and this rule also keeps nothing. On any other failure,
+the plan keeps every worktree that it would otherwise remove, and the reason
+gives the error: a call that cannot run, a non-zero exit status (also the
+launcher's 127, "T3 Code has moved or been removed"), a timeout of 10
+seconds, output that is not JSON, or a missing `threadId`, `settled`, or
+`thread.worktreePath`. When T3 Code changes the "No T3 Code project matches"
+text, this rule applies too.
+
+The CLI asks the running T3 Code server. On 2026-11-24, `t3` v0.1.11 with a
+data directory that no running server used exited 1 with "No running T3 Code
+server uses <dir>. Start T3 Code, then retry.", also with a stale
+`server-runtime.json`. So while the T3 Code app is closed, the plan keeps
+every worktree that it would otherwise remove. In the Claude Code sandbox,
+`t3` also fails, but `ps` fails there too, so the plan already kept every
+worktree.
+
+The plan uses the CLI, not the MCP tools of T3 Code: the plan cannot tell a
+skipped or partial agent step from "no unsettled threads", only an agent
+inside T3 Code has the tools, and their prefix differs by host. It does not
+read the T3 Code state database, for the reasons in
+[The worktrees of lead tasks](#the-worktrees-of-lead-tasks). The CLI is a
+command that T3 Code installs for users; a change to its output stops
+removals and cannot make the plan remove more.
+
+Known limit: `thread list` hides `delegate_task` workers. Only a lead state
+keeps the worktree of such a worker.
+`dev-skills/tests/test_cleanup_plan.py` checks each rule with a fake `t3`.

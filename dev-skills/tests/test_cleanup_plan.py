@@ -8,9 +8,12 @@ branches with no commit of their own, and a worktree that contains another
 worktree. Issue #528 also changed cases 7, 16, and 18. Cases 26-30 come from
 issue #575: the worktrees that the tasks of a lead state record, and a lead
 state that cannot be read; issue #575 also changed cases 17-19. Case 31 comes
-from issue #577, which also changed case 16. Each check builds a temporary
-repository with a bare origin, runs the script with a fake gh (fake_gh.py),
-and reads the lines that it prints. The real live_worktrees.py runs, so most
+from issue #577, which also changed case 16. Cases 32-35 come from issue #578:
+the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
+Each check builds a temporary repository with a bare origin, runs the script
+with a fake gh (fake_gh.py), and reads the lines that it prints. No check runs
+the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other
+checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py runs, so most
 checks need lsof. Each class makes as few plan runs as it can, because each
 run takes some seconds: one, or one for each mode. No check touches another
 repository.
@@ -28,6 +31,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 TESTS = Path(__file__).resolve().parent
 PLUGIN_ROOT = TESTS.parent
@@ -38,6 +42,19 @@ HOSTS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
 NEEDS_LSOF_AND_GIT = unittest.skipUnless(shutil.which("lsof") and shutil.which("git"),
                                          "needs lsof and git")
 COMMIT_PULLS = r"repos/\{owner\}/\{repo\}/commits/[0-9a-f]{40}/pulls\?per_page=100"
+# PATH without the folders that hold a t3, so that no check runs the real t3 CLI.
+PATH_WITHOUT_T3 = os.pathsep.join(
+    folder for folder in os.environ.get("PATH", "").split(os.pathsep)
+    if not os.access(os.path.join(folder, "t3"), os.X_OK))
+
+
+def fake_t3(folder: Path) -> Path:
+    """Write a t3 in the folder that runs fake_t3.py, and return its path."""
+    folder.mkdir(exist_ok=True)
+    t3 = folder / "t3"
+    t3.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{TESTS / "fake_t3.py"}" "$@"\n')
+    t3.chmod(0o755)
+    return t3
 
 
 class Repo:
@@ -56,7 +73,8 @@ class Repo:
         gh.chmod(0o755)
         self.gh_data: dict = {"prs": {}, "issues": {}}
         self.env = {key: value for key, value in os.environ.items()
-                    if key not in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID")}
+                    if key not in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID",
+                                   "T3CODE_CLI_PATH")}
         self.env.update(
             HOME=str(self.tmp / "home"),
             CLAUDE_CONFIG_DIR=str(self.claude_dir),
@@ -65,10 +83,13 @@ class Repo:
             GIT_CONFIG_NOSYSTEM="1",
             GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
             GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid",
-            PATH=f"{self.bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            PATH=f"{self.bin}{os.pathsep}{PATH_WITHOUT_T3}",
             FAKE_GH_DATA=str(self.tmp / "gh.json"),
             FAKE_GH_LOG=str(self.tmp / "gh.log"),
+            FAKE_T3_DATA=str(self.tmp / "t3.json"),
+            FAKE_T3_LOG=str(self.tmp / "t3.log"),
         )
+        self.t3_data: dict = {}
         self.path = self.tmp / "repo"
         self.git("init", "-q", "--bare", "-b", "master", str(self.tmp / "origin.git"), cwd=self.tmp)
         self.git("init", "-q", "-b", "master", str(self.path), cwd=self.tmp)
@@ -153,6 +174,7 @@ class Repo:
     def run(self, *args: str, cwd: Path | None = None,
             env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         (self.tmp / "gh.json").write_text(json.dumps(self.gh_data))
+        (self.tmp / "t3.json").write_text(json.dumps(self.t3_data))
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd or self.path,
                               env=env or self.env, capture_output=True, text=True)
 
@@ -170,6 +192,10 @@ class Repo:
 
     def gh_calls(self) -> list[list[str]]:
         log = self.tmp / "gh.log"
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def t3_calls(self) -> list[list[str]]:
+        log = self.tmp / "t3.log"
         return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
     def snapshot(self) -> tuple[str, str, str, list[str]]:
@@ -611,6 +637,147 @@ class UnreadableLeadStateCases(PlanTestCase):
         self.plan = self.plans["schema 2"]
         self.assert_kept_with_branches(self.feat_m, f"cannot read the lead state {self.state}",
                                        "unknown lead state schema")
+
+
+@NEEDS_LSOF_AND_GIT
+class T3ThreadCases(PlanTestCase):
+    """Cases 32-35: merged worktrees and the T3 Code threads that a fake t3 lists.
+
+    An unsettled thread owns owned, through a symlink to its parent folder. A
+    settled thread owns done, and no thread owns free. An unsettled thread
+    without a worktree path owns no worktree. One plan runs for each case.
+    """
+
+    plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        worktrees = {}
+        for number, name in enumerate(("owned", "done", "free"), start=110):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+        cls.owned, cls.done, cls.free = worktrees.values()
+        link = repo.tmp / "trees-link"
+        link.symlink_to(repo.path / "trees")
+        repo.t3_data = {
+            "projects": {str(repo.path): [
+                {"threadId": "thread-a", "settled": False, "status": "running"},
+                {"threadId": "thread-b", "settled": True, "status": "completed"},
+                {"threadId": "thread-c", "settled": False, "status": "waiting"}]},
+            "threads": {"thread-a": {"thread": {"worktreePath": str(link / "owned")}},
+                        "thread-b": {"thread": {"worktreePath": str(cls.done)}},
+                        "thread-c": {"thread": {"worktreePath": None}}}}
+        # T3CODE_CLI_PATH comes before PATH, whose t3 fails.
+        wrong = repo.tmp / "t3-wrong"
+        wrong.mkdir()
+        (wrong / "t3").write_text("#!/bin/sh\necho wrong t3 >&2\nexit 3\n")
+        (wrong / "t3").chmod(0o755)
+        named = dict(repo.env, T3CODE_CLI_PATH=str(fake_t3(repo.tmp / "t3-named")),
+                     PATH=f"{wrong}{os.pathsep}{repo.env['PATH']}")
+        on_path = dict(repo.env, PATH=f"{fake_t3(repo.tmp / 't3-bin').parent}{os.pathsep}"
+                                      f"{repo.env['PATH']}")
+        cls.plans = {"threads": repo.plan(env=named)}
+        cls.calls = repo.t3_calls()
+        cls.plans["no CLI"] = repo.plan()
+        cls.calls_without_cli = repo.t3_calls()[len(cls.calls):]
+        repo.t3_data["projects"] = {}
+        cls.plans["no project"] = repo.plan(env=on_path)
+        repo.t3_data = {"fail": [1, "No running T3 Code server uses /home/.t3. "
+                                    "Start T3 Code, then retry."]}
+        cls.plans["no server"] = repo.plan(env=on_path)
+
+    def test_case_32_keeps_the_merged_worktree_of_an_unsettled_thread(self):
+        self.plan = self.plans["threads"]
+        self.assert_kept_with_branches(self.owned, "T3 thread thread-a is not settled")
+        self.assert_removed_with_branches(self.done, "merged PR #111")
+        self.assert_removed_with_branches(self.free, "merged PR #112")
+        self.assertEqual(self.calls, [
+            ["thread", "list", "--json", "--project", str(self.repo.path)],
+            ["thread", "show", "--json", "--messages", "1", "thread-a"],
+            ["thread", "show", "--json", "--messages", "1", "thread-c"]])
+
+    def test_case_33_without_a_t3_cli_the_other_rules_decide(self):
+        self.plan = self.plans["no CLI"]
+        self.assert_removed_with_branches(self.owned, "merged PR #110")
+        self.assertEqual(self.calls_without_cli, [])
+
+    def test_case_34_a_repository_that_is_no_t3_code_project_gives_no_evidence(self):
+        self.plan = self.plans["no project"]
+        self.assert_removed_with_branches(self.owned, "merged PR #110")
+
+    def test_case_35_keeps_every_worktree_when_t3_fails(self):
+        # t3 v0.1.11 fails so while the T3 Code app is closed.
+        self.plan = self.plans["no server"]
+        for worktree in (self.owned, self.done, self.free):
+            self.assert_kept_with_branches(
+                worktree, "cannot read the T3 Code threads: t3 thread list exited with status 1: "
+                "No running T3 Code server uses")
+
+
+class T3FailureCases(unittest.TestCase):
+    """Case 35 for each other failure of t3: no worktree, and the error.
+
+    The checks call unsettled_thread_worktrees of cleanup_plan.py with a fake t3
+    that T3CODE_CLI_PATH names.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
+        cls.addClassCleanup(sys.path.remove, str(PLUGIN_ROOT / "scripts"))
+        import cleanup_plan
+        cls.module = cleanup_plan
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.addClassCleanup(shutil.rmtree, cls.tmp, True)
+        cls.t3 = fake_t3(cls.tmp / "bin")
+
+    def threads(self, data: dict, cli: Path | None = None) -> tuple[dict[str, str], str | None]:
+        (self.tmp / "t3.json").write_text(json.dumps(data))
+        with mock.patch.dict(os.environ, T3CODE_CLI_PATH=str(cli or self.t3),
+                             FAKE_T3_DATA=str(self.tmp / "t3.json"),
+                             FAKE_T3_LOG=str(self.tmp / "t3.log")):
+            return self.module.unsettled_thread_worktrees("/project")
+
+    def test_case_35_each_failure_gives_the_error_and_no_worktree(self):
+        row = {"threadId": "thread-a", "settled": False}
+        listed = {"/project": [row]}
+        cases = {
+            "the launcher finds no app": (
+                {"fail": [127, "T3 Code has moved or been removed. Open the app once to update "
+                               "this command."]},
+                "t3 thread list exited with status 127: T3 Code has moved or been removed"),
+            "the list is no JSON": ({"projects": {"/project": "not JSON"}},
+                                    "t3 thread list printed no JSON"),
+            "a row has no threadId": ({"projects": {"/project": [{"settled": False}]}},
+                                      "KeyError: 'threadId'"),
+            "a row has no settled": ({"projects": {"/project": [{"threadId": "thread-a"}]}},
+                                     "KeyError: 'settled'"),
+            "settled is no boolean": ({"projects": {"/project": [dict(row, settled="no")]}},
+                                      "TypeError: thread thread-a has settled 'no'"),
+            "show fails": ({"projects": listed},
+                           "t3 thread show exited with status 1: Thread thread-a is no longer"),
+            "a thread has no worktreePath": (
+                {"projects": listed, "threads": {"thread-a": {"thread": {}}}},
+                "KeyError: 'worktreePath'"),
+        }
+        for name, (data, phrase) in cases.items():
+            with self.subTest(name):
+                kept, error = self.threads(data)
+                self.assertEqual(kept, {})
+                self.assertIn("cannot read the T3 Code threads: ", error)
+                self.assertIn(phrase, error)
+
+    def test_case_35_a_timeout_gives_the_error(self):
+        with mock.patch.object(self.module, "T3_TIMEOUT", 0.5):
+            kept, error = self.threads({"sleep": 5, "projects": {}})
+        self.assertEqual((kept, error), ({}, "cannot read the T3 Code threads: "
+                                             "t3 thread list timed out after 0.5 seconds"))
+
+    def test_case_35_a_t3code_cli_path_that_cannot_run_gives_the_error(self):
+        kept, error = self.threads({}, cli=self.tmp / "missing" / "t3")
+        self.assertEqual(kept, {})
+        self.assertIn("cannot read the T3 Code threads: t3 thread list cannot run: ", error)
 
 
 @NEEDS_LSOF_AND_GIT
