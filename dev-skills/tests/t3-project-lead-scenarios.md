@@ -24,6 +24,8 @@ and 29.
 Issues [#554](https://github.com/aeghnnsw/cc-toolkit/issues/554) and
 [#556](https://github.com/aeghnnsw/cc-toolkit/issues/556) change cases 1, 3,
 10, 15, and 20.
+Issue [#567](https://github.com/aeghnnsw/cc-toolkit/issues/567) changes cases
+24 and 28, and adds case 30.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -125,6 +127,10 @@ with the commands of `t3_project_lead.py`, in
 29. **Triage needs issue text.** The work that the user named is in
     progress. The user writes: "Label issue 120 as you see fit." The title
     of issue 120 does not show whether it is a bug or a feature.
+30. **Decisions in an ISSUES report.** Read-only task S is the last open
+    task. Its worker reports ISSUES: its findings are the status of the
+    project, not failures. Its report numbers two decisions for the user. No
+    PR exists, and nothing waits on the user.
 
 ## Expected results
 
@@ -153,12 +159,13 @@ with the commands of `t3_project_lead.py`, in
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
 | Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
-| Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
+| Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A with `--decisions 0`. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
 | New thread in a new worktree | Tell the user that a lead state exists in the other worktree, with its slug, owner, open tasks, and waiting item, and give the three ways to continue that lead there: change the provider of thread T1, fork T1, or start a thread with `t3_thread_launch` and `existing_worktree` in that worktree. Ask the user which way to take. | Running `init` here; running `init --also` before the user confirms a second lead state; copying the lead state into this worktree. | The listing that `start` prints. |
 | Fork takes over | Run `takeover`, then `start`. Follow the due line of the first `start` after the takeover: check `t3_thread_list` with `includeSubagents` and `pull_request_list`, and record each worker that the lead state does not name with `task add` and `task start`, or add a waiting item. | Changing the lead state before the takeover; starting a second worker for work that already runs. | The view that `start` prints before and after the takeover, and the `takeover` output. |
-| New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, no outcome, and the discovery brief that `discover` prints, copied exactly. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover`, copy its group lines into the report as they are, and end the turn. After the user names the work, run `outcome` and `criteria`, then the `plan` step. When the user writes again without naming work, start no second discovery. | Listing issues with `list_issues` before the discovery report; asking the user what to do before the discovery task reports; asking the user to choose, with a question tool or in text; adding a waiting item or a GTD capture for the list; reading the open issues with `read_issue`, or a PR with `include` `body`, `comments`, `threads`, or `diff`; quoting issue text in the report; running `outcome` before the user names the work; running `finish` while the lead state has no outcome; a second discovery task. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
+| New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, no outcome, and the discovery brief that `discover` prints, copied exactly. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover --decisions 0`, copy its group lines into the report as they are, and end the turn. After the user names the work, run `outcome` and `criteria`, then the `plan` step. When the user writes again without naming work, start no second discovery. | Listing issues with `list_issues` before the discovery report; asking the user what to do before the discovery task reports; asking the user to choose, with a question tool or in text; adding a waiting item or a GTD capture for the list; reading the open issues with `read_issue`, or a PR with `include` `body`, `comments`, `threads`, or `diff`; quoting issue text in the report; running `outcome` before the user names the work; running `finish` while the lead state has no outcome; a second discovery task. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
 | Triage needs issue text | Start a read-only worker with the `dispatch` step that reads issue 120 and recommends labels; record it as a task. Set the labels that it recommends, or ask the user when it reports a decision. | Calling `read_issue` for issue 120; reading its text in any other way; guessing the labels from the title. | The worker's recommendation, and the issue state and labels from `list_issues`. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
+| Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2`, which adds one waiting item with S's link and "2 decisions". Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; a topic or other content of a decision; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
 
 ## Validation limits
 
@@ -192,6 +199,23 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-24, issue #567
+
+**Static checks.** `test_t3_project_lead_state.py` checks that
+`task verified` refuses a missing or negative count and a count above 0 for
+several tasks, and changes nothing then; that a count above 0 adds one worker
+item with the worker's link and records the count in the event; that no due
+line offers `done` for that item; and that `finish` refuses until the item is
+done. It checks that `wait --task` adds an item for a verified or settled
+task, and refuses a task without a worker. `test_t3_project_lead.py` requires
+the count in `discover`, `verify`, and `closeout`, the `wait` line of
+`verify`, and the `report` lines on decisions that only the user can make,
+the discovery list, a second list of decisions, `done`, agent captures, and
+`finish`. It also checks that the due line of a check task names the count.
+The new checks failed against the 2132513 script.
+
+**Not shown.** No simulated or live review of cases 24, 28, and 30 ran.
 
 ### 2026-11-23, issues #554, #555, #556, and #560
 
