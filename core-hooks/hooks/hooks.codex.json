@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project \"${PLUGIN_ROOT}/scripts/stale_install_check.py\" || { rc=$?; printf 'WARNING: core-hooks stale-install check failed (exit %s)\\n' \"$rc\" >&2; exit 0; }"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|Write|Edit|MultiEdit|Read|exec_command|apply_patch",

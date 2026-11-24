@@ -431,6 +431,39 @@ class StepTests(unittest.TestCase):
         self.assertEqual(tuple(choice.strip(" '") for choice in choices.group(1).split(",")),
                          STEPS + STATE_COMMANDS)
 
+    def test_start_prints_the_versions_of_its_installed_copy(self) -> None:
+        # A lead ran an installed copy older than its marketplace clone, and no session showed it (#576).
+        def expected(root: Path) -> str:
+            versions = ", ".join(
+                f"{host} {json.loads((root / folder / 'plugin.json').read_text(encoding='utf-8'))['version']}"
+                for host, folder in (("Claude Code", ".claude-plugin"), ("Codex", ".codex-plugin"),
+                                     ("Antigravity", ".antigravity-plugin")))
+            return f"Installed copy: dev-skills {versions}."
+
+        text = step("start")
+        self.assertEqual(text.split("\n\n", 2)[1].splitlines()[0], expected(PLUGIN_ROOT))
+        for name in STEPS:
+            if name != "start":
+                with self.subTest(step=name):
+                    self.assertNotIn("Installed copy:", step(name))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "dev-skills" / "0.9.1"
+            (root / "scripts").mkdir(parents=True)
+            (root / "scripts" / SCRIPT.name).write_bytes(SCRIPT.read_bytes())
+            for index, folder in enumerate((".claude-plugin", ".codex-plugin", ".antigravity-plugin")):
+                (root / folder).mkdir()
+                (root / folder / "plugin.json").write_text(json.dumps({"version": f"0.{index}.1"}),
+                                                           encoding="utf-8")
+            result = subprocess.run([sys.executable, str(root / "scripts" / SCRIPT.name), "start"],
+                                    capture_output=True, text=True, cwd=NO_STATE.name, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("\n\nInstalled copy: dev-skills Claude Code 0.0.1, Codex 0.1.1, Antigravity 0.2.1.\n",
+                          result.stdout)
+            (root / ".codex-plugin" / "plugin.json").unlink()
+            result = subprocess.run([sys.executable, str(root / "scripts" / SCRIPT.name), "start"],
+                                    capture_output=True, text=True, cwd=NO_STATE.name, check=False)
+            self.assertIn("Codex unknown, Antigravity 0.2.1.", result.stdout)
+
     def test_each_step_starts_with_the_script_path(self) -> None:
         for name in STEPS:
             with self.subTest(step=name):
