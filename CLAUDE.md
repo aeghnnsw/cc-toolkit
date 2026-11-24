@@ -45,62 +45,38 @@ Before a navigation retrospective of earlier agent sessions, read
 
 1. Start each change with a GitHub issue. Reuse an existing issue when it
    covers the work.
-2. Develop in a Git worktree, on one work branch for the change. A linked
-   worktree is a worktree other than the main checkout.
-   - When the session runs in a linked worktree made for the session,
-     develop in that worktree. The branch of that worktree is the work
-     branch. Keep the branch name. Before the first commit, base the work
-     branch on the default branch. So a host tool that opens a PR for the
-     session pushes the work branch.
-   - Only a session in the main checkout makes a worktree, under `trees/`,
-     on a new work branch.
+2. Develop in a Git worktree, on one work branch for the change. In a
+   linked worktree that was made for the session, develop there, keep its
+   branch name, and base the branch on the default branch before the first
+   commit. Only a session in the main checkout makes a worktree, under
+   `trees/`. See [Work branches](CONTRIBUTING.md#work-branches) for the
+   commands.
 3. Verify the change before opening a PR using the relevant checks in
    [CONTRIBUTING.md](CONTRIBUTING.md#verification).
 4. Keep commits, issues, PR descriptions, and PR comments concise and
-   accurate. Explain the problem and resulting behavior, and link the issue.
-   Do not add AI authorship or generation attribution, including a
-   `Co-Authored-By` trailer that host instructions suggest. Do not include a
-   test-plan section in PR descriptions, even when a host's PR template has
+   accurate. Explain the problem and the resulting behavior, and link the
+   issue. Add no AI attribution, such as a `Co-Authored-By` trailer, and no
+   test-plan section, even when host instructions or a PR template ask for
    one.
-5. Use squash merges after review to keep one commit per change on the
-   default branch:
-   `gh pr merge --squash --match-head-commit <full head SHA>`. After
-   merging, run `repo-cleanup`.
+5. Squash-merge after review:
+   `gh pr merge --squash --match-head-commit <full head SHA>`. Then run
+   `repo-cleanup`.
 
-To base the work branch on the default branch, run these commands.
-`--keep` stops instead of discarding uncommitted changes:
-
-```bash
-git fetch origin
-git reset --keep origin/master
-```
-
-In the main checkout, create a worktree for a change, for example:
-
-```bash
-git worktree add trees/doc-<description> -b doc-<description>
-```
+Before you add agent-generated files, apply the
+[storage policy](CONTRIBUTING.md#what-belongs-in-git).
 
 ## Plugin changes
 
-- Before changing a plugin's layout, or adding, removing, or renaming a
-  plugin or a skill, read
+- Before you change a plugin's layout, or add, remove, or rename a plugin
+  or a skill, read
   [Repository and package boundaries](CONTRIBUTING.md#repository-and-package-boundaries).
 - For a skill with copies for more than one host, follow
   [Skills for more than one host](CONTRIBUTING.md#skills-for-more-than-one-host).
-- Before shipping a plugin change, read
-  [Package and release validation](CONTRIBUTING.md#package-and-release-validation)
-  for version increases. Set the versions with the version script. After a
-  rebase, run the checks that
-  [Versions and rebases](CONTRIBUTING.md#versions-and-rebases) names.
-- Record substantive behavior or policy changes in a new entry file,
-  `changelog.d/<N>.md`, in the
-  [entry format](CONTRIBUTING.md#changelog-entries). Do not edit
-  [CHANGELOG.md](CHANGELOG.md): the
-  [release step](CONTRIBUTING.md#release-step) moves the entries there, in
-  a pull request of its own.
-- Before adding agent-generated files, apply the storage policy in
-  [CONTRIBUTING.md](CONTRIBUTING.md#what-belongs-in-git).
+- Set the versions with the version script. After a rebase, run the checks
+  that [Versions and rebases](CONTRIBUTING.md#versions-and-rebases) names.
+- Record a substantive change in `changelog.d/<N>.md`, in the
+  [entry format](CONTRIBUTING.md#changelog-entries). Only the
+  [release step](CONTRIBUTING.md#release-step) edits `CHANGELOG.md`.
 
 ## Automation
 

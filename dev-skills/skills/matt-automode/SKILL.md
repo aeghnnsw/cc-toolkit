@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.27.0
+version: 1.28.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -175,6 +175,13 @@ blocker and keep the work. Respect branch protection.
 ## Navigation retrospective
 
 The retro edits no tracked file. It proposes changes for a human to choose.
+Before step 1, record the state of the tracked files. Run these commands from
+the checkout root, and keep their two lines for step 7:
+
+```bash
+git rev-parse HEAD
+git diff HEAD --binary | git hash-object --stdin
+```
 
 1. Find the greatest **Reviewed through** UTC timestamp in earlier
    "Navigation retrospective" records on merged PRs. Run
@@ -204,15 +211,19 @@ The retro edits no tracked file. It proposes changes for a human to choose.
    cutoff: drop the findings at or before it, and name it in the record. Keep
    this run's cutoff as the record's cutoff.
 5. Open or reuse a proposal issue only when a finding's fix is clean, worth
-   its cost, and general. Prefer a tool fix or an automated check to new text
-   in a steering file. Record each other finding as "no fix"; that result is
-   correct even for every finding.
+   its cost, and general. Propose a check, a script, or a test first.
+   Propose new text in a steering file only when no check, script, or test
+   can work, and give the reason in the issue. Record each other finding as
+   "no fix"; that result is correct even for every finding.
 6. Post a **Navigation retrospective** comment on the run's last merged PR:
    the **Reviewed through** cutoff, the sessions read and history limits, and
    each finding with its session and time and its issue link or "no fix". A
    run that merges no PR skips the retro; the next run reads its sessions.
    Write the cutoff as `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, truncated
    to whole seconds.
+7. Run the two commands from before step 1 again. They must print the same
+   two lines. A difference means that the retro made a commit or changed a
+   tracked file: report it, and undo the retro's change.
 
 A leader is a session that starts parallel runs. When a leader runs the
 retrospective for its runs, it runs it once, after the runs finish, and posts
@@ -221,8 +232,10 @@ all its runs and its own. Two retrospectives then do not read the same
 sessions.
 
 A proposal issue states the finding, its session and time, and the proposed
-change, with the repository's "Needs triage" label. To reuse an issue, add the
-new evidence as a comment. The retro stores no lesson and adds no record file.
+change, with the repository's "Needs triage" label. For new text in a
+steering file, it also states why no check, script, or test can work. To
+reuse an issue, add the new evidence as a comment. The retro stores no
+lesson and adds no record file.
 A steering file tells an agent how to work, such as `AGENTS.md`, `CLAUDE.md`,
 `GEMINI.md`, a contributor guide, or a skill. A proposal keeps root
 `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` to rules for every task and

@@ -12,6 +12,10 @@ the surrounding code style. Do not reformat unrelated code.
 
 Wrap ordinary prose in `CLAUDE.md` and `CONTRIBUTING.md` at 78 characters.
 Exempt headings, tables, links, and code examples, including inline commands.
+Root `CLAUDE.md` has a budget of 450 words, counted as `wc -w` counts them,
+and a fixed set of sections. [tests/test_steering_budget.py](tests/test_steering_budget.py)
+checks both. Move detail to `CONTRIBUTING.md` or `docs/agents/`, and leave a
+pointer in `CLAUDE.md`.
 Other Markdown files follow their surrounding style.
 [tests/test_prose_width.py](tests/test_prose_width.py) checks this rule and
 prints `file:line:width` for each line to rewrap.
@@ -370,6 +374,27 @@ When a change supersedes part of a design, plan, conclusion, or ADR under
 link the replacement. In an ADR, also mark each replaced sentence and record
 the new rule with its reason in a new section; see ADR 0002 for an example.
 A change that only adds facts needs no note.
+
+## Work branches
+
+A linked worktree is a worktree other than the main checkout. When a
+session runs in a linked worktree made for it, the branch of that worktree
+is the work branch. Keep its name. Before the first commit, base the work
+branch on the default branch, so that a host tool that opens a pull request
+for the session pushes the work branch. `--keep` stops instead of
+discarding uncommitted changes:
+
+```bash
+git fetch origin
+git reset --keep origin/master
+```
+
+Only a session in the main checkout makes a worktree, under `trees/`, on a
+new work branch, for example:
+
+```bash
+git worktree add trees/doc-<description> -b doc-<description>
+```
 
 ## Verification
 

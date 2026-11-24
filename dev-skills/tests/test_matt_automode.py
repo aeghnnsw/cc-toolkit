@@ -204,5 +204,22 @@ class ScriptsReplaceProseRulesTest(unittest.TestCase):
                 self.assertNotIn("Allow only one full test suite at a time", briefs)
 
 
+class RetrospectiveProposesACheckFirstTest(unittest.TestCase):
+    """Issue #467: a retrospective proposes a check before a prose rule and changes no tracked file."""
+
+    def test_steps_propose_a_check_first_and_compare_git_status(self) -> None:
+        for host in HOSTS:
+            steps = between(host, "## Navigation retrospective", "## Sub-agent briefs")
+            with self.subTest(host=host):
+                self.assertIn("Propose a check, a script, or a test first. Propose new text in a steering "
+                              "file only when no check, script, or test can work, and give the reason in the "
+                              "issue.", steps)
+                self.assertIn("git rev-parse HEAD git diff HEAD --binary | git hash-object --stdin", steps)
+                self.assertIn("7. Run the two commands from before step 1 again. They must print the same two "
+                              "lines.", steps)
+                self.assertIn("it also states why no check, script, or test can work.", steps)
+                self.assertNotIn("Prefer a tool fix or an automated check", steps)
+
+
 if __name__ == "__main__":
     unittest.main()
