@@ -275,3 +275,31 @@ the path the retrospective missed its sessions.
 request of the highest batch merged. So the close-out of a batch waits only
 for the tasks that it had when its first pull request merged. Check and
 close-out tasks still go to the highest batch.
+
+## Decisions of a finished worker
+
+Added on 2026-11-24 for
+[#567](https://github.com/aeghnnsw/cc-toolkit/issues/567).
+
+A lead ended a run with `Waiting on you: nothing.`, and the same report listed
+three decisions for the user. The worker's ISSUES report had numbered two of
+them. Only the `answer` step recorded a worker's decisions with `wait`, and it
+applies to a worker that waits; `verify` and `task verified` did not ask for
+them. A due line then sent the lead to `finish`, which deleted the lead state.
+After that, the lead could not add the items.
+
+The script cannot read a report, so `task verified` now needs
+`--decisions N`: the number of decisions that the report numbers for the
+user, or 0. With several task names, N must be 0. When N is above 0, the
+script adds one worker item with the worker's link, as `wait --task` does.
+An item for a task that is verified, closed out, cancelled, or settled holds
+decisions of a finished report. No due line offers `done` for it, because
+only the user decides it, and `finish` refuses while an item waits.
+`wait --task` now refuses only a task without a worker, so a lead can also
+record a finished worker's decisions after the worker is settled.
+
+The `report` step covers each decision that only the user can make. It keeps
+the rule of [The discover step](#the-discover-step): the discovery list is not
+a waiting item. It says to write no other list of decisions for the user. The
+due line of `finish` names that rule first. `finish` prints no waiting list,
+because it runs only when the list is empty.

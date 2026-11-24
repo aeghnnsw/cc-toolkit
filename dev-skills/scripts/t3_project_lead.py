@@ -37,6 +37,11 @@ arguments and make all changes under one lock, or none. `task start` and
 `task worker` record each worker's worktree, and `closeout` prints the paths
 for `retro_sessions.py --worktree` (issue #556). Without `--batch`, a work task
 joins a new batch once a PR of the highest batch merged (issue #560).
+
+`task verified` needs the count of decisions that the report numbers for the
+user, and adds them as one worker item (issue #567). Only the user ends such an
+item, so `finish` waits for it, and the due line of `finish` names the rule of
+the `report` step for decisions first.
 """
 
 from __future__ import annotations
@@ -89,8 +94,8 @@ Otherwise add the discovery task: task add discover 'Discover open work'.
 Start its worker as t3_project_lead.py dispatch says, with the read-only
 brief, no outcome, and the discovery brief below, copied exactly. In the last
 line of its brief, replace "with evidence and links" with "in the form above".
-When it reports, run task verified discover. Copy its lines into your report
-as they are, and end your turn. The list is not a waiting item: add no wait
+When it reports, run task verified discover --decisions 0. Copy its lines into
+your report as they are, and end your turn. The list is not a waiting item: add no wait
 item or GTD capture for it. Do not ask the user to choose, with a question
 tool or in text. When the user names the work, run outcome <text> and
 criteria <text>. When discover is verified and the user named no work, start
@@ -206,9 +211,11 @@ edits nothing; its verdict completes the check.
 For a scientific task, read no artifact, and always start the read-only
 worker.
 Give each finding to one follow-up worker, even a small one. Then what
-remains waits on the user. Fix and check nothing yourself.
-Record merged PRs (task pr, task merged), then run task verified <name>.
-Settle its worker only when a due line lists it.
+remains waits on the user: add it with wait. Fix and check nothing yourself.
+Record merged PRs (task pr, task merged), then run task verified <name>
+--decisions <N>, with N the number of decisions that the report numbers for
+the user, or 0. The script adds them as one waiting item. Settle its worker
+only when a due line lists it.
 Start each planned task as soon as each task that it waits for is verified,
 also while other workers run; do not wait for the rest of its batch. The task
 verified output names each such task and its step.
@@ -230,8 +237,8 @@ repo-cleanup." and "List the lead thread's tool calls other than T3, GitHub,
 and GTD tools and t3_project_lead.py. Its history with real times is in:"
 with the history path below. For a batch with a scientific task, add: "Reply
 in one line, with links."
-When it reports, run task verified <name>; the batch's verified tasks are then
-closed out. Settle each worker that a due line lists with t3_thread_organize,
+When it reports, run task verified <name> --decisions <N>, as verify says; the
+batch's verified tasks are then closed out. Settle each worker that a due line lists with t3_thread_organize,
 and run task settled <name>...; never reuse one.
 Next: t3_project_lead.py report.
 """,
@@ -246,10 +253,14 @@ Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
 End with the "Waiting on you" list below, copied as it is. Before that, add
-each new approval, access request, or step that cannot be undone or leaves
-the project: wait <text> [--link URL] [--recommend TEXT]. Name no detail of a
-worker's decisions.
-When a due line says to run finish, run it, then settle this thread.
+each new decision that only the user can make, such as an approval, access,
+or a step that cannot be undone or leaves the project: wait <text> [--link
+URL] [--recommend TEXT]. The discovery list is not a waiting item. Write no
+other list of decisions for the user. Name no detail of a worker's decisions.
+Run done <number> when the user decides an item. When your instructions ask
+for agent captures, keep one for each waiting item.
+When a due line says to run finish, first add each such decision. Run finish
+only when nothing waits, then settle this thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
@@ -788,7 +799,7 @@ def change_task_verified(state, args, time):
     if task["state"] == RUNNING and task["prs"]:
         raise Refused(f"{task['name']} has a PR that is not merged")
     require(task, (RUNNING, MERGED), "task verified")
-    event = move(task, VERIFIED, time)
+    event = move(task, VERIFIED, time, decisions=args.decisions)
     message = f"{task['name']} is verified."
     if task["kind"] == "closeout":
         closed = [other for other in batch_tasks(state, task["batch"])
@@ -797,7 +808,24 @@ def change_task_verified(state, args, time):
             other["state"], other["changed"] = CLOSED_OUT, time
         event["closed_out"] = [other["name"] for other in closed]
         message += f" Batch {task['batch']} is closed out: {', '.join(event['closed_out']) or 'no task'}."
+    if args.decisions:
+        # The report's numbered decisions wait on the user until the lead runs done (#567).
+        item = add_item(state, time, task=task, decisions=args.decisions)
+        event["item"] = item["number"]
+        message += f" Item {item['number']} added: {item_text(item)}"
     return message, event
+
+
+def check_decisions(args) -> None:
+    """Refuse a task verified without a count of the report's decisions, or with one count for several
+    tasks (#567). The script cannot read a report, so the lead gives the count."""
+    if args.decisions is None:
+        raise Refused("task verified needs --decisions N: the number of decisions that its report numbers "
+                      "for the user, or 0")
+    if args.decisions < 0:
+        raise Refused("the number of decisions is 0 or more")
+    if args.decisions and len(set(args.name)) > 1:
+        raise Refused("a count above 0 takes one task name: verify each task with decisions by itself")
 
 
 def change_task_settled(state, args, time):
@@ -836,28 +864,37 @@ def change_wait(state, args, time):
         if args.text is not None or args.recommend or args.link:
             raise Refused("a worker item takes only --decisions: it holds no detail of the "
                           "worker's decisions, and it points to the worker's thread")
-        if not task["worker"] or task["state"] == SETTLED:
-            raise Refused(f"{task['name']} has no worker that is not settled; add the item without "
-                          "--task")
+        if not task["worker"]:
+            raise Refused(f"{task['name']} has no worker; add the item without --task")
     if args.text is None and task is None:
         raise Refused("give the item's text, or --task for a worker that waits")
     if args.decisions is not None and args.decisions < 1:
         raise Refused("the number of decisions is positive")
-    if args.text is not None:
-        body = text(args.text, "item text")
-    elif args.decisions:
-        body = f"{args.decisions} decision{'s' if args.decisions > 1 else ''}"
-    else:
-        body = "waits on you"
-    item_link = link(args.link, "link") if args.link else (task["worker"] if task else None)
-    item = {"number": state["next_item"], "text": body, "task": task["name"] if task else None,
-            "link": item_link, "decisions": args.decisions,
-            "recommend": text(args.recommend, "recommendation") if args.recommend else None,
-            "opened": time}
-    state["items"].append(item)
-    state["next_item"] += 1
+    item = add_item(state, time, body=text(args.text, "item text") if args.text is not None else None,
+                    task=task, decisions=args.decisions,
+                    item_link=link(args.link, "link") if args.link else None,
+                    recommend=text(args.recommend, "recommendation") if args.recommend else None)
     return f"Item {item['number']} added: {item_text(item)}", {"item": item["number"], "to": "open",
                                                               "task": item["task"]}
+
+
+def add_item(state: dict, time: str, body: str | None = None, task: dict | None = None,
+             decisions: int | None = None, item_link: str | None = None, recommend: str | None = None) -> dict:
+    """Add a waiting item. A worker item points to the worker's thread.
+
+    An item for a task that is verified, closed out, cancelled, or settled holds decisions of the
+    worker's final report (#567): no due line offers done for it, because only the user ends it.
+    """
+    if body is None:
+        body = f"{decisions} decision{'s' if decisions > 1 else ''}" if decisions else "waits on you"
+    item = {"number": state["next_item"], "text": body, "task": task["name"] if task else None,
+            "link": item_link or (task["worker"] if task else None), "decisions": decisions,
+            "recommend": recommend, "opened": time}
+    if task is not None and task["state"] in DONE:
+        item["report"] = True
+    state["items"].append(item)
+    state["next_item"] += 1
+    return item
 
 
 def change_done(state, args, time):
@@ -886,6 +923,8 @@ def change_decision_drop(state, args, time):
 def run_change(args) -> str:
     """Make the change for each argument, then save once; a refusal of one argument saves nothing."""
     folder = require_lead()
+    if args.label == "task verified":
+        check_decisions(args)
     key = SEVERAL.get(args.label)
     calls = ([argparse.Namespace(**{**vars(args), key: value}) for value in dict.fromkeys(getattr(args, key))]
              if key else [args])
@@ -1024,13 +1063,15 @@ def due_lines(state: dict) -> list[str]:
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
         task = tasks.get(item["task"])
-        if task is not None and task["state"] in DONE:
+        if task is not None and task["state"] in DONE and not item.get("report"):
             lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
                          f"{item['number']}, or keep it.")
     # A lead state without an outcome has not started its work: a settled discovery task is not the end.
     if (state["outcome"] and state["tasks"] and not state["items"]
             and all(task["state"] == SETTLED for task in state["tasks"])):
-        lines.append("Every task is settled and nothing waits: run t3_project_lead.py finish.")
+        # The report step holds the rule for each decision that only the user can make (#567).
+        lines.append("Every task is settled and nothing waits. Add each decision that only the user can make "
+                     "with wait, as t3_project_lead.py report says; then run t3_project_lead.py finish.")
     return lines
 
 
@@ -1217,6 +1258,8 @@ def parser() -> argparse.ArgumentParser:
     merged.add_argument("commit")
     for name in ("verified", "settled", "pause", "resume"):
         task.add_parser(name).add_argument("name", nargs="+")
+    task.choices["verified"].add_argument("--decisions", type=int,
+                                          help="the number of decisions that the report numbers for the user")
     task.add_parser("cancel").add_argument("name")
 
     decision = commands.add_parser("decision", help="add or drop a decision").add_subparsers(

@@ -18,7 +18,9 @@ PR text out of the lead. Issue #554 adds the worker line on questions to the
 user, and keeps the lead from answering or asking a worker's question again,
 and from any question tool. Issue #555 adds the `show` line of `start`, issue
 #556 the worktree paths of `dispatch`, `flag`, and `closeout`, and issue #560
-the default batch of `plan`. Agent behavior is checked by the scenario review
+the default batch of `plan`. Issue #567 adds the count of a report's decisions
+to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
+decisions that only the user can make to `report`. Agent behavior is checked by the scenario review
 in t3-project-lead-scenarios.md; the hook has its own tests in
 test_t3_project_lead_hook.py.
 """
@@ -130,7 +132,8 @@ REQUIRED = {
                  'In the last line of its brief, replace "with evidence and links" with "in the form '
                  'above".',
                  # The user chooses the work, or not; the lead asks no question, and keeps no item (#545).
-                 "When it reports, run task verified discover. Copy its lines into your report as they are, "
+                 "When it reports, run task verified discover --decisions 0. Copy its lines into your report "
+                 "as they are, "
                  "and end your turn. The list is not a waiting item: add no wait item or GTD capture for it. "
                  "Do not ask the user to choose, with a question tool or in text. When the user names the "
                  "work, run outcome <text> and criteria <text>. When discover is verified and the user named "
@@ -199,9 +202,11 @@ REQUIRED = {
                "For a scientific task, read no artifact, and always start the read-only worker.",
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
-               "Fix and check nothing yourself.",
-               "Record merged PRs (task pr, task merged), then run task verified <name>. Settle "
-               "its worker only when a due line lists it.",
+               # A decision that waits on the user is a waiting item, also after a PASS (#567).
+               "Then what remains waits on the user: add it with wait. Fix and check nothing yourself.",
+               "Record merged PRs (task pr, task merged), then run task verified <name> --decisions <N>, "
+               "with N the number of decisions that the report numbers for the user, or 0. The script adds "
+               "them as one waiting item. Settle its worker only when a due line lists it.",
                START_RULE,
                "The task verified output names each such task and its step.",
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
@@ -219,14 +224,21 @@ REQUIRED = {
                  '"Pass each worktree path to retro_sessions.py with --worktree."',
                  "List the lead thread's tool calls other than T3, GitHub, and GTD tools and "
                  "t3_project_lead.py.",
-                 "When it reports, run task verified <name>; the batch's verified tasks are then "
-                 "closed out.",
+                 "When it reports, run task verified <name> --decisions <N>, as verify says; the batch's "
+                 "verified tasks are then closed out.",
                  "Settle each worker that a due line lists with t3_thread_organize, and run task "
                  "settled <name>...; never reuse one."],
     "report": ['End with the "Waiting on you" list below, copied as it is.',
+               # Each decision for the user is on the waiting list, and nowhere else (#567).
+               "add each new decision that only the user can make, such as an approval, access, or a step "
+               "that cannot be undone or leaves the project: wait <text> [--link URL] [--recommend TEXT].",
+               "The discovery list is not a waiting item. Write no other list of decisions for the user.",
                "Name no detail of a worker's decisions.",
+               "Run done <number> when the user decides an item.",
+               "When your instructions ask for agent captures, keep one for each waiting item.",
                PR_WAIT_LEAD,
-               "When a due line says to run finish, run it, then settle this thread.",
+               "When a due line says to run finish, first add each such decision. Run finish only when "
+               "nothing waits, then settle this thread.",
                "Next: after a wake or a user message, t3_project_lead.py start.",
                "Make no promise that needs a signal from the middle of a worker's run."],
 }
@@ -508,7 +520,7 @@ class CloseoutPathTests(unittest.TestCase):
         for name, number in (("a", "5"), ("b", "6")):
             self.lead("task", "pr", name, number)
             self.lead("task", "merged", name, number, "abcdef1")
-        self.lead("task", "verified", "a", "b")
+        self.lead("task", "verified", "a", "b", "--decisions", "0")
         lines = self.batch_lines()
         self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3://a t3://b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
                                      "Merged PRs in merge order: #5, #6"])
@@ -522,7 +534,7 @@ class CloseoutPathTests(unittest.TestCase):
         self.lead("task", "start", "a", "t3://a")
         self.lead("task", "pr", "a", "5")
         self.lead("task", "merged", "a", "5", "abcdef1")
-        self.lead("task", "verified", "a")
+        self.lead("task", "verified", "a", "--decisions", "0")
         # A lead state from before #556 has no "worktrees" field.
         (state_file,) = self.folder.glob(".scratch/*-lead-demo/state.json")
         state = json.loads(state_file.read_text(encoding="utf-8"))
