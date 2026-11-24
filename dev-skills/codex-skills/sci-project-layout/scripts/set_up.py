@@ -14,16 +14,21 @@ default the current folder:
 - Adds to an existing .gitignore each template line that the file does not
   have, with the comment of its template group when the file lacks it.
 
-It never overwrites a file. It prints one line for each target:
-`added <path>`, `skipped <path>: the file exists`, `updated .gitignore:
-added N lines`, or `skipped .gitignore: it has every template line`. It
-exits 2, and writes nothing, when the package name is not a Python package
-name or DIR is not a folder.
+It never overwrites a file, and it skips a .gitignore that is a symbolic
+link, so it writes nothing outside DIR. It prints one line for each target
+as it goes: `added <path>`, `skipped <path>: it exists`, `updated
+.gitignore: added N lines`, `skipped .gitignore: it has every template
+line`, `skipped .gitignore: it is a symbolic link`, or `error <path>:
+<reason>`. After an error line it continues with the other targets and
+exits 1. It exits 2, and writes nothing, when the package name is not a
+Python package name, contains the template name myproj in any case, or DIR
+is not a folder.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import keyword
 import sys
 from pathlib import Path
@@ -32,7 +37,7 @@ TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 INPUT_EXIT = 2
 
 
-def copies(package: str) -> list[tuple[str, str]]:
+def template_targets(package: str) -> list[tuple[str, str]]:
     """Return each template file name with its path in the project."""
     return [
         ("layout.md", "docs/agents/layout.md"),
@@ -82,25 +87,44 @@ def update_gitignore(path: Path) -> int:
     return len(lines)
 
 
-def set_up(root: Path, package: str) -> list[str]:
-    """Copy the templates into root; return one report line for each target."""
-    report = []
-    for template, name in copies(package):
-        added = copy_new(template, root / name, package)
-        report.append(f"added {name}" if added else f"skipped {name}: the file exists")
+def copy_template(root: Path, template: str, name: str, package: str) -> str:
+    """Copy one template to a new file; return its report line."""
+    return f"added {name}" if copy_new(template, root / name, package) else f"skipped {name}: it exists"
+
+
+def set_up_gitignore(root: Path, package: str) -> str:
+    """Copy the gitignore template, or add its missing lines to .gitignore; return the report line."""
     gitignore = root / ".gitignore"
+    if gitignore.is_symlink():  # its target can be outside the project
+        return "skipped .gitignore: it is a symbolic link"
     if copy_new("gitignore", gitignore, package):
-        report.append("added .gitignore")
-    else:
-        count = update_gitignore(gitignore)
-        report.append(f"updated .gitignore: added {count} lines" if count
-                      else "skipped .gitignore: it has every template line")
-    return report
+        return "added .gitignore"
+    count = update_gitignore(gitignore)
+    return f"updated .gitignore: added {count} lines" if count else "skipped .gitignore: it has every template line"
 
 
-def bad_package(package: str) -> bool:
-    """Return True when the name cannot be a Python package name."""
-    return not (package.isascii() and package.isidentifier()) or keyword.iskeyword(package)
+def set_up(root: Path, package: str) -> int:
+    """Copy the templates into root, and print one line for each target as it goes; return the exit code."""
+    targets = [(name, functools.partial(copy_template, root, template, name, package))
+               for template, name in template_targets(package)]
+    targets.append((".gitignore", functools.partial(set_up_gitignore, root, package)))
+    code = 0
+    for name, action in targets:
+        try:
+            line = action()
+        except OSError as error:
+            line, code = f"error {name}: {error.strerror or error}", 1
+        print(line, flush=True)
+    return code
+
+
+def package_error(package: str) -> str:
+    """Return why the name cannot be the package name, or ""."""
+    if not (package.isascii() and package.isidentifier()) or keyword.iskeyword(package):
+        return f"not a Python package name: {package!r}"
+    if "myproj" in package.lower():  # the last Set up step looks for this template name
+        return f"the package name contains the template name myproj: {package!r}"
+    return ""
 
 
 def main(argv: list[str]) -> int:
@@ -109,15 +133,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", default=".", help="the project root (default: the current folder)")
     args = parser.parse_args(argv[1:])
     root = Path(args.root)
-    if bad_package(args.package):
-        print(f"error: not a Python package name: {args.package!r}", file=sys.stderr)
+    error = package_error(args.package)
+    if error:
+        print(f"error: {error}", file=sys.stderr)
         return INPUT_EXIT
     if not root.is_dir():
         print(f"error: the project root is not a folder: {root}", file=sys.stderr)
         return INPUT_EXIT
-    for line in set_up(root, args.package):
-        print(line)
-    return 0
+    return set_up(root, args.package)
 
 
 if __name__ == "__main__":

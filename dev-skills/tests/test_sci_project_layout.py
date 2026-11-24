@@ -366,39 +366,70 @@ class SetUpScriptTest(unittest.TestCase):
     def test_never_overwrites_a_file(self) -> None:
         for name in ("docs/agents/layout.md", "src/demoproj/paths.py"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
-            (self.root / name).write_text("mine\n")
+            (self.root / name).write_text("mine\n", encoding="utf-8")
         self.assertEqual(self.run_set_up(), [
-            "skipped docs/agents/layout.md: the file exists",
+            "skipped docs/agents/layout.md: it exists",
             "added docs/agents/layout-notes.md",
             "added docs/agents/experiment-README.md",
-            "skipped src/demoproj/paths.py: the file exists",
+            "skipped src/demoproj/paths.py: it exists",
             "added .gitignore",
         ])
         for name in ("docs/agents/layout.md", "src/demoproj/paths.py"):
-            self.assertEqual((self.root / name).read_text(), "mine\n")
+            self.assertEqual((self.root / name).read_text(encoding="utf-8"), "mine\n")
         before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
-        self.assertEqual(self.run_set_up(), [line.replace("added", "skipped") + ": the file exists"
-                                             for line in ADDED] + ["skipped .gitignore: it has every template line"])
+        self.assertEqual(self.run_set_up(), [
+            "skipped docs/agents/layout.md: it exists",
+            "skipped docs/agents/layout-notes.md: it exists",
+            "skipped docs/agents/experiment-README.md: it exists",
+            "skipped src/demoproj/paths.py: it exists",
+            "skipped .gitignore: it has every template line",
+        ])
         self.assertEqual({path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}, before)
 
     def test_adds_the_missing_template_lines_to_an_existing_gitignore(self) -> None:
         own = "# Store\n/data\n.venv\n/logs"
-        (self.root / ".gitignore").write_text(own)
+        (self.root / ".gitignore").write_text(own, encoding="utf-8")
         self.assertEqual(self.run_set_up()[-1], "updated .gitignore: added 12 lines")
-        self.assertEqual((self.root / ".gitignore").read_text(), own + "\n\n" + "\n".join([
+        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8"), own + "\n\n" + "\n".join([
             "/results",
             "# Work folders and logs", "/.scratch", "/trees", "/.claude/worktrees",
             "# Environments, secrets, and local settings", "/.venv", "/.env", "/.claude/settings.local.json",
             "__pycache__/", "*.egg-info/", ".ipynb_checkpoints/",
         ]) + "\n")
 
-    def test_refuses_a_name_that_is_not_a_python_package_name(self) -> None:
-        for package in ("my-proj", "class", "2proj", "pröj", ""):
+    def test_reports_each_target_that_it_cannot_write_and_writes_nothing_outside_the_root(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "src" / "demoproj").write_text("not a folder\n", encoding="utf-8")
+        outside = self.root.parent / "outside-gitignore"
+        outside.write_text("/data\n", encoding="utf-8")
+        (self.root / ".gitignore").symlink_to(outside)
+        out = set_up(self.root)
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertEqual(out.stdout.splitlines(), ADDED[:3] + [
+            "error src/demoproj/paths.py: File exists",
+            "skipped .gitignore: it is a symbolic link",
+        ])
+        self.assertEqual(outside.read_text(encoding="utf-8"), "/data\n")
+
+    def test_refuses_a_package_name_or_root_that_set_up_cannot_use(self) -> None:
+        cases = {
+            "my-proj": "not a Python package name", "class": "not a Python package name",
+            "2proj": "not a Python package name", "pröj": "not a Python package name",
+            "": "not a Python package name",
+            # The last Set up step looks for myproj, so a name that holds it would fail that check.
+            "myproject": "the package name contains the template name myproj",
+            "MyProj": "the package name contains the template name myproj",
+        }
+        for package, message in cases.items():
             with self.subTest(package=package):
                 out = set_up(self.root, package)
                 self.assertEqual(out.returncode, 2)
-                self.assertIn("error: not a Python package name", out.stderr)
+                self.assertIn(f"error: {message}", out.stderr)
                 self.assertEqual(list(self.root.iterdir()), [])
+        out = set_up(self.root / "missing")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("error: the project root is not a folder", out.stderr)
+        self.assertEqual(list(self.root.iterdir()), [])
 
 
 class SkillTextTest(unittest.TestCase):

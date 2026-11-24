@@ -46,8 +46,10 @@ In every mode, leave the files that other workflows own where they are:
    to `.gitignore` when the project has none. In the files that it copies,
    it replaces `myproj` with the package name and `MYPROJ` with the
    package name in capitals. It adds the template lines that an existing
-   `.gitignore` does not have. It never overwrites a file, and prints one
-   line for each file: added, skipped because it exists, or updated.
+   `.gitignore` does not have. It never overwrites a file, so you can run
+   it again. It prints one line for each file: added, skipped, updated, or
+   error. It refuses a package name that contains `myproj`, because step 6
+   looks for that template name.
 3. In `pyproject.toml`, add `testpaths = ["tests"]` under
    `[tool.pytest.ini_options]`. If the file has no `[build-system]` table,
    ask the user before you add one. Without it, `uv run` does not install

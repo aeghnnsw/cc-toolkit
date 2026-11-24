@@ -270,9 +270,9 @@ merges:
 ### Why cite before the merge
 
 `run.json` records the commit of the branch that made the run. A squash
-merge puts a new commit on the default branch. After a cleanup deletes
-the branch and git runs garbage collection, the recorded commit is
-no longer in the local history.
+merge puts a new commit on the default branch. After the branch is deleted
+and git runs garbage collection, the recorded commit is no longer in the
+local history.
 
 ### Get the commit back
 
