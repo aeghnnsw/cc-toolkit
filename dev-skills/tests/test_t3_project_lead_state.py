@@ -19,7 +19,8 @@ new batch for a work task once a PR of the highest batch merged.
 
 Issue #568: most checks call the script's `main()` in this process, with the
 check's environment and folder, because a new Python process for each of
-about 400 commands made the module slow.
+about 530 commands made the module slow. So the script must read its
+environment and folder when a command runs, not when it is imported.
 `test_the_command_line_runs_as_a_process` runs the script as a process, as a
 lead does.
 """
@@ -116,7 +117,10 @@ class LeadStateTests(unittest.TestCase):
                 try:
                     code = LEAD.main(list(args))
                 except SystemExit as exit_:
-                    code = exit_.code if isinstance(exit_.code, int) else 1
+                    # As a process: None exits 0, and another value that is not a number prints and exits 1.
+                    code = 0 if exit_.code is None else exit_.code if isinstance(exit_.code, int) else 1
+                    if not isinstance(exit_.code, (int, type(None))):
+                        print(exit_.code, file=sys.stderr)
         finally:
             os.chdir(folder)
         return subprocess.CompletedProcess([str(SCRIPT), *args], code, stdout.getvalue(), stderr.getvalue())
@@ -177,14 +181,15 @@ class LeadStateTests(unittest.TestCase):
         start = self.run_lead("start", process=True)
         self.assertEqual((start.returncode, start.stderr), (0, ""))
         self.assertEqual(start.stdout.splitlines()[0], f'Steps: "{SCRIPT}"')
-        self.assertIn("\n- a (batch 1) planned: Title", start.stdout + self.ok("show"))
-        for args, code in ((("task", "start", "missing", WORKER.format(1)), 1), (("merge",), 2)):
+        self.assertIn("\nOther tasks: 1 planned. Decisions: 0.", start.stdout)
+        for args, code in ((("waiting",), 0), (("task", "start", "missing", WORKER.format(1)), 1),
+                           (("merge",), 2)):
             with self.subTest(args=args):
                 result = self.run_lead(*args, process=True)
                 inside = self.run_lead(*args)
                 self.assertEqual((result.returncode, inside.returncode), (code, code), result.stderr)
                 self.assertEqual((result.stdout, result.stderr), (inside.stdout, inside.stderr))
-                self.assertTrue(result.stderr)
+                self.assertTrue(result.stderr if code else result.stdout)
 
     def test_start_without_a_lead_state_prints_how_to_create_one(self) -> None:
         other = self.worktree("b")
