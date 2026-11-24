@@ -37,9 +37,10 @@ class SteeringBudgetTest(unittest.TestCase):
     def test_the_retrospective_proposes_a_check_first_and_changes_no_tracked_file(self):
         steps = ' '.join(RETRO.read_text(encoding='utf-8').split())
         self.assertIn('Propose a check, a script, or a test first. Propose new text in a steering file only '
-                      'when no check can work, and give the reason in the issue.', steps)
-        self.assertIn('7. Run `git status --porcelain --untracked-files=no` again. It must print the same '
-                      'lines as before step 1.', steps)
+                      'when no check, script, or test can work, and give the reason in the issue.', steps)
+        self.assertIn('git rev-parse HEAD git diff HEAD --binary | git hash-object --stdin', steps)
+        self.assertIn('7. Run the two commands from before step 1 again. They must print the same two lines.',
+                      steps)
         self.assertNotIn('Prefer a tool fix or an automated check', steps)
 
 
