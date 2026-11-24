@@ -6,7 +6,7 @@ Reasons and rare cases are in [layout-notes.md](layout-notes.md).
 ```
 <project>/
 ├── README.md
-├── CLAUDE.md            one line: read docs/agents/layout.md (AGENTS.md links here)
+├── CLAUDE.md            or AGENTS.md or GEMINI.md: one line, read docs/agents/layout.md
 ├── pyproject.toml       has [build-system], so uv run installs src/myproj
 ├── uv.lock              tracked; uv run writes it
 ├── src/myproj/          reusable code; paths.py finds the store
@@ -119,7 +119,7 @@ records the parameters: a copy of `config.yaml` and the command line.
 | Figure for a README or a paper | Copy it from the cited run to `experiments/<key>/figures/` |
 | Figure that combines experiments | Its own experiment, for example `057-paper-kinase-hits` |
 | Cluster job | A job script `NN_<name>.sh` runs `NN_<name>.py`. It sends the scheduler's log to `logs/`; make that folder before you submit. Submit from the repository root, and keep the worktree until the job ends. |
-| Agent planning notes | `.scratch/<issue>-<slug>/` (matt-automode) |
+| Agent planning notes | `.scratch/<issue>-<slug>/` |
 | Secrets | `.env`, not tracked. Never the store path. |
 
 Rare cases: see [layout-notes.md](layout-notes.md).

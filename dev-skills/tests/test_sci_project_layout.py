@@ -1,15 +1,17 @@
 """Checks for the sci-project-layout skill.
 
-The paths tests copy the paths.py template into a temporary project, as Set
-up does, with the package name `demoproj`. Each check runs Python in a child
-process from the project root with src/ on the import path, as `uv run`
-would. Git reads only a temporary global config.
+The paths tests set up a temporary project with the Set up script and the
+package name `demoproj`. Each check runs Python in a child process from the
+project root with src/ on the import path, as `uv run` would. Git reads only
+a temporary global config. The Set up script tests run the script in
+temporary folders.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,13 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SKILL = PLUGIN_ROOT / "skills" / "sci-project-layout"
 TEMPLATES = SKILL / "templates"
+SET_UP = SKILL / "scripts" / "set_up.py"
+ADDED = [
+    "added docs/agents/layout.md",
+    "added docs/agents/layout-notes.md",
+    "added docs/agents/experiment-README.md",
+    "added src/demoproj/paths.py",
+]
 KEY = "042-docking-baseline"
 VERSION = "processed/kinase-actives/v2"
 STEP = f"""\
@@ -61,7 +70,6 @@ class Project:
         experiment.mkdir(parents=True)
         (experiment / "config.yaml").write_text("exhaustiveness: 16\n")
         (experiment / "02_dock.py").write_text(STEP)
-        shutil.copyfile(TEMPLATES / "gitignore", self.root / ".gitignore")
         self.git("init", "-q", "-b", "main")
         self.git("add", ".")
         self.git("commit", "-q", "-m", "start")
@@ -96,13 +104,20 @@ class Project:
         return self.python(f"experiments/{KEY}/02_dock.py", *args, cwd=cwd)
 
 
+def set_up(root: Path, package: str = "demoproj") -> subprocess.CompletedProcess:
+    """Run the Set up script in root."""
+    return subprocess.run([sys.executable, str(SET_UP), package, "--root", str(root)],
+                          capture_output=True, text=True)
+
+
 def install(root: Path) -> None:
-    """Copy the template into root/src/demoproj/, as Set up does."""
+    """Make the package root/src/demoproj/ and run the Set up script in root."""
     package = root / "src" / "demoproj"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("")
-    text = (TEMPLATES / "paths.py").read_text()
-    (package / "paths.py").write_text(text.replace("myproj", "demoproj").replace("MYPROJ", "DEMOPROJ"))
+    out = set_up(root)
+    if out.returncode:
+        raise AssertionError(out.stderr)
 
 
 def run_record(run_dir: Path) -> dict:
@@ -320,11 +335,121 @@ class PathsTemplateTest(unittest.TestCase):
         self.assertEqual(record["git"], {"sha": None, "branch": None, "dirty": None})
 
 
+class SetUpScriptTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name).resolve() / "proj"
+        self.root.mkdir()
+
+    def run_set_up(self, package: str = "demoproj") -> list[str]:
+        out = set_up(self.root, package)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.splitlines()
+
+    def test_copies_the_templates_with_the_package_name(self) -> None:
+        self.assertEqual(self.run_set_up(), ADDED + ["added .gitignore"])
+        for template, name in (("layout.md", "docs/agents/layout.md"), ("paths.py", "src/demoproj/paths.py")):
+            text = (TEMPLATES / template).read_text(encoding="utf-8")
+            self.assertEqual((self.root / name).read_text(encoding="utf-8"),
+                             text.replace("myproj", "demoproj").replace("MYPROJ", "DEMOPROJ"))
+        self.assertIn("DEMOPROJ_STORE", (self.root / "src/demoproj/paths.py").read_text(encoding="utf-8"))
+        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8"),
+                         (TEMPLATES / "gitignore").read_text(encoding="utf-8"))
+        # The check of the last Set up step finds no template name in the untracked copies.
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        subprocess.run(["git", "init", "-q"], cwd=self.root, env=env, check=True)
+        grep = subprocess.run(["git", "grep", "--untracked", "-n", "-e", "myproj", "-e", "MYPROJ"],
+                              cwd=self.root, env=env, capture_output=True, text=True)
+        self.assertEqual((grep.returncode, grep.stdout), (1, ""))
+
+    def test_never_overwrites_a_file(self) -> None:
+        for name in ("docs/agents/layout.md", "src/demoproj/paths.py"):
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text("mine\n", encoding="utf-8")
+        self.assertEqual(self.run_set_up(), [
+            "skipped docs/agents/layout.md: it exists",
+            "added docs/agents/layout-notes.md",
+            "added docs/agents/experiment-README.md",
+            "skipped src/demoproj/paths.py: it exists",
+            "added .gitignore",
+        ])
+        for name in ("docs/agents/layout.md", "src/demoproj/paths.py"):
+            self.assertEqual((self.root / name).read_text(encoding="utf-8"), "mine\n")
+        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        self.assertEqual(self.run_set_up(), [
+            "skipped docs/agents/layout.md: it exists",
+            "skipped docs/agents/layout-notes.md: it exists",
+            "skipped docs/agents/experiment-README.md: it exists",
+            "skipped src/demoproj/paths.py: it exists",
+            "skipped .gitignore: it has every template line",
+        ])
+        self.assertEqual({path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}, before)
+
+    def test_adds_the_missing_template_lines_to_an_existing_gitignore(self) -> None:
+        own = "# Store\n/data\n.venv\n/logs"
+        (self.root / ".gitignore").write_text(own, encoding="utf-8")
+        self.assertEqual(self.run_set_up()[-1], "updated .gitignore: added 12 lines")
+        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8"), own + "\n\n" + "\n".join([
+            "/results",
+            "# Work folders and logs", "/.scratch", "/trees", "/.claude/worktrees",
+            "# Environments, secrets, and local settings", "/.venv", "/.env", "/.claude/settings.local.json",
+            "__pycache__/", "*.egg-info/", ".ipynb_checkpoints/",
+        ]) + "\n")
+
+    def test_reports_each_target_that_it_cannot_write_and_writes_nothing_outside_the_root(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "src" / "demoproj").write_text("not a folder\n", encoding="utf-8")
+        outside = self.root.parent / "outside-gitignore"
+        outside.write_text("/data\n", encoding="utf-8")
+        (self.root / ".gitignore").symlink_to(outside)
+        out = set_up(self.root)
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertEqual(out.stdout.splitlines(), ADDED[:3] + [
+            "error src/demoproj/paths.py: File exists",
+            "skipped .gitignore: it is a symbolic link",
+        ])
+        self.assertEqual(outside.read_text(encoding="utf-8"), "/data\n")
+
+    def test_refuses_a_package_name_or_root_that_set_up_cannot_use(self) -> None:
+        cases = {
+            "my-proj": "not a Python package name", "class": "not a Python package name",
+            "2proj": "not a Python package name", "pröj": "not a Python package name",
+            "": "not a Python package name",
+            # The last Set up step looks for myproj, so a name that holds it would fail that check.
+            "myproject": "the package name contains the template name myproj",
+            "MyProj": "the package name contains the template name myproj",
+        }
+        for package, message in cases.items():
+            with self.subTest(package=package):
+                out = set_up(self.root, package)
+                self.assertEqual(out.returncode, 2)
+                self.assertIn(f"error: {message}", out.stderr)
+                self.assertEqual(list(self.root.iterdir()), [])
+        out = set_up(self.root / "missing")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("error: the project root is not a folder", out.stderr)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+
 class SkillTextTest(unittest.TestCase):
     def test_body_names_each_host_instruction_file(self) -> None:
         body = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("---\n", 2)[2]
+        layout = (TEMPLATES / "layout.md").read_text(encoding="utf-8")
         for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
             self.assertIn(f"`{name}`", body)
+            self.assertIn(name, layout)
+
+    def test_templates_name_no_cc_toolkit_skill(self) -> None:
+        # Set up copies the templates into projects that may not have these skills.
+        repository = PLUGIN_ROOT.parent
+        skills = {path.parent.name for path in repository.glob("*/*skills/*/SKILL.md")}
+        self.assertIn("matt-automode", skills)
+        for template in sorted(TEMPLATES.iterdir()):
+            text = template.read_text(encoding="utf-8")
+            with self.subTest(template=template.name):
+                self.assertEqual([name for name in sorted(skills)
+                                  if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text)], [])
 
 
 if __name__ == "__main__":
