@@ -11,6 +11,7 @@ import unittest
 
 
 COMMAND = Path(__file__).resolve().parents[1] / 'scripts' / 'validate_packages.py'
+SEVERAL_ISSUES_FORM = '- Repository: <change> (#M, #K). See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).'
 
 
 class PackageValidationTests(unittest.TestCase):
@@ -477,6 +478,10 @@ class PackageValidationTests(unittest.TestCase):
         self.changelog_baseline()
         self.add_bullet('- Repository: add a check.')
         self.assertEqual(self.run_check().returncode, 0)
+        self.reset_changelog()
+        self.add_bullet('- Repository: add a check for several issues (#3, #4).')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
         for bullet, issue in [
             ('- Repository: two issues. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2) and '
              '[#3](https://github.com/aeghnnsw/cc-toolkit/issues/3).', None),
@@ -489,7 +494,8 @@ class PackageValidationTests(unittest.TestCase):
             with self.subTest(bullet=bullet):
                 self.reset_changelog()
                 self.add_bullet(bullet, issue)
-                self.assert_failure('changelog.d/2.md:3: the new bullet breaks the entry form')
+                result = self.assert_failure('changelog.d/2.md:3: the new bullet breaks the entry form')
+                self.assertIn(SEVERAL_ISSUES_FORM, result.stderr)
         linked = '- Repository: a change. See [#2](https://github.com/aeghnnsw/cc-toolkit/issues/2).'
         for index, bullet in enumerate(['* Repository: another marker.', linked + '\n  ' + 'y' * 600,
                                         linked + '\n#' + 'y' * 600]):
@@ -553,11 +559,71 @@ class PackageValidationTests(unittest.TestCase):
                 self.write('changelog.d/2.md', text)
                 self.assert_failure(error)
 
+    def add_plugin(self):
+        """Register the Claude Code plugin other; its new registration needs a bullet at version 1.0.0."""
+        registry = self.read_json('.claude-plugin/marketplace.json')
+        registry['plugins'].append({'name': 'other', 'source': './other'})
+        self.write('.claude-plugin/marketplace.json', registry)
+        self.write('other/.claude-plugin/plugin.json', {'name': 'other', 'version': '1.0.0'})
+
+    def test_branch_adds_at_most_one_bullet_for_each_plugin_and_one_repository_bullet(self):
+        self.changelog_baseline()
+        self.bump()
+        placements = [  # the (path, section) of each bullet, then the locations of the two bullets
+            ([('changelog.d/2.md', '### Changed')] * 2, 'changelog.d/2.md:3', 'changelog.d/2.md:4'),
+            ([('changelog.d/2.md', '### Changed'), ('changelog.d/3.md', '### Changed')],
+             'changelog.d/2.md:3', 'changelog.d/3.md:3'),
+            ([('changelog.d/2.md', '### Added'), ('changelog.d/2.md', '### Changed')],
+             'changelog.d/2.md:3', 'changelog.d/2.md:6'),
+        ]
+        for start, label in [('- Repository:', 'Repository'), ('- demo (Claude Code 1.0.1):', 'demo')]:
+            for places, first, second in placements:
+                with self.subTest(label=label, places=places):
+                    self.reset_changelog()
+                    for index, (path, section) in enumerate(places):
+                        self.add_bullet(f'{start} change {index}.', section=section, path=path)
+                    result = self.assert_failure(
+                        f'{second}: this branch adds a second {label} bullet; {first} has the first. A branch adds '
+                        'at most one new bullet for each plugin and one new Repository bullet')
+                    self.assertIn(SEVERAL_ISSUES_FORM, result.stderr)
+        self.reset_changelog()
+        self.add_plugin()
+        self.add_bullet('- demo (Claude Code 1.0.1): a change.')
+        self.add_bullet('- other (Claude Code 1.0.0): a change.', path='changelog.d/3.md')
+        self.add_bullet('- Repository: a change (#3, #4).', section='### Added')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_bullets_at_the_merge_base_are_not_counted(self):
+        self.changelog_baseline()
+        self.add_bullet('- Repository: an old change.')
+        self.add_bullet('- Repository: another old change.', 3, path='changelog.d/3.md')
+        self.commit()
+        self.git('tag', '-f', 'baseline')
+        self.add_bullet('- Repository: a new change.', 4, path='changelog.d/4.md')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.root / 'changelog.d/4.md').unlink()
+        self.add_bullet('- Repository: a new change.')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # The release step moves the bullets of both entry files into CHANGELOG.md.
+        self.git('checkout', '-q', 'baseline', '--', 'changelog.d')
+        bullets = [(self.root / path).read_text().splitlines()[2] for path in ('changelog.d/2.md', 'changelog.d/3.md')]
+        for path in ('changelog.d/2.md', 'changelog.d/3.md'):
+            (self.root / path).unlink()
+        text = (self.root / 'CHANGELOG.md').read_text()
+        self.write('CHANGELOG.md', text.replace('### Changed\n\n', '### Changed\n\n' + '\n'.join(bullets) + '\n'))
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_entry_file_name_starts_with_the_issue_number(self):
         self.changelog_baseline()
         for path in ('changelog.d/2-second-change.md', 'changelog.d/3.md'):
-            self.add_bullet('- Repository: a change.', path=path)
-        self.assertEqual(self.run_check().returncode, 0)
+            with self.subTest(path=path):
+                self.reset_changelog()
+                self.add_bullet('- Repository: a change.', path=path)
+                self.assertEqual(self.run_check().returncode, 0)
         for path in ('changelog.d/notes.md', 'changelog.d/2.txt', 'changelog.d/2-Upper.md', 'changelog.d/sub/2.md'):
             with self.subTest(path=path):
                 self.reset_changelog()

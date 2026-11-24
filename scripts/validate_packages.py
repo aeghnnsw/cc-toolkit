@@ -435,8 +435,12 @@ ENTRY_NAME = re.compile(r'changelog\.d/[0-9]+(?:-[a-z0-9]+)*\.md')
 CHANGELOG_LIMIT = 600
 CHANGELOG_SECTIONS = ('### Added', '### Removed', '### Changed')
 HOST_LABELS = {'claude': 'Claude Code', 'codex': 'Codex', 'antigravity': 'Antigravity'}
+CHANGELOG_SEVERAL_ISSUES = ('For a pull request that closes several issues, name the other issues inline and link the '
+                            'lowest issue number, which also names the entry file: '
+                            '- Repository: <change> (#M, #K). See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
 CHANGELOG_FORM = ('- <plugin> (<Host> <version>): <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).'
-                  ' or - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).')
+                  ' or - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N). '
+                  + CHANGELOG_SEVERAL_ISSUES)
 CHANGELOG_BULLET = re.compile(
     r'- (?:Repository|(?P<plugin>[a-z0-9-]+) \((?P<hosts>[^)]*)\)): (?:(?! See \[#).)+'
     r' See \[#(?P<issue>\d+)\]\(https://github\.com/aeghnnsw/cc-toolkit/issues/(?P=issue)\)\.')
@@ -532,7 +536,8 @@ def check_bullet(where, line, packages, risen):
 
 
 def check_changelog(text, old_text, entries, old_entries, packages, previous):
-    """Check the new bullets of the changed entry files, and require one for each version increase.
+    """Check the new bullets of the changed entry files, allow at most one for each plugin and one Repository
+    bullet, and require one for each version increase.
 
     A bullet is new when its text is in neither CHANGELOG.md nor an entry file at the merge base. CHANGELOG.md
     takes only bullets that the release step moved from an entry file. entries and old_entries map each entry
@@ -559,15 +564,22 @@ def check_changelog(text, old_text, entries, old_entries, packages, previous):
             raise InvalidPackage(f'{where}: a new line must be a one-line bullet that starts with "- "')
         raise InvalidPackage(f'{where}: add the new bullet to an entry file, {ENTRY_FOLDER}/<issue>.md, not to '
                              f'{CHANGELOG_PATH}; the release step moves it')
-    named = set()
+    places = {}  # each plugin name, or None for Repository, to the path:line of each of its new bullets
     for path, entry in sorted(entries.items()):
         if not ENTRY_NAME.fullmatch(path):
             raise InvalidPackage(f'{path}: name the entry file {ENTRY_FOLDER}/<issue>.md, or '
                                  f'{ENTRY_FOLDER}/<issue>-<words>.md with lowercase words')
         for number, _, line in entry_bullets(path, entry):
             if line not in old_lines:
-                named.add(check_bullet(f'{path}:{number}', line, packages, risen))
-    named.discard(None)
+                where = f'{path}:{number}'
+                places.setdefault(check_bullet(where, line, packages, risen), []).append(where)
+    for name, found in places.items():
+        if len(found) > 1:
+            raise InvalidPackage(f'{found[1]}: this branch adds a second {name or "Repository"} bullet; {found[0]} has '
+                                 'the first. A branch adds at most one new bullet for each plugin and one new '
+                                 'Repository bullet, across all entry files and headings; join the bullets. '
+                                 + CHANGELOG_SEVERAL_ISSUES)
+    named = set(places) - {None}
     for name in sorted(set(risen) - named):
         labels = ', '.join(f'{HOST_LABELS[host]} {packages[name, host].manifest["version"]}'
                            for host in HOSTS if host in risen[name])

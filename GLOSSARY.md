@@ -54,8 +54,9 @@ files, requires one for each version increase, and rejects a new bullet in
 **Entry file**:
 A file in `changelog.d/`, named for the issue of one change, that holds the
 changelog bullets of that change under `### Added`, `### Removed`, or
-`### Changed`. A feature pull request adds an entry file and does not edit
-`CHANGELOG.md`.
+`### Changed`. When the change closes several issues, the lowest issue
+number names the file. A feature pull request adds an entry file and does
+not edit `CHANGELOG.md`.
 
 **Release step**:
 The run of `scripts/release_changelog.py` that moves the bullets of all
