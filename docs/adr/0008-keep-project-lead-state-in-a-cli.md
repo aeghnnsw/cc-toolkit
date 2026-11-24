@@ -33,6 +33,10 @@
 > count of decisions that the report numbers for the user. With a count above
 > 0, it takes one task name. Read
 > [Decisions of a finished worker](#decisions-of-a-finished-worker).
+>
+> **Superseded in part (2026-11-24, issue #577).** With `--main-only`, the
+> plan lists each planning folder that a worktree removal deletes. Read
+> [The planning folders of a removed worktree](#the-planning-folders-of-a-removed-worktree).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -168,7 +172,9 @@ Added on 2026-11-23 for
 that holds `.scratch/<YYYYMMDD>-lead-<slug>/state.json` at its top, in every
 mode, including `--main-only`. The reason is "holds a lead state". When the
 plan cannot read that `.scratch` or a lead folder, it keeps the worktree,
-because it cannot tell whether the worktree holds a lead state.
+because it cannot tell whether the worktree holds a lead state. (Since #575,
+it also keeps every other worktree that it would remove; read
+[The worktrees of lead tasks](#the-worktrees-of-lead-tasks).)
 `dev-skills/tests/test_cleanup_plan.py` checks the rule.
 
 A lead edits no tracked file, so Git reports its worktree as clean. Before,
@@ -180,6 +186,49 @@ could remove the worktree and the lead state with it. (Superseded in part by
 #528: `--main-only` now reads the planning folders of each worktree that the
 plan would remove; read
 [Cleanup of a branch with no commit of its own](#cleanup-of-a-branch-with-no-commit-of-its-own).)
+
+### The worktrees of lead tasks
+
+Added on 2026-11-24 for
+[#575](https://github.com/aeghnnsw/cc-toolkit/issues/575).
+
+The plan kept the worktree that holds a lead state, but not the worktrees of
+the lead's workers. It counted a worker's worktree as live only for a Git
+lock, a process, or a session log of the last 60 minutes. The plan for the
+batch 13 close-out marked `REMOVE` 4 worktrees whose tasks were `verified`,
+not `settled`, and a read-only check kept them by hand.
+
+Now the plan reads each lead state, also the one in the main checkout, with
+`load` of `t3_project_lead.py`. In every mode, it keeps each worktree whose
+path a task records in `worktrees` while the task is not `settled`. The
+reason names the task, the lead state, and the task's state. A task matches a
+worktree by its recorded path only: T3 Code renames a branch after
+`task start`, and 4 of 7 recorded branches no longer matched. A task without
+a recorded path, such as a task from before #556, keeps no worktree by this
+rule. The close-out runs repo-cleanup while the tasks of its batch are
+`verified`, so it keeps their worktrees. A later repo-cleanup removes them
+after the lead settles the workers.
+
+When a lead state exists but cannot be read, the plan keeps every worktree
+that it would otherwise remove, and the reason gives the error: an `OSError`,
+invalid JSON, a `schema` other than 1, or a task without the expected fields.
+The plan cannot tell which worktrees such a lead state records. The same rule
+applies when a `.scratch` or a lead folder cannot be listed, because a lead
+state may be there. So the plan finds the lead folders itself: `lead_folders`
+of `t3_project_lead.py` skips a folder that it cannot read. With no lead
+state, this rule keeps nothing. This follows the rule of repo-cleanup: when a
+check cannot run, the plan keeps the item and gives the error as the reason.
+
+The plan does not read the T3 Code state database, `statev2.sqlite`. One
+read-only query would map each worktree to the state of its thread, but the
+schema is internal to T3 Code (Beta). The fields of that state moved between
+releases, from columns to JSON, and the database also holds full transcripts.
+Reading it would need a new ADR. Calls of T3 Code tools from the skill would
+also cover the threads that no lead manages. But only an agent inside T3 Code
+has the tools, and it needs one `t3_thread_read` call for each thread.
+[#578](https://github.com/aeghnnsw/cc-toolkit/issues/578) tracks that option.
+Until then, an unsettled T3 Code thread that no lead state records has only
+the 60-minute live session check.
 
 ## The discover step
 
@@ -241,12 +290,33 @@ still hold work that Git ignores. Two rules keep that work:
 - In every mode, including `--main-only`, the plan reads the planning
   folders of each worktree that it would remove, and keeps the worktree when
   one of its folders is kept. With `--main-only`, it removes no planning
-  folder outside the main checkout.
+  folder outside the main checkout. (Superseded by #577: it lists the
+  folders that a worktree removal deletes; read
+  [The planning folders of a removed worktree](#the-planning-folders-of-a-removed-worktree).)
 
 A lead folder has a date key, not an issue key, so the planning folder rule
 also keeps a worktree that holds one. The lead state rule above stays,
 because it also applies when `--planning-location` names another folder.
 `dev-skills/tests/test_cleanup_plan.py` checks each rule.
+
+### The planning folders of a removed worktree
+
+Added on 2026-11-24 for
+[#577](https://github.com/aeghnnsw/cc-toolkit/issues/577).
+
+With `--main-only`, the plan printed no line for a completed planning folder
+in a worktree that it removed, but `git worktree remove` still deleted the
+folder. In the batch 13 close-out, the plan without the flag listed 2 such
+folders, and the `--main-only` plan listed neither. So the plan and the
+cleanup report did not name everything that cleanup deletes.
+
+Now, with `--main-only`, the plan prints a `REMOVE` line for each completed
+folder in a worktree that it removes, and the reason adds that removing the
+worktree deletes the folder. The plan decides these lines after it reads all
+folders of the worktree: folder names sort as text (`12-done` before
+`5-open`), and a kept folder later in the order keeps the worktree. A folder
+in a kept worktree or in the current worktree gets no `REMOVE` line. The plan
+without `--main-only` does not change.
 
 ## The compact start view
 
