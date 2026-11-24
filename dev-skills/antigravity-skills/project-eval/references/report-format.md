@@ -54,9 +54,9 @@ is not a verdict: no verifier judged the finding.
 
 The main agent writes one report. Default path:
 `docs/eval/YYYY-MM-DD-HHMM-<slug>.md`, where the slug names the target in
-a few lowercase words, such as `auth-module` or `whole-project`. When the
-file exists, add `-2`, `-3`, and so on. The user or a calling skill can name
-another path.
+a few lowercase words, such as `auth-module` or `whole-project`. The slug
+does not end in a number. When the file exists, add `-2`, `-3`, and so on.
+The user or a calling skill can name another path.
 
 ````markdown
 # Project Evaluation: <target>
@@ -69,6 +69,7 @@ another path.
 - **Status**: Complete | Incomplete (<n> findings not verified; E<N> partial)
 - **Browser checks**: done | not needed | skipped: <reason>
 - **Earlier reports**: <paths with the same slug, or none>
+- **Run results**: <RUN path>
 
 ## Summary
 
@@ -124,5 +125,6 @@ Rules:
   `deadline`, `two angles with nothing new`, or `partial: <reason>`.
 - The status is Incomplete when a finding is not verified or an evaluator is
   partial. In the parentheses, name only the causes that apply, for example
-  `Incomplete (E3 partial)`.
+  `Incomplete (E3 partial)`. The count of findings not verified is the Not
+  verified count of the Summary, after duplicates merge.
 - Omit the Not Verified Findings section when every finding has a verdict.

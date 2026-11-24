@@ -4,8 +4,9 @@ These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358
 [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365),
 [issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
-[issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
-[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448).
+[issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432),
+[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448), and
+[issue #463](https://github.com/aeghnnsw/cc-toolkit/issues/463).
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md),
 the [Codex skill](../codex-skills/grill-with-research/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/grill-with-research/SKILL.md), with
@@ -104,14 +105,14 @@ for issue 42, and the Matt skills load.
 | Changed evidence | Research what the answer changed, reopen the first question, and hold the questions that depend on it. | Keeping the first answer unchanged; asking its dependent questions. | The new finding and the reopened decision in `01_research.md`. |
 | Missing access | Report the missing access, mark the finding unresolved, and ask the user only if the hosting decision still depends on it. | Treating the vendor's behavior as a verified fact. | The summary that names the inaccessible source. |
 | Research runs a script | Write the script as a sub-step such as `01_1_flag_check.sh`, run the Git repository in one `mktemp -d "${TMPDIR:-/tmp}/grill-with-research.XXXXXX"` folder, remove that folder by path, and cite the script. | Editing tracked files; installing into the project environment; leaving the temporary folder. | The script, its output, and the finding that cites them. |
-| No issue yet | Use `trees/cache/.scratch/<YYYYMMDD>-cache-layer/`. Rename it to `<issue>-cache-layer` when an issue exists. | Inventing an issue number; writing notes in a tracked folder or in the main checkout. | The folder path. |
-| Untracked folder not ignored | Add `/.scratch/` to Git's `info/exclude` file, at the path that `git rev-parse --git-path info/exclude` prints, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | `git check-ignore` output before and after. |
-| Omitted Matt skill | Run the resolver (with `--host codex` in Codex and `--host antigravity` in Antigravity), check the invocation setting, read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
+| No issue yet | Run `planning_folder.py cache-layer` in `trees/cache`, which makes `trees/cache/.scratch/<YYYYMMDD>-cache-layer/`. When an issue exists, run it again with `--issue`, which renames the folder to `<issue>-cache-layer`. | Inventing an issue number; writing notes in a tracked folder or in the main checkout. | The folder path that the script prints. |
+| Untracked folder not ignored | Run `planning_folder.py`, which adds `/.scratch/` to Git's `info/exclude` file, and tell the user. | Editing `.gitignore`; writing untracked notes that Git would show. | The `Ignore:` line that the script prints. |
+| Omitted Matt skill | Run the resolver with `--model-invoked` (and with `--host codex` in Codex and `--host antigravity` in Antigravity), read the resolved `SKILL.md`, and follow both Matt skills. | Asking the user to invoke the skill by hand; treating the omission as a missing skill. | The resolver output. |
 | Missing Matt skill | Report the missing skill as a blocker and stop. | Running an interview without the Matt skills. | The resolver's error message. |
 | Done | Stop asking and finish as `grilling` does, after the user confirms the shared understanding. | Inventing questions; starting implementation from this skill. | The final research summary and the recorded glossary terms and ADRs. |
 | Started from the description | Load `grilling` and `domain-modeling`, then research before the first round. | Asking the user to name the skill; loading `grill-with-docs`. | The loaded skills and the first research summary. |
 | No project | Use Matt's `grilling`. Do not start this skill. | Researching a project that does not exist; creating a planning folder. | The request and the absence of a project. |
-| User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill past its frontmatter; running the interview without it. | The Skill tool's refusal, or the frontmatter or `agents/openai.yaml` setting. |
+| User-invoked Matt skill | Report the blocker and stop. | Reading the user-invoked skill; running the interview without it. | The Skill tool's refusal, or the resolver's exit status 3 and its message. |
 | Conditional recommendation | Research whether every operator has a Codex login, and ask about it if research leaves it open. Record decision (a) with that condition and with the promised issue for (c). | Recording (a) without its condition; opening the issue for (c) during grilling. | The decision record with the condition, its answer, and the promised issue. |
 | Automode after approval | Finish as `grilling` does, then continue in this thread with `matt-automode`, which reuses the completed grilling. | Starting `matt-automode` before the user confirms; grilling again in `matt-automode`. | The user's confirmation and the task line that names `matt-automode`. |
 

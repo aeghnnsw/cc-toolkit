@@ -7,7 +7,9 @@ words for its condition rule. Issue #432 adds the Antigravity copies and the
 Antigravity sessions of the matt-automode retrospective. Issue #448 lets a
 task, such as a t3-project-lead brief, name automode for after the user
 approves the design, and raises the body limit to 450 words for that rule.
-Agent behavior is checked by the scenario review in
+Issue #463 moves two mechanical checks into scripts: resolve_skill.py
+--model-invoked stops at a user-invoked Matt skill, and planning_folder.py
+makes the planning folder. Agent behavior is checked by the scenario review in
 grill-with-research-scenarios.md.
 """
 
@@ -32,12 +34,15 @@ RESOLVER = {
     "codex-skills": '"<plugin-root>/scripts/resolve_skill.py" --host codex',
     "antigravity-skills": '"<plugin-root>/scripts/resolve_skill.py" --host antigravity',
 }
-# Each copy stops at the setting that makes a Matt skill user-invoked on its host.
-USER_INVOKED_SETTING = {
-    "skills": "`disable-model-invocation: true`",
-    "codex-skills": "`allow_implicit_invocation: false`",
-    "antigravity-skills": "`disable-model-invocation: true`",
-}
+# Each copy stops when the resolver reports a user-invoked Matt skill, instead of reading its settings.
+USER_INVOKED_STOP = "- The resolver exits with status 3: a Matt skill is user-invoked."
+PLANNING_HEADING = "## Planning folder"
+PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin-root>",
+                     "antigravity-skills": "<plugin-root>"}
+# Issue #463: zsh stops at an unquoted "[--issue", so the command has no optional brackets, and
+# the script prints the next free step prefix, which differs from grilling's on a later run.
+LEAVE_OUT_ISSUE = "without `--issue <issue>` until an issue exists, then again:"
+NEXT_FREE_STEP = "It prints the folder and the next free `dev-skills:step-workflow` prefix, which grilling takes."
 RETRO_HEADING = "## Navigation retrospective"
 # Issue #458: the retrospective reads the sessions of every host, including
 # Antigravity, with the session script that dev-skills ships.
@@ -95,7 +100,8 @@ class GrillWithResearchTest(unittest.TestCase):
             self.assertNotIn("allow_implicit_invocation: false", policy.read_text(encoding="utf-8"))
 
     def test_copies_differ_only_in_how_they_load_skills(self) -> None:
-        claude = sections(wrapper("skills")[1])
+        # The plugin root of a script path is the one other host-specific part.
+        claude = sections(wrapper("skills")[1].replace("${CLAUDE_PLUGIN_ROOT}", "<plugin-root>"))
         self.assertIn(LOAD_HEADING, claude)
         for host in HOSTS[1:]:
             other = sections(wrapper(host)[1])
@@ -112,8 +118,24 @@ class GrillWithResearchTest(unittest.TestCase):
 
     def test_each_copy_stops_at_a_user_invoked_matt_skill(self) -> None:
         for host in HOSTS:
+            section = load_section(host)
             with self.subTest(host=host):
-                self.assertIn(USER_INVOKED_SETTING[host], load_section(host))
+                self.assertIn(f"{RESOLVER[host]} --model-invoked \\\n", section)
+                self.assertIn(USER_INVOKED_STOP, section)
+                self.assertNotIn("frontmatter", section)
+                self.assertNotIn("openai.yaml", section)
+
+    def test_each_copy_makes_the_planning_folder_with_the_script(self) -> None:
+        for host in HOSTS:
+            section = sections(wrapper(host)[1])[PLANNING_HEADING]
+            command = f'python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/planning_folder.py" <slug> --issue <issue>'
+            with self.subTest(host=host):
+                self.assertIn(f"```bash\n{command}\n```", section)
+                self.assertIn(LEAVE_OUT_ISSUE, " ".join(section.split()))
+                self.assertIn(NEXT_FREE_STEP, " ".join(section.split()))
+                self.assertNotIn("[--", section)
+                self.assertNotIn("<YYYYMMDD>", section)
+                self.assertNotIn("rename it", section)
 
     def test_each_copy_names_grilling_and_domain_modeling_not_grill_with_docs(self) -> None:
         for host in HOSTS:
@@ -149,6 +171,17 @@ class MattAutomodeUsesTheWrapperTest(unittest.TestCase):
         for host in HOSTS:
             with self.subTest(host=host):
                 self.assertIn(RESOLVER[host], automode(host))
+
+    def test_each_copy_makes_the_planning_folder_with_the_script(self) -> None:
+        for host in HOSTS:
+            plan = " ".join(sections(automode(host))["## Plan and decide"].split())
+            with self.subTest(host=host):
+                self.assertIn(f'`python3 "{PLUGIN_ROOT_PATHS[host]}/scripts/planning_folder.py" <slug> '
+                              "--issue <issue>` prints.", plan)
+                self.assertIn("Leave out `--issue <issue>` until an issue exists, then run the command "
+                              "again with it.", plan)
+                self.assertNotIn("[--", plan)
+                self.assertNotIn('"Planning folder"', plan)
 
 
 class AntigravityCopiesTest(unittest.TestCase):

@@ -86,27 +86,44 @@ Format (Keep a Changelog style):
 
 ### 6. Audit gate
 
-Score the updated doc against the rubric below. Auto-fix any safe residuals found, then re-check once. **Do not report the task complete** until every dimension passes, or the remaining items are explicitly deferred — either by the user (typically the structural changes from Step 4), or because a dimension fails on a pre-existing content gap beyond this update's scope (e.g., missing edge-case docs that must be authored fresh). Flag such out-of-scope gaps in the report rather than blocking completion.
+Run the doc check on the target docs (Python 3.9 or newer, standard library only). Do not check the changelog; it holds history by design.
+
+```bash
+python3 <skill-dir>/scripts/doc_check.py <doc>...
+```
+
+Here `<skill-dir>` is this skill's directory. The check prints one finding per line as `<doc>:<line>: <rule>: <detail>`, and a summary line. `--help` lists its phrases. Act on each finding:
+
+- `broken-link` or `broken-anchor`: a relative link, or its `#anchor`, does not resolve. Fix it. The check exits 1 while one remains.
+- `path`: a relative path in inline code does not exist from the doc's folder or from the repository root. Fix it, unless the path is relative to another folder or names a file that the reader creates.
+- `history`: a backward-narrative phrase. Move the history to the changelog (Step 5) and keep the current state. Keep the phrase when it is part of a forward-looking pointer, or when it is a false match in current-state text, such as "the previously saved state".
+- `see-above`: a vague reference. Replace it with an explicit reference.
+
+The phrase lists do not find every backward narrative or vague reference; read for the others. When the check exits 2 or cannot run, report the reason and check the links and paths by reading.
+
+Score the updated doc against the rubric below. Auto-fix any safe residuals found, then run the check and score the doc again, once. **Do not report the task complete** until every dimension passes, or the remaining items are explicitly deferred — either by the user (typically the structural changes from Step 4), or because a dimension fails on a pre-existing content gap beyond this update's scope (e.g., missing edge-case docs that must be authored fresh). Flag such out-of-scope gaps in the report rather than blocking completion.
 
 | # | Dimension | Pass check |
 |---|-----------|-----------|
-| 1 | Accuracy & currency | Every statement matches present reality; one canonical statement per fact. |
+| 1 | Accuracy & currency | Every statement matches present reality; one canonical statement per fact; the check finds no broken link or anchor. |
 | 2 | Type purity | Doc stays one Diátaxis type; no tutorial hand-holding in reference, no "why" essays in how-to. |
 | 3 | Findability & structure | Descriptive title, clean `H2`/`H3` hierarchy, one concept per section. |
-| 4 | Self-containment | Each section makes sense extracted alone; references are explicit, not "see above." |
+| 4 | Self-containment | Each section makes sense extracted alone; references are explicit; no `see-above` finding remains. |
 | 5 | Clarity | Plain language, active voice, present tense, terms defined once. |
 | 6 | Conciseness | No redundancy, filler, or marketing; minimal tokens for the meaning. |
 | 7 | Completeness | Prerequisites, happy path, examples, and error/edge cases covered. |
 | 8 | Consistency | Uniform terminology, naming, and formatting across the doc set. |
-| 9 | No embedded history | No backward narrative in prose; history lives in the CHANGELOG; only forward-looking pointers remain. |
+| 9 | No embedded history | No backward narrative in prose; history lives in the CHANGELOG; each remaining `history` finding is part of a forward-looking pointer or a false match in current-state text, and the report gives the reason. |
 
 ### 7. Report
 
-Summarize:
+Summarize, with evidence:
 
-- Files changed, with a one-line description of each.
+- Files changed: the `git diff --stat` output for the changed docs and the changelog, and a one-line description of each file. Name each file that Git does not track.
 - CHANGELOG entry written (or "no substantive change — not logged").
-- Rubric scorecard (pass / flag per dimension).
+- The output of the last doc check, and the reason that each remaining finding stays.
+- Each claim verified in Step 3, with the file or command that confirmed it.
+- Rubric scorecard (pass / flag per dimension). Each flag cites a file and line as `<file>:<line>`, and its reason.
 - Any structural changes proposed and awaiting approval.
 
 ## Safety rules

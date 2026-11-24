@@ -1,6 +1,6 @@
 ---
 name: goal-rubric
-version: 1.1.0
+version: 1.2.0
 description: Draft a binary (pass/fail) rubric and a ready-to-paste completion condition for a Claude Code, Codex, or Antigravity /goal command. Use when the user wants to write or design a rubric, success criteria, acceptance criteria, or a "done"/completion condition for /goal, or when a /goal loop will not close because its criteria are not measurable.
 ---
 
@@ -41,6 +41,13 @@ The rubric also has one stop clause: a turn or time cap, such as "or stop after 
 4. Ask the user only about gaps that repo inspection cannot settle, such as the command that proves the change works, the files that must not change, or the turn or time cap. Do not ask about what the repo answers.
 5. Save the rubric to `./goal-rubric-<slug>.md` in the working directory, unless the user gives another path. Replace `<slug>` with a short name from the goal.
 6. Render the `/goal` condition for the tool that the user names, or for Claude Code when the user names none. Use the framing for that tool in [Condition Framing](#condition-framing).
+7. Write the condition in the `/goal condition` section of the rubric file. Then run the rubric check and show its output to the user:
+
+   ```bash
+   python3 <skill-dir>/scripts/check_goal_rubric.py <rubric-file>
+   ```
+
+   Here `<skill-dir>` is this skill's directory, and `<rubric-file>` is the file from step 5. The check needs Python 3.9 or newer and only the standard library. It prints each error and warning with its line. Fix each error, then run the check again until it exits with status 0. A warning names a vague word, such as "mostly". Replace the word with an observable signal, or keep it when it is not an opinion. When the check exits with status 2 or cannot run, report the reason and compare the rubric with the [Rubric Shape](#rubric-shape).
 
 ## Rubric Shape
 
@@ -60,7 +67,9 @@ The rubric also has one stop clause: a turn or time cap, such as "or stop after 
 
 ## Condition Framing
 
-- Claude Code: one condition string. Keep it within the `/goal` length limit, around 4,000 characters. Phrase it so that the proof appears in the transcript, for example: `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
+Keep each condition within 4,000 characters, the Claude Code `/goal` limit. The rubric check fails a longer condition for every tool.
+
+- Claude Code: one condition string. Phrase it so that the proof appears in the transcript, for example: `all tests in test/auth pass (pytest prints 0 failed) and git status is clean, without modifying any file outside src/auth/, or stop after 20 turns`.
 - Codex and Antigravity: a condition in four parts:
   1. What to achieve: the criteria, each named so that it is one item of a checklist.
   2. What not to change: the constraints.
@@ -71,12 +80,11 @@ For Codex, keep the condition direct enough for a small grader to answer yes or 
 
 ## Self-Check
 
-Before finishing, verify:
+Before finishing, verify what the rubric check cannot:
 
-- Every criterion names a measurable end state and the check that proves it.
-- Every criterion is pass/fail: no scores, no "mostly".
+- Every end state is measurable, and its check proves it.
+- Every criterion is pass/fail: no scores.
 - No criterion depends on an opinion.
 - Every proof would appear in the agent's output.
 - For Claude Code and Codex, no criterion needs the grader to run a command or open a file.
 - Criteria do not overlap.
-- The rubric has a stop clause.

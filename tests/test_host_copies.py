@@ -282,34 +282,22 @@ HOST_LINES = {
 ''',
     'dev-skills/codex-skills/grill-with-research/SKILL.md': r'''
 -Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
--the Skill tool, and follow both. If the Skill tool lacks one, resolve its path
--and read only the frontmatter:
+-the Skill tool, and follow both. If the Skill tool lacks one, resolve its path:
 +Follow the `SKILL.md` of `mattpocock-skills:grilling` and
 +`mattpocock-skills:domain-modeling`. If the skill list omits one, resolve its
 +path. `<plugin-root>` is two levels above this folder:
--python3 "<plugin-root>/scripts/resolve_skill.py" \
-+python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
--In these cases, stop and report the blocker; use no other workflow:
-+Before you open a resolved `SKILL.md`, check its folder. In these cases, stop
-+and report the blocker; use no other workflow:
+-python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \
++python3 "<plugin-root>/scripts/resolve_skill.py" --host codex --model-invoked \
 -- The Skill tool refuses a Matt skill.
--- The frontmatter sets `disable-model-invocation: true`.
-+- The folder has `agents/openai.yaml` with `allow_implicit_invocation: false`.
--
--Otherwise, follow the resolved `SKILL.md`.
 ''',
     'dev-skills/antigravity-skills/grill-with-research/SKILL.md': r'''
 -Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
--the Skill tool, and follow both. If the Skill tool lacks one, resolve its path
--and read only the frontmatter:
+-the Skill tool, and follow both. If the Skill tool lacks one, resolve its path:
 +Follow `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`.
 +Resolve the path of each `SKILL.md`. `<plugin-root>` is two levels above this
 +folder:
--python3 "<plugin-root>/scripts/resolve_skill.py" \
-+python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity \
--In these cases, stop and report the blocker; use no other workflow:
-+Read only the frontmatter of each resolved `SKILL.md` first. In these cases,
-+stop and report the blocker; use no other workflow:
+-python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \
++python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity --model-invoked \
 -- The Skill tool refuses a Matt skill.
 -Otherwise, follow the resolved `SKILL.md`.
 +Otherwise, read and follow each resolved `SKILL.md`.
@@ -727,8 +715,7 @@ HOST_LINES = {
 +   `git log --oneline -20`.
 # Step 3 starts each evaluator with invoke_subagent and its reference file.
 -Send one Agent call for each evaluator, all in one message:
-+`<skill-dir>` is the folder that holds this `SKILL.md`. In each prompt,
-+write its absolute path.
++In each prompt, write the absolute path of `<skill-dir>`.
 +
 +Start each evaluator with `invoke_subagent`:
 -Agent(
@@ -779,11 +766,13 @@ HOST_LINES = {
 -## Browser Servers
 -
 -Both agents can use the tools of these browser MCP servers: the desktop
--app's browser (`Claude_Browser`), Claude in Chrome (`claude-in-chrome`),
--Chrome DevTools (`chrome-devtools`), and Playwright (`playwright`, or the
--Playwright plugin). To support another server, add its tool prefix to the
--`tools` line of both agents in the dev-skills plugin:
--`mcp__<server>__*` for a server that the user configured, or
+-app's browser (`mcp__Claude_Browser__*`), Claude in Chrome
+-(`mcp__claude-in-chrome__*`), Chrome DevTools (`mcp__chrome-devtools__*`),
+-and Playwright (`mcp__playwright__*`, or
+-`mcp__plugin_playwright_playwright__*` from the Playwright plugin). To
+-support another server, add its tool prefix to this list and to the
+-`tools` line of both agents in the dev-skills plugin: `mcp__<server>__*`
+-for a server that the user configured, or
 -`mcp__plugin_<plugin>_<server>__*` for a server that a plugin provides.
 -
 -A tool in the list still needs permission in the session. A server that

@@ -1,6 +1,6 @@
 ---
 name: project-eval
-version: 2.2.0
+version: 2.3.0
 description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It dispatches skeptical evaluator agents, has a separate verifier check every finding, and writes one report. For a diff or PR, use /code-review; for one decision or design choice, use pressure-test.
 ---
 
@@ -75,6 +75,9 @@ Use the printed `RUN` path and `DEADLINE` value in the steps below. If you
 lose the `RUN` path, find the newest run with
 `ls -dt "${TMPDIR:-/tmp}"/project-eval.* | head -1`.
 
+Steps 4 and 5 run `python3 <skill-dir>/scripts/eval_run.py`, where
+`<skill-dir>` is the folder that holds this `SKILL.md`.
+
 Tell the user the scope, the dimensions of each evaluator, and the deadline
 in two or three lines.
 
@@ -112,11 +115,16 @@ When an evaluator finishes:
    so far in its final-message format, with the stop reason
    `partial: <reason>`.
 3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
-   answer comes, keep the saved result, and append its stop reason yourself,
-   for example `partial: turn limit, no answer`.
-4. Check that each finding has a unique ID that starts with `E<N>-`.
-5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
-   duplicate ID.
+   answer comes, keep the saved result, and append the line
+   `**Stop reason**: partial: <reason>` yourself, for example with the
+   reason `turn limit, no answer`.
+4. Run `python3 <skill-dir>/scripts/eval_run.py check <RUN>`. It prints a
+   `PROBLEM` line for each finding with no ID, a duplicate ID, a malformed
+   ID, or no heading, for a code fence that no line closes, and for a
+   missing or unknown stop reason.
+5. Fix each `PROBLEM` line about `E<N>.md` in that file: write the finding
+   heading with the free ID that the line names, close the code fence, or
+   append the stop reason. Then run `check` again.
 6. Split its findings into batches of at most 10.
 7. Send one verifier for each batch:
 
@@ -137,7 +145,9 @@ When an evaluator finishes:
 When a verifier finishes:
 
 1. Save its full result, verbatim, as `<RUN>/V-E<N>-<b>.md`.
-2. Compare the IDs in its verdicts with the IDs of its batch.
+2. Run `check` again. The missing IDs are the IDs of its batch in the
+   `No verdict` line. A bad verdict line gives no verdict, and a `PROBLEM`
+   line names it.
 3. For missing IDs, resume the verifier once with SendMessage.
 4. If the verifier cannot resume, send one new verifier for the missing IDs
    only.
@@ -149,15 +159,26 @@ When a verifier finishes:
 When every evaluator and verifier has finished:
 
 1. Read the saved results in `<RUN>`.
-2. Choose the report path. For the default path, follow the name rules in
-   [references/report-format.md](references/report-format.md).
-3. Find the earlier reports with the same slug in the report directory.
+2. Run `check` again. Its summary and `Status` line count each finding ID,
+   before you merge duplicates. A `PROBLEM` line about a `V-E<N>-<b>.md`
+   file can remain after the retries of step 4.
+3. For the default report path, run
+   `python3 <skill-dir>/scripts/eval_run.py path <slug>` in the project
+   root. It prints the first free path by the name rules in
+   [references/report-format.md](references/report-format.md), and the
+   earlier reports with the same slug.
 4. Write the report in the format of `report-format.md`. Merge duplicates,
    use the verified severities, and list Rejected and Not verified findings
-   in their own sections.
+   in their own sections. Count the Summary after the merge. The Status
+   gives the Not verified count of the Summary and the partial evaluators.
+   The Run results field gives the `<RUN>` path.
 5. Save the report at the report path.
-6. Present the report path, the status line, the summary table, the
-   Critical and Major findings, and what was not covered.
+6. Run `python3 <skill-dir>/scripts/eval_run.py lint <report path>`. Add
+   `--custom-path` when the user or a calling skill named the path. Fix
+   each `PROBLEM` line, and run `lint` again until it prints none.
+7. Present the report path, the run results path `<RUN>`, the status line,
+   the summary table, the Critical and Major findings, and what was not
+   covered.
 
 ## Rules
 
@@ -177,11 +198,13 @@ When every evaluator and verifier has finished:
 ## Browser Servers
 
 Both agents can use the tools of these browser MCP servers: the desktop
-app's browser (`Claude_Browser`), Claude in Chrome (`claude-in-chrome`),
-Chrome DevTools (`chrome-devtools`), and Playwright (`playwright`, or the
-Playwright plugin). To support another server, add its tool prefix to the
-`tools` line of both agents in the dev-skills plugin:
-`mcp__<server>__*` for a server that the user configured, or
+app's browser (`mcp__Claude_Browser__*`), Claude in Chrome
+(`mcp__claude-in-chrome__*`), Chrome DevTools (`mcp__chrome-devtools__*`),
+and Playwright (`mcp__playwright__*`, or
+`mcp__plugin_playwright_playwright__*` from the Playwright plugin). To
+support another server, add its tool prefix to this list and to the
+`tools` line of both agents in the dev-skills plugin: `mcp__<server>__*`
+for a server that the user configured, or
 `mcp__plugin_<plugin>_<server>__*` for a server that a plugin provides.
 
 A tool in the list still needs permission in the session. A server that

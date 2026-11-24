@@ -1,6 +1,6 @@
 ---
 name: grill-with-research
-version: 1.5.0
+version: 1.6.0
 description: Research the project, then grill the user only on decisions that research cannot settle; records glossary terms and ADRs. Use when the user asks to grill or stress-test a plan, design, or issue in the current project.
 ---
 
@@ -13,18 +13,17 @@ after the user approves the design.
 ## Load the Matt skills
 
 Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling` with
-the Skill tool, and follow both. If the Skill tool lacks one, resolve its path
-and read only the frontmatter:
+the Skill tool, and follow both. If the Skill tool lacks one, resolve its path:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/resolve_skill.py" --model-invoked \
   mattpocock-skills:grilling mattpocock-skills:domain-modeling
 ```
 
 In these cases, stop and report the blocker; use no other workflow:
 
 - The Skill tool refuses a Matt skill.
-- The frontmatter sets `disable-model-invocation: true`.
+- The resolver exits with status 3: a Matt skill is user-invoked.
 - A Matt skill cannot load.
 
 Otherwise, follow the resolved `SKILL.md`.
@@ -46,12 +45,17 @@ citable scientific result needs a cited run.
 
 ## Planning folder
 
-Use the repository's planning folder, or `.scratch/<issue>-<slug>/` in the
-checkout where the session started. Until an issue exists, use
-`.scratch/<YYYYMMDD>-<slug>/`, then rename it. If Git does not ignore
-`.scratch/`, add `/.scratch/` to Git's `info/exclude` file and tell the user.
-Nothing outside the folder links to it. Use `dev-skills:step-workflow` prefixes:
-grilling is the next free step.
+Use the repository's documented planning folder. Otherwise, run this command in
+the checkout where the session started, without `--issue <issue>` until an
+issue exists, then again:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/planning_folder.py" <slug> --issue <issue>
+```
+
+It prints the folder and the next free `dev-skills:step-workflow` prefix, which
+grilling takes. Tell the user when it changes `info/exclude`. Nothing outside
+the folder links to it.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
 `<step>_<n>_<name>`.
