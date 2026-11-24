@@ -218,7 +218,9 @@ git grep -n <term> -- ':!CHANGELOG.md' ':!changelog.d' ':!task-loop'
 The root [CHANGELOG.md](CHANGELOG.md) is the only maintained changelog. A
 feature pull request does not edit `CHANGELOG.md`. The pull request adds
 its bullets in a new entry file, `changelog.d/<N>.md`, where `<N>` is the
-number of the linked issue. When another change already uses that name,
+number of the linked issue. When the pull request closes several issues,
+it adds one entry file, and `<N>` is the lowest issue number. When another
+change already uses that name,
 add lowercase words, as in `changelog.d/<N>-<words>.md`. Two pull requests
 thus add different files, and a rebase does not conflict in a changelog
 file. The [release step](#release-step) moves the bullets into
@@ -234,6 +236,14 @@ and `### Changed`, each with its bullets:
 - Repository: <change>. See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).
 ```
 
+For a pull request that closes several issues, each bullet names the other
+issues inline as bare `(#N)` and ends with one `See` link to the lowest
+issue number:
+
+```markdown
+- Repository: <change> (#555, #556). See [#554](https://github.com/aeghnnsw/cc-toolkit/issues/554).
+```
+
 Name each host whose manifest version the change increases, in the order
 Claude Code, Codex, Antigravity. When the versions differ, give each host
 its version: `Claude Code <version>, Codex <version>, Antigravity <version>`.
@@ -247,7 +257,9 @@ plugin and other files outside it, write one plugin entry and one
 `Repository:` entry. A change only to contributor-only files of a
 plugin, such as its `tests/`, needs no version and is also a `Repository:`
 entry. Link the issue that the pull request closes; for a spec with
-tickets, link the ticket.
+tickets, link the ticket. When the pull request closes several issues,
+link the lowest issue number, the number that also names the entry file,
+and name the other issues inline.
 
 The package validator checks each new bullet: a bullet whose text is not in
 `CHANGELOG.md` or in an entry file at the merge base. An edited bullet is
@@ -256,7 +268,10 @@ above, has at most 600 characters, and is under one of the three headings
 of an entry file. Put more detail in the pull request. A plugin bullet uses
 the registered plugin name and names each host whose manifest version
 increased, at its current manifest version. Each plugin whose manifest
-version increases needs a new bullet. A new bullet in `CHANGELOG.md` fails.
+version increases needs a new bullet. A branch adds at most one new bullet
+for each plugin and one new `Repository:` bullet. The validator counts the
+new bullets of all new or changed entry files under all three headings. A
+new bullet in `CHANGELOG.md` fails.
 Older entries are under `## 2026-11-22`.
 
 ### Release step

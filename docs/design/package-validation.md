@@ -233,12 +233,18 @@ bullet. Each new bullet must have at most 600 characters and match the
 [entry form](../../CONTRIBUTING.md#changelog-entries): `Repository:` or a
 registered plugin name with hosts and versions, then the change, then one
 ` See [#N](https://github.com/aeghnnsw/cc-toolkit/issues/N).` link whose two
-numbers agree. The change text holds no other ` See [#`. A plugin bullet
+numbers agree. The change text holds no other ` See [#`; it can name other
+issues inline as bare `(#N)`. A plugin bullet
 names the hosts in the order Claude Code, Codex, Antigravity, writes one
 version for adjacent hosts that ship the same version, gives each host its
 current manifest version, and names exactly the hosts whose version
 increased. A new host registration counts as an increase. Each plugin with
-an increased version needs a new bullet in an entry file.
+an increased version needs a new bullet in an entry file. The branch adds
+at most one new bullet for each plugin and one new `Repository:` bullet,
+counted across all new or changed entry files and all three headings. A
+bullet at the merge base is not counted. The error names the plugin or
+`Repository`, gives the `path:line` of the first two bullets, and shows the
+form for a pull request that closes several issues.
 
 A new line in `CHANGELOG.md` below its first `## ` heading must be blank or
 a heading; a new bullet there fails, because only the release step adds
@@ -265,7 +271,8 @@ metadata; missing and escaped resources; skill headers; shared and
 host-specific changes; exemptions; unknown files; plugin and skill version
 rules; resource changes and source moves; registration lifecycle; missing
 history; staged, unstaged, and new files; new bullets of entry files and
-`CHANGELOG.md`; and branches that run the release step. The
+`CHANGELOG.md`; the count of new bullets for each plugin and `Repository:`;
+and branches that run the release step. The
 [release script tests](../../tests/test_release_scripts.py) run the release
 step, the version script, and a rebase of two branches with entry files.
 
