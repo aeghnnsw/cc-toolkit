@@ -763,7 +763,8 @@ class LeadStateTests(unittest.TestCase):
         self.assertIn("\nOther tasks: 1 planned, 10 verified. Decisions: 10. Run show to list them.\n", view)
         self.assertIn("\n- next is ready to start: run t3_project_lead.py dispatch for it now.\n", view)
         self.assertTrue(view.endswith("\n\nWaiting on you (1):\n- 1: Approve the release?"))
-        self.assertNotIn("v0", view)
+        # A task line, not the bare name: the view also prints the random temporary path (#591).
+        self.assertNotRegex(view, r"(?m)^- v\d \(")
         self.assertNotIn("Decision 0", view)
         # show still lists every task and decision.
         full = self.ok("show")
