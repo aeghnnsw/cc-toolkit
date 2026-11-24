@@ -27,12 +27,11 @@ These are declared minimum versions, not a tested compatibility matrix.
 The root tooling's Python requirement does not set the minimum for
 installed plugins. A plugin script declares its minimum in a
 `requires-python = ">=X.Y"` line of PEP 723 inline script metadata.
-Without that line, its minimum is 3.9, the version of `/usr/bin/python3`
-on macOS.
 [tests/test_script_python_floor.py](tests/test_script_python_floor.py) parses
-each shipped Python file at its minimum, and fails on an `X | Y` annotation
-that Python 3.9 evaluates. It also fails when plugin text runs a script
-above 3.9 with a bare `python3`; run it as
+each shipped Python file at that minimum, or at 3.9, the version of
+`/usr/bin/python3` on macOS, when the file has no such line. It fails on an
+`X | Y` annotation that Python 3.9 evaluates. It also fails when plugin
+text runs a script above 3.9 with a bare `python` or `python3`; run it as
 `uv run --no-project --python '>=X.Y' python <script>`. The test does not
 find newer runtime APIs, such as `tomllib`.
 
@@ -132,12 +131,13 @@ Codex skill; add an entry for a new Codex skill.
   workflows run.
 - **Shell blocks.** A skill's shell blocks run in the user's shell, which
   can be bash or zsh. Write each block to run in both shells, with the BSD
-  tools of macOS and the GNU tools of Linux. Make a temporary file or
-  folder with `mktemp -d "${TMPDIR:-/tmp}/<name>.XXXXXX"`. Write a
-  placeholder without a space, such as `<work-dir>`.
+  tools of macOS and the GNU tools of Linux. Make a temporary folder with
+  `mktemp -d "${TMPDIR:-/tmp}/<name>.XXXXXX"`, and a temporary file with
+  the same template without `-d`. Write a placeholder without a space, such
+  as `<work-dir>`.
   [tests/test_skill_shell_blocks.py](tests/test_skill_shell_blocks.py)
   parses each shell block of a shipped Markdown file with `bash -n` and
-  `zsh -n`, and runs the Core Hooks zsh trap check on it.
+  `zsh -n -f`, and runs the Core Hooks zsh trap check on it.
   [tests/test_mktemp_form.py](tests/test_mktemp_form.py) checks each
   `mktemp` call. For a test that runs a skill's blocks, see
   `dev-skills/tests/test_pressure_test_models.py`.

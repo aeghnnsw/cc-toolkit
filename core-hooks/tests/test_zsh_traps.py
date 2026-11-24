@@ -465,6 +465,9 @@ class ZshTrapTests(unittest.TestCase):
                 for host in (None, "claude", "codex", "antigravity"):
                     with self.subTest(command=command, host=host):
                         traps = zsh_traps.zsh_traps(command, host=host)
+                        if host == "antigravity":  # An Antigravity hook cannot warn without blocking.
+                            self.assertEqual(traps, [])
+                            continue
                         self.assertEqual([trap.blocks for trap in traps], [False], traps)
                         self.assertIn("no `timeout` command is on PATH", traps[0].message)
             self.assertEqual(zsh_traps.zsh_traps("make timeout; echo 'timeout 5'; /opt/bin/timeout 5 x"), [])

@@ -794,7 +794,7 @@ def zsh_traps(command, cwd=None, host=None):
         traps.append(Trap(HEAD_WARNING.format(option=findings.head_zero_counts[0]), False))
     if findings.gnu_cat_options and host != ANTIGRAVITY:
         traps.append(Trap(CAT_WARNING.format(option=findings.gnu_cat_options[0]), False))
-    if findings.timeout and shutil.which("timeout") is None:
+    if findings.timeout and host != ANTIGRAVITY and shutil.which("timeout") is None:
         traps.append(Trap(TIMEOUT_WARNING, False))
     return traps
 
