@@ -26,6 +26,19 @@ _Avoid_: Skill override
 A self-contained plugin directory selected by a marketplace registry. It
 contains host manifests, installable content, and required resources.
 
+**Installed copy**:
+The version folder of a plugin that a host loads from its plugin cache. A
+session runs the installed copy that it loaded at start.
+
+**Marketplace clone**:
+A host's local clone of a marketplace repository. A marketplace refresh
+(`claude plugin marketplace update`, `codex plugin marketplace upgrade`)
+updates it and does not change the installed copy.
+
+**Stale install**:
+An installed copy that is older than the same plugin in the marketplace
+clone of the same home.
+
 **Shipped content**:
 Plugin content intended for installed use, including skills, agents, hooks,
 scripts, and required resources. Tests and contributor-only files are not

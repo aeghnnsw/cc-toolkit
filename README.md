@@ -143,7 +143,7 @@ In Claude Code, `safety_guard.py`, `pre_git_hook.py`, and `zsh_traps.py` check t
 - **zsh_traps.py**: When the shell is zsh, quotes separators with two or more leading equals signs in simple `echo` commands, with optional `-n`. An `echo` command can stand alone or be part of a list that `;`, `&&`, `||`, or newlines join, as in `cat a; echo =====; cat b`. Labels can use ASCII letters, digits, and underscores, as in `echo =====CODEX`. Current Claude Code and Codex apply the corrected input through their normal permission checks. Other commands keep the existing checks, and so does a command with a heredoc, or with a quote, backslash, backtick, `$`, or `#` before the end of the last `echo` command to quote: the hook blocks unresolved `=name` expansions and warns about valid command expansions, unsplit variables, unmatched globs, and a letter after `$NAME:`, which zsh can read as a modifier. It also warns when the output of `pytest`, `python -m unittest`, or `validate_packages.py` goes through a pipe to `tail` or `head` without `set -o pipefail`, because the pipeline can then exit 0 when the tests fail. In Claude Code, it blocks a zsh parameter flag such as `${(f)...}`, which the Claude Code safety check rejects with a message about `rm`. Each message names the fix
 - **post_tool_use.py**: Logs tool executions to `logs/post_tool_use.jsonl` in the project directory
 - **system_notification.py**: Plays sound notifications on task completion
-- **stale_install_check.py**: Opt-in, Claude Code only. When `CORE_HOOKS_STALE_CHECK=1` is set, for example in the `env` block of Claude Code settings, a session that starts in a cc-toolkit checkout gets the update commands for each installed Claude Code or Codex plugin that is older than the default branch
+- **stale_install_check.py**: Claude Code and Codex, at session start. For each stale install, an installed copy that is older than the same plugin in the marketplace clone of the same home, the session gets the update commands. The check reads the Claude Code plugin folders in `CLAUDE_CODE_PLUGIN_CACHE_DIR`, `CLAUDE_CONFIG_DIR`, and `~/.claude`, and the Codex homes `CODEX_HOME`, `~/.codex`, and `~/.codex-t3/*`. Codex homes that share their installed copies and marketplace clone through links get one command set. The check is on by default, because an opt-in variable does not reach the sessions that T3 Code starts, and no known route reaches the Codex app server; one run takes 0.03 to 0.06 s. Set `CORE_HOOKS_STALE_CHECK=0`, for example in the `env` setting of Claude Code or in the shell that starts Codex, to turn the check off. Set `CORE_HOOKS_STALE_CHECK=1` to also compare the installed copies with the default branch when the session starts in a cc-toolkit checkout. That comparison stays opt-in, because it warns after each merge. Codex runs the check only after you trust the core-hooks hooks; see [Updates and removal](#updates-and-removal). Antigravity does not run the check, because an Antigravity hook cannot warn without blocking
 
 In Antigravity, a root `hooks.json` runs the same scripts, and a block
 shows its reason. An Antigravity hook cannot warn without blocking the
@@ -309,11 +309,29 @@ To update the installed Claude Code copy:
 
 To update the installed Codex copy:
 
-1. Run `codex plugin marketplace upgrade cc-toolkit`.
-2. Check that `~/.codex/plugins/cache/cc-toolkit/creator-skills/` contains
-   the intended version.
-3. If it does not, run `codex plugin add creator-skills@cc-toolkit`.
-4. Start a new Codex session.
+1. Run `codex plugin marketplace upgrade cc-toolkit`. It updates the
+   marketplace clone and does not change the installed copy.
+2. Run `codex plugin add creator-skills@cc-toolkit`. It installs the version
+   in the marketplace clone and removes the old version folder.
+3. Restart each running Codex session, because the version folder that it
+   loaded at start no longer exists. Start new sessions as usual.
+
+These commands update the Codex home in `CODEX_HOME`, by default `~/.codex`.
+To update another home, set `CODEX_HOME` for each command, for example
+`CODEX_HOME=~/.codex-t3/codex-2 codex plugin add creator-skills@cc-toolkit`.
+A home that links its `plugins` and `.tmp` folders to another home shares
+the installed copies and the marketplace clone of that home, so one update
+covers both homes.
+
+Codex runs a plugin hook only after you trust it, and the trust ends when a
+file of the plugin changes (measured with Codex 0.172.0). So after you
+install or update `core-hooks`, trust its hooks again: start the Codex TUI
+and choose "Review hooks" or "Trust all and continue" at the "Hooks need
+review" prompt, or use `/hooks`. `codex exec` and the Codex app server,
+which T3 Code uses, show no prompt. Until you trust the hooks, they skip a
+new hook, such as the SessionStart stale-install check, without a message,
+and they report each changed hook as failed with "plugin contents changed;
+hook approval required".
 
 To update the installed Antigravity copy:
 

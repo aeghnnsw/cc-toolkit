@@ -32,7 +32,10 @@ line names `finish`.
 
 `start` prints a compact view (issue #555): the running and pr-open tasks, one
 line of counts, the due lines, and the waiting list; `show` prints every task
-and decision. `done` and `task pause|resume|verified|settled` take several
+and decision. Before the view, `start` prints one line with the dev-skills
+version in each host manifest of its plugin root, so that each session shows
+the installed copy that it runs (issue #576). `done` and
+`task pause|resume|verified|settled` take several
 arguments and make all changes under one lock, or none. `task start` and
 `task worker` record each worker's worktree, and `closeout` prints the paths
 for `retro_sessions.py --worktree` (issue #556). Without `--batch`, a work task
@@ -1147,6 +1150,25 @@ def closeout_lines(state: dict, folder: str) -> list[str]:
     return lines or ["No batch needs a close-out."]
 
 
+def version_line() -> str:
+    """Return the dev-skills version in each host manifest of this script's plugin root (#576).
+
+    Each installed copy holds the manifests of all three hosts, and `start`
+    stays a three-word command, so the line names every host and detects none.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    versions = []
+    for host, folder in (("Claude Code", ".claude-plugin"), ("Codex", ".codex-plugin"),
+                         ("Antigravity", ".antigravity-plugin")):
+        try:
+            with open(os.path.join(root, folder, "plugin.json"), encoding="utf-8") as file:
+                version = json.load(file)["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            version = None
+        versions.append(f"{host} {version if isinstance(version, str) else 'unknown'}")
+    return f"Installed copy: dev-skills {', '.join(versions)}."
+
+
 def print_step(name: str) -> None:
     print(f'Steps: "{__file__}"')
     print(STEPS[name].strip())
@@ -1157,14 +1179,17 @@ def print_step(name: str) -> None:
         return
     top = working_tree_top()
     folder = find_lead(top)
+    if name == "start":
+        print()
+        print(version_line())
     if folder is None:
         if name == "start":
-            print()
             print("\n".join(lookup_lines(top)))
         return
     state = load(folder)
     lines = {"start": compact_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
-    print()
+    if name != "start":
+        print()
     print("\n".join(lines[name](state, folder)))
     if name == "start" and state.get("takeover_due") and current_thread() == state.get("owner"):
         # The owner saw the takeover due line once; a failed write only prints it again at the next start.

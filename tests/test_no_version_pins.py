@@ -24,9 +24,10 @@ FIXTURE_VERSIONS = {
     'core-hooks/tests/test_antigravity_host_adapter.py': {'1.5.13'},  # the agy version that sent the payloads
     'core-hooks/tests/test_pre_git_hook.py': {'1.2.0'},  # the tag v1.2.0 in a git worktree command
     'core-hooks/tests/test_stale_install_check.py': {  # fixture repository, install, and cache versions
-        '1.0.1', '1.0.2', '1.0.3', '1.0.9', '1.0.10', '1.0.11', '1.0.26', '1.0.27', '1.9.0', '1.10.0', '3.9.0',
-        '3.52.0'},
+        '1.0.1', '1.0.2', '1.0.3', '1.0.9', '1.0.10', '1.0.11', '1.0.12', '1.0.26', '1.0.27', '1.9.0', '1.10.0',
+        '1.55.0', '1.59.0', '3.9.0', '3.52.0', '3.68.0', '3.72.0'},
     'dev-skills/tests/test_resolve_skill.py': {'1.0.0', '1.9.0', '1.10.0'},  # installed fixture plugin versions
+    'dev-skills/tests/test_t3_project_lead.py': {'0.0.1', '0.1.1', '0.2.1', '0.9.1'},  # fixture manifest versions
     'dev-skills/tests/test_sci_project_layout.py': {'1.2.5'},  # a fixture tool version in a run record
     'tests/test_agent_fields.py': {'1.0.0'},
     'tests/test_host_copies.py': {'4.17.15', '8.5.1', '9.0.0'},  # quoted skill text
