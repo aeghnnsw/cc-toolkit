@@ -429,6 +429,21 @@ requirement source. A human may also accept such an item, without a quote.
 The author of a change never accepts its own items.
 _Avoid_: Verifier
 
+## Suite-run language
+
+**Suite lock**:
+The lock that `run_suite.py` takes for one suite, one command in one folder,
+in the Git common folder. All worktrees of a repository share it, so two
+runs of the same suite run one at a time.
+_Avoid_: Test lock, run lock
+
+**Priority marker**:
+The file `run-suite-priority.json` in the Git common folder. A repository's
+merge-lock tool writes it to name the worktree that holds the merge lock.
+While the marker is fresh, each `run_suite.py` run in another worktree waits
+before it takes a suite lock.
+_Avoid_: Priority lock, merge marker
+
 ## Git policy language
 
 **Branch creation**:
