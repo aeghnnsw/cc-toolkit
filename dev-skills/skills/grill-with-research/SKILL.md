@@ -1,6 +1,6 @@
 ---
 name: grill-with-research
-version: 1.4.0
+version: 1.5.0
 description: Research the project, then grill the user only on decisions that research cannot settle; records glossary terms and ADRs. Use when the user asks to grill or stress-test a plan, design, or issue in the current project.
 ---
 
@@ -54,7 +54,7 @@ Nothing outside the folder links to it. Use `dev-skills:step-workflow` prefixes:
 grilling is the next free step.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
-`<step>_<n>_<name>`. Never renumber a cited file.
+`<step>_<n>_<name>`.
 
 ## Question filter
 

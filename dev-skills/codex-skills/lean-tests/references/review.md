@@ -7,9 +7,14 @@ the changed product lines that no test executes. review changes no file in
 the project. Only the weakening gate blocks: the other checks give advice.
 
 The weakening gate checks gate units and fails a mixed change with a test
-weakening ([safety rule 2](../SKILL.md#safety-rules)). The test side of a
-gate unit is its test modules, conftest files, helpers under test paths,
-test data, and pytest configuration.
+weakening ([safety rule 2](../SKILL.md#safety-rules)). A gate unit is the
+change that the gate checks as one whole: by default all commits of the
+change, or each commit alone with `--per-commit`. A mixed change is a gate
+unit that changes product code. The test side of a gate unit is its test
+modules, conftest files, helpers under test paths, test data, and pytest
+configuration. A test weakening is a test-side change that can lower what
+existing tests detect, such as removing, skipping, loosening, or rewriting
+an existing test.
 
 Done when the report gives the gate result, the pinned requirement
 sources, the label and admission decision of each new test, the diff

@@ -66,7 +66,7 @@ another path.
 - **Criteria**: <source, or none>
 - **App**: <URL, or none>
 - **Evaluators**: E1 <dimensions> (<stop reason>); E2 ...
-- **Status**: Complete | Incomplete (<n> findings not verified)
+- **Status**: Complete | Incomplete (<n> findings not verified; E<N> partial)
 - **Browser checks**: done | not needed | skipped: <reason>
 - **Earlier reports**: <paths with the same slug, or none>
 
@@ -120,4 +120,9 @@ Rules:
 - Use the severity from the verdict.
 - Merge findings about the same problem at the same place. Keep the clearest
   one, and list every ID.
+- Give the stop reason of each evaluator:
+  `deadline`, `two angles with nothing new`, or `partial: <reason>`.
+- The status is Incomplete when a finding is not verified or an evaluator is
+  partial. In the parentheses, name only the causes that apply, for example
+  `Incomplete (E3 partial)`.
 - Omit the Not Verified Findings section when every finding has a verdict.

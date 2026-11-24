@@ -67,11 +67,11 @@ Present the rationale and a concrete plan; apply only after the user approves.
 
 ### 5. Record history in the CHANGELOG
 
-For each **substantive** change, append an entry under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing).
+Record each **substantive** change in the changelog. If the project documents its changelog place or format, for example in `CONTRIBUTING.md`, `AGENTS.md`, or `CLAUDE.md`, follow it. Otherwise add an entry, newest first, under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing) — in the format below.
 
 - **Substantive** = a change in meaning, described behavior, instructions, or facts.
 - **Not substantive** = wording, formatting, typo, or reordering — do not log these.
-- **Append only.** Never edit or remove past entries.
+- **Keep past entries.** Never edit or remove them.
 - Keep entries factual and short. The CHANGELOG is the home for the "before"; the doc keeps only the "after."
 
 Format (Keep a Changelog style):
@@ -114,4 +114,4 @@ Summarize:
 - **Look before overwriting:** do not delete content whose correctness cannot be assessed; flag it for the user instead.
 - Respect the doc's existing voice, structure, and formatting conventions unless they violate the rubric.
 - Confirm before large deletions or file splits.
-- The CHANGELOG is append-only.
+- Never edit or remove past CHANGELOG entries.

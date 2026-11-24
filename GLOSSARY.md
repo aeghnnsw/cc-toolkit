@@ -398,8 +398,9 @@ A gate unit that changes product code.
 _Avoid_: Mixed unit
 
 **Test weakening**:
-A test-side change in a mixed change that can lower what existing tests
-detect.
+A test-side change that can lower what existing tests detect, such as
+removing, skipping, loosening, or rewriting an existing test. The weakening
+gate reports it in any gate unit.
 
 **Weakening gate**:
 The lean-tests check that fails a mixed change with a behavior-change,

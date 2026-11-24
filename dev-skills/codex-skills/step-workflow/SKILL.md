@@ -63,8 +63,8 @@ This ensures proper alphabetical sorting.
 5. **Track the numbered work with `update_plan`** - Map each plan item to its
    corresponding step, keep at most one item in progress, and leave none in
    progress after completion
-6. **Renumber when needed** - Restore a clear sequence after inserting or
-   reordering steps
+6. **Keep cited file names** - Insert a sub-step (for example `02_1_`)
+   instead of renumbering a file that another file cites
 
 ## Plan Integration
 

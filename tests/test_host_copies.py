@@ -349,11 +349,10 @@ HOST_LINES = {
 +For pending PR checks, run `gh pr checks`, and check again later until the
 +required checks finish.
 -Give each agent a self-contained task, owned files, and relevant planning-file
--sections by path and line. Keep plan and task-list tools in this session.
+-sections by path and line. Run each full test suite through
 +Start each sub-agent with `invoke_subagent`: `TypeName: "self"`, a `Role`, and a
 +`Prompt`. Give each agent a self-contained task, owned files, and relevant
-+planning-file sections by path and line. Keep the task list in this session's
-+task artifact.
++planning-file sections by path and line. Run each full test suite through
 ''',
     'dev-skills/codex-skills/pressure-test/SKILL.md': r'''
 # In Codex, Codex holds the position, and the critic is Claude, run through Claude Code.
@@ -393,27 +392,16 @@ HOST_LINES = {
 -  ambient `~/.codex/config.toml`.
 +  `critic` function passes `--model` on every call, and `critic_status.py`
 +  accepts a reply only from the current critic model.
-# Claude Code flags make the critic read-only; the Codex sandbox can block the claude CLI.
--- Codex sandbox: `read-only` on every call. The kickoff passes `-s read-only`.
--  `codex exec resume` rejects `-s` and does not keep the kickoff sandbox; it
--  reads `sandbox_mode` from the user config. The runner therefore passes
--  `-c sandbox_mode="read-only"` on each resume.
--- Plugins: the runner passes `--disable plugins` on every call, so the
--  critic loads no plugin skill. With plugins, the critic opened this skill's
--  Codex copy, because a packet matches its trigger.
--- Working directory: the runner runs every codex call from `$REPO`.
--  `codex exec resume` rejects `-C` and uses the current directory.
+# Setup and the critic function set the Claude Code flags; the Codex sandbox can block the claude CLI.
+-- Runner settings: the runner sets the reasoning effort, the read-only
+-  sandbox, `--disable plugins`, and the working directory `$REPO` on every
+-  call. `dev-skills/tests/test_codex_critic.py` checks these values.
 -- One goal per critic thread. A new goal starts a new pressure test with its
-+- Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell,
-+  edit, or write tool. `--permission-mode dontAsk` denies anything that is not
-+  pre-approved. `--strict-mcp-config` loads no MCP servers, and
-+  `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the
-+  critic read evidence files in the work directory.
-+- Refusal fallback: setup exports `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`.
-+  Claude Code otherwise picks its own model after a refusal; this skill
-+  switches models itself.
-+- Working directory: `critic` runs every claude call from `$REPO`, because
-+  Claude Code stores sessions per project directory.
++- Call settings: setup and the `critic` calls set the reasoning effort, the
++  read-only tools and flags, and the working directory `$REPO` of every call,
++  and turn off the refusal fallback of Claude Code.
++  `dev-skills/tests/test_pressure_test_models.py` checks these calls, and
++  `dev-skills/tests/test_limit_call.py` checks the time limit.
 +- Codex sandbox: the `claude` CLI needs network access and write access to
 +  `~/.claude`. If the Codex sandbox blocks either, run each `claude` command
 +  with escalated permissions. If escalation is unavailable or denied, stop and
@@ -759,10 +747,11 @@ HOST_LINES = {
 # Antigravity has no SendMessage; the agent sends the subagent a message.
 -2. If the result has no findings list, or the result is partial (turn
 -   limit), resume the evaluator once with SendMessage. Ask for its findings
--   so far in its final-message format.
+-   so far in its final-message format, with the stop reason
+-   `partial: <reason>`.
 +2. If the result has no findings list, or the result is partial, send the
 +   evaluator one message. Ask for its findings so far in its final-message
-+   format.
++   format, with the stop reason `partial: <reason>`.
 # Step 4 starts each verifier with invoke_subagent and its reference file.
 -7. Send one verifier for each batch:
 +7. Start one verifier for each batch with `invoke_subagent`:
@@ -803,8 +792,8 @@ HOST_LINES = {
 +**Tool tip:** Search the web to check for known CVEs in project dependencies (e.g., search "CVE lodash 4.17.15" or "express 4.18 vulnerabilities"). Code-only analysis catches injection and auth issues, but a web search catches known vulnerabilities in third-party packages.
 -**REAL ISSUE (WebSearch-detected):**
 +**REAL ISSUE (web-search-detected):**
--Why real: Known critical vulnerability with a published fix (upgrade to 9.0.0+). WebSearch confirmed the CVE; code analysis alone would not surface this.
-+Why real: Known critical vulnerability with a published fix (upgrade to 9.0.0+). A web search confirmed the CVE; code analysis alone would not surface this.
+-Why real: Version 8.5.1 is affected. The call names no `algorithms`, and nothing checks that `JWT_SECRET` is set, so an unset secret makes the server accept a token with no signature. The fix is published: upgrade to 9.0.0 or later and pass `algorithms`. WebSearch found the advisory; code analysis alone would not surface this.
++Why real: Version 8.5.1 is affected. The call names no `algorithms`, and nothing checks that `JWT_SECRET` is set, so an unset secret makes the server accept a token with no signature. The fix is published: upgrade to 9.0.0 or later and pass `algorithms`. A web search found the advisory; code analysis alone would not surface this.
 -- `project-rules` — CLAUDE.md compliance, project-specific conventions
 +- `project-rules` — Compliance with GEMINI.md, AGENTS.md, or CLAUDE.md, project-specific conventions
 ''',
