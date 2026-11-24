@@ -5,10 +5,7 @@ These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358
 [issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
 [issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
-[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448). Issue #388
-adds case 20, and issue #448 adds case 21. Issue #421 moves the planning
-folder of case 12 into the checkout where the session started. Issue #432
-adds the Antigravity copy to cases 14, 15, and 19.
+[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448).
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md),
 the [Codex skill](../codex-skills/grill-with-research/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/grill-with-research/SKILL.md), with

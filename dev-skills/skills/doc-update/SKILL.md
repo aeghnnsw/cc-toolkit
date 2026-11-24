@@ -8,7 +8,7 @@ description: This skill should be used when the user asks to "update the docs", 
 
 ## Overview
 
-Update existing documentation so it reflects only the current, correct state of the project, then audit the result against a quality rubric before finishing. Change history is never narrated inside the docs themselves — it is recorded in a separate, central `CHANGELOG.md`. This keeps documentation clean for both humans and AI agents.
+Update existing documentation so it reflects only the current, correct state of the project, then audit the result against a quality rubric before finishing. Change history is never narrated inside the docs themselves — it is recorded in the project's changelog, by default a central `CHANGELOG.md`. This keeps documentation clean for both humans and AI agents.
 
 This skill both **updates** (applies new/changed information and cleans the prose) and **audits** (scores the result against a rubric as a quality gate). The audit runs after the edit so it catches regressions the update itself may introduce.
 

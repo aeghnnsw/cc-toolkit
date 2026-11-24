@@ -10,12 +10,7 @@ and later changes from issues #302, #305, #354,
 [#432](https://github.com/aeghnnsw/cc-toolkit/issues/432),
 [#409](https://github.com/aeghnnsw/cc-toolkit/issues/409),
 [#475](https://github.com/aeghnnsw/cc-toolkit/issues/475), and
-[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504). Issue #358 removes
-the pressure-test cases and adds cases 23 and 24. Issue #388 adds case 27.
-Issue #420 adds cases 28–33. Issue #421 adds cases 34–36. Issue #432 adds
-case 37. Issue #409 adds cases 38–40. Issue #475 changes case 40 and adds
-cases 41–43. Issue #458 changes case 37. Issue #504 changes cases 40–43 and
-adds case 44.
+[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504).
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).

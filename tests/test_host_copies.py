@@ -322,6 +322,9 @@ HOST_LINES = {
     'dev-skills/antigravity-skills/doc-update/SKILL.md': r'''
 -- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` (only if the request mentions skills, agents, or Claude configuration). List what was found and confirm scope before editing.
 +- If none are specified, scan standard locations: `README.md`, files under `docs/`, top-level `*.md`, and `SKILL.md` / `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` (only if the request mentions skills, agents, or Claude Code or Antigravity configuration). List what was found and confirm scope before editing.
+# Antigravity reads GEMINI.md as an instruction file.
+-Record each **substantive** change in the changelog. If the project documents its changelog place or format, for example in `CONTRIBUTING.md`, `AGENTS.md`, or `CLAUDE.md`, follow it. Otherwise add an entry, newest first, under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing) — in the format below.
++Record each **substantive** change in the changelog. If the project documents its changelog place or format, for example in `CONTRIBUTING.md`, `GEMINI.md`, `AGENTS.md`, or `CLAUDE.md`, follow it. Otherwise add an entry, newest first, under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing) — in the format below.
 ''',
     'dev-skills/codex-skills/matt-automode/SKILL.md': r'''
 -In Claude Code, invoke listed skills with the Skill tool. For missing or

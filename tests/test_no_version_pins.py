@@ -29,7 +29,7 @@ FIXTURE_VERSIONS = {
     'dev-skills/tests/test_resolve_skill.py': {'1.0.0', '1.9.0', '1.10.0'},  # installed fixture plugin versions
     'dev-skills/tests/test_sci_project_layout.py': {'1.2.5'},  # a fixture tool version in a run record
     'tests/test_agent_fields.py': {'1.0.0'},
-    'tests/test_host_copies.py': {'4.17.15', '9.0.0'},  # quoted skill text
+    'tests/test_host_copies.py': {'4.17.15', '8.5.1', '9.0.0'},  # quoted skill text
     'tests/test_model_pins.py': {'1.0.0'},
     'tests/test_release_scripts.py': {'1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.2.0', '1.3.0'},  # fixture manifest and skill versions
     'tests/test_skill_placeholders.py': {'1.0.0'},
