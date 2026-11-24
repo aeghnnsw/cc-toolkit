@@ -46,6 +46,12 @@ with `--main-only`. It reads each lead state, also the one in the main
 checkout, and keeps each worktree whose path a task records while the task is
 not `settled`. When a `.scratch` folder, a lead folder, or a lead state
 cannot be read, the plan keeps every worktree that it would otherwise remove.
+It reads the T3 Code threads of the repository with the `t3` CLI,
+`T3CODE_CLI_PATH` or else `t3` on `PATH`, and keeps each worktree that a
+thread owns while the thread is not `settled`. Without the CLI, or for a
+repository that is no T3 Code project, this rule keeps nothing. When the CLI
+fails, for example while the T3 Code app is closed, the plan keeps every
+worktree that it would otherwise remove.
 It keeps a worktree whose folder contains another worktree that Git lists. It
 keeps a worktree with a detached HEAD or uncommitted changes. A branch is
 merged when a merged PR of the branch has the branch tip as its head commit

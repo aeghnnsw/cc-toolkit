@@ -19,6 +19,18 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   task matches no worktree by its branch: T3 Code renames a branch after the
   task starts. When a .scratch, a lead folder, or a lead state cannot be read,
   keep every worktree that the plan would otherwise remove, with the error.
+- Keep each worktree that a T3 Code thread owns while the thread is not
+  settled (#578). The t3 CLI is T3CODE_CLI_PATH when it is set, else t3 on
+  PATH. Run `t3 thread list --json --project <main checkout>` once, then
+  `t3 thread show --json --messages 1 <threadId>` for each row with
+  `settled: false`, and match the real path of `thread.worktreePath`. Without
+  a CLI, or when the list prints "No T3 Code project matches", this rule keeps
+  nothing. When a t3 call fails, times out after 10 seconds, prints no JSON,
+  or lacks a key or a value of the expected type, keep every worktree that the
+  plan would otherwise remove, with the error. The CLI asks the running T3 Code server: while the T3 Code
+  app is closed, it fails (t3 v0.1.11), so the plan keeps every such worktree.
+  `thread list` hides delegate_task workers, so only a lead state keeps the
+  worktree of such a worker.
 - Keep each worktree whose folder contains another worktree that Git lists.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
@@ -57,6 +69,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -74,6 +87,10 @@ ISSUE_KEY = re.compile(r"(\d+)-")
 REFLOG_TIME = re.compile(r"@\{(\d+)\}$")
 KEEP, REMOVE = "KEEP", "REMOVE"
 NOT_FOUND = (FileNotFoundError, NotADirectoryError)
+# The t3 CLI prints this for a folder outside every T3 Code project (t3 v0.1.11).
+NO_T3_PROJECT = "No T3 Code project matches"
+# Seconds for each t3 call, as t3_project_lead.py waits for git.
+T3_TIMEOUT = 10
 
 
 def fail(message: str) -> NoReturn:
@@ -288,6 +305,64 @@ def unsettled_task_worktrees(folders: list[str]) -> tuple[dict[str, str], str | 
     return kept, first_error
 
 
+class T3Error(Exception):
+    """A t3 call that cannot run, fails, times out, or prints no JSON."""
+
+
+def t3(cli: str, *args: str) -> object:
+    """Return the JSON output of a t3 call, or raise T3Error with the error."""
+    name = f"t3 {args[0]} {args[1]}"
+    try:
+        result = subprocess.run([cli, *args], capture_output=True, text=True, timeout=T3_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise T3Error(f"{name} timed out after {T3_TIMEOUT} seconds") from None
+    except OSError as error:
+        raise T3Error(f"{name} cannot run: {error}") from None
+    if result.returncode != 0:
+        raise T3Error(f"{name} exited with status {result.returncode}: "
+                      f"{one_line(result.stderr + ' ' + result.stdout)}")
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        raise T3Error(f"{name} printed no JSON") from None
+
+
+def unsettled_thread_worktrees(project: str) -> tuple[dict[str, str], str | None]:
+    """Return the worktrees that the T3 Code threads of the project own while not settled (#578).
+
+    The result is ({real path: the reason to keep it}, None), or ({}, the
+    error). Without a t3 CLI, or for a repository that is no T3 Code project,
+    the result is ({}, None): this source gives no evidence.
+    """
+    cli = os.environ.get("T3CODE_CLI_PATH") or shutil.which("t3")
+    if not cli:
+        return {}, None
+    kept: dict[str, str] = {}
+    try:
+        try:
+            rows = t3(cli, "thread", "list", "--json", "--project", project)
+        except T3Error as error:
+            if NO_T3_PROJECT in str(error):
+                return {}, None
+            raise
+        for row in rows:
+            thread_id, settled = row["threadId"], row["settled"]
+            if not isinstance(settled, bool):
+                raise TypeError(f"thread {thread_id} has settled {settled!r}")
+            if settled:
+                continue
+            path = t3(cli, "thread", "show", "--json", "--messages", "1",
+                      thread_id)["thread"]["worktreePath"]
+            if path is not None:
+                kept.setdefault(os.path.realpath(path), f"T3 thread {thread_id} is not settled")
+    except T3Error as error:
+        return {}, f"cannot read the T3 Code threads: {error}"
+    except (KeyError, TypeError) as error:
+        return {}, (f"cannot read the T3 Code threads: {type(error).__name__}: "
+                    f"{one_line(str(error))}")
+    return kept, None
+
+
 def worktree_list(repo: str) -> list[dict[str, str]]:
     """Return each worktree with its path, HEAD, and branch; the main checkout comes first."""
     found: list[dict[str, str]] = []
@@ -377,6 +452,8 @@ def main() -> None:
     recorded, lead_error = unsettled_task_worktrees(
         [folder for folders, _ in lead_scans.values() for folder in folders])
     lead_error = next((error for _, error in lead_scans.values() if error), None) or lead_error
+    # The worktrees that unsettled T3 Code threads own (#578).
+    thread_worktrees, thread_error = unsettled_thread_worktrees(worktrees[0]["path"])
 
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
@@ -396,6 +473,8 @@ def main() -> None:
             plan[path] = (KEEP, f"holds a lead state: {held[0]}")
         elif real[path] in recorded:
             plan[path] = (KEEP, recorded[real[path]])
+        elif real[path] in thread_worktrees:
+            plan[path] = (KEEP, thread_worktrees[real[path]])
         elif inside[path]:
             plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:
@@ -415,11 +494,11 @@ def main() -> None:
             else:
                 plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
 
-    # A lead state that cannot be read may record any worktree.
-    if lead_error is not None:
+    # A lead state or a T3 Code thread that cannot be read may own any worktree.
+    if lead_error is not None or thread_error is not None:
         for path, (action, _) in plan.items():
             if action == REMOVE:
-                plan[path] = (KEEP, lead_error)
+                plan[path] = (KEEP, lead_error or thread_error)
 
     # The planning folders, and the worktrees that hold a kept one. With
     # --main-only, a completed folder outside the main checkout gets a REMOVE
