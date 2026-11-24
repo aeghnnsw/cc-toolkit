@@ -355,29 +355,6 @@ HOST_LINES = {
 +planning-file sections by path and line. Keep the task list in this session's
 +task artifact.
 ''',
-    'dev-skills/antigravity-skills/pr-feedback/SKILL.md': r'''
-# Antigravity has no Skill tool, no background Bash wait, and asks with ask_question.
--Invoke a code review or PR review skill via the **Skill tool** for the self-review, such as `mattpocock-skills:code-review`. Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
-+Load a code review or PR review skill for the self-review, such as `mattpocock-skills:code-review`. Resolve the path of its `SKILL.md`, then read and follow it. `<plugin-root>` is this plugin's root, two levels above the skill folder:
--If no review skill is available, fall back to a thorough manual review — but always attempt the Skill tool first.
-+```bash
-+python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity mattpocock-skills:code-review
-+```
-+
-+Do not just run `gh pr diff` and scan it manually — the skill-based review provides structured, thorough analysis that a manual diff scan cannot match.
-+
-+If no review skill resolves, fall back to a thorough manual review — but always run the resolver first.
--**Wait via a background-scheduled delay, then read comments:**
-+**Wait, then read comments:**
--1. After self-review completes, schedule a 2-minute background wait. Use the Bash tool with `run_in_background: true` and the command `sleep 120`. End your turn after firing — the harness will notify when the wait completes. Do not poll, do not run a foreground `sleep`, do not chain other tool calls in the same turn to check on the wait.
-+1. After self-review completes, wait about 2 minutes, then check the PR again.
--2. After the notification, read all reviewer comments on the PR — review summaries, inline review comments, and general PR comments. Extract actionable feedback items.
-+2. Read all reviewer comments on the PR — review summaries, inline review comments, and general PR comments. Extract actionable feedback items.
--- Re-invoke review skills via the Skill tool — do not just scan the diff or skim changes
-+- Read and follow the review skill's `SKILL.md` again — do not just scan the diff or skim changes
--Ask the user: "PR feedback cycle complete. No new issues found. What would you like to do?"
-+Ask the user with `ask_question`: "PR feedback cycle complete. No new issues found. What would you like to do?"
-''',
     'dev-skills/codex-skills/pressure-test/SKILL.md': r'''
 # In Codex, Codex holds the position, and the critic is Claude, run through Claude Code.
 -description: This skill should be used when the user asks to "pressure-test this", "pressure test the plan", "discuss with codex", "debate this with codex", "get codex's take", "deliberate with codex", or wants an independent adversarial review of a design, plan, rubric, PR, failure diagnosis, or decision before concluding, or when another skill needs its decisions reviewed by an independent critic. Claude holds a genuine position while the Codex CLI acts as an always-adversarial read-only critic; the loop runs to convergence or a round cap, then a conclusion is saved and presented.
