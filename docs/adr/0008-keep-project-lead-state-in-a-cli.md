@@ -37,6 +37,11 @@
 > **Superseded in part (2026-11-24, issue #577).** With `--main-only`, the
 > plan lists each planning folder that a worktree removal deletes. Read
 > [The planning folders of a removed worktree](#the-planning-folders-of-a-removed-worktree).
+>
+> **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
+> list also records a session. Read
+> [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
+> in ADR 0007.
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -106,7 +111,10 @@ edit, so it also blocks reads, edits, and `rm` of the lead folder.
 (Superseded in part by #531: the hook also passes the calls of a gtd-inbox
 capture.) So the
 lead state changes only through the script. Only a three-word
-`python3 "<script>" start` records a session.
+`python3 "<script>" start` records a session. (Superseded by #574: that
+command also records a session in a command list; read
+[Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
+in ADR 0007.)
 
 The lead state is independent of GTD: the script reads and writes no GTD
 data. Some users of the skill use GTD and some do not, and the lead state

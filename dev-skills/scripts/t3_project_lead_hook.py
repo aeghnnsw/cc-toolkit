@@ -6,11 +6,15 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
 (UserPromptSubmit). It reads the host's JSON payload on stdin. Run it as
 `python3 t3_project_lead_hook.py --host claude|codex|antigravity`.
 
-- Record: when a shell call is exactly `python3 <path>/t3_project_lead.py
-  start`, and the script is this hook's sibling or a copy outside every Git
-  work tree, the hook writes an empty file named by the session ID to the
-  state folder. A copy inside a Git work tree, such as a developer's
-  worktree, records nothing, and so does `start` with more words. Each new
+- Record: when a shell call runs `python3 <path>/t3_project_lead.py start`,
+  and the script is this hook's sibling or a copy outside every Git work
+  tree, the hook writes an empty file named by the session ID to the state
+  folder. The call can be one simple command, or a command list in which
+  one simple command is exactly these three words (issue #574), as in
+  `S=<script>; python3 $S start 2>&1 | head -80`. An assignment of an
+  earlier command in the list sets `$S`. A copy inside a Git work tree,
+  such as a developer's worktree, records nothing, and so do `start` with
+  more words and a script path that the hook cannot resolve. Each new
   record deletes records older than 30 days.
 - Other sessions: without a record, the hook exits 0 with no output, even on
   an error.
@@ -121,6 +125,15 @@ PR_INCLUDE = frozenset({"checks"})
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
 WRAPPER_SHELLS = frozenset({"bash", "sh", "zsh"})
+# Command lists that start_run does not read (issue #574): a group, a reserved word of a
+# compound command, and a builtin that changes variables or runs other code. After a word
+# of LIST_ENDS, no later command runs.
+UNREAD_COMMANDS = frozenset({"{", "}", "!", "if", "then", "elif", "else", "fi", "case", "esac", "for",
+                             "select", "while", "until", "do", "done", "function", "time", "coproc",
+                             "[[", "unset", "declare", "typeset", "local", "readonly", "read",
+                             "readarray", "mapfile", "printf", "getopts", "eval", "source", ".",
+                             "builtin", "command", "alias", "set", "shopt", "trap", "enable"})
+LIST_ENDS = frozenset({"exit", "exec", "return", "logout"})
 # gtd-inbox (issue #531): the renderer, its contract, the uv options that
 # may come with the required --no-project, and the whole-file write tools with
 # their path and content arguments. The contract is
@@ -240,17 +253,22 @@ def payload_cwd(payload):
 
 
 def start_run(payload, host, folder, session):
-    """Write the record when `payload` is a start run of a qualifying script."""
+    """Write the record when `payload` runs the start step of a qualifying script.
+
+    The step can also be one simple command of a command list (issue #574),
+    as in `S=<script>; python3 $S start 2>&1 | head -80`.
+    """
     event = payload.get("hookEventName" if host == ANTIGRAVITY else "hook_event_name")
     if event not in (None, "PreToolUse"):
         return
     name, arguments = tool_call(payload, host)
     if name not in SHELL_TOOLS or not isinstance(arguments, dict):
         return
-    words, cwd = shell_words(arguments, SHELL_TOOLS[name], payload_cwd(payload))
-    if (words is not None and len(words) == 3 and words[0] in ("python3", "python")
-            and words[2] == "start" and step_script(words, cwd)):
-        write_record(folder, session)
+    for words, cwd in start_commands(arguments, SHELL_TOOLS[name], payload_cwd(payload)):
+        if (len(words) == 3 and None not in words and words[0] in ("python3", "python")
+                and words[2] == "start" and step_script(words, cwd)):
+            write_record(folder, session)
+            return
 
 
 def gate(payload, host, folder, session):
@@ -620,6 +638,195 @@ def shell_words(arguments, key, cwd):
     return words, cwd
 
 
+def start_commands(arguments, key, cwd):
+    """Return the simple commands of the shell call in `arguments` as (words, cwd) pairs.
+
+    One simple command gives the words of shell_words. Otherwise the command,
+    or the script of a `bash|sh|zsh -c|-lc <script>` wrapper, is read as a
+    command list (issue #574). A list that command_list cannot read gives no
+    commands.
+    """
+    words, cwd = shell_words(arguments, key, cwd)
+    if words is not None:
+        return [(words, cwd)]
+    command = arguments.get(key)
+    if isinstance(command, list):
+        if len(command) != 3 or command[0] not in WRAPPER_SHELLS or command[1] not in ("-c", "-lc"):
+            return []
+        command = command[2]
+    commands = command_list(command, cwd) or []
+    if len(commands) == 1:
+        words = commands[0][0]
+        if (len(words) == 3 and words[0] in WRAPPER_SHELLS and words[1] in ("-c", "-lc")
+                and words[2] is not None):
+            commands = command_list(words[2], cwd) or []
+    return commands
+
+
+def command_list(command, cwd):
+    """Return the simple commands of a command list as (words, cwd) pairs, or None (issue #574).
+
+    A word is None when it cannot be known: it has an unquoted glob or brace,
+    `~user`, or an unset variable. A command of assignments only, also after
+    `export`, sets its variables for the later commands, unless it is in a
+    pipeline or runs with `&`: bash runs those in a subshell. An assignment
+    before a command word changes no word of that command, as in bash. After
+    cd, pushd, popd, or a command word that is None, the cwd is None, so a
+    relative path cannot resolve. The result is None for a `{` or `}` word,
+    a command of UNREAD_COMMANDS, an `IFS` or `NAME+=` assignment, or an
+    empty command before an operator, such as `;;`. The list ends at a
+    command of LIST_ENDS.
+    """
+    tokens = command_tokens(command)
+    if tokens is None:
+        return None
+    variables = {}
+    commands = []
+    raw = []
+    previous = ";"
+    for kind, text in tokens + [("op", None)]:
+        if kind == "word":
+            if text in ("{", "}"):
+                return None
+            raw.append(text)
+            continue
+        if not raw:
+            if text not in ("\n", None):
+                return None
+            previous = text
+            continue
+        if raw[:1] == ["export"] and all(map(is_assignment, raw[1:])):
+            prefix, rest = raw[1:], []
+        else:
+            count = 0
+            while count < len(raw) and is_assignment(raw[count]):
+                count += 1
+            prefix, rest = raw[:count], raw[count:]
+        if any(word.startswith("IFS=") for word in prefix) or rest and appends(rest[0]):
+            return None
+        if rest:
+            words = [word_value(word, variables) for word in rest]
+            if words[0] in UNREAD_COMMANDS:
+                return None
+            if words[0] in LIST_ENDS:
+                break
+            commands.append((words, cwd))
+            if words[0] in (None, "cd", "pushd", "popd"):
+                cwd = None
+        elif previous not in ("|", "|&") and text not in ("|", "|&", "&"):
+            for assignment in prefix:
+                name, value = assignment.split("=", 1)
+                variables[name] = word_value(value, variables) if value else ""
+        raw, previous = [], text
+    return commands
+
+
+def command_tokens(command):
+    """Split a command list into ("word", raw text) and ("op", operator) tokens, or return None.
+
+    A word keeps its quotes and `$` expansions for split_words. The operators
+    are ;, &, &&, ||, |, |&, and a new line. A comment, a redirect, its
+    target word, and a file descriptor before it, as in `2>&1`, give no
+    token. The result is None for a subshell, a command or process
+    substitution, a here-document, a redirect with no target, or a quote that
+    does not end.
+    """
+    tokens = []
+    word = None
+    target = False
+    index = 0
+    length = len(command)
+    while index < length:
+        char = command[index]
+        if char in "()`" or command.startswith("<<", index) and not command.startswith("<<<", index):
+            return None
+        if char in " \t\n;&|<>":
+            if word is not None:
+                if target:
+                    target = False
+                elif not (char in "<>" and "".join(word).isdigit()):
+                    tokens.append(("word", "".join(word)))
+                word = None
+            if char in " \t":
+                index += 1
+            elif char in "<>" or command.startswith("&>", index):
+                if target:
+                    return None
+                index += 1
+                while index < length and command[index] in "<>&|":
+                    index += 1
+                target = True
+            elif target:
+                return None
+            else:
+                operator = command[index:index + 2] if command[index:index + 2] in ("&&", "||", "|&") else char
+                tokens.append(("op", operator))
+                index += len(operator)
+            continue
+        if char == "#" and word is None:
+            end = command.find("\n", index)
+            index = length if end < 0 else end
+            continue
+        if command.startswith("\\\n", index):
+            index += 2
+            continue
+        start = index
+        if char == "\\":
+            index += 2
+        elif char == "'":
+            end = command.find("'", index + 1)
+            if end < 0:
+                return None
+            index = end + 1
+        elif char == '"':
+            index += 1
+            while index < length and command[index] != '"':
+                if command[index] == "`" or command.startswith("$(", index):
+                    return None
+                index += 2 if command[index] == "\\" else 1
+            if index >= length:
+                return None
+            index += 1
+        elif command.startswith("$(", index):
+            return None
+        elif command.startswith("${", index):
+            end = command.find("}", index)
+            if end < 0:
+                return None
+            index = end + 1
+        else:
+            index += 1
+        if word is None:
+            word = []
+        word.append(command[start:index])
+    if target and word is None:
+        return None
+    if word is not None and not target:
+        tokens.append(("word", "".join(word)))
+    return tokens
+
+
+def appends(word):
+    """Return whether `word` is a `NAME+=value` assignment."""
+    name, sign, _ = word.partition("+=")
+    return bool(sign) and name.isidentifier() and name.isascii()
+
+
+def is_assignment(word):
+    name, sign, _ = word.partition("=")
+    return bool(sign) and name.isidentifier() and name.isascii()
+
+
+def word_value(word, variables):
+    """Return the value of one raw word after quote removal and expansion, or None.
+
+    The word comes second, so that split_words does not read a value such as
+    `S=x; python3 $S start`, the script of a shell wrapper, as an assignment.
+    """
+    values = split_words("_ " + word, variables)
+    return values[1] if values is not None and len(values) == 2 else None
+
+
 def is_step(word):
     return word.isascii() and word.isalpha() and word.islower()
 
@@ -744,7 +951,7 @@ def sed_paths(args):
     return paths
 
 
-def split_words(command):
+def split_words(command, variables=None):
     """Return the words of one simple shell command, or None.
 
     The result is None for a command list, a pipe, a redirect, `&`, a
@@ -752,6 +959,7 @@ def split_words(command):
     a comment, a leading variable assignment, an unset variable, or a quote
     that does not end. Quotes and backslashes are removed, and `$NAME`,
     `${NAME}`, and a leading `~` are expanded from this process's environment.
+    A name in `variables` takes its value from there; a value of None is unset.
     """
     command = command.strip()
     words = []
@@ -805,7 +1013,7 @@ def split_words(command):
                     word.append(command[index + 1])
                     index += 2
                 elif char == "$":
-                    value, index = expand(command, index, quoted=True)
+                    value, index = expand(command, index, quoted=True, variables=variables)
                     if value is None:
                         return None
                     word.append(value)
@@ -813,7 +1021,7 @@ def split_words(command):
                     word.append(char)
                     index += 1
         elif char == "$":
-            value, index = expand(command, index, quoted=False)
+            value, index = expand(command, index, quoted=False, variables=variables)
             # An unquoted expansion splits on spaces and globs in bash.
             if value is None or any(c in value for c in " \t\n*?[]{}"):
                 return None
@@ -828,7 +1036,7 @@ def split_words(command):
     return words
 
 
-def expand(command, index, *, quoted):
+def expand(command, index, *, quoted, variables=None):
     """Expand the `$` at `command[index]`; return (value or None, next index)."""
     following = command[index + 1:index + 2]
     if following in ("", " ", "\t") or (quoted and following == '"'):
@@ -845,7 +1053,7 @@ def expand(command, index, *, quoted):
         name, after = command[index + 1:end], end
     if not name.isidentifier() or not name.isascii():
         return None, index
-    value = os.environ.get(name)
+    value = variables[name] if variables is not None and name in variables else os.environ.get(name)
     return (value, after) if value is not None else (None, index)
 
 
