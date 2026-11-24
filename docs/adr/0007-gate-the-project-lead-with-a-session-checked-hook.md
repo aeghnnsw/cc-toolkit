@@ -14,6 +14,10 @@
 > and of the installed Productivity Skills plugin, the `gtd_sql.py` renderer,
 > and whole-file writes of GTD JSON files outside every Git work tree. Read
 > [GTD agent captures](#gtd-agent-captures).
+>
+> **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
+> list also records a session, as in `S=<script>; python3 $S start 2>&1 |
+> head -80`. Read [Start in a command list](#start-in-a-command-list).
 
 A project lead must give every task except its own lead actions to a worker
 ([#520](https://github.com/aeghnnsw/cc-toolkit/issues/520)). Text alone did
@@ -95,7 +99,9 @@ gtd-inbox capture; read [GTD agent captures](#gtd-agent-captures).) A direct edi
 enforces. The lead needs no direct read, because `start`, `show`, and
 `waiting` print the state. It also no longer needs to list or remove the
 folder: the script finds it, and `finish` deletes it. As before, only a
-three-word `python3 "<script>" start` records a session.
+three-word `python3 "<script>" start` records a session. (Superseded: that
+command also records a session in a command list; read
+[Start in a command list](#start-in-a-command-list).)
 
 The hook still writes the session record. The record stays in the per-user
 state folder, which a sandboxed shell command cannot write, and it holds the
@@ -154,3 +160,32 @@ Consequences:
   `--no-cache` passes.
 - The same calls also serve the other GTD skills. Only the step text limits the
   lead to agent captures.
+
+## Start in a command list
+
+Added on 2026-11-24 for
+[#574](https://github.com/aeghnnsw/cc-toolkit/issues/574).
+
+After a change of provider, a lead had a new session ID and ran `start` only
+in command lists, such as `S=<script>; python3 $S start 2>&1 | head -80`.
+The hook recorded nothing, and the gate was off for 36 minutes.
+
+So the hook also reads a call in a session without a record as a command
+list: simple commands joined by `;`, `&&`, `||`, `|`, `|&`, `&`, or a new
+line. It drops redirects, their targets, and comments. It records the
+session when one simple command is exactly `python3 "<script>" start` and
+the script passes the same check as before: the hook's own copy, or a copy
+outside every Git work tree. A command of only variable assignments, also
+after `export`, sets them for the later commands, as in bash. An assignment
+in a pipeline, one that runs with `&`, or one before a command word does
+not.
+
+A record must name a qualifying script, so the hook records nothing when it
+cannot resolve the path. It reads no list with a subshell, a group, a
+command or process substitution, or a here-document. A word with a glob or
+an unset variable cannot match, and after `cd`, `pushd`, or `popd` a
+relative path cannot match. A wider match would gate a session that is not
+a lead, and the gate blocks the `rm` of its record. A record only turns the
+gate on. The gate does not change: in a recorded session it allows one
+simple command, so it blocks the same command list from the next call, and
+only the three-word `start` refreshes the record.

@@ -8,7 +8,8 @@ edit, and native subagent call, and it reminds the lead to run `start` on each
 user message. Issue #545 also blocks the T3 Code MCP calls that return issue
 or PR text, in the Claude Code and Codex names. Issue #554 also blocks the
 question tools of Claude Code and Codex, and a `t3_pending_request` call that
-can answer a worker's question. Each test runs the hook as a
+can answer a worker's question. Issue #574 also records a session for
+`start` in a command list. Each test runs the hook as a
 process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
 do, and checks the exit status, stdout, stderr, and the state folder.
 """
@@ -271,7 +272,7 @@ class RecordTests(HookCase):
             for command in (f"python3 {self.dev_script} start",
                             "python3 dev-skills/scripts/t3_project_lead.py start",
                             f"python3 {STEP_SCRIPT} plan",
-                            f"python3 {STEP_SCRIPT} start | cat",
+                            f"S={self.dev_script}; python3 $S start 2>&1 | head -80",
                             f"cat {self.installed} start",
                             f"python3 {STEP_SCRIPT.parent / 'missing' / 't3_project_lead.py'} start"):
                 with self.subTest(host=host, command=command):
@@ -283,6 +284,49 @@ class RecordTests(HookCase):
             for command in (f"python3 {STEP_SCRIPT} start extra", f"python3 {self.installed} start --x 1"):
                 with self.subTest(host=host, command=command):
                     self.assert_passes(self.run_hook(host, shell_payload(host, command, self.main)))
+        self.assertFalse((self.state / SESSION).exists())
+
+    def test_start_in_a_command_list_records_the_session(self):
+        """Issue #574: a lead ran `start` only in command lists, and the hook kept no record."""
+        commands = (f"S={STEP_SCRIPT}; python3 $S start 2>&1 | head -80",
+                    f'S="{STEP_SCRIPT}" && python3 "$S" start',
+                    f"export S='{self.installed}'; python3 \"${{S}}\" start > /dev/null",
+                    f"python3 {STEP_SCRIPT} start | cat",
+                    f"git status; python3 '{STEP_SCRIPT}' start &>/dev/null  # refresh",
+                    f"cd {self.main} && python3 {STEP_SCRIPT} start\necho done")
+        jobs = [(HOSTS[index % len(HOSTS)], command) for index, command in enumerate(commands)]
+        jobs += [("codex", {"command": ["bash", "-lc", commands[0]]}),
+                 ("codex", {"cmd": f"bash -lc 'S={STEP_SCRIPT}; python3 \"$S\" start | head'"})]
+        for host, command in jobs:
+            with self.subTest(host=host, command=command):
+                shutil.rmtree(self.state, ignore_errors=True)
+                if isinstance(command, dict):
+                    payload = tool_payload(host, "shell" if "command" in command else "exec_command", command,
+                                           self.main)
+                else:
+                    payload = shell_payload(host, command, self.main)
+                self.assert_passes(self.run_hook(host, payload))
+                self.assertTrue((self.state / SESSION).is_file())
+
+    def test_a_command_list_without_a_proven_start_records_nothing(self):
+        """Issue #574: the hook records only a start that it can resolve to a qualifying script."""
+        commands = (f"S={STEP_SCRIPT}; python3 $S start extra | cat",
+                    f"echo 'python3 {STEP_SCRIPT} start'; true",
+                    f"grep -n 'python3 {STEP_SCRIPT} start' notes.md | head",
+                    f"S={STEP_SCRIPT} python3 $S start | cat",
+                    f"S={STEP_SCRIPT} | python3 $S start",
+                    f"S={STEP_SCRIPT} & python3 $S start",
+                    f"S=$(echo {STEP_SCRIPT}); python3 $S start",
+                    f"cat <(python3 {STEP_SCRIPT} start); true",
+                    f"(python3 {STEP_SCRIPT} start) | cat",
+                    f"{{ python3 {STEP_SCRIPT} start; }} 2>&1 | head",
+                    f"cat <<EOF\npython3 {STEP_SCRIPT} start\nEOF",
+                    f"python3 $LEAD_TEST_UNSET/{STEP_SCRIPT.name} start | cat",
+                    f"cd {self.temp} && python scripts/t3_project_lead.py start | cat")
+        for index, command in enumerate(commands):
+            host = HOSTS[index % len(HOSTS)]
+            with self.subTest(host=host, command=command):
+                self.assert_passes(self.run_hook(host, shell_payload(host, command, PLUGIN_ROOT)))
         self.assertFalse((self.state / SESSION).exists())
 
     def test_an_invalid_session_id_records_nothing(self):
@@ -333,6 +377,7 @@ class GateTests(HookCase):
     def test_a_bad_subcommand_or_a_compound_step_command_is_blocked(self):
         self.check_shell((f"python3 {STEP_SCRIPT} Task add", f"python3 {STEP_SCRIPT} --help",
                           f"python3 {STEP_SCRIPT} show | cat", f"python3 {STEP_SCRIPT}",
+                          f"S={STEP_SCRIPT}; python3 $S start 2>&1 | head -80",
                           f"python3 {STEP_SCRIPT} task-add x", f"python3 {STEP_SCRIPT} '' show"),
                          allowed=False)
 
