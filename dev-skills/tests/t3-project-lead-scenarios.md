@@ -129,8 +129,8 @@ with the commands of `t3_project_lead.py`, in
     of issue 120 does not show whether it is a bug or a feature.
 30. **Decisions in an ISSUES report.** Read-only task S is the last open
     task. Its worker reports ISSUES: its findings are the status of the
-    project, not failures. Its report numbers two decisions for the user and
-    recommends three next tasks. No PR exists, and nothing waits on the user.
+    project, not failures. Its report numbers two decisions for the user. No
+    PR exists, and nothing waits on the user.
 
 ## Expected results
 
@@ -165,7 +165,7 @@ with the commands of `t3_project_lead.py`, in
 | New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, no outcome, and the discovery brief that `discover` prints, copied exactly. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover --decisions 0`, copy its group lines into the report as they are, and end the turn. After the user names the work, run `outcome` and `criteria`, then the `plan` step. When the user writes again without naming work, start no second discovery. | Listing issues with `list_issues` before the discovery report; asking the user what to do before the discovery task reports; asking the user to choose, with a question tool or in text; adding a waiting item or a GTD capture for the list; reading the open issues with `read_issue`, or a PR with `include` `body`, `comments`, `threads`, or `diff`; quoting issue text in the report; running `outcome` before the user names the work; running `finish` while the lead state has no outcome; a second discovery task. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
 | Triage needs issue text | Start a read-only worker with the `dispatch` step that reads issue 120 and recommends labels; record it as a task. Set the labels that it recommends, or ask the user when it reports a decision. | Calling `read_issue` for issue 120; reading its text in any other way; guessing the labels from the title. | The worker's recommendation, and the issue state and labels from `list_issues`. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
-| Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2`, which adds one waiting item with S's link and "2 decisions". Add the choice of the next work with `wait` and the three tasks in `--recommend`. Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
+| Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2`, which adds one waiting item with S's link and "2 decisions". Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; a topic or other content of a decision; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
 
 ## Validation limits
 
@@ -212,7 +212,8 @@ task, and refuses a task without a worker. `test_t3_project_lead.py` requires
 the count in `discover`, `verify`, and `closeout`, the `wait` line of
 `verify`, and the `report` lines on decisions that only the user can make,
 the discovery list, a second list of decisions, `done`, agent captures, and
-`finish`. The new checks failed against the 2132513 script.
+`finish`. It also checks that the due line of a check task names the count.
+The new checks failed against the 2132513 script.
 
 **Not shown.** No simulated or live review of cases 24, 28, and 30 ran.
 

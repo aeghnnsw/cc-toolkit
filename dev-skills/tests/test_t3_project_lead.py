@@ -20,9 +20,9 @@ and from any question tool. Issue #555 adds the `show` line of `start`, issue
 #556 the worktree paths of `dispatch`, `flag`, and `closeout`, and issue #560
 the default batch of `plan`. Issue #567 adds the count of a report's decisions
 to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
-decisions that only the user can make to `report`. Agent behavior is checked by the scenario review
-in t3-project-lead-scenarios.md; the hook has its own tests in
-test_t3_project_lead_hook.py.
+decisions that only the user can make to `report`. Agent behavior is checked
+by the scenario review in t3-project-lead-scenarios.md; the hook has its own
+tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 

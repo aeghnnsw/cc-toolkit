@@ -39,9 +39,10 @@ for `retro_sessions.py --worktree` (issue #556). Without `--batch`, a work task
 joins a new batch once a PR of the highest batch merged (issue #560).
 
 `task verified` needs the count of decisions that the report numbers for the
-user, and adds them as one worker item (issue #567). Only the user ends such an
-item, so `finish` waits for it, and the due line of `finish` names the rule of
-the `report` step for decisions first.
+user, and adds them as one worker item (issue #567). `wait --task` also takes
+the task of a finished worker. Only the user ends such an item, so `finish`
+waits for it, and the due line of `finish` names the rule of the `report` step
+for decisions first.
 """
 
 from __future__ import annotations
@@ -95,9 +96,9 @@ Start its worker as t3_project_lead.py dispatch says, with the read-only
 brief, no outcome, and the discovery brief below, copied exactly. In the last
 line of its brief, replace "with evidence and links" with "in the form above".
 When it reports, run task verified discover --decisions 0. Copy its lines into
-your report as they are, and end your turn. The list is not a waiting item: add no wait
-item or GTD capture for it. Do not ask the user to choose, with a question
-tool or in text. When the user names the work, run outcome <text> and
+your report as they are, and end your turn. The list is not a waiting item:
+add no wait item or GTD capture for it. Do not ask the user to choose, with a
+question tool or in text. When the user names the work, run outcome <text> and
 criteria <text>. When discover is verified and the user named no work, start
 no second discovery.
 Next: t3_project_lead.py plan after the user names the work; else report.
@@ -238,8 +239,8 @@ and GTD tools and t3_project_lead.py. Its history with real times is in:"
 with the history path below. For a batch with a scientific task, add: "Reply
 in one line, with links."
 When it reports, run task verified <name> --decisions <N>, as verify says; the
-batch's verified tasks are then closed out. Settle each worker that a due line lists with t3_thread_organize,
-and run task settled <name>...; never reuse one.
+batch's verified tasks are then closed out. Settle each worker that a due line
+lists with t3_thread_organize, and run task settled <name>...; never reuse one.
 Next: t3_project_lead.py report.
 """,
     "report": """
@@ -879,19 +880,20 @@ def change_wait(state, args, time):
 
 
 def add_item(state: dict, time: str, body: str | None = None, task: dict | None = None,
-             decisions: int | None = None, item_link: str | None = None, recommend: str | None = None) -> dict:
+             decisions: int | None = None, item_link: str | None = None,
+             recommend: str | None = None) -> dict:
     """Add a waiting item. A worker item points to the worker's thread.
 
     An item for a task that is verified, closed out, cancelled, or settled holds decisions of the
     worker's final report (#567): no due line offers done for it, because only the user ends it.
     """
     if body is None:
-        body = f"{decisions} decision{'s' if decisions > 1 else ''}" if decisions else "waits on you"
+        body = plural(decisions, "decision") if decisions else "waits on you"
     item = {"number": state["next_item"], "text": body, "task": task["name"] if task else None,
             "link": item_link or (task["worker"] if task else None), "decisions": decisions,
             "recommend": recommend, "opened": time}
     if task is not None and task["state"] in DONE:
-        item["report"] = True
+        item["from_report"] = True
     state["items"].append(item)
     state["next_item"] += 1
     return item
@@ -1059,11 +1061,11 @@ def due_lines(state: dict) -> list[str]:
             target = find_task(state, task["of"])
             if target["state"] not in DONE:
                 lines.append(f"Check {task['name']} is verified: run task verified {target['name']} "
-                             "when its verdict passes.")
+                             "--decisions <N> when its verdict passes.")
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
         task = tasks.get(item["task"])
-        if task is not None and task["state"] in DONE and not item.get("report"):
+        if task is not None and task["state"] in DONE and not item.get("from_report"):
             lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
                          f"{item['number']}, or keep it.")
     # A lead state without an outcome has not started its work: a settled discovery task is not the end.

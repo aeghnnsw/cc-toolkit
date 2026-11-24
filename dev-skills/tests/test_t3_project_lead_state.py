@@ -132,13 +132,10 @@ class LeadStateTests(unittest.TestCase):
         lines = (self.folder() / "events.jsonl").read_text(encoding="utf-8").splitlines()
         return [json.loads(line) for line in lines]
 
-    def merged_task(self, name: str, pr: str, batch: str = "1", wait: bool = False) -> None:
-        """Add a task and take it to verified through one merged PR. With `wait`, its running worker
-        waits on one decision of the user."""
+    def merged_task(self, name: str, pr: str, batch: str = "1") -> None:
+        """Add a task and take it to verified through one merged PR."""
         self.ok("task", "add", name, f"Title of {name}", "--batch", batch)
         self.ok("task", "start", name, WORKER.format(name))
-        if wait:
-            self.ok("wait", "--task", name, "--decisions", "1")
         self.ok("task", "pr", name, pr)
         self.ok("task", "merged", name, pr, "abcdef1")
         self.ok("task", "verified", name, "--decisions", "0")
@@ -588,11 +585,22 @@ class LeadStateTests(unittest.TestCase):
         view = self.ok("show")
         # Only the user ends the item: no due line offers done, and finish waits for it.
         self.assertNotIn("Run done 1", view)
+        self.assertTrue(json.loads(self.state_text())["items"][0]["from_report"])
         self.assertNotIn("run t3_project_lead.py finish", view)
         self.assertIn("- 1: [survey] 2 decisions. " + WORKER.format("survey"), view)
         self.refused("finish", reason="items that wait: 1")
         self.ok("done", "1")
         self.assertIn(FINISH_LINE, self.ok("show"))
+
+    def test_the_due_line_of_a_check_names_the_count_of_decisions(self) -> None:
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("task", "add", "chk", "Check a", "--kind", "check", "--of", "a")
+        self.ok("task", "start", "chk", WORKER.format("chk"))
+        self.ok("task", "verified", "chk", "--decisions", "0")
+        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes.",
+                      self.ok("show"))
 
     def test_wait_records_the_decisions_of_a_finished_worker(self) -> None:
         # A lead that records a finished worker's decisions late still points to its thread (#567).
@@ -634,8 +642,13 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         # A lead finishes only after the user named the work (#545).
         self.ok("outcome", "Ship it.")
+        self.ok("task", "add", "a", "Title of a")
+        self.ok("task", "start", "a", WORKER.format("a"))
         # The worker waits on the user while it runs, as the answer step records.
-        self.merged_task("a", "5", wait=True)
+        self.ok("wait", "--task", "a", "--decisions", "1")
+        self.ok("task", "pr", "a", "5")
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        self.ok("task", "verified", "a", "--decisions", "0")
         view = self.ok("show")
         self.assertIn("- Batch 1: every task is verified; merged PRs #5. Run t3_project_lead.py "
                       "closeout.", view)

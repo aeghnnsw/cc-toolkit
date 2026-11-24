@@ -28,6 +28,11 @@
 > **Superseded in part (2026-11-23, issue #555).** `start` prints a compact
 > view; `show` prints the full view. Read
 > [The compact start view](#the-compact-start-view).
+>
+> **Superseded in part (2026-11-24, issue #567).** `task verified` needs the
+> count of decisions that the report numbers for the user. With a count above
+> 0, it takes one task name. Read
+> [Decisions of a finished worker](#decisions-of-a-finished-worker).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -262,7 +267,9 @@ decisions, the due lines, and the waiting list. All paused tasks share one
 due line. `show` prints the full view. `done`, `task pause`, `task resume`,
 `task verified`, and `task settled` take several arguments; the script makes
 all their changes under one lock with one save, and appends one event for
-each argument. When it refuses one argument, it saves nothing.
+each argument. When it refuses one argument, it saves nothing. (Superseded in
+part by #567: with a count of decisions above 0, `task verified` takes one
+task name; read [Decisions of a finished worker](#decisions-of-a-finished-worker).)
 
 `task start` and `task worker` record a worker's worktree path
 (`--worktree`), and `closeout` prints the paths of each worker of the batch,
