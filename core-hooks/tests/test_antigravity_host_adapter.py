@@ -277,12 +277,14 @@ class AntigravityHostAdapterTests(unittest.TestCase):
                 self.assertIn(reason, result.stderr)
                 self.assertNotIn("hook failed", result.stderr)
 
-    def test_pipefail_warning_does_not_block(self):
-        result = self.run_shell_hook("zsh_traps.py", "pytest -q | tail -20")
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
-        self.assertEqual(result.stderr, "")
+    def test_pipefail_and_bsd_option_warnings_do_not_block(self):
+        # GNU head and cat accept these options, so the hook must not block them.
+        for command in ("pytest -q | tail -20", "head -n 0 a.txt", "cat -A a.txt"):
+            with self.subTest(command=command):
+                result = self.run_shell_hook("zsh_traps.py", command)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(result.stderr, "")
 
     def test_unmatched_glob_is_allowed_because_files_can_appear_first(self):
         result = self.run_shell_hook("zsh_traps.py", "touch a.md && ls *.md")

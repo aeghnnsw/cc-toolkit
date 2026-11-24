@@ -5,12 +5,18 @@ instructions are skill-local copies of the Claude Code agent bodies. Each
 comparison allows only the listed host-specific substitutions.
 tests/test_host_copies.py compares the files that both skill copies have.
 The calibration examples of real issues in both copies follow the evidence
-rule, because evaluators copy them.
+rule, because evaluators copy them. The Set Up block of each copy runs in
+bash and zsh with TMPDIR set, and writes the run state under TMPDIR (#457).
 """
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -35,6 +41,10 @@ REFERENCES = {
     )),
     "verifier.md": ("finding-verifier.md", COMMON_SUBSTITUTIONS),
 }
+SHELLS = {"bash": ["bash", "-c"], "zsh": ["zsh", "-f", "-c"]}  # -f: no user startup files
+BASH_FENCE = re.compile(r"^[ \t]*```bash[ \t]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
+SET_UP = re.compile(r"^### \d+\. Set Up the Run$(.*?)^#", re.MULTILINE | re.DOTALL)
+RUN_LINE = re.compile(r'^RUN="(.+)"$', re.MULTILINE)
 
 
 def words(text: str) -> str:
@@ -74,7 +84,42 @@ def real_issue_examples(text: str):
         yield example
 
 
+def set_up_block(text: str) -> str:
+    """Return the first bash block under the "Set Up the Run" heading, or ""."""
+    section = SET_UP.search(text)
+    block = section and BASH_FENCE.search(section.group(1))
+    return block.group(1) if block else ""
+
+
 class ProjectEvalCopiesTest(unittest.TestCase):
+    def test_set_up_block_writes_the_run_state_under_tmpdir_in_bash_and_zsh(self) -> None:
+        for skill in (CLAUDE_SKILL, ANTIGRAVITY_SKILL):
+            block = set_up_block((skill / "SKILL.md").read_text())
+            for shell, command in SHELLS.items():
+                with self.subTest(copy=str(skill.relative_to(PLUGIN_ROOT)), shell=shell), \
+                        tempfile.TemporaryDirectory() as temp:
+                    if shutil.which(shell) is None:
+                        self.skipTest(f"{shell} is not installed")
+                    self.assertTrue(block, "no bash block under Set Up the Run")
+                    env = dict(os.environ, TMPDIR=temp)
+                    started = time.time()
+                    result = subprocess.run([*command, block], cwd=temp, env=env, capture_output=True,
+                                            text=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    run = RUN_LINE.search(result.stdout)
+                    self.assertIsNotNone(run, f"the block printed no RUN line:\n{result.stdout}")
+                    self.assertEqual(Path(run.group(1)).parent, Path(temp), "the block ignored TMPDIR")
+                    # A later shell reads the run state from run.env.
+                    state = subprocess.run(
+                        [*command, f'. "{run.group(1)}/run.env"; printf "%s\\n" "$RUN" "$DEADLINE" "$STARTED"'],
+                        cwd=temp, env=env, capture_output=True, text=True, timeout=30, check=True,
+                    ).stdout.splitlines()
+                    self.assertEqual(len(state), 3, state)
+                    self.assertEqual(state[0], run.group(1))
+                    self.assertRegex(state[1], r"^\d+$")
+                    self.assertAlmostEqual(int(state[1]), started + 30 * 60, delta=60)
+                    self.assertRegex(state[2], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \S+$")
+
     def test_references_keep_the_claude_agent_bodies(self) -> None:
         for reference, (agent, substitutions) in REFERENCES.items():
             with self.subTest(reference=reference):
