@@ -5,7 +5,10 @@ planning folders (#358), the worktrees that cleanup keeps (#419), and planning
 folders in worktrees (#421). Cases 17-19 come from issue #543: the worktrees
 that hold a lead state of t3-project-lead. Cases 20-25 come from issue #528:
 branches with no commit of their own, and a worktree that contains another
-worktree. Issue #528 also changed cases 7, 16, and 18. Each check builds a temporary
+worktree. Issue #528 also changed cases 7, 16, and 18. Cases 26-30 come from
+issue #575: the worktrees that the tasks of a lead state record, and a lead
+state that cannot be read; issue #575 also changed cases 17-19. Case 31 comes
+from issue #577, which also changed case 16. Each check builds a temporary
 repository with a bare origin, runs the script with a fake gh (fake_gh.py),
 and reads the lines that it prints. The real live_worktrees.py runs, so most
 checks need lsof. Each class makes as few plan runs as it can, because each
@@ -446,29 +449,54 @@ class DocumentedLocationCase(PlanTestCase):
             worktrees[name] = repo.worktree(name)
             repo.squash_merge(name, number)
         cls.feat_e, cls.feat_i, cls.feat_j = worktrees.values()
+        cls.feat_k = repo.worktree("feat-k")
+        repo.squash_merge("feat-k", 67)
         cls.metrics = repo.folder(cls.feat_i, "50-metrics")
         cls.done = repo.folder(cls.feat_i, "51-done")
         cls.other = repo.folder(cls.feat_j, "52-done")
         cls.current = repo.folder(cls.feat_e, "53-done")
+        # Folder names sort as text: 12-done comes before 5-open.
+        cls.early = repo.folder(cls.feat_k, "12-done")
+        cls.late = repo.folder(cls.feat_k, "5-open")
         repo.issue(50, "OPEN")
-        for number in (51, 52, 53):
+        repo.issue(5, "OPEN")
+        for number in (12, 51, 52, 53):
             repo.issue(number, "CLOSED", "COMPLETED")
         cls.plan = repo.plan("--main-only", cwd=cls.feat_e)
 
-    def test_case_16_keeps_a_worktree_with_a_kept_folder_and_removes_no_folder_outside_main(self):
+    def test_case_16_lists_outside_main_only_the_folders_that_a_worktree_removal_deletes(self):
         self.assert_kept("folder", self.metrics, "issue #50 is open")
         self.assert_kept_with_branches(self.feat_i, "holds the kept planning folder",
                                        str(self.metrics))
         self.assert_removed_with_branches(self.feat_j, "merged PR #66")
-        for folder in (self.done, self.other, self.current):
+        self.assertEqual(self.line("folder", self.other), (
+            "REMOVE", f"issue #52 is closed as completed; removing the worktree {self.feat_j} "
+            "deletes it"))
+        for folder in (self.done, self.current):
             with self.subTest(folder=folder.name):
                 self.assertNotIn(("folder", str(folder)), self.plan)
-        self.assertEqual(self.issues_read(), ["50", "51", "52"])
+        self.assertEqual(self.issues_read(), ["12", "5", "50", "51", "52"])
+
+    def test_case_31_a_kept_folder_later_in_the_order_keeps_the_worktree_and_its_folders(self):
+        self.assert_kept("folder", self.late, "issue #5 is open")
+        self.assert_kept_with_branches(self.feat_k, "holds the kept planning folder",
+                                       str(self.late))
+        self.assertNotIn(("folder", str(self.early)), self.plan)
+
+
+def lead_state(folder: Path, *tasks: dict) -> None:
+    """Write a lead state with schema 1 and the tasks; the worktrees of a task are paths."""
+    (folder / "state.json").write_text(json.dumps({"schema": 1, "tasks": [
+        dict(task, worktrees=[str(path) for path in task["worktrees"]]) for task in tasks]}))
 
 
 @NEEDS_LSOF_AND_GIT
 class LeadStateCases(PlanTestCase):
-    """Cases 17-19: merged worktrees with a lead folder, with and without --main-only."""
+    """Cases 17, 18, and 26-28: merged worktrees and lead states, with and without --main-only.
+
+    The lead state in the main checkout records task-a, task-b, and the branch
+    of task-c. The lead state in lead-a records task-d.
+    """
 
     plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
 
@@ -476,18 +504,20 @@ class LeadStateCases(PlanTestCase):
     def setUpClass(cls):
         repo = cls.repo = cls.make_repo()
         worktrees = {}
-        for number, name in enumerate(("lead-a", "lead-b", "lead-c"), start=70):
+        for number, name in enumerate(("lead-a", "lead-b", "task-a", "task-b", "task-c", "task-d"),
+                                      start=70):
             worktrees[name] = repo.worktree(name)
             repo.squash_merge(name, number)
-        cls.lead_a, cls.lead_b, cls.lead_c = worktrees.values()
+        cls.lead_a, cls.lead_b, cls.task_a, cls.task_b, cls.task_c, cls.task_d = worktrees.values()
         cls.state = repo.folder(cls.lead_a, "20261122-lead-batch")
-        (cls.state / "state.json").write_text("{}\n")
+        lead_state(cls.state, {"name": "check-574", "state": "pr-open", "worktrees": [cls.task_d]})
         repo.folder(cls.lead_b, "20261122-lead-old")
-        # A .scratch that the plan cannot list.
-        unreadable = cls.lead_c / ".scratch"
-        unreadable.mkdir()
-        unreadable.chmod(0)
-        cls.addClassCleanup(unreadable.chmod, 0o755)
+        cls.main_state = repo.folder(repo.path, "20261124-lead-main")
+        lead_state(cls.main_state,
+                   {"name": "grill-571", "state": "verified", "worktrees": [cls.task_a]},
+                   {"name": "fix-572", "state": "settled", "worktrees": [cls.task_b]},
+                   # A task with a branch and no worktree path.
+                   {"name": "fix-573", "state": "running", "branch": "task-c", "worktrees": []})
         cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
 
     def test_case_17_keeps_a_merged_worktree_that_holds_a_lead_state_in_every_mode(self):
@@ -505,12 +535,82 @@ class LeadStateCases(PlanTestCase):
                                  "no issue key")
                 self.assertNotIn("holds a lead state", self.line("worktree", self.lead_b)[1])
 
-    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
-    def test_case_19_keeps_a_worktree_whose_scratch_cannot_be_read(self):
+    def test_case_26_keeps_the_worktree_of_a_task_that_is_not_settled_in_every_mode(self):
         for mode, plan in self.plans.items():
             with self.subTest(mode=mode):
                 self.plan = plan
-                self.assert_kept_with_branches(self.lead_c, "cannot look for a lead state")
+                self.assert_kept_with_branches(
+                    self.task_a, f"task grill-571 of the lead state {self.main_state} is verified, "
+                    "not settled")
+                self.assert_kept_with_branches(
+                    self.task_d, f"task check-574 of the lead state {self.state} is pr-open, "
+                    "not settled")
+
+    def test_case_27_removes_the_worktree_of_a_settled_task(self):
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_removed_with_branches(self.task_b, "merged PR #73")
+
+    def test_case_28_a_task_matches_no_worktree_by_its_branch(self):
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_removed_with_branches(self.task_c, "merged PR #74")
+
+
+@NEEDS_LSOF_AND_GIT
+class UnreadableLeadStateCases(PlanTestCase):
+    """Cases 19, 29, and 30: a .scratch or a lead state that the plan cannot read.
+
+    feat-m would be removed, and feat-n has uncommitted changes. One plan runs
+    for each mode with the .scratch of lead-c that the plan cannot list, then
+    one for each lead state in the main checkout that cannot be read.
+    """
+
+    plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        worktrees = {}
+        for number, name in enumerate(("feat-m", "feat-n", "lead-c"), start=90):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+        cls.feat_m, cls.feat_n, cls.lead_c = worktrees.values()
+        (cls.feat_n / "wip.txt").write_text("unsaved work\n")
+        unreadable = cls.lead_c / ".scratch"
+        unreadable.mkdir()
+        unreadable.chmod(0)
+        cls.addClassCleanup(unreadable.chmod, 0o755)
+        cls.plans = {"default": repo.plan(), "--main-only": repo.plan("--main-only")}
+        unreadable.chmod(0o755)
+        cls.state = repo.folder(repo.path, "20261124-lead-main")
+        for name, text in (("invalid JSON", "{\n"), ("schema 2", '{"schema": 2, "tasks": []}\n')):
+            (cls.state / "state.json").write_text(text)
+            cls.plans[name] = repo.plan()
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
+    def test_case_19_keeps_every_worktree_when_a_scratch_cannot_be_read(self):
+        for mode in ("default", "--main-only"):
+            with self.subTest(mode=mode):
+                self.plan = self.plans[mode]
+                for worktree in (self.lead_c, self.feat_m):
+                    self.assert_kept_with_branches(worktree, "cannot look for a lead state",
+                                                   str(self.lead_c / ".scratch"))
+                self.assert_kept_with_branches(self.feat_n, "uncommitted changes")
+
+    def test_case_29_keeps_every_worktree_when_a_lead_state_is_not_json(self):
+        self.plan = self.plans["invalid JSON"]
+        for worktree in (self.feat_m, self.lead_c):
+            self.assert_kept_with_branches(worktree, f"cannot read the lead state {self.state}",
+                                           "JSONDecodeError")
+        self.assert_kept_with_branches(self.feat_n, "uncommitted changes")
+
+    def test_case_30_keeps_every_worktree_when_a_lead_state_has_another_schema(self):
+        self.plan = self.plans["schema 2"]
+        self.assert_kept_with_branches(self.feat_m, f"cannot read the lead state {self.state}",
+                                       "unknown lead state schema")
 
 
 @NEEDS_LSOF_AND_GIT

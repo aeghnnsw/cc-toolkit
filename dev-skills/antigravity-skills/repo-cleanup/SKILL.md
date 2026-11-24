@@ -31,25 +31,29 @@ that a calling workflow did not name. A user request can limit this scope.
   folders, `.scratch/<issue>-<slug>/` by default, in the main checkout, in
   the current worktree, and in each worktree that it would otherwise remove,
   and keeps a worktree that holds a kept folder. With `--main-only`, it does
-  not inspect the current worktree, and it removes no folder outside the main
-  checkout.
+  not inspect the current worktree. Outside the main checkout, it then removes
+  only the folders of a worktree that it removes, because the worktree
+  removal deletes them.
 - Add `--remote <name>` when the upstream remote is not `origin`.
 - If the command fails, remove nothing and report the error.
 
 The plan keeps the current worktree and each worktree that another live
 session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
-conversation of the last 60 minutes. It keeps each worktree that holds a
-lead state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`,
-also with `--main-only`. It keeps a worktree whose folder contains another
-worktree that Git lists. It keeps a worktree with a detached HEAD or
-uncommitted changes. A branch is merged when a merged PR of the branch has
-the branch tip as its head commit (`headRefOid`). The plan also treats a
-branch as merged when its tip is in the Default Branch or is the head commit
-of any merged PR: such a branch has no commit of its own. The plan keeps such
-a branch when its reflog shows that it was created less than 60 minutes ago.
-When a check cannot run, the plan keeps the item and gives the error as the
-reason.
+conversation of the last 60 minutes. It keeps each worktree that holds a lead
+state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also
+with `--main-only`. It reads each lead state, also the one in the main
+checkout, and keeps each worktree whose path a task records while the task is
+not `settled`. When a `.scratch` folder or a lead state cannot be read, the
+plan keeps every worktree that it would otherwise remove. It keeps a worktree
+whose folder contains another worktree that Git lists. It keeps a worktree
+with a detached HEAD or uncommitted changes. A branch is merged when a merged
+PR of the branch has the branch tip as its head commit (`headRefOid`). The
+plan also treats a branch as merged when its tip is in the Default Branch or
+is the head commit of any merged PR: such a branch has no commit of its own.
+The plan keeps such a branch when its reflog shows that it was created less
+than 60 minutes ago. When a check cannot run, the plan keeps the item and
+gives the error as the reason.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent

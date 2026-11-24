@@ -14,6 +14,11 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   .scratch/<YYYYMMDD>-lead-<slug>/state.json at its top, whatever
   --planning-location names, also with --main-only. Keep a worktree whose
   .scratch or lead folder cannot be read.
+- Read each lead state, also the one in the main checkout. Keep each worktree
+  whose path a task of a lead state records while the task is not settled. A
+  task matches no worktree by its branch: T3 Code renames a branch after the
+  task starts. When a .scratch, a lead folder, or a lead state cannot be read,
+  keep every worktree that the plan would otherwise remove, with the error.
 - Keep each worktree whose folder contains another worktree that Git lists.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree.
@@ -30,8 +35,9 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   checkout, in the current worktree, and in each worktree that the plan would
   otherwise remove. With --main-only, inspect the planning folders of the main
   checkout and of each worktree that the plan would otherwise remove, and
-  remove no folder outside the main checkout. Remove a folder whose issue is
-  closed as completed. Keep the folders of open or not-planned issues, entries
+  remove a folder outside the main checkout only when the plan removes its
+  worktree, which deletes the folder. Remove a folder whose issue is closed
+  as completed. Keep the folders of open or not-planned issues, entries
   with no issue key (such as a date key), and folders whose issue state cannot
   be read. Keep each worktree that holds a kept folder, or whose planning
   folder location cannot be read.
@@ -59,7 +65,8 @@ from typing import NoReturn
 
 # Python puts the folder of this script on sys.path, so the sibling modules load.
 from live_worktrees import WINDOW_MINUTES
-from t3_project_lead import FOLDER as LEAD_FOLDER, STATE_FILE as LEAD_STATE_FILE
+from t3_project_lead import (FOLDER as LEAD_FOLDER, SETTLED, STATE_FILE as LEAD_STATE_FILE,
+                             Refused as LeadStateRefused, load as load_lead_state)
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
@@ -223,31 +230,62 @@ class Planner:
         return KEEP, f"issue #{number} has state {state}"
 
 
-def lead_state_reason(root: str) -> str | None:
-    """Return the reason to keep a worktree that holds a lead state, or None.
+def lead_states(root: str) -> tuple[list[str], str | None]:
+    """Return (the lead folders at the top of root, None), or ([], the error).
 
-    An error other than a missing file keeps the worktree, because the plan
-    cannot tell whether the worktree holds a lead state.
+    A lead folder is .scratch/<YYYYMMDD>-lead-<slug>/ with a state file. Unlike
+    lead_folders of t3_project_lead.py, this returns an error other than a
+    missing file, because the plan then cannot tell whether root holds a lead
+    state.
     """
     scratch = os.path.join(root, ".scratch")
     try:
         names = sorted(os.listdir(scratch))
     except NOT_FOUND:
-        return None
+        return [], None
     except OSError as error:
-        return f"cannot look for a lead state: {error}"
+        return [], f"cannot look for a lead state: {error}"
+    found = []
     for name in names:
         if not LEAD_FOLDER.fullmatch(name):
             continue
         folder = os.path.join(scratch, name)
         try:
             if stat.S_ISREG(os.stat(os.path.join(folder, LEAD_STATE_FILE)).st_mode):
-                return f"holds a lead state: {folder}"
+                found.append(folder)
         except NOT_FOUND:
             continue
         except OSError as error:
-            return f"cannot look for a lead state: {error}"
-    return None
+            return [], f"cannot look for a lead state: {error}"
+    return found, None
+
+
+def recorded_worktrees(folders: list[str]) -> tuple[dict[str, str], str | None]:
+    """Return the worktrees that the tasks of the lead states record (#575).
+
+    The result is ({real path: the reason to keep it}, None), with the error of
+    the first lead state that cannot be read in place of None. A task that is
+    not settled keeps each worktree whose path it records.
+    """
+    kept: dict[str, str] = {}
+    first_error = None
+    for folder in folders:
+        try:
+            for task in load_lead_state(folder)["tasks"]:
+                paths = task.get("worktrees") or []
+                if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+                    raise TypeError(f"task {task['name']} has the worktrees {paths!r}")
+                if task["state"] == SETTLED:
+                    continue
+                for path in paths:
+                    kept.setdefault(os.path.realpath(path), (
+                        f"task {task['name']} of the lead state {folder} is {task['state']}, "
+                        "not settled"))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                LeadStateRefused) as error:
+            first_error = first_error or (f"cannot read the lead state {folder}: "
+                                          f"{type(error).__name__}: {one_line(str(error))}")
+    return kept, first_error
 
 
 def worktree_list(repo: str) -> list[dict[str, str]]:
@@ -334,10 +372,17 @@ def main() -> None:
                      if other_real.startswith(top + os.sep)]
               for path, top in real.items()}
 
+    # The lead states in each checkout, and the worktrees that their tasks record (#575).
+    leads = {tree["path"]: lead_states(tree["path"]) for tree in worktrees}
+    recorded, lead_error = recorded_worktrees(
+        [folder for folders, _ in leads.values() for folder in folders])
+    lead_error = next((error for _, error in leads.values() if error), None) or lead_error
+
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
     for index, tree in enumerate(worktrees):
         path, head, branch = tree["path"], tree.get("HEAD", ""), tree.get("branch")
+        held, scan_error = leads[path]
         if index == 0:
             plan[path] = (KEEP, "the main checkout")
         elif os.path.realpath(path) == current:
@@ -345,8 +390,12 @@ def main() -> None:
             merged = (f"; {planner.branch(pr_head(branch), head, f'refs/heads/{branch}')[1]}"
                       if branch and branch != default else "")
             plan[path] = (KEEP, f"the current session runs here{merged}")
-        elif (lead := lead_state_reason(path)) is not None:
-            plan[path] = (KEEP, lead)
+        elif scan_error is not None:
+            plan[path] = (KEEP, scan_error)
+        elif held:
+            plan[path] = (KEEP, f"holds a lead state: {held[0]}")
+        elif os.path.realpath(path) in recorded:
+            plan[path] = (KEEP, recorded[os.path.realpath(path)])
         elif inside[path]:
             plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:
@@ -366,8 +415,15 @@ def main() -> None:
             else:
                 plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
 
+    # A lead state that cannot be read may record any worktree.
+    if lead_error is not None:
+        for path, (action, _) in plan.items():
+            if action == REMOVE:
+                plan[path] = (KEEP, lead_error)
+
     # The planning folders, and the worktrees that hold a kept one. With
-    # --main-only, a folder outside the main checkout gets a KEEP line or none.
+    # --main-only, a completed folder outside the main checkout gets a REMOVE
+    # line only when the plan removes its worktree, which deletes it (#577).
     main_path = worktrees[0]["path"]
     roots = [main_path] + [path for path, (action, _) in plan.items() if action == REMOVE or (
         not args.main_only and os.path.realpath(path) == current)]
@@ -382,14 +438,18 @@ def main() -> None:
             if plan[root][0] == REMOVE:
                 plan[root] = (KEEP, f"its planning folders cannot be read: {error}")
             continue
-        for name in names:
-            entry = os.path.join(location, name)
-            action, reason = planner.folder(entry)
-            if action == REMOVE and args.main_only and root != main_path:
-                continue
-            lines.append((action, "folder", entry, reason))
+        entries = [(entry, *planner.folder(entry))
+                   for entry in (os.path.join(location, name) for name in names)]
+        for entry, action, reason in entries:
             if action == KEEP and plan[root][0] == REMOVE:
                 plan[root] = (KEEP, f"holds the kept planning folder {entry}: {reason}")
+        # The worktree's action is final only after all its folders are read.
+        for entry, action, reason in entries:
+            if action == REMOVE and args.main_only and root != main_path:
+                if plan[root][0] != REMOVE:
+                    continue
+                reason += f"; removing the worktree {root} deletes it"
+            lines.append((action, "folder", entry, reason))
 
     # The worktrees, then their branches and the other branches.
     worktree_branches: dict[str, tuple[str, str]] = {}
