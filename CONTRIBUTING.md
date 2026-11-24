@@ -371,6 +371,27 @@ link the replacement. In an ADR, also mark each replaced sentence and record
 the new rule with its reason in a new section; see ADR 0002 for an example.
 A change that only adds facts needs no note.
 
+## Work branches
+
+A linked worktree is a worktree other than the main checkout. A session
+that runs in a linked worktree made for it develops in that worktree, on
+its branch. Before the first commit, base that branch on the default
+branch, so that a host tool that opens a pull request for the session
+pushes the work branch. `--keep` stops instead of discarding uncommitted
+changes:
+
+```bash
+git fetch origin
+git reset --keep origin/master
+```
+
+Only a session in the main checkout makes a worktree, under `trees/`, on a
+new work branch, for example:
+
+```bash
+git worktree add trees/doc-<description> -b doc-<description>
+```
+
 ## Verification
 
 Run these checks locally before opening a pull request. On each pull

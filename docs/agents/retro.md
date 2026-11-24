@@ -2,7 +2,8 @@
 
 A navigation retrospective runs once, after the PRs of a run merge and
 cleanup reports. It edits no tracked file. It proposes changes for a human to
-choose.
+choose. Before step 1, run `git status --porcelain --untracked-files=no` and
+keep its output for step 7.
 
 1. Find the greatest **Reviewed through** timestamp in "Navigation
    retrospective" records on merged PRs. Run the
@@ -87,8 +88,12 @@ choose.
    search, stale guidance, or a missing tool. Ignore a command error that the
    agent corrected in seconds.
 4. Open or reuse a proposal issue only when a finding's fix is clean, worth
-   its cost, and general. Prefer a tool fix or an automated check to new
-   text in a steering file. Record each other finding as "no fix".
+   its cost, and general. Propose a check, a script, or a test first.
+   Propose new text in a steering file only when no check can work, and
+   give the reason in the issue. Root `CLAUDE.md` has a word budget that
+   `tests/test_steering_budget.py` checks; move detail to `CONTRIBUTING.md`
+   or `docs/agents/`, and leave a pointer. Record each other finding as
+   "no fix".
 5. Post a **Navigation retrospective** comment on the run's last merged PR:
    the **Reviewed through** cutoff (`window.through`), the sessions read and
    history limits, and each finding with its session and time and its issue
@@ -97,7 +102,11 @@ choose.
    `**Reviewed through:** YYYY-MM-DDTHH:MM:SSZ`, in UTC and truncated to
    whole seconds.
 6. Remove the temporary directory by its exact path.
+7. Run `git status --porcelain --untracked-files=no` again. It must print
+   the same lines as before step 1. A new line means that the
+   retrospective changed a tracked file: undo that change, and report it.
 
 A proposal issue states the finding, its session and time, and the proposed
-change, with the `needs-triage` label. The retrospective stores no lesson and
+change, with the `needs-triage` label. For new text in a steering file, it
+also states why no check, script, or test can work. The retrospective stores no lesson and
 adds no record file.
