@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.25.0
+version: 1.26.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
