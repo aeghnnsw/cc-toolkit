@@ -10,6 +10,11 @@
 > test checks the rule. Read
 > [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).
 >
+> **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
+> list also records a session. Read
+> [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
+> in ADR 0007.
+>
 > **Superseded in part (2026-11-23, issue #544).** `start` also changes the
 > lead state once after a takeover: it removes the takeover mark and appends
 > one event. Read

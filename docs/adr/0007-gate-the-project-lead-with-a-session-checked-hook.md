@@ -182,9 +182,12 @@ not.
 
 A record must name a qualifying script, so the hook records nothing when it
 cannot resolve the path. It reads no list with a subshell, a group, a
-command or process substitution, or a here-document. A word with a glob or
-an unset variable cannot match, and after `cd`, `pushd`, or `popd` a
-relative path cannot match. A wider match would gate a session that is not
+command or process substitution, a here-document, a reserved word such as
+`if` or `while`, or a builtin that changes variables or runs other code,
+such as `unset`, `declare`, `eval`, or `source`. It reads no command after
+`exit` or `exec`. A word with a glob or an unset variable cannot match, and
+after `cd`, `pushd`, `popd`, or an unknown command word a relative path
+cannot match. A wider match would gate a session that is not
 a lead, and the gate blocks the `rm` of its record. A record only turns the
 gate on. The gate does not change: in a recorded session it allows one
 simple command, so it blocks the same command list from the next call, and

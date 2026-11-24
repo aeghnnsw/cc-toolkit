@@ -295,6 +295,7 @@ class RecordTests(HookCase):
                     f"git status; python3 '{STEP_SCRIPT}' start &>/dev/null  # refresh",
                     f"cd {self.main} && python3 {STEP_SCRIPT} start\necho done")
         jobs = [(HOSTS[index % len(HOSTS)], command) for index, command in enumerate(commands)]
+        jobs += [(host, commands[0]) for host in HOSTS[1:]]
         jobs += [("codex", {"command": ["bash", "-lc", commands[0]]}),
                  ("codex", {"cmd": f"bash -lc 'S={STEP_SCRIPT}; python3 \"$S\" start | head'"})]
         for host, command in jobs:
@@ -322,7 +323,18 @@ class RecordTests(HookCase):
                     f"{{ python3 {STEP_SCRIPT} start; }} 2>&1 | head",
                     f"cat <<EOF\npython3 {STEP_SCRIPT} start\nEOF",
                     f"python3 $LEAD_TEST_UNSET/{STEP_SCRIPT.name} start | cat",
-                    f"cd {self.temp} && python scripts/t3_project_lead.py start | cat")
+                    f"cd {self.temp} && python scripts/t3_project_lead.py start | cat",
+                    f"{{ true; python3 {STEP_SCRIPT} start; }} | cat",
+                    f"{{\npython3 {STEP_SCRIPT} start\n}}",
+                    f"function f {{\npython3 {STEP_SCRIPT} start\n}}",
+                    f"{{ true; S={STEP_SCRIPT}; }} | cat; python3 $S start",
+                    f"if false\nthen\npython3 {STEP_SCRIPT} start\nfi",
+                    f"S={STEP_SCRIPT}; unset S; python3 $S start",
+                    f"S={STEP_SCRIPT}; S+=x; python3 $S start",
+                    f"S={STEP_SCRIPT}; IFS=/; python3 $S start",
+                    f"builtin cd {self.temp} && python scripts/t3_project_lead.py start",
+                    f"exit; python3 {STEP_SCRIPT} start",
+                    f"python3 {STEP_SCRIPT} start ;;")
         for index, command in enumerate(commands):
             host = HOSTS[index % len(HOSTS)]
             with self.subTest(host=host, command=command):

@@ -125,6 +125,15 @@ PR_INCLUDE = frozenset({"checks"})
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
 WRAPPER_SHELLS = frozenset({"bash", "sh", "zsh"})
+# Command lists that start_run does not read (issue #574): a group, a reserved word of a
+# compound command, and a builtin that changes variables or runs other code. After a word
+# of LIST_ENDS, no later command runs.
+UNREAD_COMMANDS = frozenset({"{", "}", "!", "if", "then", "elif", "else", "fi", "case", "esac", "for",
+                             "select", "while", "until", "do", "done", "function", "time", "coproc",
+                             "[[", "unset", "declare", "typeset", "local", "readonly", "read",
+                             "readarray", "mapfile", "printf", "getopts", "eval", "source", ".",
+                             "builtin", "command", "alias", "set", "shopt", "trap", "enable"})
+LIST_ENDS = frozenset({"exit", "exec", "return", "logout"})
 # gtd-inbox (issue #531): the renderer, its contract, the uv options that
 # may come with the required --no-project, and the whole-file write tools with
 # their path and content arguments. The contract is
@@ -662,7 +671,11 @@ def command_list(command, cwd):
     `export`, sets its variables for the later commands, unless it is in a
     pipeline or runs with `&`: bash runs those in a subshell. An assignment
     before a command word changes no word of that command, as in bash. After
-    cd, pushd, or popd, the cwd is None, so a relative path cannot resolve.
+    cd, pushd, popd, or a command word that is None, the cwd is None, so a
+    relative path cannot resolve. The result is None for a `{` or `}` word,
+    a command of UNREAD_COMMANDS, an `IFS` or `NAME+=` assignment, or an
+    empty command before an operator, such as `;;`. The list ends at a
+    command of LIST_ENDS.
     """
     tokens = command_tokens(command)
     if tokens is None:
@@ -671,9 +684,16 @@ def command_list(command, cwd):
     commands = []
     raw = []
     previous = ";"
-    for kind, text in tokens + [("op", ";")]:
+    for kind, text in tokens + [("op", None)]:
         if kind == "word":
+            if text in ("{", "}"):
+                return None
             raw.append(text)
+            continue
+        if not raw:
+            if text not in ("\n", None):
+                return None
+            previous = text
             continue
         if raw[:1] == ["export"] and all(map(is_assignment, raw[1:])):
             prefix, rest = raw[1:], []
@@ -682,10 +702,16 @@ def command_list(command, cwd):
             while count < len(raw) and is_assignment(raw[count]):
                 count += 1
             prefix, rest = raw[:count], raw[count:]
+        if any(word.startswith("IFS=") for word in prefix) or rest and appends(rest[0]):
+            return None
         if rest:
             words = [word_value(word, variables) for word in rest]
+            if words[0] in UNREAD_COMMANDS:
+                return None
+            if words[0] in LIST_ENDS:
+                break
             commands.append((words, cwd))
-            if words[0] in ("cd", "pushd", "popd"):
+            if words[0] in (None, "cd", "pushd", "popd"):
                 cwd = None
         elif previous not in ("|", "|&") and text not in ("|", "|&", "&"):
             for assignment in prefix:
@@ -699,7 +725,7 @@ def command_tokens(command):
     """Split a command list into ("word", raw text) and ("op", operator) tokens, or return None.
 
     A word keeps its quotes and `$` expansions for split_words. The operators
-    are ;, &, &&, ||, |, and |&; a new line is ;. A comment, a redirect, its
+    are ;, &, &&, ||, |, |&, and a new line. A comment, a redirect, its
     target word, and a file descriptor before it, as in `2>&1`, give no
     token. The result is None for a subshell, a command or process
     substitution, a here-document, a redirect with no target, or a quote that
@@ -718,8 +744,8 @@ def command_tokens(command):
             if word is not None:
                 if target:
                     target = False
-                elif not (char in "<>" and word.isdigit()):
-                    tokens.append(("word", word))
+                elif not (char in "<>" and "".join(word).isdigit()):
+                    tokens.append(("word", "".join(word)))
                 word = None
             if char in " \t":
                 index += 1
@@ -734,7 +760,7 @@ def command_tokens(command):
                 return None
             else:
                 operator = command[index:index + 2] if command[index:index + 2] in ("&&", "||", "|&") else char
-                tokens.append(("op", ";" if operator == "\n" else operator))
+                tokens.append(("op", operator))
                 index += len(operator)
             continue
         if char == "#" and word is None:
@@ -770,12 +796,20 @@ def command_tokens(command):
             index = end + 1
         else:
             index += 1
-        word = (word or "") + command[start:index]
+        if word is None:
+            word = []
+        word.append(command[start:index])
     if target and word is None:
         return None
     if word is not None and not target:
-        tokens.append(("word", word))
+        tokens.append(("word", "".join(word)))
     return tokens
+
+
+def appends(word):
+    """Return whether `word` is a `NAME+=value` assignment."""
+    name, sign, _ = word.partition("+=")
+    return bool(sign) and name.isidentifier() and name.isascii()
 
 
 def is_assignment(word):
