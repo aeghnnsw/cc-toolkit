@@ -112,7 +112,10 @@ class LeadStateTests(unittest.TestCase):
         folder = os.getcwd()
         try:
             os.chdir(cwd or self.repo)
+            # argparse names the program from sys.argv[0], and newer Pythons from the spec of __main__,
+            # which is None when a script runs as a process.
             with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(sys, "argv", [str(SCRIPT)]), \
+                    mock.patch.object(sys.modules["__main__"], "__spec__", None, create=True), \
                     contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 try:
                     code = LEAD.main(list(args))
