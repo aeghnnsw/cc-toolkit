@@ -67,8 +67,9 @@ Statuses of a start, before codex runs:
 
 Statuses of a wait (a start also waits):
 
-  running                the wait step ended before the call; run wait
-  error:no call          no call was started
+  running                the wait step ended before the call, or before a start
+                         that holds start.lock wrote call.json; run wait
+  error:no call          no call was started, and no start holds start.lock
   error:runner stopped   the supervisor ended without a final status, or the call
                          is more than 60 seconds past its total limit. A
                          supervisor that still runs is killed first, and then
@@ -491,6 +492,21 @@ def hold_call_lock(workdir: Path) -> None:
     os.replace(temporary, workdir / "call.lock")
 
 
+def lock_held(path: Path) -> bool:
+    """Return True when a process holds a lock on the file; a missing file has no lock."""
+    try:
+        lock = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    finally:
+        os.close(lock)
+    return False
+
+
 def supervisor_ended(workdir: Path) -> bool:
     """Return True when no process holds call.lock.
 
@@ -498,17 +514,7 @@ def supervisor_ended(workdir: Path) -> bool:
     supervisor stays a zombie that no process reaps, and a process that
     reuses the supervisor's ID does not hold it.
     """
-    try:
-        lock = os.open(workdir / "call.lock", os.O_RDONLY)
-    except OSError:
-        return True
-    try:
-        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return False
-    finally:
-        os.close(lock)
-    return True
+    return not lock_held(workdir / "call.lock")
 
 
 def append_reply(workdir: Path, mode: str, final: dict) -> None:
@@ -653,24 +659,34 @@ def report_final(final: dict) -> int:
 
 
 def wait(workdir: Path, step: float) -> int:
-    """Wait for at most one step for the final status of the current call, and print it or running."""
+    """Wait for at most one step for the final status of the current call, and print it or running.
+
+    A start deletes call.json and holds start.lock until its supervisor has
+    written the new call.json. So while start.lock is held, a missing call.json
+    means that a call starts, not that no call was started.
+    """
     deadline = time.monotonic() + step
     while True:
         final = read_json(workdir / "status.json")
         if final is not None:
             return report_final(final)
         call = current_call(workdir)
-        if call is None:
-            return report(INPUT_EXIT, read_input(workdir, "model"), 0, "error:no call")
-        seconds = round(time.time() - call["started"])
-        if runner_stopped(workdir, call):
-            end_call(workdir, call)
-            final = read_json(workdir / "status.json")  # the supervisor can write it just before it ends
-            if final:
-                return report_final(final)
-            return report(NO_CODE, call["model"], seconds, "error:runner stopped")
+        if call is None and not lock_held(workdir / "start.lock"):
+            call = current_call(workdir)  # a start writes call.json before it releases start.lock
+            if call is None:
+                return report(INPUT_EXIT, read_input(workdir, "model"), 0, "error:no call")
+        if call is None:  # a start holds start.lock, and its supervisor has not written call.json yet
+            model, seconds = read_input(workdir, "model"), 0
+        else:
+            model, seconds = call["model"], round(time.time() - call["started"])
+            if runner_stopped(workdir, call):
+                end_call(workdir, call)
+                final = read_json(workdir / "status.json")  # the supervisor can write it just before it ends
+                if final:
+                    return report_final(final)
+                return report(NO_CODE, model, seconds, "error:runner stopped")
         if time.monotonic() >= deadline:
-            return report(NO_CODE, call["model"], seconds, "running")
+            return report(NO_CODE, model, seconds, "running")
         time.sleep(min(POLL_SECONDS, max(0.0, deadline - time.monotonic())))
 
 
