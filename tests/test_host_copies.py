@@ -57,7 +57,8 @@ def copy_files(folder, files):
 def read_lines(path):
     """Return the lines of a file. A `\r` line ending stays in its line, and a final newline gives a last
     empty line, so equal lines mean equal bytes."""
-    return path.read_text(encoding='utf-8', newline='').split('\n')
+    with path.open(encoding='utf-8', newline='') as file:  # Path.read_text takes newline only from 3.13 (#579).
+        return file.read().split('\n')
 
 
 def split_skill(path):
