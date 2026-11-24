@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.24.0
+version: 1.25.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -237,7 +237,8 @@ Run each full test suite through
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/run_suite.py" -- <suite command>`, and put that
 command in each brief that runs one. It takes one lock for each suite: one
 command in one folder. So two runs of the same suite run one at a time, and
-different suites run in parallel. It reports a pass recorded for the same clean
+different suites run in parallel. While a fresh priority marker names another
+worktree, each run waits. It reports a pass recorded for the same clean
 tree instead of a new run, and prints the failing tests and the exit status
 last. Do not pipe it into `tail`.
 Focused tests do not need it.

@@ -1,4 +1,4 @@
-"""Command-line checks for run_suite.py, the suite locks and pass records.
+"""Command-line checks for run_suite.py, the suite locks, pass records, and priority marker.
 
 Each check builds a temporary Git repository and runs small python3 commands
 through the script. The commands write their log outside the repository, so
@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_suite.py"
@@ -58,8 +59,9 @@ class Root(unittest.TestCase):
 """
 
 
-@unittest.skipUnless(shutil.which("git"), "needs git")
-class RunSuiteTests(unittest.TestCase):
+class GitRepoTestCase(unittest.TestCase):
+    """A temporary Git repository, and helpers that run the script in it."""
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -114,6 +116,9 @@ class RunSuiteTests(unittest.TestCase):
         return RUN_SUITE.suite_lock_path(self.repo / ".git",
                                          {"command": command, "folder": folder})
 
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class RunSuiteTests(GitRepoTestCase):
     def test_same_suite_waits_then_reuses_the_pass_and_another_folder_does_not_wait(self):
         # A holds its suite lock until the release file exists. B has A's
         # command and folder, so it waits. C has A's command in folder sub,
@@ -266,6 +271,119 @@ class RunSuiteTests(unittest.TestCase):
         outside.mkdir()
         self.assertEqual(self.run_suite("--", "true", cwd=outside).returncode, 2)
         self.assertEqual(self.run_suite("--rerun").returncode, 2)
+
+
+def marker_time(age: timedelta) -> str:
+    """Return the marker form of the time that is age before now."""
+    return (datetime.now(timezone.utc) - age).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class PriorityMarkerTests(GitRepoTestCase):
+    """Two worktrees of one repository: the main checkout and other."""
+
+    def setUp(self):
+        super().setUp()
+        self.other = self.tmp / "other"
+        self.git("worktree", "add", "-q", str(self.other))
+        self.marker = self.repo / ".git" / "run-suite-priority.json"
+
+    def write_marker(self, worktree: object, started: object, **extra: object) -> None:
+        self.marker.write_text(json.dumps({"worktree": worktree, "started": started, **extra}))
+
+    def summary(self, name: str) -> list[str]:
+        out = (self.tmp / f"{name}.out").read_text()
+        return out.split("==== run_suite summary ====\n")[1].splitlines()
+
+    def test_fresh_marker_makes_each_suite_of_another_worktree_wait(self):
+        # The marker names the main checkout, 58 minutes after its start. Two
+        # different suites in the other worktree wait for it; a run in the
+        # named worktree, through a path with a symbolic link, does not.
+        self.release.touch()
+        named = self.tmp / "named"
+        named.symlink_to(self.repo)
+        self.write_marker(str(named), marker_time(timedelta(minutes=58)), branch="b", pid=1)
+        root = self.start("--", *self.hold("root"), name="root", cwd=self.other)
+        sub = self.start("--", *self.hold("sub"), name="sub", cwd=self.other / "sub")
+        for name in ("root", "sub"):
+            self.wait_for(self.tmp / f"{name}.err",
+                          f"waiting for the priority marker, which names {named}, started ")
+        holder = self.run_suite("--", *self.hold("holder"))
+        self.assertEqual(holder.returncode, 0, holder.stderr)
+        self.assertNotIn("priority marker", holder.stderr + holder.stdout.lower())
+        self.assertEqual(self.log_lines(), ["start holder", "end holder"])
+        self.assertIsNone(root.poll())
+        self.assertIsNone(sub.poll())
+
+        self.marker.unlink()
+        for name, process in (("root", root), ("sub", sub)):
+            self.assertEqual(process.wait(timeout=20), 0)
+            self.assertRegex(self.summary(name)[-2],
+                             rf"^Priority marker wait: \d+ s, for {re.escape(str(named))}$")
+            self.assertEqual(self.summary(name)[-1], "Exit status: 0")
+        self.assertEqual(sorted(self.log_lines()[2:]),
+                         ["end root", "end sub", "start root", "start sub"])
+
+    def test_marker_gives_no_priority_when_missing_stale_malformed_or_gone(self):
+        self.release.touch()
+        repo, fresh = str(self.repo), marker_time(timedelta(0))
+        cases = {
+            "missing": None,
+            "stale": {"worktree": repo, "started": marker_time(timedelta(minutes=60))},
+            "after now": {"worktree": repo, "started": marker_time(-timedelta(hours=2))},
+            "not JSON": "{",
+            "a list": [repo, fresh],
+            "no started": {"worktree": repo},
+            "no worktree": {"started": fresh},
+            "another time form": {"worktree": repo, "started": fresh.replace("T", " ")},
+            "a relative path": {"worktree": "repo", "started": fresh},
+            "a gone worktree": {"worktree": str(self.tmp / "gone"), "started": fresh},
+            "this worktree": {"worktree": str(self.other), "started": fresh},
+            "unreadable": "a folder",
+        }
+        for case, marker in cases.items():
+            with self.subTest(case):
+                if marker == "a folder":
+                    self.marker.mkdir()
+                elif marker is not None:
+                    self.marker.write_text(marker if isinstance(marker, str)
+                                           else json.dumps(marker))
+                try:
+                    result = self.run_suite("--rerun", "--", *self.hold(), cwd=self.other)
+                finally:
+                    if self.marker.is_dir():
+                        self.marker.rmdir()
+                    elif self.marker.exists():
+                        self.marker.unlink()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("priority marker", result.stderr + result.stdout.lower())
+        self.assertEqual(self.log_lines(), ["start a", "end a"] * len(cases))
+
+    def test_run_that_takes_the_lock_after_the_marker_appears_releases_it_and_waits(self):
+        # The run in the other worktree queues for the suite lock before the
+        # marker exists. When it takes the lock, it finds the marker, releases
+        # the lock, and waits without running its command.
+        self.release.touch()
+        lock_path = self.suite_lock_path(self.hold("queued"))
+        with open(lock_path, "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            queued = self.start("--", *self.hold("queued"), name="queued", cwd=self.other)
+            self.wait_for(self.tmp / "queued.err", "waiting for the suite lock")
+            self.write_marker(str(self.repo), marker_time(timedelta(0)))
+        self.wait_for(self.tmp / "queued.err", "waiting for the priority marker")
+        with open(lock_path, "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.assertEqual(self.log_lines(), [])
+        self.assertIsNone(queued.poll())
+
+        self.marker.unlink()
+        self.assertEqual(queued.wait(timeout=20), 0)
+        self.assertEqual(self.log_lines(), ["start queued", "end queued"])
+        summary = self.summary("queued")
+        self.assertRegex(summary[-3],
+                         rf"^Priority marker wait: \d+ s, for {re.escape(str(self.repo))}$")
+        self.assertRegex(summary[-2], r"^Suite lock wait: \d+ s, held by another run ")
+        self.assertEqual(summary[-1], "Exit status: 0")
 
 
 if __name__ == "__main__":

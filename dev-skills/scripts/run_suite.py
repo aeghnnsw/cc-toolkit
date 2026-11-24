@@ -10,9 +10,30 @@ root. The script takes an exclusive lock for the suite: run-suite-<hash>.lock
 in the Git common folder (git rev-parse --git-common-dir), where <hash> is a
 short hash of the command and the relative folder. All worktrees of one
 repository share each lock. So two runs of the same suite run one at a time,
-and runs of different suites run in parallel. When another run holds the
-suite lock, the script prints one line to stderr with the holder's PID,
-command, folder, and start time, and then waits.
+and runs of different suites run in parallel, except while a priority marker
+names another worktree (see below). When another run holds the suite lock,
+the script prints one line to stderr with the holder's PID, command, folder,
+and start time, and then waits.
+
+Priority marker. A repository's merge-lock tool can give the worktree that
+holds its merge lock priority over the suites of the other worktrees. The
+marker is run-suite-priority.json in the Git common folder: a JSON object
+with two required fields, "worktree", the absolute path of the worktree
+root, and "started", a UTC time in the form %Y-%m-%dT%H:%M:%SZ. The script
+ignores other fields. The merge-lock tool writes the file when it takes or
+renews its lock, and removes it when it releases the lock. This script only
+reads it. A marker is fresh for 60 minutes from "started". While a fresh
+marker names another worktree, each run waits before it takes its suite
+lock, for every suite, and reads the marker again each second. After it
+takes the suite lock, the script reads the marker again. When a fresh marker
+names another worktree, it releases the suite lock and waits again. A run
+whose command already runs is not stopped. A run in the named worktree does
+not wait. The script compares the two paths after it resolves symbolic
+links. A missing, unreadable, or stale marker gives no priority. So does a
+marker that is not a JSON object with both fields, that has a time in
+another form or after the current time, or that names a folder that does
+not exist. When the marker wait starts, the script prints one line to
+stderr with the named worktree and the time that the marker gives.
 
 Recorded pass. A run passes when the command exits 0. When the working tree
 was clean (git status --porcelain printed nothing, untracked files included)
@@ -35,16 +56,19 @@ command.
 
 Output. The command's stdout and stderr stream together as the command runs.
 Then the script prints a summary: the failing test IDs and the totals lines of
-unittest and pytest output, the lock wait, and last the exit status. For other
-output, the summary has no failing tests or totals. The lock wait is one line,
-only after the script waited for the suite lock:
+unittest and pytest output, the marker wait, the lock wait, and last the exit
+status. For other output, the summary has no failing tests or totals. The
+marker wait is one line, only after the script waited for a priority marker:
+"Priority marker wait: <N> s, for <worktree>", with the total wait time in
+whole seconds and the worktree that the first stderr line names. The lock
+wait is one line, only after the script waited for the suite lock:
 "Suite lock wait: <N> s, held by PID <pid> (<command>) in <folder>", with the
-wait time in whole seconds and the holder that the stderr line names. When a
-later run held the lock last, the line adds
+total wait time in whole seconds and the holder that the first stderr line
+names. When a later run held the lock last, the line adds
 ", and last by PID <pid> (<command>) in <folder>". When the first holder had
 not written its details, the line names the last holder; when neither had, it
 names "another run". A run that reuses a recorded pass prints no summary;
-after a wait, it prints the lock wait as its last line.
+after a wait, it prints the wait lines as its last lines.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -69,6 +93,13 @@ from typing import TextIO
 
 PASSES = "run-suite-passes.json"
 PASSES_LOCK = "run-suite-passes.lock"
+PRIORITY = "run-suite-priority.json"
+# A priority marker is fresh for this many seconds from its "started" time.
+PRIORITY_FRESH = 60 * 60
+# While it waits for a priority marker, the script reads it this often, in seconds.
+PRIORITY_POLL = 1.0
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+TIME_FORM = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 # The script keeps only the newest records.
 KEEP = 200
 
@@ -84,7 +115,7 @@ ESCAPE_LINE_BREAKS = str.maketrans({"\n": "\\n", "\r": "\\r"})
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime(TIME_FORMAT)
 
 
 def git(*args: str) -> str | None:
@@ -126,37 +157,96 @@ def suite_lock_path(common: Path, suite: dict) -> Path:
     return common / f"run-suite-{digest[:16]}.lock"
 
 
-def take_lock(path: Path, command: list[str]) -> tuple[TextIO, str | None]:
-    """Take a suite lock, and wait for it when another run holds it.
+def priority_holder(common: Path, top: str) -> dict | None:
+    """Return a fresh priority marker that names another worktree, or None.
 
-    Return the lock file, and after a wait the lock wait line of the summary.
+    A missing, unreadable, stale, or malformed marker, and a marker that names
+    a folder that does not exist or this worktree, give no priority.
     """
-    handle = open(path, "a+")
-    wait_line = None
     try:
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        first = read_holder(handle)
-        started = f", started {first['start']}" if first else ""
-        print(f"run_suite: waiting for the suite lock, held by {describe(first)}{started}",
-              file=sys.stderr, flush=True)
-        begin = time.monotonic()
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        seconds = round(time.monotonic() - begin)
-        # Holders do not clear the lock file, so it now names the last holder.
-        last = read_holder(handle)
+        marker = json.loads((common / PRIORITY).read_text())
+        worktree, started = marker["worktree"], marker["started"]
+        if not TIME_FORM.fullmatch(started):
+            return None
+        when = datetime.strptime(started, TIME_FORMAT).replace(tzinfo=timezone.utc)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    age = (datetime.now(timezone.utc) - when).total_seconds()
+    if not 0 <= age < PRIORITY_FRESH:
+        return None
+    if not isinstance(worktree, str) or not os.path.isabs(worktree) \
+            or not os.path.isdir(worktree):
+        return None
+    if os.path.realpath(worktree) == os.path.realpath(top):
+        return None
+    return {"worktree": worktree, "started": started}
+
+
+def wait_for_priority(common: Path, top: str) -> tuple[float, str | None]:
+    """Wait while a fresh priority marker names another worktree.
+
+    Return the seconds of the wait and the worktree that the marker named, or
+    0 and None when the script did not wait.
+    """
+    marker = priority_holder(common, top)
+    if marker is None:
+        return 0.0, None
+    print(f"run_suite: waiting for the priority marker, which names {marker['worktree']}, "
+          f"started {marker['started']}", file=sys.stderr, flush=True)
+    begin = time.monotonic()
+    while priority_holder(common, top) is not None:
+        time.sleep(PRIORITY_POLL)
+    return time.monotonic() - begin, marker["worktree"]
+
+
+def take_lock(path: Path, command: list[str], common: Path,
+              top: str) -> tuple[TextIO, list[str]]:
+    """Take a suite lock, after the waits for a priority marker and for the lock.
+
+    Return the lock file, and the wait lines of the summary.
+    """
+    marker_seconds, marker_worktree = 0.0, None
+    lock_seconds, first, last, lock_waited = 0.0, None, None, False
+    while True:
+        seconds, worktree = wait_for_priority(common, top)
+        marker_seconds += seconds
+        marker_worktree = marker_worktree or worktree
+        handle = open(path, "a+")
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            holder = read_holder(handle)
+            started = f", started {holder['start']}" if holder else ""
+            print(f"run_suite: waiting for the suite lock, held by {describe(holder)}{started}",
+                  file=sys.stderr, flush=True)
+            begin = time.monotonic()
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            lock_seconds += time.monotonic() - begin
+            lock_waited = True
+            first = first or holder
+            # Holders do not clear the lock file, so it now names the last holder.
+            last = read_holder(handle)
+        # A marker can appear while the run waits for the suite lock.
+        if priority_holder(common, top) is None:
+            break
+        handle.close()
+    wait_lines = []
+    if marker_worktree:
+        wait_lines.append(f"Priority marker wait: {round(marker_seconds)} s, "
+                          f"for {marker_worktree}")
+    if lock_waited:
         holders = describe(first or last)
         if first and last and last != first:
             holders += f", and last by {describe(last)}"
-        wait_line = f"Suite lock wait: {seconds} s, held by {holders}".translate(
-            ESCAPE_LINE_BREAKS)
+        wait_lines.append(f"Suite lock wait: {round(lock_seconds)} s, held by {holders}")
+    wait_lines = [line.translate(ESCAPE_LINE_BREAKS) for line in wait_lines]
     # The lock file holds the details of its holder, for runs that wait.
     handle.seek(0)
     handle.truncate()
     handle.write(json.dumps({"pid": os.getpid(), "command": shlex.join(command),
                              "folder": os.getcwd(), "start": now()}))
     handle.flush()
-    return handle, wait_line
+    return handle, wait_lines
 
 
 def load_passes(path: Path) -> list[dict]:
@@ -248,7 +338,7 @@ def main() -> None:
     # A suite is a command in a folder: the key of its lock and of its recorded pass.
     suite = {"command": command, "folder": folder}
 
-    lock, wait_line = take_lock(suite_lock_path(common, suite), command)
+    lock, wait_lines = take_lock(suite_lock_path(common, suite), command, common, top)
     tree = clean_tree()
     key = {"tree": tree, **suite}
     if tree and not args.rerun:
@@ -257,8 +347,8 @@ def main() -> None:
                 print(f"run_suite: a pass is recorded for tree {tree[:12]} at {entry.get('time')} "
                       f"(commit {str(entry.get('commit'))[:12]}), so the command did not run. "
                       f"Use --rerun to run it again.", flush=True)
-                if wait_line:
-                    print(wait_line, flush=True)
+                for line in wait_lines:
+                    print(line, flush=True)
                 sys.exit(0)
     commit = git("rev-parse", "HEAD")
 
@@ -277,8 +367,7 @@ def main() -> None:
         lines += [f"Failing tests ({len(failures)}):"] + [f"  {failure}" for failure in failures]
     if totals:
         lines += ["Totals:"] + [f"  {total}" for total in totals]
-    if wait_line:
-        lines.append(wait_line)
+    lines += wait_lines
     lines.append(f"Exit status: {status}")
     print("\n".join(lines), flush=True)
     sys.exit(status)

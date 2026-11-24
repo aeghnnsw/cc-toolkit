@@ -446,9 +446,11 @@ To run a full suite, put `python3 dev-skills/scripts/run_suite.py --` before
 its command. A suite is one command in one folder. The script takes one
 lock for each suite, and all worktrees of the repository share each lock.
 So two runs of the same suite run one at a time, and different suites run
-in parallel. The script reports a pass recorded for the same clean tree
-instead of a new run, and it prints the failing tests and the exit status
-last.
+in parallel. A repository's merge-lock tool can make the runs of the other
+worktrees wait with a priority marker; cc-toolkit writes none. See
+[ADR 0011](docs/adr/0011-give-the-merge-lock-holder-suite-priority-with-a-marker.md).
+The script reports a pass recorded for the same clean tree instead of a new
+run, and it prints the failing tests and the exit status last.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov, which the `dev-skills` command
