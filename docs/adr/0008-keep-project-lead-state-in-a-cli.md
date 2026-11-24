@@ -10,11 +10,6 @@
 > test checks the rule. Read
 > [Cleanup of a lead worktree](#cleanup-of-a-lead-worktree).
 >
-> **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
-> list also records a session. Read
-> [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
-> in ADR 0007.
->
 > **Superseded in part (2026-11-23, issue #544).** `start` also changes the
 > lead state once after a takeover: it removes the takeover mark and appends
 > one event. Read
@@ -42,6 +37,11 @@
 > **Superseded in part (2026-11-24, issue #577).** With `--main-only`, the
 > plan lists each planning folder that a worktree removal deletes. Read
 > [The planning folders of a removed worktree](#the-planning-folders-of-a-removed-worktree).
+>
+> **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
+> list also records a session. Read
+> [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
+> in ADR 0007.
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
