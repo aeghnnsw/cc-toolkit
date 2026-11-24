@@ -42,13 +42,8 @@ This version has four modes. With no mode, run check.
 These rules apply to all work on a test suite.
 
 1. Change a file only when the user's request asks for a change.
-2. Keep each test's protection. Put no test weakening in a mixed change. A
-   gate unit is the change that the weakening gate checks as one whole: by
-   default all commits from the merge base with the base branch to HEAD,
-   or each commit alone when merges keep each commit. A mixed change is a
-   gate unit that changes product code. A test weakening is a test-side
-   change that can lower what existing tests detect, such as removing,
-   skipping, loosening, or rewriting an existing test.
+2. Keep each test's protection: put no test weakening in a mixed change,
+   as [references/review.md](references/review.md) defines these terms.
 3. Delete or merge a test only with killed-mutant evidence: a mutant is a
    copy of the product code with one small fault, and a test kills it when
    the test fails on that copy. Delete in batches of at most 20 tests. Each

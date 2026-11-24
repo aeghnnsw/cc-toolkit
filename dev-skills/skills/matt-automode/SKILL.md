@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.25.0
+version: 1.26.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -232,8 +232,7 @@ or a one-off lesson to a steering file.
 ## Sub-agent briefs
 
 Give each agent a self-contained task, owned files, and relevant planning-file
-sections by path and line. Keep plan and task-list tools in this session.
-Run each full test suite through
+sections by path and line. Run each full test suite through
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/run_suite.py" -- <suite command>`, and put that
 command in each brief that runs one. It takes one lock for each suite: one
 command in one folder. So two runs of the same suite run one at a time, and

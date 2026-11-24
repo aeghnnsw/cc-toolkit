@@ -55,17 +55,9 @@ pins the model, enforces the time limits, and prints one status line.
   the other allowed model once (see [Flags](#flags)). Use no other model. The
   runner pins the model on every call, so the skill does not depend on the
   ambient `~/.codex/config.toml`.
-- Reasoning effort: `xhigh` on critic rounds and `low` on the preflight smoke
-  call.
-- Codex sandbox: `read-only` on every call. The kickoff passes `-s read-only`.
-  `codex exec resume` rejects `-s` and does not keep the kickoff sandbox; it
-  reads `sandbox_mode` from the user config. The runner therefore passes
-  `-c sandbox_mode="read-only"` on each resume.
-- Plugins: the runner passes `--disable plugins` on every call, so the
-  critic loads no plugin skill. With plugins, the critic opened this skill's
-  Codex copy, because a packet matches its trigger.
-- Working directory: the runner runs every codex call from `$REPO`.
-  `codex exec resume` rejects `-C` and uses the current directory.
+- Runner settings: the runner sets the reasoning effort, the read-only
+  sandbox, `--disable plugins`, and the working directory `$REPO` on every
+  call. `dev-skills/tests/test_codex_critic.py` checks these values.
 - One goal per critic thread. A new goal starts a new pressure test with its
   own setup. Send no critic call after convergence or the round cap.
 - `SESSION_PATH = docs/pressure-test/sessions/YYYY-MM-DD-topic-slug-session.md`

@@ -50,18 +50,11 @@ pins the model, enforces the time limits, and prints the status line.
   the other allowed model once (see [Flags](#flags)). Use no other model. The
   `critic` function passes `--model` on every call, and `critic_status.py`
   accepts a reply only from the current critic model.
-- Reasoning effort: `xhigh` on critic rounds and `low` on the preflight smoke
-  call.
-- Read-only critic: `--tools "Read,Grep,Glob"` gives the critic no shell,
-  edit, or write tool. `--permission-mode dontAsk` denies anything that is not
-  pre-approved. `--strict-mcp-config` loads no MCP servers, and
-  `--disable-slash-commands` loads no skills. `--add-dir "$DIR"` lets the
-  critic read evidence files in the work directory.
-- Refusal fallback: setup exports `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`.
-  Claude Code otherwise picks its own model after a refusal; this skill
-  switches models itself.
-- Working directory: `critic` runs every claude call from `$REPO`, because
-  Claude Code stores sessions per project directory.
+- Call settings: setup and the `critic` calls set the reasoning effort, the
+  read-only tools and flags, and the working directory `$REPO` of every call,
+  and turn off the refusal fallback of Claude Code.
+  `dev-skills/tests/test_pressure_test_models.py` checks these calls, and
+  `dev-skills/tests/test_limit_call.py` checks the time limit.
 - Codex sandbox: the `claude` CLI needs network access and write access to
   `~/.claude`. If the Codex sandbox blocks either, run each `claude` command
   with escalated permissions. If escalation is unavailable or denied, stop and

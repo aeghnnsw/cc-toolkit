@@ -149,9 +149,9 @@ FIXTURE = {
     'demo/agents/unpinned.md': '---\nname: unpinned\n---\nBody.\n',
     'demo/codex-agents/worker.toml': 'name = "worker"\nmodel = "gpt-6-astra"\n',
     'dev-skills/skills/pressure-test/SKILL.md':
-        'PRIMARY_MODEL="gpt-6-astra"\nFALLBACK_MODEL="gpt-6.1-sol"   # only after a flag\n',
+        'PRIMARY_MODEL="gpt-6-astra"\nFALLBACK_MODEL="gpt-6.1-sol"   # when chosen, or after a flag\n',
     'dev-skills/codex-skills/pressure-test/SKILL.md':
-        'PRIMARY_MODEL="claude-opus-5-5"\nFALLBACK_MODEL="claude-sonnet-5-5"   # only after a flag\n',
+        'PRIMARY_MODEL="claude-opus-5-5"\nFALLBACK_MODEL="claude-sonnet-5-5"   # when chosen, or after a flag\n',
     'dev-skills/antigravity-skills/pressure-test/SKILL.md':
         'A GPT-family main agent stops: "no cross-family critic".\n'
         'PRIMARY_MODEL="gpt-6-astra"\nFALLBACK_MODEL="gpt-6.1-sol"\n',

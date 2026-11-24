@@ -116,9 +116,10 @@ When an evaluator finishes:
    the saved files are the record of the run if your context is compacted.
 2. If the result has no findings list, or the result is partial, send the
    evaluator one message. Ask for its findings so far in its final-message
-   format.
+   format, with the stop reason `partial: <reason>`.
 3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
-   answer comes, keep the saved result, and mark it as partial in the report.
+   answer comes, keep the saved result, and append its stop reason yourself,
+   for example `partial: turn limit, no answer`.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.

@@ -52,9 +52,11 @@ Repeat these steps:
 4. Record each new finding in the finding format. Note anything suspicious
    outside your dimensions for the "Other areas" part of your result.
 
-Stop for one of two reasons only: the deadline has passed, or two angles in
-a row gave no finding that you have not already reported in this run. Do not
-stop because the deadline is near.
+Stop on your own for one of two reasons only: the deadline has passed, or two
+angles in a row gave no finding that you have not already reported in this
+run. Do not stop because the deadline is near. If you are asked for your
+findings before you stop, return them with the stop reason
+`partial: <reason>`.
 
 ## Evidence
 
@@ -96,5 +98,6 @@ Return these parts, in this order:
 3. **Not covered**: areas or angles in your dimensions that you did not
    reach.
 4. **Other areas**: suspicious things outside your dimensions.
-5. **Stop reason**: "deadline" or "two angles with nothing new".
+5. **Stop reason**: "deadline", "two angles with nothing new", or
+   "partial: <reason>".
 6. **Browser checks**: "done", "not needed", or "skipped: <reason>".

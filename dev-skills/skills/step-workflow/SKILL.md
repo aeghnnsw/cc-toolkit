@@ -1,6 +1,6 @@
 ---
 name: step-workflow
-version: 1.1.0
+version: 1.2.0
 description: Use when the user or a calling skill requests step-based file naming and folder organization for a new feature, including sequential numbered prefixes, sub-step notation, and plan tracking across scripts, outputs, tests, or documentation.
 ---
 
@@ -64,8 +64,8 @@ This ensures proper alphabetical sorting.
 5. **Track the numbered work in the host's task list** - Map each task to its
    corresponding step, keep at most one task in progress, and leave none in
    progress after completion
-6. **Renumber when needed** - Restore a clear sequence after inserting or
-   reordering steps
+6. **Keep cited file names** - Insert a sub-step (for example `02_1_`)
+   instead of renumbering a file that another file cites
 
 ## Task List Integration
 

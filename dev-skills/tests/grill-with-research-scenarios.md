@@ -1,21 +1,11 @@
 # Grill With Research scenario review
 
-> On 2026-11-05,
-> [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365) changed the
-> loading rule: the wrapper loads `grilling` and `domain-modeling` directly,
-> not `grill-with-docs`. The cases and expected results follow #365. The #358
-> review record describes the earlier rule, and its case numbers refer to the
-> earlier list.
-
 These cases cover [issue #358](https://github.com/aeghnnsw/cc-toolkit/issues/358),
 [issue #365](https://github.com/aeghnnsw/cc-toolkit/issues/365),
 [issue #388](https://github.com/aeghnnsw/cc-toolkit/issues/388),
 [issue #421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
 [issue #432](https://github.com/aeghnnsw/cc-toolkit/issues/432), and
-[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448). Issue #388
-adds case 20, and issue #448 adds case 21. Issue #421 moves the planning
-folder of case 12 into the checkout where the session started. Issue #432
-adds the Antigravity copy to cases 14, 15, and 19.
+[issue #448](https://github.com/aeghnnsw/cc-toolkit/issues/448).
 Apply each case to the [Claude Code skill](../skills/grill-with-research/SKILL.md),
 the [Codex skill](../codex-skills/grill-with-research/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/grill-with-research/SKILL.md), with
@@ -140,127 +130,6 @@ separately.
 Antigravity copy. It checks the description, that the model can start the
 skill, that the copy matches the Claude Code copy outside the load section,
 the `--host antigravity` resolver line, the stop at
-`disable-model-invocation: true`, and the 440-word body limit (Antigravity
-copy 432 words). It also checks that the Antigravity copy names no Claude
-Code or Codex tool. Before the copy existed, the new checks failed; after it,
-they pass. No simulated review and no live Antigravity session ran for this
-copy, and the dev-skills Antigravity manifest does not exist yet.
-
-### 2026-11-18, issue #421
-
-Two rounds of one fresh agent each read both host copies and cases 12 and 13
-without the expected results. Both rounds gave the expected actions in both
-cases, in both copies. Both reported that `info/exclude` names no base folder,
-so an agent could create the file in the checkout. After round 2, the text
-says "Git's `info/exclude` file"; no round ran on that wording. These were
-simulated instruction reviews.
-
-### 2026-11-08, issues #388 and #394
-
-**Static checks.** `test_grill_with_research.py` checks that both copies
-match outside the load section and stay within the body limit, now 440 words
-(Claude Code copy 430, Codex copy 428).
-
-**Simulated review.** One fresh agent read the Claude Code copies of this
-skill and `matt-automode`, Matt's `grilling`, and cases 9, 16, and 20. It did
-not receive the expected results. It chose the expected actions. In case 20,
-it researched the condition first and planned to ask only if research left it
-open; the expected result now says so. It reported that a plain "yes" to a
-conditional recommendation may not address the condition. The rule treats it
-as not addressed, which is the case that issue #388 describes. It also
-reported that no later step opens a promised follow-up issue; issue #388
-decided to open no issue during grilling.
-
-This was a simulated instruction review. No full grilling session ran.
-
-### 2026-11-05, issue #365
-
-**Static checks.** `test_grill_with_research.py` now requires that both copies
-load `grilling` and `domain-modeling` and that neither body names
-`grill-with-docs`. The test failed before the skill change and passes after
-it. The root tests, the package and release validator, and the Codex
-skill-creator validator pass.
-
-**Live observations.** In this Claude Code session, the model invoked
-`mattpocock-skills:grilling` with the Skill tool, and the tool loaded it. Before
-#365, the same tool refused `grill-with-docs`. The resolver found both skills
-for Claude Code and, with `--host codex`, for Codex.
-
-**Simulated review, round 1.** One fresh agent read both copies, the two Matt
-skills, and cases 14, 15, 17, and 19. It did not receive the expected results.
-Both copies gave the expected actions in cases 14, 15, and 17. In case 19, the
-Claude Code copy decided only a refusal, and the Codex copy let the resolver
-read a skill with `allow_implicit_invocation: false`. Both copies were changed
-to stop at a user-invoked setting.
-
-**Simulated review, round 2.** A fresh agent read the changed copies and cases
-14, 15, 17, and 19. All cases ended at the expected stop or question. It
-reported three gaps: the intro named `grill-with-docs`, which a reader could
-try to load; the Claude Code check read the whole user-invoked `SKILL.md`; and
-the Codex check came after the file was opened. The intro no longer names
-`grill-with-docs`, the Claude Code check reads only the frontmatter, and the
-Codex check runs before the file is opened.
-
-**Simulated review, round 3.** A fresh agent read the final copies and cases 14,
-17, and 19 before it read the expected results. All cases passed on both hosts.
-Neither copy reads a user-invoked `SKILL.md` past its frontmatter. The agent
-named small risks that were not changed: any Skill tool refusal stops the
-skill, and "A Matt skill cannot load" does not list its causes.
-
-**Simulated review, round 4.** After a second code review, case 14 also
-covers Claude Code. A fresh agent read both final copies and cases 14 and 19.
-All sub-cases passed. It reported that the Claude Code read limit came after
-the condition that it guards. The limit now comes with the resolver step,
-before the checks.
-
-**Simulated review, round 5.** A fresh agent read the Claude Code load section
-for three sub-cases: an omitted skill that allows model invocation, an omitted
-skill with `disable-model-invocation: true`, and a refusal. All three passed.
-
-### 2026-11-05, issue #358
-
-**Static checks.** `dev-skills/tests/test_grill_with_research.py` checks the
-description, the invocation policy, the host differences, the resolver lines,
-and the 400-word body limit. The root tests, the package and release
-validator, and the Codex skill-creator validator pass.
-
-**Simulated review, round 1.** Two fresh agents, one for each host copy, read
-the skill, the Matt skills, and cases 1–16. They did not receive the expected
-results. Both chose the expected actions in 14 cases. In cases 8 and 10, both
-said that the text did not decide the next action. They also reported these
-gaps: no `pending` status, a filter that dropped questions that wait for
-research, nested skill names without the plugin prefix, cited scripts that a
-temporary folder could delete, no rename for a date-keyed folder, and a stop
-rule that conflicted with the confirmation step of `grilling`. The skill text
-was changed to close these gaps.
-
-**Live observations.** In a Claude Code session with `dev-skills` 3.33.0, the
-Skill tool refused `mattpocock-skills:grill-with-docs` and said: "Do not
-replicate this skill's workflow by other means — it is reserved for explicit
-user invocation." The skill text now reads a user-invoked skill by path only when the
-user named this skill or a workflow that uses it. Case 14 states this
-condition, and case 17 covers the other condition. The resolver found
-`grill-with-docs`, `grilling`, and `domain-modeling` for Claude Code, and with
-`--host codex` for Codex, with exit status 0. On both hosts, `grilling` and
-`domain-modeling` allow model invocation, and `grill-with-docs` does not. For a
-missing skill, the resolver printed `skill no-such-skill not found` on both
-hosts, with exit status 1. For a missing plugin, it printed
-`plugin no-such-plugin is not installed` for Claude Code and
-`plugin no-such-plugin is not enabled in ~/.codex/config.toml` for Codex, with
-exit status 1. No full
-grilling session ran, because the installed `dev-skills` does not include this
-skill.
-
-**Simulated review, round 2.** One fresh agent read the changed text of both
-copies and cases 6, 8, 10, 12, 14, 16, and 17. Both copies gave the expected
-actions in all seven cases. The agent reported that an "Otherwise" sentence
-could be read as a stop after a successful load, and that the Codex copy could
-not tell an explicit-only skill from a missing one. The text now says "Without
-that request" and "If the skill list omits one".
-
-**Simulated review, round 3.** One fresh agent read the final text and cases
-14, 17, and 18. Both copies gave the expected actions in all three cases. The
-agent reported that the stop in case 17 did not say what to tell the user. The
-text now asks the user to name this skill.
-
-These were simulated instruction reviews and short live checks.
+`disable-model-invocation: true`, and the body word limit. Before the copy
+existed, the new checks failed; after it, they pass. No simulated review and
+no live Antigravity session ran for this copy.

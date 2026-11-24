@@ -51,7 +51,7 @@ Nothing outside the folder links to it. Use `dev-skills:step-workflow` prefixes:
 grilling is the next free step.
 `<step>_research.md` has one section per question ID: finding, source, status
 (verified, assumed, pending, or unresolved), and cited files. Name other files
-`<step>_<n>_<name>`. Never renumber a cited file.
+`<step>_<n>_<name>`.
 
 ## Question filter
 

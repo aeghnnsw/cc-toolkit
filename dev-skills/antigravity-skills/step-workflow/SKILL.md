@@ -64,8 +64,8 @@ This ensures proper alphabetical sorting.
    your own task artifact, never in a tracked file. Map each task to its
    corresponding step, keep at most one task in progress, and leave none in
    progress after completion
-6. **Renumber when needed** - Restore a clear sequence after inserting or
-   reordering steps
+6. **Keep cited file names** - Insert a sub-step (for example `02_1_`)
+   instead of renumbering a file that another file cites
 
 ## Task List Integration
 

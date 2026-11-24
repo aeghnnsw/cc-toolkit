@@ -1,6 +1,6 @@
 ---
 name: project-eval
-version: 2.1.0
+version: 2.2.0
 description: This skill should be used when the user asks to "evaluate the project", "run a deep eval", "evaluate the auth module", "evaluate this design doc", "find issues in this feature", or "check the running app for UX issues", or wants a broad evaluation of a feature, a design document or plan, a running web app, or a whole project across code, security, architecture, data and APIs, user experience, frontend design, product, and documentation. It dispatches skeptical evaluator agents, has a separate verifier check every finding, and writes one report. For a diff or PR, use /code-review; for one decision or design choice, use pressure-test.
 ---
 
@@ -109,9 +109,11 @@ When an evaluator finishes:
    the saved files are the record of the run if your context is compacted.
 2. If the result has no findings list, or the result is partial (turn
    limit), resume the evaluator once with SendMessage. Ask for its findings
-   so far in its final-message format.
+   so far in its final-message format, with the stop reason
+   `partial: <reason>`.
 3. Append the evaluator's answer to that message to `<RUN>/E<N>.md`. If no
-   answer comes, keep the saved result, and mark it as partial in the report.
+   answer comes, keep the saved result, and append its stop reason yourself,
+   for example `partial: turn limit, no answer`.
 4. Check that each finding has a unique ID that starts with `E<N>-`.
 5. Record a new ID in `<RUN>/E<N>.md` for each finding that has no ID or a
    duplicate ID.

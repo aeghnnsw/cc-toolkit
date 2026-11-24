@@ -235,9 +235,7 @@ or a one-off lesson to a steering file.
 
 Start each sub-agent with `invoke_subagent`: `TypeName: "self"`, a `Role`, and a
 `Prompt`. Give each agent a self-contained task, owned files, and relevant
-planning-file sections by path and line. Keep the task list in this session's
-task artifact.
-Run each full test suite through
+planning-file sections by path and line. Run each full test suite through
 `python3 "<plugin-root>/scripts/run_suite.py" -- <suite command>`, and put that
 command in each brief that runs one. It takes one lock for each suite: one
 command in one folder. So two runs of the same suite run one at a time, and
