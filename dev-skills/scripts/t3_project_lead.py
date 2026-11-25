@@ -71,11 +71,11 @@ triage, priorities.
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
 watch PRs.
 4. Read worker messages, and the state, labels, titles, and check counts of
-issues and PRs, not their text. Never call read_issue, or pull_request_read
-with an include other than checks. No diff, code, or log.
+issues and PRs, not their text. Never call read_issue. Call pull_request_read
+only with sections ["checks"]. No diff, code, or log.
 5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
-7. Set triage labels and issue state.
+7. Set issue state; a worker sets triage labels.
 8. Keep agent captures of what waits on the user when your instructions ask
 for them. Write gtd-inbox files with your edit tool, not the shell.
 Give every other task, even a small fix, check, install, host update, or GitHub

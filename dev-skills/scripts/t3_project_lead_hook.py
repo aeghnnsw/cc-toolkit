@@ -31,13 +31,15 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   flagged by the model provider's safeguards, and a flag stops the whole lead
   thread. So in a recorded session, the hook blocks two T3 Code MCP tools:
   `read_issue`, which always returns the body and the comments, and
-  `pull_request_read` unless its `include` is absent or lists only `checks`.
-  When the hook cannot read `include` as a list of strings, it blocks. Claude
-  Code names the tools `mcp__t3-code__<tool>`. Codex changes `-` to `_`, as in
-  `mcp__t3_code__<tool>`, puts a 12-character environment hash after `mcp__`
-  for a server of one environment, as in `mcp__<hash>__t3_code__<tool>`, and
-  its sessions also use the server key `t3-code-direct`. A read-only worker
-  reads the text instead. Antigravity has no known hook payload for MCP calls,
+  `pull_request_read` unless its `sections` is exactly `["checks"]` (issue
+  #604). A call without `sections` blocks, because the default, `summary`
+  and `checks`, includes the PR body. An `include`, for a host that uses
+  that name, must also be absent or exactly `["checks"]`. Any other value
+  blocks. Claude Code names the tools `mcp__t3-code__<tool>`. Codex changes
+  `-` to `_`, as in `mcp__t3_code__<tool>`, puts a 12-character environment
+  hash after `mcp__` for a server of one environment, as in
+  `mcp__<hash>__t3_code__<tool>`, and its sessions also use the server key
+  `t3-code-direct`. A read-only worker reads the text instead. Antigravity has no known hook payload for MCP calls,
   so there only the step text holds the rule.
 - Questions (issue #554): a new-project lead asked the user to pick an
   outcome with AskUserQuestion, and a lead read a worker's question with
@@ -98,7 +100,7 @@ ALLOWED = {
     "respond": ("Do not answer a worker's question: run t3_project_lead.py answer, and give the user the "
                 "worker's thread link. t3_pending_request may only list or read."),
     "text": ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
-             "pull_request_list, and pull_request_read with no include or with only checks. Give a "
+             'pull_request_list, and pull_request_read with sections set to ["checks"]. Give a '
              "triage that needs issue text to a read-only worker."),
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
@@ -117,10 +119,10 @@ AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_user_input_async"})
 PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
-# mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The include values
-# that pull_request_read may give without PR text.
+# mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The one sections
+# value with which pull_request_read returns no PR text (#604).
 T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
-PR_INCLUDE = frozenset({"checks"})
+PR_SECTIONS = ["checks"]
 # Path arguments: Claude Code first, then Antigravity.
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
@@ -321,20 +323,16 @@ def check_text_read(tool, arguments):
     """Raise Blocked when a T3 Code MCP call can return issue or PR text (issue #545).
 
     `read_issue` always returns the body and the comments. `pull_request_read`
-    passes only when its `include` is absent or a list of strings that are all
-    in PR_INCLUDE; any other input fails closed.
+    passes only when its `sections` equals PR_SECTIONS and its `include`, when
+    present, does too (#604). A missing `sections` gets the default, which
+    includes the summary; any other input fails closed.
     """
     if tool == "read_issue":
         raise Blocked("text")
     if tool != "pull_request_read":
         return
-    if not isinstance(arguments, dict):
-        raise Blocked("text")
-    if "include" not in arguments:
-        return
-    include = arguments["include"]
-    if not isinstance(include, list) or not all(isinstance(value, str) and value in PR_INCLUDE
-                                                for value in include):
+    if (not isinstance(arguments, dict) or arguments.get("sections") != PR_SECTIONS
+            or arguments.get("include", PR_SECTIONS) != PR_SECTIONS):
         raise Blocked("text")
 
 
