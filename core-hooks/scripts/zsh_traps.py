@@ -35,8 +35,11 @@ The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
 each simple `echo` command of a list that `;`, `&&`, `||`, or newlines
 join, such as `cat a; echo =====; cat b`. Normal host permissions still
 apply. It denies other commands when an `=name` word names no command on
-`PATH`, because zsh would stop the command line there. With
-`--host claude`, it denies a
+`PATH`, because zsh would stop the command line there. The denial ends with
+the corrected command, which has a backslash before the `=` of each such
+word. The hook gives it only for a command with no heredoc and at most 1500
+characters, and only when the hook does not block the corrected command.
+With `--host claude`, it denies a
 parameter flag, so that the agent reads how to replace it. For each other
 trap, it gives the agent a warning. It reads the command as shell words, so
 single-quoted text, heredoc bodies, and comments give no finding. Traps 1
@@ -114,6 +117,13 @@ EQUALS_DENIAL = (
     "command. Quote the word, for example `'{word}'`. To compare in `[ ]` "
     "or `test`, use one `=`."
 )
+CORRECTED_COMMAND = (
+    "Corrected command, with a backslash before the `=` of each unquoted "
+    "word that names no command. Run it as it is:\n{command}"
+)
+# The denial gives the corrected command only for a command of at most this
+# many characters, so that the message stays short.
+MAX_CORRECTED_LENGTH = 1500
 SPLIT_WARNING = (
     "zsh trap: zsh does not split the unquoted variable `{word}` into words. "
     "The value stays one command name or one argument. To keep a command in "
@@ -213,11 +223,17 @@ Word = namedtuple('Word', 'text quoted_space')
 # command, for example because zsh would stop the whole command line there.
 Trap = namedtuple('Trap', 'message blocks')
 
+# One unquoted word that starts with `=`, and the index of that `=` in the
+# whole command. The index is correct only for a command with no heredoc,
+# because the analysis reads the command without its heredoc bodies.
+EqualsWord = namedtuple('EqualsWord', 'start text')
+
 
 class Findings:
     """What the analysis of one command and its substitutions found."""
 
     def __init__(self):
+        # EqualsWord items, such as `=====`.
         self.equals_words = []
         # Words that are one unquoted variable, such as `$PY`.
         self.variable_words = []
@@ -286,15 +302,15 @@ def _brace_end(text, index):
 def _substitution_end(text, index, bodies, command):
     """Skip a backtick, `$(`, `$((`, `=(`, `<(`, or `>(` part of a word.
 
-    Adds the text of a command substitution to `bodies`, so that it can be
-    read as a command. `$((` arithmetic and the elements of an array
-    assignment are not commands.
+    Adds (start, text) of a command substitution to `bodies`, so that it can
+    be read as a command; `start` is the index of the text in `text`. `$((`
+    arithmetic and the elements of an array assignment are not commands.
     """
     if text[index] == "`":
         end = _find_backtick_end(text, index + 1)
         if end is None:
             return len(text)
-        bodies.append(text[index + 1:end])
+        bodies.append((index + 1, text[index + 1:end]))
         return end + 1
     # A `)` in a heredoc body is data, so it does not close the substitution.
     end = _find_substitution_end(_blank_heredoc_bodies(text[index + 2:]), 0)
@@ -302,7 +318,7 @@ def _substitution_end(text, index, bodies, command):
         return len(text)
     end += index + 2
     if command and not text.startswith("((", index + 1):
-        bodies.append(text[index + 2:end])
+        bodies.append((index + 2, text[index + 2:end]))
     return end + 1
 
 
@@ -382,7 +398,9 @@ def _read_word(text, index, bodies):
 def _spanned_tokens(text, bodies):
     """Yield (kind, token, start, end) for each token of `text`.
 
-    The kind and token are as in `_tokens`; `text[start:end]` is the token.
+    The kind and token are ("word", Word), ("operator", text),
+    ("redirection", text), or ("arithmetic", text); `text[start:end]` is the
+    token.
     """
     index = 0
     while index < len(text):
@@ -413,14 +431,6 @@ def _spanned_tokens(text, bodies):
         else:
             word, index = _read_word(text, index, bodies)
             yield "word", word, start, index
-
-
-def _tokens(text, bodies):
-    """Yield ("word", Word), ("operator", text), ("redirection", text), or
-    ("arithmetic", text) tokens of `text`.
-    """
-    for kind, token, _, _ in _spanned_tokens(text, bodies):
-        yield kind, token
 
 
 def _starts_with_equals(text):
@@ -478,11 +488,13 @@ def _record_expansions(text, findings):
             findings.modifiers.append(modifier.groups())
 
 
-def _record_assignment(word, findings):
+def _record_assignment(word, start, findings):
+    """Add the assignment `word`, which starts at the index `start` of the
+    whole command, to `findings`."""
     match = ASSIGNMENT_RE.match(word.text)
     value = word.text[match.end():]
     if _starts_with_equals(value):
-        findings.equals_words.append(value)
+        findings.equals_words.append(EqualsWord(start + match.end(), value))
     if value.startswith("("):
         kind = "array"
     elif word.quoted_space:
@@ -577,8 +589,11 @@ def _end_command(words, operator, piped_test, findings):
     return None
 
 
-def _analyze(text, findings, depth):
-    """Add the traps of `text` and its command substitutions to `findings`."""
+def _analyze(text, findings, depth, offset=0):
+    """Add the traps of `text` and its command substitutions to `findings`.
+
+    `offset` is the index of `text` in the whole command.
+    """
     if depth > MAX_NESTED_SHELL_DEPTH:
         return
     bodies = []
@@ -596,7 +611,7 @@ def _analyze(text, findings, depth):
     words = []
     # The test word of an earlier command of the current pipeline.
     piped_test = None
-    for kind, token in _tokens(strip_heredoc_bodies(text), bodies):
+    for kind, token, start, _ in _spanned_tokens(strip_heredoc_bodies(text), bodies):
         if kind == "word":
             _record_expansions(token.text, findings)
         if in_condition:
@@ -618,7 +633,7 @@ def _analyze(text, findings, depth):
         if after_redirection:
             after_redirection = False
             if _starts_with_equals(word):
-                findings.equals_words.append(word)
+                findings.equals_words.append(EqualsWord(offset + start, word))
             continue
         words.append(word)
         if for_state == "name":
@@ -637,7 +652,7 @@ def _analyze(text, findings, depth):
             if word in COMMAND_PREFIXES:
                 continue
             if ASSIGNMENT_RE.match(word):
-                _record_assignment(token, findings)
+                _record_assignment(token, offset + start, findings)
                 continue
             command_start, command_word = False, word
             if word in DIRECTORY_COMMANDS:
@@ -652,10 +667,10 @@ def _analyze(text, findings, depth):
                 findings.split_lists.append(split_words)
                 continue
         elif command_word in DECLARATION_COMMANDS and ASSIGNMENT_RE.match(word):
-            _record_assignment(token, findings)
+            _record_assignment(token, offset + start, findings)
             continue
         if _starts_with_equals(word):
-            findings.equals_words.append(word)
+            findings.equals_words.append(EqualsWord(offset + start, word))
         elif not in_case and command_word != "noglob" and _is_glob(word):
             findings.glob_words.append(word)
         if split_words is not None and not (
@@ -666,14 +681,46 @@ def _analyze(text, findings, depth):
         if _variable_name(word) and command_word != "eval":
             findings.variable_words.append(word)
     _end_command(words, None, piped_test, findings)
-    for body in bodies:
-        _analyze(body, findings, depth + 1)
+    for body_start, body in bodies:
+        _analyze(body, findings, depth + 1, offset + body_start)
 
 
 def _names_no_command(word):
     """Report whether `=name` names no command, so that zsh stops there."""
     name = word[1:]
     return "/" not in name and shutil.which(name) is None
+
+
+def corrected_command(command, cwd=None, host=None):
+    """Return `command` with a backslash before the `=` of each `=name` word
+    that names no command, or None.
+
+    A backslash keeps the rest of each word, such as a `$name` expansion,
+    which single quotes would stop. Returns None when no word needs a
+    backslash, when `command` has more than MAX_CORRECTED_LENGTH characters,
+    or when the hook blocks the corrected command. Also returns None for a
+    command with a heredoc: the analysis can read a heredoc body as code,
+    and a backslash in a body or in its end word changes the command.
+    """
+    if len(command) > MAX_CORRECTED_LENGTH or HEREDOC_RE.search(command):
+        return None
+    findings = Findings()
+    _analyze(command, findings, 0)
+    starts = sorted({
+        word.start for word in findings.equals_words if _names_no_command(word.text)
+    })
+    if not starts or any(command[start] != "=" for start in starts):
+        return None
+    parts = []
+    end = 0
+    for start in starts:
+        parts.extend((command[end:start], "\\"))
+        end = start
+    parts.append(command[end:])
+    corrected = "".join(parts)
+    if any(trap.blocks for trap in zsh_traps(corrected, cwd, host)):
+        return None
+    return corrected
 
 
 def _quote_echo_separators(command):
@@ -769,7 +816,7 @@ def zsh_traps(command, cwd=None, host=None):
         and _variable_name(words[0])
         and assignments.get(_variable_name(words[0])) != "array"
     ]
-    missing = [word for word in findings.equals_words if _names_no_command(word)]
+    missing = [word for word in findings.equals_words if _names_no_command(word.text)]
     directory = None if findings.changes_directory else cwd
     glob_words = [] if host == ANTIGRAVITY else findings.glob_words
     unmatched = [word for word in glob_words if _matches_no_file(word, directory)]
@@ -777,9 +824,10 @@ def zsh_traps(command, cwd=None, host=None):
     if findings.flags and host == "claude":
         traps.append(Trap(FLAG_DENIAL.format(flag=findings.flags[0]), True))
     if missing:
-        traps.append(Trap(EQUALS_DENIAL.format(word=missing[0], name=missing[0][1:]), True))
+        word = missing[0].text
+        traps.append(Trap(EQUALS_DENIAL.format(word=word, name=word[1:]), True))
     elif findings.equals_words:
-        traps.append(Trap(EQUALS_WARNING.format(word=findings.equals_words[0]), False))
+        traps.append(Trap(EQUALS_WARNING.format(word=findings.equals_words[0].text), False))
     if unsplit:
         traps.append(Trap(SPLIT_WARNING.format(word=unsplit[0]), False))
     if unmatched:
@@ -797,6 +845,22 @@ def zsh_traps(command, cwd=None, host=None):
     if findings.timeout and host != ANTIGRAVITY and shutil.which("timeout") is None:
         traps.append(Trap(TIMEOUT_WARNING, False))
     return traps
+
+
+def _trap_message(traps, command, cwd, host):
+    """Join the messages of `traps`. A denial ends with the corrected
+    command of `corrected_command`, when there is one."""
+    message = "\n".join(trap.message for trap in traps)
+    if not any(trap.blocks for trap in traps):
+        return message
+    try:
+        corrected = corrected_command(command, cwd, host)
+    except Exception:
+        # The corrected command is optional; the denial stays without it.
+        return message
+    if corrected is None:
+        return message
+    return message + "\n" + CORRECTED_COMMAND.format(command=corrected)
 
 
 def _working_directory(input_data):
@@ -843,7 +907,7 @@ def main():
         if corrected is not None:
             message = REWRITE_DENIAL.format(command=corrected)
         elif traps:
-            message = "\n".join(trap.message for trap in traps)
+            message = _trap_message(traps, command, cwd, host)
         else:
             sys.exit(0)
         print(f"BLOCKED: {message}", file=sys.stderr)
@@ -856,7 +920,7 @@ def main():
             output["permissionDecision"] = "allow"
         print(json.dumps({"hookSpecificOutput": output}))
     elif traps:
-        message = "\n".join(trap.message for trap in traps)
+        message = _trap_message(traps, command, cwd, host)
         if any(trap.blocks for trap in traps):
             decision = {"permissionDecision": "deny", "permissionDecisionReason": message}
         else:
