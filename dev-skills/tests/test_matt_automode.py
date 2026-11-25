@@ -14,6 +14,8 @@ full test suite runs through the suite lock script.
 Issue #298: after a rebase whose resolution changes only versions and
 changelog entries, only the version and changelog checks run again locally.
 Issue #608: phase 3 makes the requirement pins with `lean_tests.py pin --record`.
+Issue #623: the pin record lasts after the worktree, a later session checks
+it and does not pin again, and the report gives its path.
 Issue #609: phase 4 names no user-invoked skill and states the steps of
 `mattpocock-skills:implement` itself.
 Agent behavior is checked by the scenario review in
@@ -71,8 +73,12 @@ SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec
                "check must block. Where the check cannot decide, it blocks: it fails closed.")
 PIN_LINK = '"Pin the requirement sources" in the review mode of [lean-tests](../lean-tests/SKILL.md)'
 PIN_RULE = ("Make the pin record with `lean_tests.py pin --record`, which needs Python 3.9 or newer. "
-            "Do not write the record with another script: `pin --check` rejects it. Record the pin "
-            "directory and the SHA-256 value of each source.")
+            "Do not write the record with another script: `pin --check` rejects it. Without a file after "
+            "`--record`, the record lasts after the worktree is removed. Record its path and the SHA-256 "
+            "value of each source. When the brief names the pin record of an earlier session, run "
+            "`pin --check` on it, and do not pin its sources again.")
+PIN_REPORT = ("When the run pinned requirement sources, run `pin --check` on the pin record, and report its "
+              "path and the SHA-256 value of each source.")
 IMPLEMENT_STEPS = (
     "4. **Implement.** Start coding",
     "Use `mattpocock-skills:tdd` at the test seams of the spec.",
@@ -247,6 +253,12 @@ class PhasesThreeAndFourNameTheirStepsTest(unittest.TestCase):
                 self.assertIn(PIN_LINK, phase)
                 self.assertIn(PIN_RULE, phase)
                 self.assertNotIn("using Python 3.9 or newer; record", phase)
+
+    def test_the_report_gives_the_checked_pin_record(self) -> None:
+        """Issue #623: the report gives the path of a checked pin record to the next session."""
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn(PIN_REPORT, flat(automode(host)).partition("## Finish")[2])
 
     def test_phase_four_states_the_steps_of_implement(self) -> None:
         for host in HOSTS:

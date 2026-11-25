@@ -31,36 +31,45 @@ change. A pinned requirement source is the user's original request, or the
 text of a spec or issue that the request names, recorded with its SHA-256
 hash.
 
-1. Make a pin directory outside the project, and write its printed path as
-   `<pin-dir>`. Keep it until the change merges: the review work directory
-   does not last that long.
+1. Make a temporary folder for the source files, and write its printed
+   path as `<source-dir>`:
 
    ```bash
    mktemp -d "${TMPDIR:-/tmp}/lean-tests-pin.XXXXXX"
    ```
 
 2. Write the user's original request, word for word, to
-   `<pin-dir>/request.txt`. Write the text of each issue that the request
+   `<source-dir>/request.txt`. Write the text of each issue that the request
    names to its own file:
 
    ```bash
-   gh issue view <n> --json title,body --jq '.title + "\n\n" + .body' > <pin-dir>/issue-<n>.txt
+   gh issue view <n> --json title,body --jq '.title + "\n\n" + .body' > <source-dir>/issue-<n>.txt
    ```
 
 3. Pin the files:
 
    ```bash
-   <python> <skill-dir>/scripts/lean_tests.py pin --record <pin-dir>/pins.json \
-     --source request=<pin-dir>/request.txt --source issue-<n>=<pin-dir>/issue-<n>.txt
+   <python> <skill-dir>/scripts/lean_tests.py pin --record --project <project> \
+     --source request=<source-dir>/request.txt --source issue-<n>=<source-dir>/issue-<n>.txt
    ```
 
-   Give one `--source NAME=PATH` for each file. pin writes a new record
-   and never changes one: when the record exists, it exits with status 2.
-4. Report the `sha256` value of each source to the user. Step 7 compares
-   the pinned texts with these values.
+   Give one `--source NAME=PATH` for each file. Without a file after
+   `--record`, pin writes a new record that only the user can read, in
+   `lean-tests-pins/` of the Git common folder of `<project>`: the folder
+   that `git rev-parse --git-common-dir` prints. That record lasts after
+   the temporary folder and the worktree are removed, each worktree of the
+   clone can read it, and Git never commits or pushes it. Write the
+   `record` path of the summary as `<pin-record>`. The record holds each
+   source text, so `pin --check` needs only the record, and you can remove
+   `<source-dir>`. pin never changes a record. `--record FILE` writes the
+   new record FILE instead, and exits with status 2 when FILE exists.
+4. Report `<pin-record>` and the `sha256` value of each source to the user.
+   Step 7 compares the pinned texts with these values. A later session that
+   continues the work runs `pin --check <pin-record>`, and does not pin
+   those sources again: their pin time and hashes stay.
 
-Done when `<pin-dir>/pins.json` exists and the user has the `sha256` value
-of each source.
+Done when `<pin-record>` exists and the user has its path and the `sha256`
+value of each source.
 
 ## 1. Choose the change
 
@@ -342,7 +351,7 @@ An acceptance reviewer accepts an item as follows:
 3. Check the quote. In `<sentence>`, write each single quote as `'\''`.
 
    ```bash
-   <python> <skill-dir>/scripts/lean_tests.py pin --check <pin-dir>/pins.json \
+   <python> <skill-dir>/scripts/lean_tests.py pin --check <pin-record> \
      --quote '<sentence>'
    ```
 
@@ -397,7 +406,7 @@ rm -r <work-dir>
 ```
 
 Each difference is a file that the tests wrote. Report these files, and
-ask the user before you remove one. Keep `<pin-dir>` until the change
-merges.
+ask the user before you remove one. Keep `<pin-record>`: a later session
+that continues the work checks it.
 
 Done when the report is complete and the work directory is removed.

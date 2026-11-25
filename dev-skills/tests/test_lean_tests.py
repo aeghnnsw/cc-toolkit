@@ -2582,6 +2582,58 @@ class PinTest(unittest.TestCase):
         self.assertEqual(data["summary"]["changed"], ["issue"])
 
 
+class DefaultPinRecordTest(unittest.TestCase):
+    """#623: pin --record without a file writes a private record in the Git common folder. A later session
+    checks that record after the source folder and the worktree are gone."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.env = git_env(self.tmp)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        git(self.repo, self.env, "init", "-q")
+        git(self.repo, self.env, "commit", "-q", "--allow-empty", "-m", "start")
+        self.worktree = self.tmp / "worktree"
+        git(self.repo, self.env, "worktree", "add", "-q", "-b", "work", str(self.worktree))
+        self.sources = self.tmp / "sources"
+        self.sources.mkdir()
+        self.request = self.sources / "request.txt"
+        self.request.write_text("Keep the pin record after a handoff.\n", encoding="utf-8")
+
+    def pin(self, project: Path) -> tuple[int, dict, str]:
+        return run_cli("pin", "--record", "--project", str(project), "--source", f"request={self.request}",
+                       env=self.env)
+
+    def test_record_outlasts_the_source_folder_and_the_worktree(self) -> None:
+        code, data, stderr = self.pin(self.worktree)
+        self.assertEqual(code, 0, stderr)
+        record = Path(data["summary"]["record"])
+        common = Path(git(self.repo, self.env, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+        self.assertEqual(record.parent, common / "lean-tests-pins")
+        self.assertEqual(record.parent.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+        code, second, stderr = self.pin(self.worktree)
+        self.assertEqual(code, 0, stderr)
+        self.assertNotEqual(second["summary"]["record"], str(record))
+
+        shutil.rmtree(self.sources)
+        git(self.repo, self.env, "worktree", "remove", str(self.worktree))
+        code, check, stderr = run_cli("pin", "--check", str(record), env=self.env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(check["summary"]["changed"], [])
+        self.assertEqual(check["summary"]["pinned_at"], data["summary"]["pinned_at"])
+        self.assertEqual(check["sources"][0]["sha256"], data["summary"]["sha256"]["request"])
+
+    def test_outside_git_needs_a_record_file(self) -> None:
+        plain = self.tmp / "plain"
+        plain.mkdir()
+        code, data, _ = self.pin(plain)
+        self.assertEqual(code, 2)
+        self.assertIn("needs a Git checkout", data["error"])
+
+
 CHANGED_PYPROJECT = """\
 [project]
 name = "pkg"
