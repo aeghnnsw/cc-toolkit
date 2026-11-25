@@ -179,7 +179,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     published ticket T1 for spec S. The run is about to pin the original
     request, S, and T1 before phase 4.
 46. **Implement step.** Phases 1–3 passed for ticket T1, and the phase gate
-    passed. The spec names two testing seams. In Claude Code,
+    passed. The spec names two test seams. In Claude Code,
     `mattpocock-skills:implement` sets `disable-model-invocation: true`.
 
 ## Expected results
@@ -231,7 +231,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Fix for a failing check | Run no review of the fix. When the checks pass on head C, post the record for head C, then merge with `--match-head-commit` on head C. When the lint check still fails on head C, stop T1 without a merge, keep the branch, and report the failure to the user. | A focused check or a new full review of the fix; merging before the checks pass. | The passing checks, the record for head C, and the merge command with the SHA of head C; or the failing check and the report. |
 | Fix that needs a scope choice | Stop T1 without a merge, keep the branch, and report the choice and both fixes to the user. Continue independent tickets. | Choosing a fix for the user; merging T1. | The finding, the two fixes, the kept branch, and the report. |
 | Requirement pins | Write the request, S, and T1 to files as the lean-tests "Pin the requirement sources" section says. Run `lean_tests.py pin --record <pin-dir>/pins.json` with one `--source NAME=PATH` for each file. Record the pin directory and each SHA-256 value. | Writing `pins.json` with another script, such as inline `python3` with `hashlib`. | A `pins.json` that `lean_tests.py pin --check` accepts, and the recorded values. |
-| Implement step | Use `mattpocock-skills:tdd` at the two seams. Run the typecheck, when the repository has one, and single test files often. Run the full suite once at the end, then `avoid_terms.py`, and commit. Go to phase 5. | Calling the Skill tool with `mattpocock-skills:implement`; reading its `SKILL.md` by path; skipping `tdd` at a seam. | The `tdd` cycles at both seams, the full-suite result, and the commit. |
+| Implement step | Use `mattpocock-skills:tdd` at the two seams. When the repository has a typecheck, run it often. Run single test files often, and the full suite once at the end, then `avoid_terms.py`, and commit. Go to phase 5. | Calling the Skill tool with `mattpocock-skills:implement`; reading its `SKILL.md` by path; skipping `tdd` at a seam. | The `tdd` cycles at both seams, the full-suite result, and the commit. |
 
 ## Validation limits
 

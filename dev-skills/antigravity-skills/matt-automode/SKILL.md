@@ -52,7 +52,7 @@ Challenge candidate answers against evidence, alternatives, failure cases,
 compatibility, and consumers. Record the decision and rationale, then take the
 next round. If evidence leaves a near tie, or only a preference can decide,
 choose the answer easiest to reverse and record the gap and risk. Resolve
-routine checkpoints yourself, including testing seams, ticket breakdown, the
+routine checkpoints yourself, including test seams, ticket breakdown, the
 comparison commit, and which retro findings justify a proposal issue.
 
 ## Phases and completion checks
@@ -70,7 +70,7 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    the source issue's problem statement against the phase 1 decisions. Unless
    a decision names a conflict and gives a reason, record the conflict as an
    unresolved decision and reopen phase 1. When no conflict is unresolved,
-   publish and verify the spec with scope, decisions, and testing seams. Align
+   publish and verify the spec with scope, decisions, and test seams. Align
    any glossary entries added by this task with its decisions. For a change to
    a safety check, such as a command hook, the spec states what the check must
    block. Where the check cannot decide, it blocks: it fails closed.
@@ -91,9 +91,9 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    `python3 "<plugin-root>/scripts/phase_gate.py" --ticket <N>`. On exit status 1,
    do not start. Each `FAIL` line names the missing issue, the blocker
    without a merged PR, or the reason that the script cannot decide. Use
-   `mattpocock-skills:tdd` at the testing seams of the spec. Run the
-   typecheck, when the repository has one, and single test files often. Run
-   the full test suite once at the end. Before committing, run
+   `mattpocock-skills:tdd` at the test seams of the spec. When the repository
+   has a typecheck, run it often. Run single test files often, and the full
+   test suite once at the end. Before committing, run
    `python3 "<plugin-root>/scripts/avoid_terms.py" --base <comparison commit>`.
    It lists each added Markdown line that uses a glossary `_Avoid_` term. Use
    the glossary term where the line names its concept. Report helpers

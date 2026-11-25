@@ -75,13 +75,13 @@ PIN_RULE = ("Make the pin record with `lean_tests.py pin --record`, which needs 
             "directory and the SHA-256 value of each source.")
 IMPLEMENT_STEPS = (
     "4. **Implement.** Start coding",
-    "Use `mattpocock-skills:tdd` at the testing seams of the spec.",
-    "Run the typecheck, when the repository has one, and single test files often. Run the full test "
-    "suite once at the end.",
+    "Use `mattpocock-skills:tdd` at the test seams of the spec.",
+    "When the repository has a typecheck, run it often. Run single test files often, and the full "
+    "test suite once at the end.",
     "Commit the changes. Phase 5 runs the review.",
 )
 # Issue #609: mattpocock-skills 1.3.2 sets disable-model-invocation: true in implement.
-USER_INVOKED_IMPLEMENT = "mattpocock-skills:implement"
+USER_INVOKED_IMPLEMENT = ("mattpocock-skills:implement", "`implement`")
 
 
 def automode(host: str) -> str:
@@ -260,8 +260,8 @@ class PhasesThreeAndFourNameTheirStepsTest(unittest.TestCase):
         for host in HOSTS:
             text = automode(host)
             with self.subTest(host=host):
-                self.assertNotIn(USER_INVOKED_IMPLEMENT, text)
-                self.assertNotIn("`implement`", text)
+                for name in USER_INVOKED_IMPLEMENT:
+                    self.assertNotIn(name, text)
 
 
 if __name__ == "__main__":
