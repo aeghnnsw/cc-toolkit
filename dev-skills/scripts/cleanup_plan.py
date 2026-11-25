@@ -35,12 +35,14 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
   that script fails, keep every worktree. When only session logs and
   Antigravity conversations list a worktree, the reason gives the time when
-  their 60-minute window ends. These do not keep a worktree whose path a task
-  in an accepted state records (#610): verified, closed-out, or settled, and
-  not cancelled, as accepted() of t3_project_lead.py tells. Its worker's
-  session has ended. The rule of a task that is not settled decides first, so
-  this frees the worktree of a settled task. A Git lock or a running process
-  still keeps the worktree.
+  their 60-minute window ends, or says that the end is unknown. Session logs
+  and Antigravity conversations do not keep a worktree when each task that
+  records its path is in an accepted state (#610): verified, closed-out, or
+  settled, and not cancelled, as accepted() of t3_project_lead.py tells. The
+  workers of such a task have ended their sessions. The rule for a task that
+  is not settled decides first, so the #610 rule frees the worktree of a
+  settled task. The plan then applies the rules below, and the reason names
+  the task. A Git lock or a running process still keeps the worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
 - A branch is merged when a merged PR of the branch has the branch tip as its
   head commit (headRefOid). The plan also treats a branch as merged when its
@@ -291,11 +293,15 @@ def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, s
     The result is (kept, ended, None), with the error of the first lead state
     that cannot be read in place of None. kept maps the real path of each
     worktree that a task that is not settled records to the reason to keep it.
-    ended maps the real path of each other worktree that an accepted task
-    records to the task: its worker's session has ended.
+    ended maps the real path of each other worktree to a description of an
+    accepted task that records it, when every task that records it is
+    accepted. The lead accepted the final report of that task's worker, and
+    settles a replaced worker at once (task worker), so their sessions have
+    ended.
     """
     kept: dict[str, str] = {}
     ended: dict[str, str] = {}
+    not_accepted: set[str] = set()
     first_error = None
     for folder in folders:
         try:
@@ -304,16 +310,20 @@ def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, s
                 if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
                     raise TypeError(f"task {task['name']} has the worktrees {paths!r}")
                 about = f"task {task['name']} of the lead state {folder} is {task['state']}"
-                for path in paths:
+                for path in map(os.path.realpath, paths):
                     if accepted_task(task):
-                        ended.setdefault(os.path.realpath(path), about)
+                        ended.setdefault(path, about)
+                    else:
+                        not_accepted.add(path)
                     if task["state"] != SETTLED:
-                        kept.setdefault(os.path.realpath(path), f"{about}, not settled")
+                        kept.setdefault(path, f"{about}, not settled")
         except (OSError, ValueError, KeyError, TypeError, AttributeError,
                 LeadStateRefused) as error:
             first_error = first_error or (f"cannot read the lead state {folder}: "
                                           f"{type(error).__name__}: {one_line(str(error))}")
-    return kept, {path: task for path, task in ended.items() if path not in kept}, first_error
+    ended = {path: about for path, about in ended.items()
+             if path not in kept and path not in not_accepted}
+    return kept, ended, first_error
 
 
 class T3Error(Exception):
@@ -508,20 +518,22 @@ def main() -> None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
         elif path in live and path not in ignored:
             plan[path] = (KEEP, live_reason(*live[path]))
-        elif branch is None:
-            plan[path] = (KEEP, f"detached HEAD {head[:7]}" + (
-                ": no commit of its own, because it is in the Default Branch"
-                if planner.in_default(head) else ", which is not in the Default Branch"))
         else:
-            status = git(path, "status", "--porcelain", check=False)
-            if status is None:
-                plan[path] = (KEEP, "its status cannot be read")
-            elif status.strip():
-                plan[path] = (KEEP, "uncommitted changes")
+            if branch is None:
+                plan[path] = (KEEP, f"detached HEAD {head[:7]}" + (
+                    ": no commit of its own, because it is in the Default Branch"
+                    if planner.in_default(head) else ", which is not in the Default Branch"))
             else:
-                plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
-        if path in ignored and plan[path][0] == REMOVE:
-            plan[path] = (REMOVE, f"{plan[path][1]}; {ignored[path]}")
+                status = git(path, "status", "--porcelain", check=False)
+                if status is None:
+                    plan[path] = (KEEP, "its status cannot be read")
+                elif status.strip():
+                    plan[path] = (KEEP, "uncommitted changes")
+                else:
+                    plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
+            if path in ignored:
+                action, reason = plan[path]
+                plan[path] = (action, f"{reason}; {ignored[path]}")
 
     # A lead state or a T3 Code thread that cannot be read may own any worktree.
     if lead_error is not None or thread_error is not None:

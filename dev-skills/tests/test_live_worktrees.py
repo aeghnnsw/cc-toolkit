@@ -274,15 +274,16 @@ class LiveWorktreesTests(unittest.TestCase):
             ("conv-x", "yesterday", json.dumps([unknown.as_uri()])),
         ])
 
-        def end(stamp: float) -> str:
+        def assert_end(field: str, stamp: float) -> None:
             # The first whole second after the window: the plan keeps the worktree up to its end.
-            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(stamp + 3600) + 1))
+            end = datetime.strptime(field, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            self.assertTrue(stamp + 3600 < end <= stamp + 3601, (field, stamp))
 
         listed = self.run_fields()
 
-        self.assertEqual(listed[self.listed_path(logs)][1], end(newest.stat().st_mtime))
+        assert_end(listed[self.listed_path(logs)][1], newest.stat().st_mtime)
         self.assertIn("and 1 more", listed[self.listed_path(logs)][0])
-        self.assertEqual(listed[self.listed_path(mixed)][1], end(changed.timestamp()))
+        assert_end(listed[self.listed_path(mixed)][1], changed.timestamp())
         self.assertIn("process", listed[self.listed_path(busy)][0])
         self.assertEqual(listed[self.listed_path(busy)][1], "")
         self.assertEqual(listed[self.listed_path(unknown)][1], "unknown")

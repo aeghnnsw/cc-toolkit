@@ -10,14 +10,15 @@ issue #575: the worktrees that the tasks of a lead state record, and a lead
 state that cannot be read; issue #575 also changed cases 17-19. Case 31 comes
 from issue #577, which also changed case 16. Cases 32-35 come from issue #578:
 the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
-Cases 36-39 come from issue #610: the session logs of a worktree whose task the
-lead accepted, and the end of the 60-minute window. Each check builds a temporary repository with a bare origin, runs the script
-with a fake gh (fake_gh.py), and reads the lines that it prints. No check runs
-the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other
-checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py
-runs, so most checks need lsof. Each class makes as few plan runs as it can, because each
-run takes some seconds: one, or one for each mode. No check touches another
-repository.
+Cases 36-41 come from issue #610: the session logs of a worktree whose task the
+lead accepted, and the end of the 60-minute window. Each check builds a
+temporary repository with a bare origin, runs the script with a fake gh
+(fake_gh.py), and reads the lines that it prints. No check runs the real t3
+CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other checks run
+with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py runs, so
+most checks need lsof. Each class makes as few plan runs as it can, because
+each run takes some seconds: one, or one for each mode. No check touches
+another repository.
 """
 
 from __future__ import annotations
@@ -588,31 +589,40 @@ class LeadStateCases(PlanTestCase):
 
 @NEEDS_LSOF_AND_GIT
 class AcceptedTaskCases(PlanTestCase):
-    """Cases 36-39: merged worktrees with a session log of the last 60 minutes (#610).
+    """Cases 36-41: merged worktrees with a session log of the last 60 minutes (#610).
 
-    The lead state in the main checkout records done-a and done-b for settled
-    tasks, and gone-c for a task that was cancelled and then settled. No lead
-    state records free-d. A process also runs in done-b.
+    The lead state in the main checkout records done-a, done-b, and dirty-f
+    for settled tasks, and gone-c for a task that was cancelled and then
+    settled. It records shared-e for a settled task and for a cancelled task.
+    No lead state records free-d. A process also runs in done-b, and dirty-f
+    has uncommitted changes.
     """
 
     @classmethod
     def setUpClass(cls):
         repo = cls.repo = cls.make_repo()
         worktrees = {}
-        for number, name in enumerate(("done-a", "done-b", "gone-c", "free-d"), start=120):
+        for number, name in enumerate(("done-a", "done-b", "gone-c", "free-d", "shared-e",
+                                       "dirty-f"), start=120):
             worktrees[name] = repo.worktree(name)
             repo.squash_merge(name, number)
             log = repo.claude_dir / "projects" / "-repo" / f"{name}.jsonl"
             log.parent.mkdir(parents=True, exist_ok=True)
             log.write_text(json.dumps({"type": "user", "cwd": str(worktrees[name])}) + "\n")
-        cls.done_a, cls.done_b, cls.gone_c, cls.free_d = worktrees.values()
+        (cls.done_a, cls.done_b, cls.gone_c, cls.free_d, cls.shared_e,
+         cls.dirty_f) = worktrees.values()
         repo.start(cls.done_b)
+        (cls.dirty_f / "wip.txt").write_text("unsaved work\n")
         cls.state = repo.folder(repo.path, "20261124-lead-main")
         lead_state(cls.state,
                    {"name": "fix-610", "state": "settled", "worktrees": [cls.done_a]},
                    {"name": "fix-611", "state": "settled", "worktrees": [cls.done_b]},
                    {"name": "drop-612", "state": "settled", "cancelled": True,
-                    "worktrees": [cls.gone_c]})
+                    "worktrees": [cls.gone_c]},
+                   {"name": "fix-613", "state": "settled", "worktrees": [cls.shared_e]},
+                   {"name": "drop-614", "state": "settled", "cancelled": True,
+                    "worktrees": [cls.shared_e]},
+                   {"name": "fix-615", "state": "settled", "worktrees": [cls.dirty_f]})
         cls.plan = repo.plan()
 
     def test_case_36_a_session_log_does_not_keep_the_worktree_of_an_accepted_task(self):
@@ -635,6 +645,15 @@ class AcceptedTaskCases(PlanTestCase):
         self.assert_kept_with_branches(self.free_d, "live session: session log")
         self.assertRegex(self.line("worktree", self.free_d)[1],
                          r"; its 60-minute window ends at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+    def test_case_40_a_cancelled_task_that_records_the_worktree_keeps_its_session_log(self):
+        self.assert_kept_with_branches(self.shared_e, "live session: session log",
+                                       "its 60-minute window ends at")
+
+    def test_case_41_another_rule_keeps_the_worktree_and_the_reason_names_the_task(self):
+        self.assert_kept_with_branches(
+            self.dirty_f, f"uncommitted changes; task fix-615 of the lead state {self.state} is "
+            "settled, so its session logs and Antigravity conversations do not keep it")
 
 
 @NEEDS_LSOF_AND_GIT
