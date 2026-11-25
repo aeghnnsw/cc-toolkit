@@ -612,14 +612,12 @@ def _heredoc_parts(command):
     return _read_heredoc_lines(command, _heredoc_operators)
 
 
-def _read_heredoc_lines(command, scan, blank=False):
+def _read_heredoc_lines(command, scan):
     """Split `command` into its command lines and heredoc bodies.
 
     `scan(line, state)` returns the operators of one line, each as (words
     that can end its body, a flag), and the state for the next line. Return
-    (code, bodies), with each body as (text, flag). With `blank`, `code`
-    has spaces in place of each body line and end line, so each index of
-    `command` stays the same.
+    (code, bodies), with each body as (text, flag).
 
     The split fails closed (#479). An operator whose body never ends can be
     a misread, as in `${x//<</y}`, so the rest of `command` stays code. An
@@ -647,13 +645,11 @@ def _read_heredoc_lines(command, scan, blank=False):
             if end is None:
                 break
             bodies.append(("\n".join(lines[index:end]), flag))
-            if blank:
-                kept.extend(" " * len(body_line) for body_line in lines[index:end + 1])
             index = end + 1
     return "\n".join(kept), bodies
 
 
-def strip_heredoc_bodies(command, blank=False):
+def strip_heredoc_bodies(command):
     """Remove heredoc bodies so their text is never parsed as shell code.
 
     A heredoc body is data: the shell writes it to the command's standard
@@ -663,14 +659,13 @@ def strip_heredoc_bodies(command, blank=False):
     as code, so the safety checks also read the bodies (#479).
 
     Ending a body early keeps more text under inspection, so the delimiter
-    comparison ignores surrounding whitespace. With `blank`, spaces replace
-    the body lines and end lines, so each index of `command` stays the same.
+    comparison ignores surrounding whitespace.
     """
     def scan(line, quote):
         candidates, quote = _heredoc_delimiter_candidates(line, quote)
         return [(words, False) for words in candidates], quote
 
-    return _read_heredoc_lines(command, scan, blank)[0]
+    return _read_heredoc_lines(command, scan)[0]
 
 
 def _data_form_segments(line):

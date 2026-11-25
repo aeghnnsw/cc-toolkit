@@ -80,9 +80,16 @@ CORRECTED_COMMANDS = {
     "cat <<< === > =out": "cat <<< \\=== > \\=out",
     "x=`echo ==a` y=$(echo \"$(echo ==b)\")": "x=`echo \\==a` y=$(echo \"$(echo \\==b)\")",
     "echo ==$HOME'=='": "echo \\==$HOME'=='",
-    "cat <<'EOF'\n====\nEOF\necho ====": "cat <<'EOF'\n====\nEOF\necho \\====",
-    "echo \"$(cat <<'EOF'\n1) ==\nEOF\n)\"; echo ====": "echo \"$(cat <<'EOF'\n1) ==\nEOF\n)\"; echo \\====",
 }
+
+# Denied commands that get no corrected command. The analysis can read a
+# heredoc body or end word as code, and a backslash there changes the command.
+UNCORRECTED_COMMANDS = [
+    "cat <<'EOF'\n====\nEOF\necho ====",
+    "cat <<=EOF\nhi $HOME\n=EOF",
+    "cat <<EOF \\\n| cat\n==a\nEOF",
+    "echo $'a\\'b' && cat <<EOF\n==x\nEOF",
+]
 
 # Each command reads an unquoted variable that zsh does not split; the value
 # is the word that the warning names.
@@ -274,14 +281,6 @@ def glob_directory(temp_dir):
     return temp_dir
 
 
-def corrected_command(traps):
-    """Return the corrected command that ends the denial of `traps`, or None."""
-    message = traps[-1].message
-    if not message.startswith("Corrected command"):
-        return None
-    return message.split("\n", 1)[1]
-
-
 def run_zsh(command, cwd):
     return subprocess.run(
         [ZSH, "-f", "-c", command],
@@ -328,58 +327,62 @@ class ZshTrapTests(unittest.TestCase):
         for command, word in EQUALS_TRAPS.items():
             with self.subTest(command=command):
                 traps = zsh_traps.zsh_traps(command)
-                self.assertEqual([trap.blocks for trap in traps], [True, True], traps)
+                self.assertEqual([trap.blocks for trap in traps], [True], traps)
                 self.assertIn(f"`{word}` starts with `=`", traps[0].message)
                 self.assertIn(f"`'{word}'`", traps[0].message)
 
-    def test_denial_ends_with_the_corrected_command(self):
+    def test_corrects_each_equals_word_that_names_no_command(self):
         for command, expected in CORRECTED_COMMANDS.items():
             with self.subTest(command=command):
-                traps = zsh_traps.zsh_traps(command)
-                self.assertTrue(all(trap.blocks for trap in traps), traps)
-                self.assertEqual(corrected_command(traps), expected)
+                self.assertTrue(any(trap.blocks for trap in zsh_traps.zsh_traps(command)))
+                self.assertEqual(zsh_traps.corrected_command(command), expected)
 
     @unittest.skipUnless(ZSH, "zsh is not installed")
     def test_corrected_commands_only_add_backslashes_and_run_in_zsh(self):
+        commands = [*EQUALS_TRAPS, *CORRECTED_COMMANDS]
         with tempfile.TemporaryDirectory() as temp_dir:
-            for command in [*EQUALS_TRAPS, *CORRECTED_COMMANDS]:
+            for command in commands:
+                corrected = zsh_traps.corrected_command(command)
+                if zsh_traps.HEREDOC_RE.search(command):  # a heredoc gets no corrected command
+                    self.assertIsNone(corrected, command)
+                    continue
                 with self.subTest(command=command):
-                    corrected = corrected_command(zsh_traps.zsh_traps(command))
                     changes = difflib.SequenceMatcher(None, command, corrected).get_opcodes()
                     added = [corrected[j1:j2] for tag, _, _, j1, j2 in changes if tag != "equal"]
                     self.assertTrue(
                         all(tag in ("equal", "insert") for tag, *_ in changes), changes
                     )
-                    self.assertTrue(set("".join(added)) == {"\\"}, added)
+                    self.assertEqual(set("".join(added)), {"\\"}, added)
                     self.assertFalse(
                         any(trap.blocks for trap in zsh_traps.zsh_traps(corrected))
                     )
                     result = run_zsh(corrected, temp_dir)
                     self.assertNotIn(" not found", result.stderr)
 
-    def test_denial_has_no_corrected_command_that_the_hook_would_block(self):
+    def test_gives_no_corrected_command_that_could_be_wrong(self):
         limit = zsh_traps.MAX_CORRECTED_LENGTH
         at_limit = "echo =====" + " x" * ((limit - len("echo =====")) // 2)
         at_limit += " " * (limit - len(at_limit))
-        self.assertIsNotNone(corrected_command(zsh_traps.zsh_traps(at_limit)))
-        cases = (
-            (at_limit + "x", None),
-            ("echo ${(f)x} =====", "claude"),
-        )
+        self.assertIsNotNone(zsh_traps.corrected_command(at_limit))
+        cases = [(at_limit + "x", None), ("echo ${(f)x} =====", "claude")]
+        cases += [(command, None) for command in UNCORRECTED_COMMANDS]
         for command, host in cases:
             with self.subTest(command=command[:40], host=host):
                 traps = zsh_traps.zsh_traps(command, host=host)
                 self.assertTrue(any(trap.blocks for trap in traps), traps)
-                self.assertIsNone(corrected_command(traps))
-        # A flag blocks only for Claude Code, so other hosts get the correction.
-        traps = zsh_traps.zsh_traps("echo ${(f)x} =====", host="codex")
-        self.assertEqual(corrected_command(traps), "echo ${(f)x} \\=====")
+                self.assertIsNone(zsh_traps.corrected_command(command, host=host))
+        # A flag blocks only in Claude Code, so other hosts get the correction.
+        self.assertEqual(
+            zsh_traps.corrected_command("echo ${(f)x} =====", host="codex"),
+            "echo ${(f)x} \\=====",
+        )
+        self.assertIsNone(zsh_traps.corrected_command("echo =sh"))
 
     def test_denial_stays_when_the_correction_fails(self):
-        with mock.patch.object(zsh_traps, "_corrected_command", side_effect=ValueError):
-            traps = zsh_traps.zsh_traps("echo =====")
-        self.assertEqual([trap.blocks for trap in traps], [True], traps)
-        self.assertIn("`=====` starts with `=`", traps[0].message)
+        traps = zsh_traps.zsh_traps("echo =====")
+        with mock.patch.object(zsh_traps, "corrected_command", side_effect=ValueError):
+            message = zsh_traps._trap_message(traps, "echo =====", None, None)
+        self.assertEqual(message, traps[0].message)
 
     def test_warns_about_an_equals_word_that_names_a_command(self):
         traps = zsh_traps.zsh_traps(EQUALS_FOUND)
