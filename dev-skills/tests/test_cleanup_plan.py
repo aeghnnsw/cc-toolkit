@@ -11,8 +11,9 @@ state that cannot be read; issue #575 also changed cases 17-19. Case 31 comes
 from issue #577, which also changed case 16. Cases 32-35 come from issue #578:
 the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
 Cases 36-41 come from issue #610: the session logs of a worktree whose task the
-lead accepted, and the end of the 60-minute window. Each check builds a
-temporary repository with a bare origin, runs the script with a fake gh
+lead accepted, and the end of the 60-minute window. Cases 42 and 43 come from
+issue #599: planning_folder.py lists the planning location and the lead folders
+for the plan. Each check builds a temporary repository with a bare origin, runs the script with a fake gh
 (fake_gh.py), and reads the lines that it prints. No check runs the real t3
 CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other checks run
 with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py runs, so
@@ -708,6 +709,44 @@ class UnreadableLeadStateCases(PlanTestCase):
         self.plan = self.plans["schema 2"]
         self.assert_kept_with_branches(self.feat_m, f"cannot read the lead state {self.state}",
                                        "unknown lead state schema")
+
+
+@NEEDS_LSOF_AND_GIT
+class PlanningEntryCases(PlanTestCase):
+    """Cases 42 and 43: planning_folder.py lists the entries of the planning location (#599).
+
+    feat-p holds a file, not a folder, in its .scratch, and feat-r is a merged worktree with no
+    planning folder. One plan runs; then the .scratch of feat-r becomes a file, and a second plan runs.
+    """
+
+    plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        cls.feat_p, cls.feat_r = repo.worktree("feat-p"), repo.worktree("feat-r")
+        repo.squash_merge("feat-p", 96)
+        repo.squash_merge("feat-r", 97)
+        cls.notes = cls.feat_p / ".scratch" / "notes.md"
+        cls.notes.parent.mkdir()
+        cls.notes.write_text("notes\n")
+        cls.plans = {"file in .scratch": repo.plan()}
+        (cls.feat_r / ".scratch").write_text("not a folder\n")
+        cls.plans[".scratch is a file"] = repo.plan()
+
+    def test_case_42_a_file_in_the_planning_location_keeps_its_worktree(self):
+        # The plan reads every entry, not only the folders that planning_folder.py --list prints.
+        self.plan = self.plans["file in .scratch"]
+        self.assert_kept("folder", self.notes, "no issue key")
+        self.assert_kept_with_branches(self.feat_p, f"holds the kept planning folder {self.notes}")
+        self.assert_removed_with_branches(self.feat_r, "merged PR #97")
+
+    def test_case_43_a_scratch_that_is_a_file_keeps_every_worktree(self):
+        # A .scratch that is a file cannot be listed, as in case 19.
+        self.plan = self.plans[".scratch is a file"]
+        for worktree in (self.feat_r, self.feat_p):
+            self.assert_kept_with_branches(worktree, "cannot look for a lead state",
+                                           str(self.feat_r / ".scratch"))
 
 
 @NEEDS_LSOF_AND_GIT

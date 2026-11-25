@@ -22,9 +22,9 @@ the default batch of `plan`. Issue #567 adds the count of a report's decisions
 to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
 decisions that only the user can make to `report`. Issue #602 adds the
 `start-failed` line of `dispatch`, issue #603 the `start --steps` line of the
-skill, and issue #607 the plain-text question line of `brief`. Agent behavior is checked
-by the scenario review in t3-project-lead-scenarios.md; the hook has its own
-tests in test_t3_project_lead_hook.py.
+skill, and issue #607 the plain-text question line of `brief`. Agent behavior
+is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
+its own tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 

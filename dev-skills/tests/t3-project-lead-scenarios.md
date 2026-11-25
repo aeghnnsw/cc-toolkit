@@ -218,11 +218,14 @@ written. It checks that a `.scratch` that cannot be read is refused, not
 skipped. It checks that `start` prints the fixed lead steps once in each
 owner thread and with `--steps`, and one line in their place otherwise. It
 checks the record of `task start-failed`, its line in `start` and `dispatch`,
-the idle workers, the refusal of a busy or settled worker, and the close of
-the record by a new thread. `test_t3_project_lead.py` requires the new
-question line of `brief` and the `start-failed` line of `dispatch`.
-`test_planning_folder.py` checks that the lead script and `cleanup_plan.py`
-list folders only through `planning_folder.py`.
+the idle workers, which no due line settles while the record is open, the
+refusal of a busy or settled worker, and the close of the record once a new
+thread passes T3's start limit of 10 minutes. `test_t3_project_lead.py`
+requires the new question line of `brief` and the `start-failed` line of
+`dispatch`. `test_planning_folder.py` checks that the lead script and
+`cleanup_plan.py` list folders only through `planning_folder.py`, and cases 42
+and 43 of `test_cleanup_plan.py` check that a file in a planning location, or
+a `.scratch` that is a file, keeps the worktrees.
 
 **Not shown.** No simulated or live review of cases 2 and 31 ran. No live
 lead session has shown a failed thread start with the new record.

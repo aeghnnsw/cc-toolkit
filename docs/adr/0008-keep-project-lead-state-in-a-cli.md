@@ -52,6 +52,13 @@
 > `pull_request_read` only with `sections` set to `["checks"]`, and a worker
 > sets triage labels. Read
 > [The sections of pull_request_read](#the-sections-of-pull_request_read).
+>
+> **Superseded in part (2026-11-25, issues #599, #602, and #603).** `init`
+> makes the lead folder and its ignore rule with `planning_folder.py`, and
+> writes a `.gitignore` of `*` only when Git's `info/exclude` file cannot be
+> written. `start` prints the fixed lead steps once in each thread.
+> `task start-failed` records a thread that did not start. Read
+> [The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -87,13 +94,19 @@ prints a short view. `start` prints the step text, the UTC time, the view,
 the due lines, and the list of what waits on the user, so that the lead
 copies that list and does not write it from memory. (Superseded in part by
 #555: `start` prints a compact view; read
-[The compact start view](#the-compact-start-view).) `finish` deletes the lead
+[The compact start view](#the-compact-start-view). Superseded in part by
+#603: `start` prints the fixed lead steps once in each thread; read
+[The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).)
+`finish` deletes the lead
 state only when each task is in the `settled` state and nothing waits on the
 user.
 
 The lead state is in `<top of the lead's working tree>/.scratch/<YYYYMMDD>-lead-<slug>/`,
 with a `.gitignore` of `*`, `state.json`, `events.jsonl` (the history), and a
-lock file. The script runs as a shell command, inside the host's sandbox, and
+lock file. (Superseded in part by #599: Git's `info/exclude` file holds the
+ignore rule, and the `.gitignore` is written only when that file cannot be
+written; read
+[The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).) The script runs as a shell command, inside the host's sandbox, and
 each host lets a sandboxed command write a different set of folders:
 
 - Claude Code: the working directory, `$TMPDIR` (a different path inside and
@@ -513,3 +526,42 @@ triage labels, and `plan` says that another worker sets the labels that a
 read-only worker recommends.
 `dev-skills/tests/test_t3_project_lead_hook.py` and
 `dev-skills/tests/test_t3_project_lead.py` check these rules.
+
+## The lead folder, failed starts, and the steps once
+
+Added on 2026-11-25 for
+[#599](https://github.com/aeghnnsw/cc-toolkit/issues/599),
+[#602](https://github.com/aeghnnsw/cc-toolkit/issues/602), and
+[#603](https://github.com/aeghnnsw/cc-toolkit/issues/603).
+
+`init` makes the lead folder with `planning_folder.py`, which
+grill-with-research and matt-automode also run, so that one script holds the
+folder rules. The name stays `.scratch/<YYYYMMDD>-lead-<slug>/`, now with the
+local date that the script uses. The script makes Git ignore `.scratch/` with
+a line in Git's `info/exclude` file. The Codex `workspace-write` sandbox keeps
+the Git common folder read-only: on 2026-11-24, `codex sandbox` of Codex
+0.172.0 refused that write in a main checkout with "Operation not permitted".
+So when the write fails, `init` writes the `.gitignore` of `*` in the lead
+folder and prints the error. The lead script and the cleanup plan find the
+lead folders and the planning folders with `planning_folder.py`. A `.scratch`
+that cannot be read, or that is a file, is an error, not an empty folder, so
+that no lead state is missed; the cleanup plan then keeps every worktree that
+it would otherwise remove.
+
+In one lead session, `start` ran 133 times, and its fixed lead steps were most
+of the 574,000 characters that it printed. So the lead state records the
+thread that saw the steps. `start` prints them without a lead state, on the
+owner's first `start` after `init` or `takeover`, and with `start --steps`.
+Other `start` calls print one line that names `start --steps`. A thread that
+is not the owner cannot record, so it always gets the steps.
+
+On 2026-11-24, eight new worker threads timed out while they started, and T3
+showed each failure only after its start limit of 10 minutes. `task
+start-failed` records such a start. While the record is open, `start` and
+`dispatch` print one line: start no new thread, give each next task to an idle
+worker, and ask one to find the cause. An idle worker is the worker of a
+verified or closed-out task that no running, pr-open, or merged task uses. No
+due line settles an idle worker while the record is open. A new thread closes
+the record only after the start limit passes without a failure, because the
+lead runs `task start` before T3 can show a failure. `task start` refuses a
+worker that a running, pr-open, or merged task uses, and a settled worker.

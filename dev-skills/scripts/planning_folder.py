@@ -182,9 +182,9 @@ def entries(top: str, location: str = SCRATCH) -> list[str]:
     return [os.path.join(folder, name) for name in names]
 
 
-def list_folders(top: str, location: str = SCRATCH) -> list[str]:
-    """Return the absolute paths of the folders in LOCATION at TOP, sorted by name."""
-    return [path for path in entries(top, location) if os.path.isdir(path)]
+def list_folders(top: str) -> list[str]:
+    """Return the absolute paths of the folders in .scratch/ at TOP, sorted by name."""
+    return [path for path in entries(top) if os.path.isdir(path)]
 
 
 def main(argv: list[str]) -> int:

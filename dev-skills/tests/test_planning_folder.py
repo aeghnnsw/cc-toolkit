@@ -214,7 +214,7 @@ class PlanningFolderTests(unittest.TestCase):
                 (folder / "notes.md").write_text("")
                 self.assertEqual(PLANNING.entries(str(self.repo), location),
                                  [str(folder / "42-cache-layer"), str(folder / "notes.md")])
-                self.assertEqual(PLANNING.list_folders(str(self.repo), location), [str(folder / "42-cache-layer")])
+        self.assertEqual(PLANNING.list_folders(str(self.repo)), [str(self.repo / ".scratch" / "42-cache-layer")])
         self.assertEqual(PLANNING.entries(str(self.repo), "missing"), [])
 
     @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")

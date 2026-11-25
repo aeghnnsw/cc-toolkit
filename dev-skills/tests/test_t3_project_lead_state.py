@@ -465,8 +465,8 @@ class LeadStateTests(unittest.TestCase):
         line = (f"A thread start failed for a, first at {self.events()[-1]['time']}; failed threads: {failed}. "
                 "Start no new thread until the cause is fixed. Give each next task to an idle worker: "
                 "t3_thread_send to its thread with freshContext true and the brief, then task start <name> <its "
-                f"link>. Ask an idle worker to find the cause. Idle workers: {idle}. A new thread that task start "
-                "records closes this line.")
+                f"link>. Ask an idle worker to find the cause. Idle workers: {idle}. After the fix, a new thread "
+                "closes this line once T3's start limit of 10 minutes passes without a failure.")
         self.assertEqual(output, f"a: the thread start failed, and a is planned. {line}")
         self.assertIn(f"- {line}", words(self.ok("start")))
         self.assertIn(line, words(self.ok("dispatch")))
@@ -478,14 +478,63 @@ class LeadStateTests(unittest.TestCase):
         self.assertEqual(self.task("cause")["worktrees"], ["/wt/t3-done"])
         self.assertIn("Idle workers: none: tell the user, and add the cause with wait.", words(self.ok("start")))
         self.refused("task", "start", "a", idle, reason=f"{idle} is the worker of cause, which is running")
-        # A new thread closes the record.
-        output = self.ok("task", "start", "a", WORKER.format("a2"), "--worktree", "/wt/t3-a2")
-        self.assertIn("A new thread started, so the failed thread start is closed.", output)
-        self.assertEqual(self.events()[-1]["closed_failed_starts"], 2)
+        # A new thread closes the record only after T3's start limit, because T3 shows a failure only then.
+        output = words(self.ok("task", "start", "a", WORKER.format("a2"), "--worktree", "/wt/t3-a2"))
+        recorded = self.events()[-1]["time"]
+        end = (datetime.datetime.strptime(recorded, "%Y-%m-%dT%H:%M:%SZ")
+               + datetime.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.assertIn(f"The failed thread start stays open until {end}: if the new thread of a fails before then, "
+                      "run task start-failed a.", output)
+        self.assertTrue(self.events()[-1]["start_trial"])
         self.assertEqual(self.task("a")["worktrees"], ["/wt/t3-a1", "/wt/t3-a2"])
+        self.assertIn(f"The new thread of a, recorded at {recorded}, closes this line at {end} unless it fails to "
+                      "start; start no other new thread.", words(self.ok("start")))
+        # A second new thread in the window keeps the first one's end.
+        self.ok("task", "add", "c", "Task c")
+        self.assertIn(f"stays open until {end}: if the new thread of a fails", words(
+            self.ok("task", "start", "c", WORKER.format("c1"))))
+        self.age_start_trial(minutes=11)
         for step in ("start", "dispatch"):
             with self.subTest(step=step):
                 self.assertNotIn("A thread start failed", self.ok(step))
+        # A later failure starts a new record, without the failures of the closed one.
+        self.ok("task", "add", "d", "Task d")
+        self.ok("task", "start-failed", "d")
+        view = words(self.ok("start"))
+        self.assertIn("A thread start failed for d, first at ", view)
+        self.assertIn("After the fix, a new thread closes this line", view)
+
+    def age_start_trial(self, minutes: int) -> None:
+        """Move the time of the new thread after a failed start back by `minutes`."""
+        path = self.folder() / "state.json"
+        state = json.loads(path.read_text(encoding="utf-8"))
+        time = datetime.datetime.strptime(state["start_trial"]["time"], "%Y-%m-%dT%H:%M:%SZ")
+        state["start_trial"]["time"] = (time - datetime.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+    def test_a_new_thread_that_fails_in_its_window_keeps_the_record_open(self) -> None:
+        self.ok("init", "demo")
+        for name in ("a", "b"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.ok("task", "start-failed", "a")
+        self.ok("task", "start", "b", WORKER.format("b1"))
+        self.ok("task", "start-failed", "b")
+        self.assertNotIn("start_trial", json.loads(self.state_text()))
+        self.assertIn("A thread start failed for a, b, first at ", words(self.ok("start")))
+
+    def test_an_open_failed_start_keeps_the_idle_workers_unsettled(self) -> None:
+        # The lead gives the next task to an idle worker, so no due line settles one (#602).
+        self.ok("init", "demo")
+        self.ok("task", "add", "d", "Task d")
+        self.ok("task", "start", "d", WORKER.format("d"))
+        self.ok("task", "verified", "d", "--decisions", "0")
+        settle = f"- Settle the worker of d, then run task settled d: {WORKER.format('d')}"
+        self.assertIn(settle, self.ok("start"))
+        self.ok("task", "add", "a", "Task a", "--batch", "2")
+        self.ok("task", "start-failed", "a")
+        view = self.ok("start")
+        self.assertNotIn(settle, view)
+        self.assertIn(f"Idle workers: {WORKER.format('d')}.", words(view))
 
     def test_task_start_failed_and_a_reused_worker_are_checked(self) -> None:
         self.ok("init", "demo")
@@ -508,8 +557,9 @@ class LeadStateTests(unittest.TestCase):
                      reason=f"{WORKER.format(4)} is the settled worker of e; never reuse a settled worker")
         # A replacement worker from the flag step is a new thread too.
         self.ok("task", "start-failed", "c")
-        self.assertIn("A new thread started, so the failed thread start is closed.",
+        self.assertIn("The failed thread start stays open until ",
                       self.ok("task", "worker", "b", WORKER.format(5)))
+        self.assertEqual(json.loads(self.state_text())["start_trial"]["thread"], WORKER.format(5))
 
     def test_a_reused_worker_keeps_its_thread_until_its_last_task(self) -> None:
         self.ok("init", "demo")
