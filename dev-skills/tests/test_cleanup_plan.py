@@ -13,13 +13,13 @@ the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
 Cases 36-41 come from issue #610: the session logs of a worktree whose task the
 lead accepted, and the end of the 60-minute window. Cases 42 and 43 come from
 issue #599: planning_folder.py lists the planning location and the lead folders
-for the plan. Each check builds a temporary repository with a bare origin, runs the script with a fake gh
-(fake_gh.py), and reads the lines that it prints. No check runs the real t3
-CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other checks run
-with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py runs, so
-most checks need lsof. Each class makes as few plan runs as it can, because
-each run takes some seconds: one, or one for each mode. No check touches
-another repository.
+for the plan. Each check builds a temporary repository with a bare origin, runs
+the script with a fake gh (fake_gh.py), and reads the lines that it prints. No
+check runs the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and
+the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
+live_worktrees.py runs, so most checks need lsof. Each class makes as few plan
+runs as it can, because each run takes some seconds: one, or one for each mode.
+No check touches another repository.
 """
 
 from __future__ import annotations
