@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
   "description": "Development workflow skills for repository hygiene, documentation, review, and structured execution",
-  "version": "3.83.0",
+  "version": "3.83.1",
   "agents": [
     "./claude-agents/finding-verifier.md",
     "./claude-agents/project-evaluator.md"
