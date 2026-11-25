@@ -47,6 +47,11 @@
 > keeps each worktree that an unsettled T3 Code thread owns, read with the
 > `t3` CLI. Read
 > [The worktrees of T3 Code threads](#the-worktrees-of-t3-code-threads).
+>
+> **Superseded in part (2026-11-24, issue #604).** The hook passes
+> `pull_request_read` only with `sections` set to `["checks"]`, and a worker
+> sets triage labels. Read
+> [The sections of pull_request_read](#the-sections-of-pull_request_read).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -300,8 +305,11 @@ The lead reads the state, labels, titles, and check counts of issues and PRs,
 never their text. In a recorded session, the hook of
 [ADR 0007](0007-gate-the-project-lead-with-a-session-checked-hook.md) blocks
 the T3 Code MCP tool `read_issue`, and `pull_request_read` with an `include`
-other than `checks`, in Claude Code and Codex. Antigravity has no known hook
-payload for MCP calls, so there only the step text holds the rule.
+other than `checks`, in Claude Code and Codex. (Superseded by #604: the tool
+takes `sections`; read
+[The sections of pull_request_read](#the-sections-of-pull_request_read).)
+Antigravity has no known hook payload for MCP calls, so there only the step
+text holds the rule.
 
 ## Cleanup of a branch with no commit of its own
 
@@ -476,3 +484,32 @@ removals and cannot make the plan remove more.
 Known limit: `thread list` hides `delegate_task` workers. Only a lead state
 keeps the worktree of such a worker.
 `dev-skills/tests/test_cleanup_plan.py` checks each rule with a fake `t3`.
+
+## The sections of pull_request_read
+
+Added on 2026-11-24 for
+[#604](https://github.com/aeghnnsw/cc-toolkit/issues/604).
+
+The hook checked the `include` of `pull_request_read`, but the T3 Code tool
+has no `include`. Its parameter is `sections`, a list of `summary`,
+`checks`, `conversation`, and `diff`, with the default `summary` and
+`checks`. So the hook blocked two lead calls that passed `include`, which
+the tool does not read, and passed a call with `sections`
+`["conversation", "diff"]`, which returns PR text.
+
+Now, in a recorded session, the hook passes `pull_request_read` only when
+`sections` is exactly `["checks"]`. A call without `sections` blocks,
+because the default includes `summary`, which can hold the PR body. An
+`include` must be absent or exactly `["checks"]` too. A call with `include`
+and no `sections` blocks: the server can ignore `include` and return the
+default sections, and the hook cannot tell which name a host uses. Any other
+value, and a tool input that is not an object, also block. `start` tells
+the lead to pass `sections` `["checks"]`.
+
+The `start` step also said "Set triage labels and issue state". The hook
+blocks `gh`, and the lead has no tool that sets labels, so a worker had to
+set them. Now `start` says that the lead sets issue state and a worker sets
+triage labels, and `plan` says that another worker sets the labels that a
+read-only worker recommends.
+`dev-skills/tests/test_t3_project_lead_hook.py` and
+`dev-skills/tests/test_t3_project_lead.py` check these rules.

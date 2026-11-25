@@ -38,7 +38,7 @@ REMINDER = ('This is a t3-project-lead session. Before anything else in this tur
             f'python3 "{STEP_SCRIPT}" start')
 DAY = 24 * 60 * 60
 TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
-             "pull_request_list, and pull_request_read with no include or with only checks. Give a triage "
+             'pull_request_list, and pull_request_read with sections set to ["checks"]. Give a triage '
              "that needs issue text to a read-only worker.")
 # The blocks of a question tool and of an answer to a worker's question (#554).
 QUESTION_LINE = ("Ask no question with a question tool. List in plain text and end your turn. Write a decision "
@@ -211,7 +211,7 @@ class SessionWithoutRecordTests(HookCase):
                 for host in ("claude", "codex")
                 for name, tool_input in ([(name, {"url": "https://github.com/o/r/issues/1"})
                                           for name in READ_ISSUE[host]]
-                                         + [(name, {"include": ["body", "diff"]}) for name in PR_READ[host]])]
+                                         + [(name, {"sections": ["summary", "diff"]}) for name in PR_READ[host]])]
         self.check(jobs, allowed=True)
         self.assertFalse(self.state.exists())
 
@@ -599,22 +599,31 @@ class GateTests(HookCase):
                               allowed=False)
 
     def test_pull_request_read_with_text_is_blocked(self):
-        includes = (["body"], ["comments"], ["threads"], ["diff"], ["checks", "body"], ["diff", "checks"],
-                    ["body", "comments", "threads", "diff"])
-        self.check_text_reads(text_calls(PR_READ, [{"number": 5, "include": include} for include in includes]),
-                              allowed=False)
+        # pull_request_read takes sections (#604). Without sections, it returns the default, summary and
+        # checks, and the summary can hold the PR body. The server can ignore include, so a call with
+        # include and no sections also gets the default.
+        sections = (["summary"], ["conversation"], ["diff"], ["checks", "summary"], ["diff", "checks"],
+                    ["summary", "checks", "conversation", "diff"])
+        inputs = ([{"number": 5, "sections": value} for value in sections]
+                  + [{}, {"number": 5}, {"repository": "o/r", "includeResolved": True}, {"include": ["checks"]},
+                     {"number": 5, "include": ["body", "diff"]}, {"sections": ["checks"], "include": ["body"]},
+                     {"sections": ["checks"], "include": ["checks", "diff"]}])
+        self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
 
     def test_pull_request_read_without_text_passes(self):
-        inputs = ({}, {"number": 5}, {"include": ["checks"]}, {"number": 5, "include": ["checks", "checks"]},
-                  {"include": []}, {"repository": "o/r", "includeResolved": True})
+        inputs = ({"sections": ["checks"]}, {"number": 5, "sections": ["checks"]},
+                  {"repository": "o/r", "includeResolved": True, "cursor": "c1", "sections": ["checks"]},
+                  {"sections": ["checks"], "include": ["checks"]})
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=True)
 
     def test_an_unreadable_pull_request_read_is_blocked(self):
-        # The hook fails closed: an include that is not a list of strings, an unknown value, or a tool
-        # input that is not an object (Codex passes arguments that do not parse as a string).
-        inputs = ({"include": "body"}, {"include": "checks"}, {"include": None}, {"include": [1]},
-                  {"include": ["checks", None]}, {"include": {"checks": True}}, {"include": ["Body"]},
-                  {"include": ["files"]}, "{not json", ["include"], None)
+        # The hook fails closed: sections or include other than exactly ["checks"], or a tool input that is
+        # not an object (Codex passes arguments that do not parse as a string).
+        values = ("checks", None, [], ["checks", "checks"], [1], ["checks", None], {"checks": True}, ["Checks"],
+                  ["files"])
+        inputs = ([{"sections": value} for value in values]
+                  + [{"sections": ["checks"], "include": value} for value in values]
+                  + ["{not json", ["sections"], None])
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
 
     def check_named(self, cases, *, allowed, line=None):

@@ -69,11 +69,11 @@ LEAD_ACTIONS = (
     "2. Plan tasks, briefs, and lead decisions.",
     "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
     "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
-    "their text. Never call read_issue, or pull_request_read with an include other than checks. No "
+    'their text. Never call read_issue. Call pull_request_read only with sections ["checks"]. No '
     "diff, code, or log.",
     "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
-    "7. Set triage labels and issue state.",
+    "7. Set issue state; a worker sets triage labels.",
     "8. Keep agent captures of what waits on the user when your instructions ask for them. "
     "Write gtd-inbox files with your edit tool, not the shell.",
 )
@@ -91,8 +91,8 @@ PR_WAIT_WORKER = ('"When your PR waits on checks, report its URL and full head S
 PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR, and resume the "
                 "worker when the checks finish.")
 # The lead reads no issue or PR text (#545): a lead that read issues was flagged. Only this rule may
-# name read_issue.
-READING_RULE = "Never call read_issue, or pull_request_read with an include other than checks."
+# name read_issue. pull_request_read takes sections, and its default includes the PR summary (#604).
+READING_RULE = 'Never call read_issue. Call pull_request_read only with sections ["checks"].'
 # The discovery brief that `discover` prints after its text (#545): what the worker collects, and its
 # links-only report of every item, in groups with counts.
 DISCOVERY_COLLECT = ('Discovery brief: "Collect each open issue with its labels, each open PR, each unsettled T3 '
@@ -151,8 +151,9 @@ REQUIRED = {
              # init runs on the first start, before the discovery task; outcome waits for the user (#545).
              "init <slug>, once, on the first start;",
              "outcome <text>, after the user names the work;",
-             "A triage that needs issue text is a read-only task: its worker recommends labels, and you "
-             "set them.",
+             # The lead has no tool that sets labels (#604).
+             "A triage that needs issue text is a read-only task: its worker recommends labels; another "
+             "worker sets them.",
              # A second lead state needs the user's confirmation (#544).
              "add --also only after the user confirms a second lead state",
              # A batch stops growing when its first PR merges (#560).
@@ -255,7 +256,9 @@ RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
                 # No step asks the user to approve an outcome (#545).
                 "approved outcome",
                 # The lead lists the open work and asks the user no question (#545).
-                "one to three outcomes", "Choose an outcome", "Propose its outcomes")
+                "one to three outcomes", "Choose an outcome", "Propose its outcomes",
+                # pull_request_read has no include parameter, and the lead sets no labels (#604).
+                "with an include", "Set triage labels", "and you set them")
 # Text that tells the lead to read issue or PR text (#545). No step may print it.
 TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
               "include diff", "issue body", "PR body", "read the issue", "read the PR")
