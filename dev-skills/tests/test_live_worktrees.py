@@ -98,6 +98,11 @@ class LiveWorktreesTests(unittest.TestCase):
         return proc
 
     def run_script(self, cwd: Path | None = None, shell: bool = False) -> dict[str, str]:
+        """Return {worktree path: evidence} from a run that must succeed."""
+        return {path: evidence for path, (evidence, _) in self.run_fields(cwd, shell).items()}
+
+    def run_fields(self, cwd: Path | None = None, shell: bool = False) -> dict[str, tuple[str, str]]:
+        """Return {worktree path: (evidence, window end)}; each line must have three fields."""
         command = [sys.executable, str(SCRIPT), "--repo", str(self.repo)]
         if shell:
             # The trailing `:` keeps sh from replacing itself with the script.
@@ -108,8 +113,9 @@ class LiveWorktreesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         listed = {}
         for line in result.stdout.splitlines():
-            path, _, evidence = line.partition("\t")
-            listed[path] = evidence
+            fields = line.split("\t")
+            self.assertEqual(len(fields), 3, line)
+            listed[fields[0]] = (fields[1], fields[2])
         return listed
 
     def test_lists_a_worktree_with_a_process_inside_and_skips_an_idle_one(self):
@@ -249,6 +255,37 @@ class LiveWorktreesTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(f"live_worktrees: {message}", result.stderr)
                 self.assertEqual(result.stdout, "")
+
+    def test_gives_the_window_end_only_when_logs_and_conversations_alone_list_a_worktree(self):
+        logs = self.add_worktree("logs-only")
+        mixed = self.add_worktree("log-and-agy")
+        busy = self.add_worktree("log-and-process")
+        unknown = self.add_worktree("agy-time-unknown")
+        projects = self.claude_dir / "projects" / "-repo"
+        newest = write_log(projects / "s5.jsonl", [{"cwd": str(logs)}], age_minutes=10)
+        write_log(projects / "s6.jsonl", [{"cwd": str(logs)}], age_minutes=30)
+        write_log(projects / "s7.jsonl", [{"cwd": str(mixed)}], age_minutes=40)
+        write_log(projects / "s8.jsonl", [{"cwd": str(busy)}], age_minutes=5)
+        self.start(busy)
+        # The conversation is newer than the log of mixed, so its time sets the end.
+        changed = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
+        self.agy_database(self.home / ".gemini" / "antigravity", [
+            ("conv-new", f"{changed:%Y-%m-%d %H:%M:%S}.12345+00:00", json.dumps([mixed.as_uri()])),
+            ("conv-x", "yesterday", json.dumps([unknown.as_uri()])),
+        ])
+
+        def end(stamp: float) -> str:
+            # The first whole second after the window: the plan keeps the worktree up to its end.
+            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(stamp + 3600) + 1))
+
+        listed = self.run_fields()
+
+        self.assertEqual(listed[self.listed_path(logs)][1], end(newest.stat().st_mtime))
+        self.assertIn("and 1 more", listed[self.listed_path(logs)][0])
+        self.assertEqual(listed[self.listed_path(mixed)][1], end(changed.timestamp()))
+        self.assertIn("process", listed[self.listed_path(busy)][0])
+        self.assertEqual(listed[self.listed_path(busy)][1], "")
+        self.assertEqual(listed[self.listed_path(unknown)][1], "unknown")
 
     def test_reads_the_config_folder_of_another_running_session(self):
         worktree = self.add_worktree("other-config")

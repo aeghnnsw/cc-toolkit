@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """List the worktrees of a repository that another live session may use.
 
-repo-cleanup runs this script before it removes worktrees. Each output line is
-a worktree path, as `git worktree list` prints it, a tab, and the evidence:
-a Git lock, a running process with its working directory in the worktree,
-a Claude Code or Codex session log, changed in the last 60 minutes, that
-records a working directory in the worktree, or an Antigravity conversation,
-changed in the last 60 minutes, that started in the worktree. The main
-checkout is never listed, because cleanup never removes it.
+repo-cleanup runs this script before it removes worktrees. Each output line has
+three tab-separated fields. The first is a worktree path, as `git worktree
+list` prints it. The second is the evidence: a Git lock, a running process
+with its working directory in the worktree, a Claude Code or Codex session
+log, changed in the last 60 minutes, that records a working directory in the
+worktree, or an Antigravity conversation, changed in the last 60 minutes,
+that started in the worktree. The third is the window end. It is empty when
+a Git lock or a process is among the evidence. Otherwise it is the first
+whole second after the newest session log or conversation leaves the
+60-minute window, in UTC as YYYY-MM-DDTHH:MM:SSZ, or "unknown" when the
+time of a conversation cannot be read (#610). The main checkout is never
+listed, because cleanup never removes it.
 
 Antigravity conversations are the rows of conversation_summaries.db in
 ~/.gemini/antigravity-cli (CLI), ~/.gemini/antigravity (app), and the
@@ -308,12 +313,12 @@ def workspace_paths(uris: object) -> list[str]:
     return paths
 
 
-def antigravity_evidence(roots: dict[str, str], now: float) -> list[tuple[str, str]]:
-    """Return (worktree, evidence) for each recent Antigravity conversation, newest first.
+def antigravity_evidence(roots: dict[str, str], now: float) -> list[tuple[str, str, float]]:
+    """Return (worktree, evidence, change time) for each recent Antigravity conversation, newest first.
 
-    A conversation whose time cannot be read counts as recent, and one whose
-    workspace_uris cannot be read stops the script, so that no live worktree
-    is missed.
+    A conversation whose time cannot be read counts as recent, with the change
+    time infinity, and one whose workspace_uris cannot be read stops the
+    script, so that no live worktree is missed.
     """
     found = []
     since = now - WINDOW_MINUTES * 60
@@ -331,7 +336,19 @@ def antigravity_evidence(roots: dict[str, str], now: float) -> list[tuple[str, s
                 item = f"Antigravity conversation {conversation} in {folder} ({age})"
                 found.append((float("inf") if changed is None else changed, path, item))
     found.sort(key=lambda entry: -entry[0])
-    return [(path, item) for _, path, item in found]
+    return [(path, item, changed) for changed, path, item in found]
+
+
+def window_end(kinds: dict[str, list[str]], newest: float) -> str:
+    """Return the window end field for a listed worktree.
+
+    newest is the change time of its newest session log or conversation.
+    """
+    if kinds["lock"] or kinds["process"]:
+        return ""
+    if newest == float("inf"):
+        return "unknown"
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(newest + WINDOW_MINUTES * 60) + 1))
 
 
 def main() -> None:
@@ -339,7 +356,9 @@ def main() -> None:
     parser.add_argument("--repo", default=".", help="repository checkout (default: .)")
     args = parser.parse_args()
 
-    # For each linked worktree, the evidence of each kind, in report order.
+    # For each linked worktree, the evidence of each kind, in report order,
+    # and the change time of its newest session log or conversation.
+    newest: dict[str, float] = {}
     evidence = {
         path: {"lock": locks, "process": [], "log": [], "antigravity": []}
         for path, locks in linked_worktrees(args.repo).items()
@@ -360,8 +379,10 @@ def main() -> None:
             continue
         for path in {owner(cwd, roots) for cwd in log_dirs(log)} - {None}:
             evidence[path]["log"].append(f"session log {log} ({(now - changed) / 60:.0f} min ago)")
-    for path, item in antigravity_evidence(roots, now):
+            newest[path] = max(newest.get(path, changed), changed)
+    for path, item, changed in antigravity_evidence(roots, now):
         evidence[path]["antigravity"].append(item)
+        newest[path] = max(newest.get(path, changed), changed)
     for path, kinds in evidence.items():
         # Name the first item of each kind and count the others; the newest
         # log and the newest conversation come first.
@@ -370,7 +391,7 @@ def main() -> None:
             for items in kinds.values() if items
         ]
         if found:
-            print(f"{path}\t{'; '.join(found)}")
+            print(f"{path}\t{'; '.join(found)}\t{window_end(kinds, newest.get(path, 0.0))}")
 
 if __name__ == "__main__":
     main()

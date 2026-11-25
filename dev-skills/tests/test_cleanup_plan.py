@@ -10,7 +10,8 @@ issue #575: the worktrees that the tasks of a lead state record, and a lead
 state that cannot be read; issue #575 also changed cases 17-19. Case 31 comes
 from issue #577, which also changed case 16. Cases 32-35 come from issue #578:
 the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
-Each check builds a temporary repository with a bare origin, runs the script
+Cases 36-39 come from issue #610: the session logs of a worktree whose task the
+lead accepted, and the end of the 60-minute window. Each check builds a temporary repository with a bare origin, runs the script
 with a fake gh (fake_gh.py), and reads the lines that it prints. No check runs
 the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and the other
 checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real live_worktrees.py
@@ -583,6 +584,57 @@ class LeadStateCases(PlanTestCase):
             with self.subTest(mode=mode):
                 self.plan = plan
                 self.assert_removed_with_branches(self.task_c, "merged PR #74")
+
+
+@NEEDS_LSOF_AND_GIT
+class AcceptedTaskCases(PlanTestCase):
+    """Cases 36-39: merged worktrees with a session log of the last 60 minutes (#610).
+
+    The lead state in the main checkout records done-a and done-b for settled
+    tasks, and gone-c for a task that was cancelled and then settled. No lead
+    state records free-d. A process also runs in done-b.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        worktrees = {}
+        for number, name in enumerate(("done-a", "done-b", "gone-c", "free-d"), start=120):
+            worktrees[name] = repo.worktree(name)
+            repo.squash_merge(name, number)
+            log = repo.claude_dir / "projects" / "-repo" / f"{name}.jsonl"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(json.dumps({"type": "user", "cwd": str(worktrees[name])}) + "\n")
+        cls.done_a, cls.done_b, cls.gone_c, cls.free_d = worktrees.values()
+        repo.start(cls.done_b)
+        cls.state = repo.folder(repo.path, "20261124-lead-main")
+        lead_state(cls.state,
+                   {"name": "fix-610", "state": "settled", "worktrees": [cls.done_a]},
+                   {"name": "fix-611", "state": "settled", "worktrees": [cls.done_b]},
+                   {"name": "drop-612", "state": "settled", "cancelled": True,
+                    "worktrees": [cls.gone_c]})
+        cls.plan = repo.plan()
+
+    def test_case_36_a_session_log_does_not_keep_the_worktree_of_an_accepted_task(self):
+        self.assert_removed_with_branches(self.done_a, "merged PR #120")
+        # The remote branch has its own reason: no worktree keeps it.
+        for kind, item in (("worktree", self.done_a), ("branch", self.done_a.name)):
+            self.assert_removed(
+                kind, item, f"task fix-610 of the lead state {self.state} is settled, so its "
+                "session logs and Antigravity conversations do not keep it")
+
+    def test_case_37_a_process_still_keeps_the_worktree_of_an_accepted_task(self):
+        self.assert_kept_with_branches(self.done_b, "live session", "process", "session log")
+        self.assertNotIn("window", self.line("worktree", self.done_b)[1])
+
+    def test_case_38_a_session_log_keeps_the_worktree_of_a_cancelled_task(self):
+        self.assert_kept_with_branches(self.gone_c, "live session: session log",
+                                       "its 60-minute window ends at")
+
+    def test_case_39_the_reason_gives_the_end_of_the_window(self):
+        self.assert_kept_with_branches(self.free_d, "live session: session log")
+        self.assertRegex(self.line("worktree", self.free_d)[1],
+                         r"; its 60-minute window ends at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 @NEEDS_LSOF_AND_GIT
