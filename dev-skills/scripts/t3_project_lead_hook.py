@@ -33,14 +33,15 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   `read_issue`, which always returns the body and the comments, and
   `pull_request_read` unless its `sections` is exactly `["checks"]` (issue
   #604). A call without `sections` blocks, because the default, `summary`
-  and `checks`, includes the PR body. An `include`, for a host that uses
+  and `checks`, can return the PR body. An `include`, for a host that uses
   that name, must also be absent or exactly `["checks"]`. Any other value
   blocks. Claude Code names the tools `mcp__t3-code__<tool>`. Codex changes
   `-` to `_`, as in `mcp__t3_code__<tool>`, puts a 12-character environment
   hash after `mcp__` for a server of one environment, as in
   `mcp__<hash>__t3_code__<tool>`, and its sessions also use the server key
-  `t3-code-direct`. A read-only worker reads the text instead. Antigravity has no known hook payload for MCP calls,
-  so there only the step text holds the rule.
+  `t3-code-direct`. A read-only worker reads the text instead. Antigravity
+  has no known hook payload for MCP calls, so there only the step text holds
+  the rule.
 - Questions (issue #554): a new-project lead asked the user to pick an
   outcome with AskUserQuestion, and a lead read a worker's question with
   `t3_pending_request` and asked it again with AskUserQuestion. The question
@@ -120,9 +121,9 @@ QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_us
 PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
 # mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The one sections
-# value with which pull_request_read returns no PR text (#604).
+# value with which pull_request_read returns no PR text (#604). A list, because JSON gives one.
 T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
-PR_SECTIONS = ["checks"]
+PR_CHECKS_ONLY = ["checks"]
 # Path arguments: Claude Code first, then Antigravity.
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
@@ -323,16 +324,16 @@ def check_text_read(tool, arguments):
     """Raise Blocked when a T3 Code MCP call can return issue or PR text (issue #545).
 
     `read_issue` always returns the body and the comments. `pull_request_read`
-    passes only when its `sections` equals PR_SECTIONS and its `include`, when
-    present, does too (#604). A missing `sections` gets the default, which
-    includes the summary; any other input fails closed.
+    passes only when its `sections` equals PR_CHECKS_ONLY and its `include`,
+    when present, does too (#604). A missing `sections` gets the default,
+    which includes the summary; any other input fails closed.
     """
     if tool == "read_issue":
         raise Blocked("text")
     if tool != "pull_request_read":
         return
-    if (not isinstance(arguments, dict) or arguments.get("sections") != PR_SECTIONS
-            or arguments.get("include", PR_SECTIONS) != PR_SECTIONS):
+    if (not isinstance(arguments, dict) or arguments.get("sections") != PR_CHECKS_ONLY
+            or arguments.get("include", PR_CHECKS_ONLY) != PR_CHECKS_ONLY):
         raise Blocked("text")
 
 

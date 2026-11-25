@@ -151,8 +151,9 @@ REQUIRED = {
              # init runs on the first start, before the discovery task; outcome waits for the user (#545).
              "init <slug>, once, on the first start;",
              "outcome <text>, after the user names the work;",
-             "A triage that needs issue text is a read-only task: its worker recommends labels, and you "
-             "set them.",
+             # The lead has no tool that sets labels (#604).
+             "A triage that needs issue text is a read-only task: its worker recommends labels; another "
+             "worker sets them.",
              # A second lead state needs the user's confirmation (#544).
              "add --also only after the user confirms a second lead state",
              # A batch stops growing when its first PR merges (#560).
@@ -257,7 +258,7 @@ RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
                 # The lead lists the open work and asks the user no question (#545).
                 "one to three outcomes", "Choose an outcome", "Propose its outcomes",
                 # pull_request_read has no include parameter, and the lead sets no labels (#604).
-                "with an include", "Set triage labels")
+                "with an include", "Set triage labels", "and you set them")
 # Text that tells the lead to read issue or PR text (#545). No step may print it.
 TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
               "include diff", "issue body", "PR body", "read the issue", "read the PR")

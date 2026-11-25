@@ -305,8 +305,8 @@ The lead reads the state, labels, titles, and check counts of issues and PRs,
 never their text. In a recorded session, the hook of
 [ADR 0007](0007-gate-the-project-lead-with-a-session-checked-hook.md) blocks
 the T3 Code MCP tool `read_issue`, and `pull_request_read` with an `include`
-other than `checks`, in Claude Code and Codex. (Superseded: the tool takes
-`sections`; read
+other than `checks`, in Claude Code and Codex. (Superseded by #604: the tool
+takes `sections`; read
 [The sections of pull_request_read](#the-sections-of-pull_request_read).)
 Antigravity has no known hook payload for MCP calls, so there only the step
 text holds the rule.
@@ -509,6 +509,7 @@ the lead to pass `sections` `["checks"]`.
 The `start` step also said "Set triage labels and issue state". The hook
 blocks `gh`, and the lead has no tool that sets labels, so a worker had to
 set them. Now `start` says that the lead sets issue state and a worker sets
-triage labels.
+triage labels, and `plan` says that another worker sets the labels that a
+read-only worker recommends.
 `dev-skills/tests/test_t3_project_lead_hook.py` and
 `dev-skills/tests/test_t3_project_lead.py` check these rules.

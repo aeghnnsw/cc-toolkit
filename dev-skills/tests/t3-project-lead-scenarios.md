@@ -209,9 +209,10 @@ blocks a call without `sections`, with an `include` and no `sections`, with
 any other `sections` or `include` value, such as `["conversation", "diff"]`,
 `[]`, or `["checks", "checks"]`, and with a tool input that is not an
 object. `test_t3_project_lead.py` requires the new reading rule and lead
-action 7 in `start`, and fails when a step prints "with an include" or
-"Set triage labels". The tests of blocked calls and the `start` checks
-failed against the 2a6d840 script and hook files.
+action 7 in `start` and the triage line of `plan`, and fails when a step
+prints "with an include", "Set triage labels", or "and you set them". The
+tests of blocked calls and the `start` and `plan` checks failed against the
+2a6d840 script and hook files.
 
 **Not shown.** No simulated or live review of cases 28 and 29 ran. No live
 lead session has shown the hook block a `pull_request_read` call.

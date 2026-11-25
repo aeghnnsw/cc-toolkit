@@ -118,7 +118,7 @@ the rest of its batch. A batch (--batch) only decides when its workers are
 closed out and settled. Without --batch, a work task joins a new batch once a
 PR of the highest batch merged.
 A triage that needs issue text is a read-only task: its worker recommends
-labels, and you set them.
+labels; another worker sets them.
 Decide reversible points yourself. Record the plan with these commands. Text
 is at most 200 characters; quote it with single quotes.
 init <slug>, once, on the first start; add --also only after the user
