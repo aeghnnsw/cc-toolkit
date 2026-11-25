@@ -26,6 +26,9 @@ Issues [#554](https://github.com/aeghnnsw/cc-toolkit/issues/554) and
 10, 15, and 20.
 Issue [#567](https://github.com/aeghnnsw/cc-toolkit/issues/567) changes cases
 24 and 28, and adds case 30.
+Issue [#603](https://github.com/aeghnnsw/cc-toolkit/issues/603) changes case
+2, and issue [#602](https://github.com/aeghnnsw/cc-toolkit/issues/602) adds
+case 31.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -131,13 +134,18 @@ with the commands of `t3_project_lead.py`, in
     task. Its worker reports ISSUES: its findings are the status of the
     project, not failures. Its report numbers two decisions for the user. No
     PR exists, and nothing waits on the user.
+31. **Thread start fails.** The lead started a worker thread for task A
+    with `delegate_task` and ran `task start` for it. Ten minutes later, T3
+    shows that the thread timed out while it started. Tasks B and C are
+    planned and ready. The workers of verified tasks D and E finished, and
+    their threads are not settled.
 
 ## Expected results
 
 | Case | Next permitted action | Blocked action | Evidence needed |
 | --- | --- | --- | --- |
 | Flagged worker | Start a new worker with `delegate_task`, isolation "worktree", and a Claude Code provider on `claude-sonnet-5-5`. Give it the same brief with line 1 in the Claude Code form, the branch `fix-cache`, PR 51, and issue 50 from the view that `start` prints and `pull_request_list`, and "Continue from this state." Record the new worker and its worktree path with `task worker --worktree`, then settle the flagged thread that it names. | Reading the flagged thread; adding its link to the new brief; a second retry after another flag. | The failed status and the flag message of the worker, and the view that `start` prints. |
-| Stopped lead | Run the `start` step: read its view of the lead state, list the workers, and read the last message of each worker of a running or pr-open task. Then run the `verify` step for the finished worker: accept its result from the report, the PR state, and the CI state, or start a read-only worker that checks it. | Starting new workers again for the tasks in the lead state; running the checks itself. | The view that `start` prints, the worker's report, and the PR and CI state. |
+| Stopped lead | Run the `start` step. It prints the "Lead steps: shown once in this thread" line in place of the fixed lead steps, so run `start --steps`, because the summary does not hold them. Read its view of the lead state, list the workers, and read the last message of each worker of a running or pr-open task. Then run the `verify` step for the finished worker: accept its result from the report, the PR state, and the CI state, or start a read-only worker that checks it. | Starting new workers again for the tasks in the lead state; running the checks itself. | The view that `start` prints, the worker's report, and the PR and CI state. |
 | Worker waits on answers | Run the `answer` step. Record the item with `wait` for the task and its 3 decisions. Ask the user to answer in the worker's thread: give its link and "3 decisions", with no topics. | Answering the questions, also with `t3_pending_request`; asking them again, with a question tool or in text; settling the worker; giving a topic or other content of a question. | The worker's final message and its thread link. |
 | Duplicate dispatch | Record the running worker for task B with `task start`, and start no second worker. | Starting a second worker for task B. | The `t3_thread_list` output. |
 | Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the "Waiting on you" list that the script prints, copied as it is: the item number, the worker link, and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; writing the list from memory; settling the lead thread while a worker runs or waits. | The `t3_thread_list` output, the merged PR, and the view that `report` prints. |
@@ -165,6 +173,7 @@ with the commands of `t3_project_lead.py`, in
 | New lead with no work named | Run `init shop`. Then run the `discover` step: add the discovery task, and start its worker as the `dispatch` step says, with the read-only brief, no outcome, and the discovery brief that `discover` prints, copied exactly. Record it with `task start`, and end the turn with the `report` step. When it reports, run `task verified discover --decisions 0`, copy its group lines into the report as they are, and end the turn. After the user names the work, run `outcome` and `criteria`, then the `plan` step. When the user writes again without naming work, start no second discovery. | Listing issues with `list_issues` before the discovery report; asking the user what to do before the discovery task reports; asking the user to choose, with a question tool or in text; adding a waiting item or a GTD capture for the list; reading the open issues with `read_issue`, or a PR with `pull_request_read` and `sections` other than `["checks"]`; quoting issue text in the report; running `outcome` before the user names the work; running `finish` while the lead state has no outcome; a second discovery task. | The lookup line that `start` prints, the `discover` step, and the worker's report. |
 | Triage needs issue text | Start a read-only worker with the `dispatch` step that reads issue 120 and recommends labels; record it as a task. Give the labels that it recommends to a worker that sets them, or ask the user when it reports a decision. | Calling `read_issue` for issue 120; reading its text in any other way; guessing the labels from the title. | The worker's recommendation, and the issue state and labels from `list_issues`. |
 | PR waits on checks | Run `task pr` for A and PR 97. Watch PR 97, and end the turn with the `report` step. When the checks of PR 97 finish, resume worker A, which merges PR 97. After the merge, run `task merged`, and run the `verify` step when A reports. | Polling the checks in a loop; merging PR 97 in the lead; telling A to poll or to look for a watch tool; running `task verified` before the merge. | A's last message with the PR URL and head SHA, and the check state of PR 97. |
+| Thread start fails | Run `task start-failed` for A with the failed thread's link, and follow the line that it prints: give B to one idle worker with `t3_thread_send`, `freshContext` true, and B's brief, then run `task start` for B with that worker's link. Add a read-only task that finds the cause, and give it to the other idle worker the same way. Tell the user what waits. Start a new thread again only after the cause is fixed. | Starting a new thread with `delegate_task` for A, B, or C while the line is open; changing accounts or providers before a worker looks for the cause; settling the thread of D or E while it works. | The `task start-failed` output, the line that `start` and `dispatch` print, and the idle workers that it names. |
 | Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2`, which adds one waiting item with S's link and "2 decisions". Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; a topic or other content of a decision; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
 
 ## Validation limits
@@ -199,6 +208,27 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-24, issues #599, #602, #603, and #607
+
+**Static checks.** `test_t3_project_lead_state.py` checks that `init` makes
+the lead folder and the ignore rule with `planning_folder.py`, and writes the
+lead folder's `.gitignore` of `*` when Git's `info/exclude` file cannot be
+written. It checks that a `.scratch` that cannot be read is refused, not
+skipped. It checks that `start` prints the fixed lead steps once in each
+owner thread and with `--steps`, and one line in their place otherwise. It
+checks the record of `task start-failed`, its line in `start` and `dispatch`,
+the idle workers, which no due line settles while the record is open, the
+refusal of a busy or settled worker, and the close of the record once a new
+thread passes T3's start limit of 10 minutes. `test_t3_project_lead.py`
+requires the new question line of `brief` and the `start-failed` line of
+`dispatch`. `test_planning_folder.py` checks that the lead script and
+`cleanup_plan.py` list folders only through `planning_folder.py`, and cases 42
+and 43 of `test_cleanup_plan.py` check that a file in a planning location, or
+a `.scratch` that is a file, keeps the worktrees.
+
+**Not shown.** No simulated or live review of cases 2 and 31 ran. No live
+lead session has shown a failed thread start with the new record.
 
 ### 2026-11-24, issue #604
 

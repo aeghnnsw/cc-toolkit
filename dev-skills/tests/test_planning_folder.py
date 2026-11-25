@@ -3,12 +3,14 @@
 Each check builds a temporary Git repository with an empty global Git
 configuration, so no ignore rule of the user applies, and reads the lines that
 the script prints. Issue #463 moves the mechanical rules of the planning folder
-(issue #421) into the script.
+(issue #421) into the script. Issue #599 makes t3_project_lead.py and
+cleanup_plan.py of repo-cleanup find their folders with this module.
 """
 
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -20,6 +22,11 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "planning_folder.py"
 REPOSITORY_GITIGNORE = PLUGIN_ROOT.parent / ".gitignore"
+_SPEC = importlib.util.spec_from_file_location("planning_folder_under_test", SCRIPT)
+PLANNING = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(PLANNING)
+# The scripts that import this module for their folders (#599).
+CALLERS = ("t3_project_lead.py", "cleanup_plan.py")
 
 
 def today() -> str:
@@ -197,6 +204,36 @@ class PlanningFolderTests(unittest.TestCase):
             with self.subTest(args=args):
                 self.assertEqual(self.run_script(*args).returncode, 2)
         self.assertFalse((self.repo / ".scratch").exists())
+
+    def test_entries_list_files_too_at_any_location(self):
+        # repo-cleanup keeps a worktree that holds a file in its planning location (#599).
+        for location in (".scratch", "docs/plans"):
+            with self.subTest(location=location):
+                folder = self.repo / location
+                (folder / "42-cache-layer").mkdir(parents=True)
+                (folder / "notes.md").write_text("")
+                self.assertEqual(PLANNING.entries(str(self.repo), location),
+                                 [str(folder / "42-cache-layer"), str(folder / "notes.md")])
+        self.assertEqual(PLANNING.list_folders(str(self.repo)), [str(self.repo / ".scratch" / "42-cache-layer")])
+        self.assertEqual(PLANNING.entries(str(self.repo), "missing"), [])
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
+    def test_an_unreadable_location_fails(self):
+        scratch = self.repo / ".scratch"
+        scratch.mkdir()
+        scratch.chmod(0)
+        self.addCleanup(scratch.chmod, 0o755)
+        with self.assertRaisesRegex(PLANNING.Failed, f"cannot read {scratch}: "):
+            PLANNING.list_folders(str(self.repo))
+
+    def test_the_lead_and_cleanup_keep_no_folder_listing_of_their_own(self):
+        # Both scripts list folders only through this module (#599).
+        for name in CALLERS:
+            with self.subTest(script=name):
+                text = (SCRIPT.parent / name).read_text(encoding="utf-8")
+                self.assertRegex(text, r"(?m)^(import planning_folder|from planning_folder import )")
+                self.assertNotIn("listdir(", text)
+                self.assertNotIn("scandir(", text)
 
     def test_outside_a_repository_fails(self):
         result = self.run_script("cache-layer", cwd=self.tmp)

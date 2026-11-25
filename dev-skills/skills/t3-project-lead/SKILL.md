@@ -1,6 +1,6 @@
 ---
 name: t3-project-lead
-version: 1.4.0
+version: 1.5.0
 description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and judge their reports, while workers do all other work."
 disable-model-invocation: true
 ---
@@ -20,8 +20,10 @@ dev-skills hook then blocks your other shell commands, file reads, and file
 edits.
 
 Run a step again whenever you need its text, for example after a context
-summary. The script also keeps the lead state: change it only with the
-script's commands, and read it with `start` or `show`.
+summary. `start` prints its fixed lead steps once in each thread, and
+`start --steps` prints them again. The script also keeps the lead state:
+change it only with the script's commands, and read it with `start` or
+`show`.
 
 Delete the lead thread only after `finish`. When T3's `worktreeOnDelete`
 setting is on, T3 removes a thread's worktree, and the lead state in it, when

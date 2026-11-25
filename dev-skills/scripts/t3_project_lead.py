@@ -46,6 +46,25 @@ user, and adds them as one worker item (issue #567). `wait --task` also takes
 the task of a finished worker. Only the user ends such an item, so `finish`
 waits for it, and the due line of `finish` names the rule of the `report` step
 for decisions first.
+
+`init` makes the lead folder with planning_folder.py, which is next to this
+script, and the lead folders are found with it (issue #599). planning_folder.py
+makes Git ignore .scratch/; when it cannot write Git's info/exclude file, a
+`.gitignore` of `*` in the lead folder does it.
+
+`task start-failed` records a worker thread that did not start (issue #602).
+While such a record is open, `start` and `dispatch` print one line: start no
+new thread, give each next task to an idle worker, the worker of a verified or
+closed-out task that no busy task uses, and ask one to find the cause; no due
+line then settles an idle worker. A new thread, a link that no other task
+records in `task start` or `task worker`, closes the record once T3's start
+limit of 10 minutes passes without a failure. `task start` refuses a worker
+that a running, pr-open, or merged task uses, or a settled one.
+
+`start` prints the fixed lead steps once in each thread (issue #603): without a
+lead state, on the owner's first start after `init` or `takeover`, and with
+`start --steps`. The state records the thread that saw them. Other `start`
+calls print one line that names `start --steps`, then the state.
 """
 
 from __future__ import annotations
@@ -58,9 +77,13 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
+
+# Python puts the folder of this script on sys.path, so the sibling module loads.
+import planning_folder
 
 STEPS = {
     "start": """
@@ -151,7 +174,8 @@ Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
 Then run task start <name> <worker link> --worktree <path> [--branch NAME].
 Take the path from the delegate_task result, or from worktreePath of
-t3_thread_read.
+t3_thread_read. When a new thread does not start, run task start-failed <name>
+[<thread link>], and follow the line that it prints.
 Next: t3_project_lead.py report while workers run.
 """,
     "brief": """
@@ -164,9 +188,9 @@ Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."
 For a read-only task (audit, research, or check), write no line 1, keep line 2,
 and name what the worker must not change.
 Every brief also says: "Add no GTD capture; report what waits on the user."
-and "Ask the user your questions in this thread, with AskUserQuestion or your
-host's question tool. Ask also before you delete outside your worktree or
-change user or host settings."
+and "Ask the user your questions in this thread, in plain text, not with a
+question tool. Then end your turn to wait for the reply. Ask also before you
+delete outside your worktree or change user or host settings."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -281,6 +305,12 @@ and links only. Quote no issue or PR text, and keep the detail in this thread:
 - <short neutral title of the group> (<count>): <links>.
 - Waiting on the user: <links>.
 - Recommended order: <group titles>.\""""
+# What a start prints in place of the fixed lead steps once this thread saw them (#603): a lead
+# session ran start 133 times, and the fixed steps were most of its tool output.
+STEPS_SHOWN = ("Lead steps: shown once in this thread. Run start --steps when your context does not hold "
+               "them, as after a context summary. Read the last message of each worker of a running or "
+               "pr-open task before you state its status. Next: t3_project_lead.py plan, answer, verify, "
+               "flag, or report.")
 DISCOVERY_TASK = "discover"
 STATE_FILE = "state.json"
 EVENTS_FILE = "events.jsonl"
@@ -302,6 +332,8 @@ CONTINUE = ("Continue that lead in its own worktree. A lead can continue in thre
             "thread, run start, then takeover.")
 NOT_A_REPOSITORY = "not a git repository"
 TEXT_LIMIT = 200
+# T3 shows a failed thread start only after this start limit (#602).
+START_LIMIT = datetime.timedelta(minutes=10)
 LINK_LIMIT = 600
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
@@ -365,19 +397,32 @@ def outside_work_trees(folder: str) -> bool:
 
 
 def lead_folders(top: str) -> list[str]:
-    """Return the lead folders in `top`: .scratch/<YYYYMMDD>-lead-<slug>/ with a state file."""
-    scratch = os.path.join(top, ".scratch")
-    try:
-        names = sorted(os.listdir(scratch))
-    except OSError:
-        return []
-    return [os.path.join(scratch, name) for name in names
-            if FOLDER.fullmatch(name) and os.path.isfile(os.path.join(scratch, name, STATE_FILE))]
+    """Return the lead folders in `top`: .scratch/<YYYYMMDD>-lead-<slug>/ with a state file.
+
+    planning_folder.py lists .scratch (#599). A missing .scratch or state file is no lead folder.
+    Raise planning_folder.Failed when .scratch or a lead folder cannot be read, also when .scratch is
+    a file, because a lead state may then exist; cleanup_plan.py keeps every worktree in that case.
+    """
+    found = []
+    for folder in planning_folder.list_folders(top):
+        if not FOLDER.fullmatch(os.path.basename(folder)):
+            continue
+        try:
+            if stat.S_ISREG(os.stat(os.path.join(folder, STATE_FILE)).st_mode):
+                found.append(folder)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as error:
+            raise planning_folder.Failed(f"cannot read {folder}: {error}") from None
+    return found
 
 
 def find_lead(top: str) -> str | None:
     """Return the lead folder in `top`, or None. More than one is an error."""
-    folders = lead_folders(top)
+    try:
+        folders = lead_folders(top)
+    except planning_folder.Failed as error:
+        raise Refused(f"cannot look for a lead state: {error}") from None
     if len(folders) > 1:
         raise Refused(f"more than one lead state in {os.path.join(top, '.scratch')}: {', '.join(folders)}")
     return folders[0] if folders else None
@@ -434,7 +479,11 @@ def other_lead_lines(top: str) -> list[str]:
     for tree in worktree_tops(top):
         if os.path.realpath(tree) == here:
             continue
-        folders = lead_folders(tree)
+        try:
+            folders = lead_folders(tree)
+        except planning_folder.Failed as error:
+            lines.append(f"- Cannot look for a lead state: {error}. Worktree: {tree}")
+            continue
         if len(folders) > 1:
             lines.append(f"- More than one lead state in {os.path.join(tree, '.scratch')}: "
                          f"{', '.join(folders)}. Worktree: {tree}")
@@ -628,18 +677,31 @@ def cmd_init(args) -> str:
         if others:
             raise Refused("\n".join(["another worktree holds a lead state:", *others,
                                      f"{CONTINUE} {confirm}"]))
-    time = utc_now()
-    folder = os.path.join(top, ".scratch", f"{time[:10].replace('-', '')}-lead-{slug}")
-    if os.path.exists(folder):
+    # planning_folder.py makes Git ignore .scratch/ and makes the folder (#599). A sandbox can refuse
+    # the write to Git's info/exclude file, as Codex 0.172.0 workspace-write does in a main checkout:
+    # then a .gitignore of * in the lead folder keeps it out of Git.
+    ignore_line, own_gitignore = None, False
+    if not outside_work_trees(top):
+        try:
+            ignore_line = planning_folder.ensure_ignored(top)
+        except planning_folder.Failed as error:
+            ignore_line = f"Ignore: {error}. A .gitignore of * keeps the lead folder out of Git."
+            own_gitignore = True
+    try:
+        folder, done = planning_folder.make_folder(top, f"lead-{slug}", None)
+    except planning_folder.Failed as error:
+        raise Refused(str(error)) from None
+    if done != "created":
         raise Refused(f"{folder} already exists")
-    os.makedirs(folder)
-    with open(os.path.join(folder, ".gitignore"), "w", encoding="utf-8") as handle:
-        handle.write("*\n")
+    if own_gitignore:
+        with open(os.path.join(folder, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write("*\n")
+    time = utc_now()
     state = {"schema": SCHEMA, "slug": slug, "created": time, "owner": owner, "outcome": None,
              "criteria": None, "tasks": [], "items": [], "next_item": 1, "decisions": [], "next_decision": 1}
     save(folder, state)
     append_event(folder, {"time": time, "command": "init", "slug": slug, "owner": owner})
-    return f"Lead state created: {folder}"
+    return "\n".join(([ignore_line] if ignore_line else []) + [f"Lead state created: {folder}"])
 
 
 def cmd_takeover(args) -> str:
@@ -745,19 +807,110 @@ def ready_lines(state: dict) -> list[str]:
     return lines
 
 
+def worker_tasks(state: dict, worker: str, task: dict | None = None) -> list[dict]:
+    """Return the tasks other than `task` that record `worker` as their worker."""
+    return [other for other in state["tasks"] if other is not task and other["worker"] == worker]
+
+
+def busy_task(state: dict, worker: str, task: dict | None = None) -> dict | None:
+    """Return a task other than `task` that `worker` may still run: running, pr-open, or merged."""
+    return next((other for other in worker_tasks(state, worker, task)
+                 if other["state"] in ACTIVE + (MERGED,)), None)
+
+
+def idle_workers(state: dict) -> list[str]:
+    """Return the workers of verified or closed-out tasks that no busy task uses (#602)."""
+    links = [task["worker"] for task in state["tasks"]
+             if task["state"] in (VERIFIED, CLOSED_OUT) and task["worker"]]
+    return [worker for worker in dict.fromkeys(links) if busy_task(state, worker) is None]
+
+
+def add_worktree(task: dict, worktree: str | None) -> None:
+    """Add a worktree path to the task's paths; earlier paths stay for the close-out (#556)."""
+    paths = task.get("worktrees") or []
+    task["worktrees"] = paths + [worktree] if worktree and worktree not in paths else paths
+
+
+def trial_end(trial: dict) -> datetime.datetime:
+    """Return when a new thread, recorded after a failed start, has passed T3's start limit."""
+    return parse_time(trial["time"]) + START_LIMIT
+
+
+def open_failed_starts(state: dict) -> list[dict]:
+    """Return the failed thread starts while their record is open (#602).
+
+    A new thread that `task start` or `task worker` records after the last failure closes the record
+    once T3's start limit passed without a failure: T3 shows a failed start only after that limit.
+    """
+    failed, trial = state.get("failed_starts") or [], state.get("start_trial")
+    if failed and trial and parse_time(utc_now()) >= trial_end(trial):
+        return []
+    return failed
+
+
+def note_new_thread(state: dict, worker: str, task: dict, time: str, event: dict) -> str:
+    """Record a new thread, a worker that no other task records, while failed starts are open."""
+    if not open_failed_starts(state) or worker_tasks(state, worker, task):
+        return ""
+    trial = state.setdefault("start_trial", {"task": task["name"], "thread": worker, "time": time})
+    event["start_trial"] = trial["thread"] == worker
+    return (f" The failed thread start stays open until {trial_end(trial):%Y-%m-%dT%H:%M:%SZ}: if the "
+            f"new thread of {trial['task']} fails before then, run task start-failed {trial['task']}.")
+
+
 def change_task_start(state, args, time):
     task = find_task(state, args.name)
     require(task, (PLANNED,), "task start")
     reason = start_refusal(state, task)
     if reason:
         raise Refused(reason)
-    task["worker"] = worker_link(args.worker)
+    worker = worker_link(args.worker)
+    others = worker_tasks(state, worker, task)
+    busy = busy_task(state, worker, task)
+    if busy is not None:
+        raise Refused(f"{worker} is the worker of {busy['name']}, which is {busy['state']}; give "
+                      f"{task['name']} to an idle worker or a new thread")
+    if others and all(other["state"] == SETTLED for other in others):
+        raise Refused(f"{worker} is the settled worker of {others[0]['name']}; never reuse a settled "
+                      "worker")
+    if args.worktree:
+        worktree = worktree_path(args.worktree)
+    else:
+        # A reused idle worker keeps working in its worktree (#602).
+        latest = max(others, key=lambda other: other["started"] or "", default=None)
+        worktree = ((latest.get("worktrees") or [None])[-1]) if latest else None
+    task["worker"] = worker
     task["branch"] = link(args.branch, "branch") if args.branch else None
-    worktree = worktree_path(args.worktree) if args.worktree else None
-    task["worktrees"] = [worktree] if worktree else []
+    # A task that failed to start keeps the path of the failed thread.
+    add_worktree(task, worktree)
     task["started"] = time
     event = move(task, RUNNING, time, worker=task["worker"], branch=task["branch"], worktree=worktree)
-    return f"{task['name']} is running.", event
+    return f"{task['name']} is running.{note_new_thread(state, worker, task, time, event)}", event
+
+
+def change_task_start_failed(state, args, time):
+    """Record a thread that did not start for a task (#602). A running task is planned again."""
+    task = find_task(state, args.name)
+    require(task, (PLANNED, RUNNING), "task start-failed")
+    if task["prs"]:
+        raise Refused(f"{task['name']} has a PR, so its worker started")
+    thread = worker_link(args.thread) if args.thread else None
+    if task["state"] == RUNNING:
+        if thread and thread != task["worker"]:
+            raise Refused(f"{task['name']} runs on {task['worker']}, not on {thread}")
+        thread = task["worker"]
+        task["worker"], task["branch"], task["started"] = None, None, None
+        event = move(task, PLANNED, time, failed_thread=thread)
+    else:
+        event = {"task": task["name"], "from": PLANNED, "to": PLANNED, "failed_thread": thread}
+    if not open_failed_starts(state):
+        # A record that a started thread closed holds no failure of this outage.
+        state["failed_starts"] = []
+    # A failure after a new thread ends that thread's trial.
+    state.pop("start_trial", None)
+    state.setdefault("failed_starts", []).append({"task": task["name"], "thread": thread, "time": time})
+    return f"{task['name']}: the thread start failed, and {task['name']} is planned. " + \
+        failed_start_lines(state)[0], event
 
 
 def change_task_worker(state, args, time):
@@ -766,11 +919,11 @@ def change_task_worker(state, args, time):
     worktree = worktree_path(args.worktree) if args.worktree else None
     old, task["worker"] = task["worker"], worker_link(args.worker)
     # The replaced worker's path stays: the close-out reads its sessions too (#556).
-    paths = task.get("worktrees") or []
-    task["worktrees"] = paths + [worktree] if worktree and worktree not in paths else paths
+    add_worktree(task, worktree)
     event = {"task": task["name"], "from": task["state"], "to": task["state"], "old_worker": old,
              "worker": task["worker"], "worktree": worktree}
-    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}", event
+    trial = note_new_thread(state, task["worker"], task, time, event)
+    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}{trial}", event
 
 
 def change_task_pr(state, args, time):
@@ -1029,9 +1182,36 @@ def task_line(task: dict, now: datetime.datetime) -> str:
     return line
 
 
+def failed_start_lines(state: dict) -> list[str]:
+    """Return the line on the open failed thread starts, or none (#602).
+
+    T3 shows a failed start only after its start limit of 10 minutes, and a lead that kept starting new
+    threads stalled four tasks for 35 to 50 minutes each.
+    """
+    failed = open_failed_starts(state)
+    if not failed:
+        return []
+    tasks = ", ".join(dict.fromkeys(record["task"] for record in failed))
+    threads = " ".join(dict.fromkeys(record["thread"] for record in failed if record.get("thread")))
+    idle = " ".join(idle_workers(state)) or "none: tell the user, and add the cause with wait"
+    trial = state.get("start_trial")
+    if trial:
+        end = (f"The new thread of {trial['task']}, recorded at {trial['time']}, closes this line at "
+               f"{trial_end(trial):%Y-%m-%dT%H:%M:%SZ} unless it fails to start; start no other new thread.")
+    else:
+        end = ("After the fix, a new thread closes this line once T3's start limit of 10 minutes passes "
+               "without a failure.")
+    return [f"A thread start failed for {tasks}, first at {failed[0]['time']}"
+            + (f"; failed threads: {threads}" if threads else "")
+            + ". Start no new thread until the cause is fixed. Give each next task to an idle worker: "
+            "t3_thread_send to its thread with freshContext true and the brief, then task start <name> <its "
+            f"link>. Ask an idle worker to find the cause. Idle workers: {idle}. {end}"]
+
+
 def due_lines(state: dict) -> list[str]:
     # Only the owner can act on the takeover due line.
     lines = [TAKEOVER_LINE] if state.get("takeover_due") and current_thread() == state.get("owner") else []
+    lines += failed_start_lines(state)
     if not state["outcome"]:
         # A wake after the discovery worker reports leads to the discover step, not to verify; after
         # the report, only the user starts the work (#545).
@@ -1051,11 +1231,18 @@ def due_lines(state: dict) -> list[str]:
     if paused:
         lines.append(f"Paused: {', '.join(paused)}. Run task resume <name>... to plan them again, or task "
                      "cancel <name>.")
+    # While a failed thread start is open, the lead keeps its idle workers for the next tasks (#602).
+    kept = set(idle_workers(state)) if open_failed_starts(state) else set()
     for task in state["tasks"]:
         if task["state"] == SETTLED:
             continue
-        if task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None:
-            if task["worker"]:
+        if (task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None
+                and task["worker"] not in kept):
+            runner = busy_task(state, task["worker"], task) if task["worker"] else None
+            if runner is not None:
+                lines.append(f"Run task settled {task['name']}, and keep its worker's thread: "
+                             f"{runner['name']} runs on it now: {task['worker']}")
+            elif task["worker"]:
                 lines.append(f"Settle the worker of {task['name']}, then run task settled "
                              f"{task['name']}: {task['worker']}")
             else:
@@ -1136,8 +1323,8 @@ def closeout_lines(state: dict, folder: str) -> list[str]:
         closeout = closeout_task(state, batch)
         if not merged_prs(state, batch) or not batch_done(state, batch) or batch_closed(state, batch):
             continue
-        workers = [task["worker"] for task in batch_tasks(state, batch)
-                   if task["worker"] and task is not closeout]
+        workers = list(dict.fromkeys(task["worker"] for task in batch_tasks(state, batch)
+                                     if task["worker"] and task is not closeout))
         # A state from before #556 has no worktree paths.
         paths = dict.fromkeys(path for task in batch_tasks(state, batch) if task is not closeout
                               for path in task.get("worktrees") or [])
@@ -1169,35 +1356,79 @@ def version_line() -> str:
     return f"Installed copy: dev-skills {', '.join(versions)}."
 
 
-def print_step(name: str) -> None:
+def steps_due(state: dict | None) -> bool:
+    """Return whether `start` prints its fixed lead steps (#603): without a lead state, and for a thread
+    that is not the owner or that the state does not record as having seen them. So the owner sees them
+    on its first start after init or takeover."""
+    if state is None:
+        return True
+    owner = state.get("owner")
+    return current_thread() != owner or state.get("steps_shown") != owner
+
+
+def print_step(name: str, steps: bool = False) -> None:
     print(f'Steps: "{__file__}"')
-    print(STEPS[name].strip())
+    top = folder = state = refused = None
+    if name in ("start", "dispatch", "report", "closeout"):
+        top = working_tree_top()
+        try:
+            folder = find_lead(top)
+            state = load(folder) if folder else None
+        except (Refused, OSError, ValueError) as error:
+            # The step text comes first, as before; start, report, and closeout then fail.
+            refused = error
+    full = name != "start" or steps or refused is not None or steps_due(state)
+    print(STEPS[name].strip() if full else STEPS_SHOWN)
     if name == "discover":
         print()
         print(DISCOVERY_BRIEF)
+    if name == "dispatch":
+        # dispatch only adds the failed start line (#602); a lead state that it cannot read is for start.
+        failed = failed_start_lines(state) if state is not None else []
+        if failed:
+            print()
+            print("\n".join(failed))
+        return
     if name not in ("start", "report", "closeout"):
         return
-    top = working_tree_top()
-    folder = find_lead(top)
+    if refused is not None:
+        raise refused
     if name == "start":
         print()
         print(version_line())
-    if folder is None:
+    if state is None:
         if name == "start":
             print("\n".join(lookup_lines(top)))
         return
-    state = load(folder)
     lines = {"start": compact_lines, "report": lambda s, f: waiting_lines(s), "closeout": closeout_lines}
     if name != "start":
         print()
     print("\n".join(lines[name](state, folder)))
-    if name == "start" and state.get("takeover_due") and current_thread() == state.get("owner"):
-        # The owner saw the takeover due line once; a failed write only prints it again at the next start.
-        with contextlib.suppress(OSError), locked(folder):
-            state = load(folder)
-            if state.pop("takeover_due", None) and current_thread() == state.get("owner"):
-                save(folder, state)
-                append_event(folder, {"time": utc_now(), "command": "start", "shown": "takeover due line"})
+    if name == "start" and current_thread() == state.get("owner"):
+        record_start(folder, state, full)
+
+
+def record_start(folder: str, state: dict, full: bool) -> None:
+    """Record that the owner saw the fixed lead steps (#603) and the takeover due line once. A failed write
+    only prints them again at the next start."""
+    owner = state.get("owner")
+    if not state.get("takeover_due") and not (full and state.get("steps_shown") != owner):
+        return
+    with contextlib.suppress(OSError), locked(folder):
+        state = load(folder)
+        if state.get("owner") != owner:
+            return
+        shown = []
+        if full and state.get("steps_shown") != owner:
+            state["steps_shown"] = owner
+            shown.append("lead steps")
+        if state.pop("takeover_due", None):
+            shown.append("takeover due line")
+        if shown:
+            save(folder, state)
+            time = utc_now()
+            for what in shown:
+                append_event(folder, {"time": time, "command": "start", "shown": what})
 
 
 def lookup_lines(top: str) -> list[str]:
@@ -1223,7 +1454,8 @@ CHANGES = {
 }
 TASK_CHANGES = {
     "add": change_task_add, "start": change_task_start, "worker": change_task_worker,
-    "pr": change_task_pr, "merged": change_task_merged, "verified": change_task_verified,
+    "start-failed": change_task_start_failed, "pr": change_task_pr, "merged": change_task_merged,
+    "verified": change_task_verified,
     "settled": change_task_settled, "cancel": change_task_cancel, "pause": change_task_pause,
     "resume": change_task_resume,
 }
@@ -1238,6 +1470,8 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True, metavar="command")
     for name in STEPS:
         commands.add_parser(name, help=f"print the {name} step")
+    commands.choices["start"].add_argument("--steps", action="store_true",
+                                           help="print the fixed lead steps, also after this thread saw them")
     init = commands.add_parser("init", help="create the lead state")
     init.add_argument("slug")
     init.add_argument("--also", action="store_true",
@@ -1276,6 +1510,9 @@ def parser() -> argparse.ArgumentParser:
     worker.add_argument("name")
     worker.add_argument("worker")
     worker.add_argument("--worktree")
+    failed = task.add_parser("start-failed", help="record a worker thread that did not start")
+    failed.add_argument("name")
+    failed.add_argument("thread", nargs="?")
     pr = task.add_parser("pr")
     pr.add_argument("name")
     pr.add_argument("number", type=int)
@@ -1300,7 +1537,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.command in STEPS:
-            print_step(args.command)
+            print_step(args.command, getattr(args, "steps", False))
             return 0
         if args.command == "init":
             print(cmd_init(args))

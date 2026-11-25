@@ -36,6 +36,10 @@ SOURCE:LINE:PATTERN, from `git check-ignore -v`. The Planning folder line ends w
 --list prints the absolute path of each folder in .scratch/ of the checkout,
 one for each line, sorted by name. It creates and changes nothing.
 
+t3_project_lead.py and cleanup_plan.py of repo-cleanup import this module
+(#599): `init` makes the lead folder with make_folder and ensure_ignored, and
+both scripts find the folders with list_folders and entries.
+
 Exit status: 0 on success; 1 when Git fails, when the folder cannot be made,
 when .scratch/ has more than one dated folder for the slug, or when Git still
 does not ignore .scratch/ after the change; 2 for a usage error. The message
@@ -162,16 +166,25 @@ def next_step(folder: str) -> str:
     return f"{max(map(int, numbers), default=0) + 1:0{width}d}_"
 
 
-def list_folders(top: str) -> list[str]:
-    """Return the absolute paths of the folders in .scratch/, sorted by name."""
-    scratch = os.path.join(top, SCRATCH)
+def entries(top: str, location: str = SCRATCH) -> list[str]:
+    """Return the absolute paths of the entries in LOCATION at TOP, files too, sorted by name.
+
+    A missing LOCATION has no entries. repo-cleanup reads the files too (#599): a file keeps the
+    worktree that holds it.
+    """
+    folder = os.path.join(top, location)
     try:
-        names = sorted(os.listdir(scratch))
+        names = sorted(os.listdir(folder))
     except FileNotFoundError:
         return []
     except OSError as error:
-        raise Failed(f"cannot read {scratch}: {error}") from None
-    return [os.path.join(scratch, name) for name in names if os.path.isdir(os.path.join(scratch, name))]
+        raise Failed(f"cannot read {folder}: {error}") from None
+    return [os.path.join(folder, name) for name in names]
+
+
+def list_folders(top: str) -> list[str]:
+    """Return the absolute paths of the folders in .scratch/ at TOP, sorted by name."""
+    return [path for path in entries(top) if os.path.isdir(path)]
 
 
 def main(argv: list[str]) -> int:
