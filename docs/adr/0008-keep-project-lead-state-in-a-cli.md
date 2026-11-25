@@ -245,6 +245,36 @@ the 60-minute live session check.
 (Superseded in part by #578: the plan now reads the T3 Code threads with the
 `t3` CLI; read [The worktrees of T3 Code threads](#the-worktrees-of-t3-code-threads).)
 
+### The session logs of an accepted task
+
+Added on 2026-11-24 for
+[#610](https://github.com/aeghnnsw/cc-toolkit/issues/610).
+
+The live session check keeps each worktree with a session log of the last 60
+minutes. A repo-cleanup that runs right after the workers finish finds their
+logs inside that window. In one close-out on 2026-11-24, with dev-skills
+3.72.0, the plan kept 6 finished worktrees for this reason only. The
+close-out asked the user, and its PR waited about 4.7 hours.
+
+Now session logs and Antigravity conversations do not keep a worktree when
+each task that records its path is in an accepted state: `verified`,
+`closed-out`, or `settled`, and not cancelled (`accepted` of
+`t3_project_lead.py`). The lead accepted the final report of the task's
+worker, and `task worker` tells the lead to settle a replaced worker at once,
+so the sessions of the task's workers have ended. A cancelled task does not
+count: the lead accepted no final report. A Git lock or a running process
+still keeps the worktree, which protects a session that runs (#419). The
+#575 rule above, which keeps the worktree of a task that is not `settled`,
+decides first. So the close-out still keeps the worktrees of its `verified`
+tasks, and the repo-cleanup after the lead settles the workers removes them
+without the 60-minute wait.
+
+When only session logs and Antigravity conversations keep a worktree,
+`live_worktrees.py` prints the time when their 60-minute window ends, and the
+plan reason gives it. repo-cleanup waits until the latest such time, runs the
+plan once more, and does not ask the user. This wait covers the worktrees
+that no lead state records, such as a thread outside a lead task (#578).
+
 ## The discover step
 
 Added on 2026-11-23 for

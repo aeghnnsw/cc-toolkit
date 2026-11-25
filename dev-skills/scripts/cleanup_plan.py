@@ -33,7 +33,16 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   worktree of such a worker.
 - Keep each worktree whose folder contains another worktree that Git lists.
 - Keep each worktree that live_worktrees.py lists, with its evidence. When
-  that script fails, keep every worktree.
+  that script fails, keep every worktree. When only session logs and
+  Antigravity conversations list a worktree, the reason gives the time when
+  their 60-minute window ends, or says that the end is unknown. Session logs
+  and Antigravity conversations do not keep a worktree when each task that
+  records its path is in an accepted state (#610): verified, closed-out, or
+  settled, and not cancelled, as accepted() of t3_project_lead.py tells. The
+  workers of such a task have ended their sessions. The rule for a task that
+  is not settled decides first, so the #610 rule frees the worktree of a
+  settled task. The plan then applies the rules below, and the reason names
+  the task. A Git lock or a running process still keeps the worktree.
 - Keep a worktree with a detached HEAD or with uncommitted changes.
 - A branch is merged when a merged PR of the branch has the branch tip as its
   head commit (headRefOid). The plan also treats a branch as merged when its
@@ -79,7 +88,8 @@ from typing import NoReturn
 # Python puts the folder of this script on sys.path, so the sibling modules load.
 from live_worktrees import WINDOW_MINUTES
 from t3_project_lead import (FOLDER as LEAD_FOLDER, SETTLED, STATE_FILE as LEAD_STATE_FILE,
-                             Refused as LeadStateRefused, load as load_lead_state)
+                             Refused as LeadStateRefused, accepted as accepted_task,
+                             load as load_lead_state)
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
@@ -277,14 +287,21 @@ def find_lead_folders(root: str) -> tuple[list[str], str | None]:
     return found, None
 
 
-def unsettled_task_worktrees(folders: list[str]) -> tuple[dict[str, str], str | None]:
-    """Return the worktrees that the tasks of the lead states record (#575).
+def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, str], str | None]:
+    """Return the worktrees that the tasks of the lead states record (#575, #610).
 
-    The result is ({real path: the reason to keep it}, None), with the error of
-    the first lead state that cannot be read in place of None. A task that is
-    not settled keeps each worktree whose path it records.
+    The result is (kept, ended, None), with the error of the first lead state
+    that cannot be read in place of None. kept maps the real path of each
+    worktree that a task that is not settled records to the reason to keep it.
+    ended maps the real path of each other worktree to a description of an
+    accepted task that records it, when every task that records it is
+    accepted. The lead accepted the final report of that task's worker, and
+    settles a replaced worker at once (task worker), so their sessions have
+    ended.
     """
     kept: dict[str, str] = {}
+    ended: dict[str, str] = {}
+    not_accepted: set[str] = set()
     first_error = None
     for folder in folders:
         try:
@@ -292,17 +309,21 @@ def unsettled_task_worktrees(folders: list[str]) -> tuple[dict[str, str], str | 
                 paths = task.get("worktrees") or []
                 if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
                     raise TypeError(f"task {task['name']} has the worktrees {paths!r}")
-                if task["state"] == SETTLED:
-                    continue
-                for path in paths:
-                    kept.setdefault(os.path.realpath(path), (
-                        f"task {task['name']} of the lead state {folder} is {task['state']}, "
-                        "not settled"))
+                about = f"task {task['name']} of the lead state {folder} is {task['state']}"
+                for path in map(os.path.realpath, paths):
+                    if accepted_task(task):
+                        ended.setdefault(path, about)
+                    else:
+                        not_accepted.add(path)
+                    if task["state"] != SETTLED:
+                        kept.setdefault(path, f"{about}, not settled")
         except (OSError, ValueError, KeyError, TypeError, AttributeError,
                 LeadStateRefused) as error:
             first_error = first_error or (f"cannot read the lead state {folder}: "
                                           f"{type(error).__name__}: {one_line(str(error))}")
-    return kept, first_error
+    ended = {path: about for path, about in ended.items()
+             if path not in kept and path not in not_accepted}
+    return kept, ended, first_error
 
 
 class T3Error(Exception):
@@ -390,8 +411,8 @@ def default_branch(repo: str, remote: str, given: str | None) -> tuple[str, str]
     fail(f"cannot find the Default Branch: no branch {name}")
 
 
-def live_worktrees(repo: str) -> tuple[dict[str, str], str | None]:
-    """Return {worktree path: evidence} from live_worktrees.py, or ({}, the error)."""
+def live_worktrees(repo: str) -> tuple[dict[str, tuple[str, str]], str | None]:
+    """Return {worktree path: (evidence, window end)} from live_worktrees.py, or ({}, the error)."""
     result = subprocess.run([sys.executable, LIVE_SCRIPT, "--repo", repo],
                             capture_output=True, text=True)
     if result.returncode != 0:
@@ -399,9 +420,20 @@ def live_worktrees(repo: str) -> tuple[dict[str, str], str | None]:
                     f"{one_line(result.stderr)}")
     found = {}
     for line in result.stdout.splitlines():
-        path, _, evidence = line.partition("\t")
-        found[path] = evidence
+        path, _, rest = line.partition("\t")
+        evidence, _, end = rest.rpartition("\t")
+        found[path] = (evidence, end)
     return found, None
+
+
+def live_reason(evidence: str, end: str) -> str:
+    """Return the reason to keep a worktree that live_worktrees.py lists."""
+    window = f"{WINDOW_MINUTES}-minute window"
+    if not end:
+        return f"live session: {evidence}"
+    if end == "unknown":
+        return f"live session: {evidence}; the end of its {window} is unknown"
+    return f"live session: {evidence}; its {window} ends at {end}"
 
 
 def refs(repo: str, prefix: str) -> dict[str, tuple[str, str]]:
@@ -449,11 +481,16 @@ def main() -> None:
 
     # The lead states in each checkout, and the worktrees that their tasks record (#575).
     lead_scans = {tree["path"]: find_lead_folders(tree["path"]) for tree in worktrees}
-    recorded, lead_error = unsettled_task_worktrees(
+    recorded, ended, lead_error = lead_task_worktrees(
         [folder for folders, _ in lead_scans.values() for folder in folders])
     lead_error = next((error for _, error in lead_scans.values() if error), None) or lead_error
     # The worktrees that unsettled T3 Code threads own (#578).
     thread_worktrees, thread_error = unsettled_thread_worktrees(worktrees[0]["path"])
+    # The worktrees that only session logs and Antigravity conversations list, whose
+    # task the lead accepted: that evidence does not keep them (#610).
+    ignored = {path: (f"{ended[real[path]]}, so its session logs and Antigravity "
+                      "conversations do not keep it")
+               for path, (_, end) in live.items() if end and real.get(path) in ended}
 
     # Each worktree's action and reason, before the planning folders.
     plan: dict[str, tuple[str, str]] = {}
@@ -479,20 +516,24 @@ def main() -> None:
             plan[path] = (KEEP, f"contains the worktree {', '.join(inside[path])}")
         elif live_error is not None:
             plan[path] = (KEEP, f"live session check failed: {live_error}")
-        elif path in live:
-            plan[path] = (KEEP, f"live session: {live[path]}")
-        elif branch is None:
-            plan[path] = (KEEP, f"detached HEAD {head[:7]}" + (
-                ": no commit of its own, because it is in the Default Branch"
-                if planner.in_default(head) else ", which is not in the Default Branch"))
+        elif path in live and path not in ignored:
+            plan[path] = (KEEP, live_reason(*live[path]))
         else:
-            status = git(path, "status", "--porcelain", check=False)
-            if status is None:
-                plan[path] = (KEEP, "its status cannot be read")
-            elif status.strip():
-                plan[path] = (KEEP, "uncommitted changes")
+            if branch is None:
+                plan[path] = (KEEP, f"detached HEAD {head[:7]}" + (
+                    ": no commit of its own, because it is in the Default Branch"
+                    if planner.in_default(head) else ", which is not in the Default Branch"))
             else:
-                plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
+                status = git(path, "status", "--porcelain", check=False)
+                if status is None:
+                    plan[path] = (KEEP, "its status cannot be read")
+                elif status.strip():
+                    plan[path] = (KEEP, "uncommitted changes")
+                else:
+                    plan[path] = planner.branch(pr_head(branch), head, f"refs/heads/{branch}")
+            if path in ignored:
+                action, reason = plan[path]
+                plan[path] = (action, f"{reason}; {ignored[path]}")
 
     # A lead state or a T3 Code thread that cannot be read may own any worktree.
     if lead_error is not None or thread_error is not None:

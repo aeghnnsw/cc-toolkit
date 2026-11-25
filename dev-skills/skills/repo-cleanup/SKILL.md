@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.12.0
+version: 1.13.0
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 ---
 
@@ -40,12 +40,21 @@ that a calling workflow did not name. A user request can limit this scope.
 The plan keeps the current worktree and each worktree that another live
 session may use, with the evidence: a Git lock, a running process in the
 worktree, or a Claude Code or Codex session log or an Antigravity
-conversation of the last 60 minutes. It keeps each worktree that holds a lead
-state of t3-project-lead, `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also
-with `--main-only`. It reads each lead state, also the one in the main
-checkout, and keeps each worktree whose path a task records while the task is
-not `settled`. When a `.scratch` folder, a lead folder, or a lead state
-cannot be read, the plan keeps every worktree that it would otherwise remove.
+conversation of the last 60 minutes. When only session logs and Antigravity
+conversations keep a worktree, the reason gives the time when their 60-minute
+window ends, or says that the end is unknown. It keeps each worktree that
+holds a lead state of t3-project-lead,
+`.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also with `--main-only`. It
+reads each lead state, also the one in the main checkout, and keeps each
+worktree whose path a task records while the task is not `settled`. Session
+logs and Antigravity conversations do not keep a worktree when each task that
+records its path is in an accepted state: `verified`, `closed-out`, or
+`settled`, and not cancelled. The workers of such a task have ended their
+sessions. The rule for a task that is not `settled` decides first, so the
+accepted-state rule frees the worktree of a `settled` task. A Git lock or a
+running process still keeps the worktree. When a `.scratch` folder, a lead
+folder, or a lead state cannot be read, the plan keeps every worktree that it
+would otherwise remove.
 It reads the T3 Code threads of the repository with the `t3` CLI,
 `T3CODE_CLI_PATH` or else `t3` on `PATH`, and keeps each worktree that a
 thread owns while the thread is not `settled`. Without the CLI, or for a
@@ -115,6 +124,11 @@ order:
 4. Delete each `remote-branch` `<remote>/<name>` from the upstream remote
    with `git push <remote> --delete <name>`.
 
+- When the reason of a kept worktree gives the time when its 60-minute window
+  ends, do not ask the user to remove the worktree. Do these steps once:
+  1. Wait until the latest such time.
+  2. Run the plan command again with the same options.
+  3. Act on its new `REMOVE` lines in the order above.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
 - Report what was cleaned and retained: each `KEEP` line with its reason.
