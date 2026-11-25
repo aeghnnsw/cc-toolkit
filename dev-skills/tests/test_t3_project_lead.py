@@ -20,7 +20,9 @@ and from any question tool. Issue #555 adds the `show` line of `start`, issue
 #556 the worktree paths of `dispatch`, `flag`, and `closeout`, and issue #560
 the default batch of `plan`. Issue #567 adds the count of a report's decisions
 to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
-decisions that only the user can make to `report`. Agent behavior is checked
+decisions that only the user can make to `report`. Issue #602 adds the
+`start-failed` line of `dispatch`, issue #603 the `start --steps` line of the
+skill, and issue #607 the plain-text question line of `brief`. Agent behavior is checked
 by the scenario review in t3-project-lead-scenarios.md; the hook has its own
 tests in test_t3_project_lead_hook.py.
 """
@@ -48,7 +50,8 @@ NO_STATE = tempfile.TemporaryDirectory()
 # from 210 words to 230 with the reading rule, and `plan` from 186 to 226 with the discover, init, and
 # triage lines. #554, #555, and #560 took `start` to 244 words with the plain-text rule and the show
 # line, `plan` to 243 with the default batch, and `brief` to 237 with the worker's question line.
-STEP_WORD_LIMIT = 245
+# #607 took `brief` to 248 words: the worker asks in plain text, then ends its turn.
+STEP_WORD_LIMIT = 250
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -105,10 +108,11 @@ REPORT_FORM = ("Put each item in one group. Report one line for each group, with
                "titles>.\"")
 # The lead copies the discovery brief into a worker's brief; like a step, it stays short.
 DISCOVERY_BRIEF_WORD_LIMIT = 120
-# A worker asks the user in its own thread, where an approval counts for it (#554).
-WORKER_QUESTIONS = ('"Ask the user your questions in this thread, with AskUserQuestion or your host\'s '
-                    'question tool. Ask also before you delete outside your worktree or change user or host '
-                    'settings."')
+# A worker asks the user in its own thread, where an approval counts for it (#554), in plain text, and
+# then ends its turn (#607): the user does not want question dialogs.
+WORKER_QUESTIONS = ('"Ask the user your questions in this thread, in plain text, not with a question tool. '
+                    'Then end your turn to wait for the reply. Ask also before you delete outside your '
+                    'worktree or change user or host settings."')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -171,7 +175,10 @@ REQUIRED = {
                  'line, with links. Keep scientific detail in this thread and the PR".',
                  # The close-out passes each worker's worktree to retro_sessions.py (#556).
                  "Then run task start <name> <worker link> --worktree <path> [--branch NAME]. Take the "
-                 "path from the delegate_task result, or from worktreePath of t3_thread_read."],
+                 "path from the delegate_task result, or from worktreePath of t3_thread_read.",
+                 # A failed thread start has a record and a line (#602).
+                 "When a new thread does not start, run task start-failed <name> [<thread link>], and "
+                 "follow the line that it prints."],
     "brief": ["Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
               "When grilling must lead to implementation, end line 1 with:",
               'Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."',
@@ -352,6 +359,13 @@ class SkillCopyTests(unittest.TestCase):
                               "session as the lead: a dev-skills hook then blocks your other "
                               "shell commands, file reads, and file edits.", shared_text(host))
 
+    def test_skill_names_start_steps(self) -> None:
+        # start prints the fixed lead steps once in each thread (#603).
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn("`start` prints its fixed lead steps once in each thread, and `start --steps` "
+                              "prints them again.", shared_text(host))
+
     def test_skill_keeps_the_lead_thread_until_finish(self) -> None:
         # With worktreeOnDelete, T3 removes a thread's worktree, and the lead state, with the thread (#544).
         for host in HOSTS:
@@ -452,7 +466,9 @@ class StepTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "dev-skills" / "0.9.1"
             (root / "scripts").mkdir(parents=True)
-            (root / "scripts" / SCRIPT.name).write_bytes(SCRIPT.read_bytes())
+            # The script imports its sibling planning_folder.py (#599), as an installed copy has it.
+            for script in (SCRIPT, SCRIPT.with_name("planning_folder.py")):
+                (root / "scripts" / script.name).write_bytes(script.read_bytes())
             for index, folder in enumerate((".claude-plugin", ".codex-plugin", ".antigravity-plugin")):
                 (root / folder).mkdir()
                 (root / folder / "plugin.json").write_text(json.dumps({"version": f"0.{index}.1"}),
@@ -518,6 +534,12 @@ class StepTests(unittest.TestCase):
                 self.assertIn("When the task says that a leader runs the retrospective for this run",
                               words(text))
                 self.assertRegex(text, r"(?m)^## Navigation retrospective$")
+
+    def test_the_brief_names_no_question_tool_for_the_worker(self) -> None:
+        # Workers asked with the question tool, 28 and 16 calls, and the user did not want it (#607).
+        brief = words(step("brief"))
+        self.assertNotIn("AskUserQuestion", brief)
+        self.assertNotIn("host's question tool", brief)
 
     def test_an_unknown_step_fails(self) -> None:
         result = run("merge")

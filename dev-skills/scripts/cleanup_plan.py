@@ -79,7 +79,6 @@ import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import time
@@ -87,16 +86,15 @@ from typing import NoReturn
 
 # Python puts the folder of this script on sys.path, so the sibling modules load.
 from live_worktrees import WINDOW_MINUTES
-from t3_project_lead import (FOLDER as LEAD_FOLDER, SETTLED, STATE_FILE as LEAD_STATE_FILE,
-                             Refused as LeadStateRefused, accepted as accepted_task,
-                             load as load_lead_state)
+from planning_folder import Failed as PlanningFailed, entries as planning_entries
+from t3_project_lead import (SETTLED, Refused as LeadStateRefused, accepted as accepted_task,
+                             lead_folders, load as load_lead_state)
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
 # `git reflog show --date=unix --format=%gd` prints <name>@{<seconds since the epoch>}.
 REFLOG_TIME = re.compile(r"@\{(\d+)\}$")
 KEEP, REMOVE = "KEEP", "REMOVE"
-NOT_FOUND = (FileNotFoundError, NotADirectoryError)
 # The t3 CLI prints this for a folder outside every T3 Code project (t3 v0.1.11).
 NO_T3_PROJECT = "No T3 Code project matches"
 # Seconds for each t3 call, as t3_project_lead.py waits for git.
@@ -260,31 +258,15 @@ class Planner:
 def find_lead_folders(root: str) -> tuple[list[str], str | None]:
     """Return (the lead folders at the top of root, None), or ([], the error).
 
-    A lead folder is .scratch/<YYYYMMDD>-lead-<slug>/ with a state file. Unlike
-    lead_folders of t3_project_lead.py, this returns an error other than a
-    missing file, because the plan then cannot tell whether root holds a lead
-    state.
+    A lead folder is .scratch/<YYYYMMDD>-lead-<slug>/ with a state file.
+    lead_folders of t3_project_lead.py finds them with planning_folder.py
+    (#599). It fails when .scratch or a lead folder cannot be read, because the
+    plan then cannot tell whether root holds a lead state.
     """
-    scratch = os.path.join(root, ".scratch")
     try:
-        names = sorted(os.listdir(scratch))
-    except NOT_FOUND:
-        return [], None
-    except OSError as error:
+        return lead_folders(root), None
+    except PlanningFailed as error:
         return [], f"cannot look for a lead state: {error}"
-    found = []
-    for name in names:
-        if not LEAD_FOLDER.fullmatch(name):
-            continue
-        folder = os.path.join(scratch, name)
-        try:
-            if stat.S_ISREG(os.stat(os.path.join(folder, LEAD_STATE_FILE)).st_mode):
-                found.append(folder)
-        except NOT_FOUND:
-            continue
-        except OSError as error:
-            return [], f"cannot look for a lead state: {error}"
-    return found, None
 
 
 def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, str], str | None]:
@@ -549,17 +531,15 @@ def main() -> None:
         not args.main_only and os.path.realpath(path) == current)]
     for root in dict.fromkeys(roots):
         location = os.path.join(root, args.planning_location)
+        # planning_folder.py lists the location (#599), files too: a file keeps its worktree.
         try:
-            names = sorted(os.listdir(location))
-        except NOT_FOUND:
-            continue
-        except OSError as error:
+            paths = planning_entries(root, args.planning_location)
+        except PlanningFailed as error:
             lines.append((KEEP, "folder", location, f"cannot be read: {error}"))
             if plan[root][0] == REMOVE:
                 plan[root] = (KEEP, f"its planning folders cannot be read: {error}")
             continue
-        entries = [(entry, *planner.folder(entry))
-                   for entry in (os.path.join(location, name) for name in names)]
+        entries = [(entry, *planner.folder(entry)) for entry in paths]
         for entry, action, reason in entries:
             if action == KEEP and plan[root][0] == REMOVE:
                 plan[root] = (KEEP, f"holds the kept planning folder {entry}: {reason}")

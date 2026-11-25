@@ -43,6 +43,9 @@ from pathlib import Path
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "t3_project_lead.py"
+# The script imports planning_folder.py, its sibling (#599); a process has the script's folder on sys.path.
+if str(SCRIPT.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT.parent))
 _SPEC = importlib.util.spec_from_file_location("t3_project_lead_under_test", SCRIPT)
 LEAD = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(LEAD)
@@ -54,6 +57,12 @@ OTHER = "thread-fork"
 TAKEOVER_LINE = ("Check for work this state does not name: t3_thread_list with includeSubagents, and "
                  "pull_request_list. Record each worker with task add and task start, or add a waiting "
                  "item.")
+# The first line of the fixed lead steps of start, and the line that replaces them once this thread saw
+# them (#603).
+LEAD_STEPS = "Do only these lead actions yourself:"
+STEPS_SHOWN = ("Lead steps: shown once in this thread. Run start --steps when your context does not hold them, "
+               "as after a context summary. Read the last message of each worker of a running or pr-open task "
+               "before you state its status. Next: t3_project_lead.py plan, answer, verify, flag, or report.")
 # The due line of a finished lead names the report rule for decisions first (#567).
 FINISH_LINE = ("Every task is settled and nothing waits. Add each decision that only the user can make "
                "with wait, as t3_project_lead.py report says; then run t3_project_lead.py finish.")
@@ -71,6 +80,7 @@ CHANGE_COMMANDS = (
     ("outcome", "Ship it."), ("criteria", "Tests pass."), ("wait", "Approve it?"), ("done", "1"),
     ("decision", "add", "Squash."), ("decision", "drop", "D1"), ("task", "add", "b", "Task b"),
     ("task", "start", "a", WORKER.format(1)), ("task", "worker", "a", WORKER.format(2)),
+    ("task", "start-failed", "a"),
     ("task", "pr", "a", "5"), ("task", "merged", "a", "5", "abcdef1"),
     ("task", "verified", "a", "--decisions", "0"),
     ("task", "settled", "a"), ("task", "cancel", "a"), ("task", "pause", "a"), ("task", "resume", "a"),
@@ -225,7 +235,10 @@ class LeadStateTests(unittest.TestCase):
         output = self.ok("start", cwd=plain)
         self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
         self.assertNotIn("Could not list", output)
-        self.assertIn("Lead state created: ", self.ok("init", "demo", cwd=plain))
+        # Outside Git, there is no ignore rule to make (#599).
+        created = self.ok("init", "demo", cwd=plain)
+        self.assertTrue(created.startswith("Lead state created: "), created)
+        self.assertEqual([path.name for path in (plain / ".scratch").glob("*-lead-demo/.gitignore")], [])
         self.assertIn("Lead state: demo, ", self.ok("show", cwd=plain))
 
     def test_start_in_another_worktree_lists_the_lead_state_and_offers_no_init(self) -> None:
@@ -345,19 +358,173 @@ class LeadStateTests(unittest.TestCase):
         self.assertIsNone(self.events()[-1]["old_owner"])
         self.ok("outcome", "Ship it.")
 
+    def git_status(self) -> str:
+        return subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=self.repo,
+                              env=self.env, capture_output=True, text=True, check=True).stdout
+
     def test_init_creates_one_folder_that_git_ignores(self) -> None:
-        self.ok("init", "demo")
+        # planning_folder.py makes the folder, with the local date, and makes Git ignore .scratch/ (#599).
+        output = self.ok("init", "demo")
         folder = self.folder()
-        today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")
-        self.assertEqual(folder.name, f"{today}-lead-demo")
-        self.assertEqual((folder / ".gitignore").read_text(encoding="utf-8"), "*\n")
-        status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"],
-                                cwd=self.repo, env=self.env, capture_output=True, text=True, check=True)
-        self.assertEqual(status.stdout, "")
+        self.assertEqual(folder.name, f"{datetime.date.today():%Y%m%d}-lead-demo")
+        exclude = self.repo / ".git" / "info" / "exclude"
+        self.assertEqual(output.splitlines(), [f"Ignore: Git did not ignore .scratch/; added /.scratch/ to {exclude}",
+                                               f"Lead state created: {folder}"])
+        self.assertIn("/.scratch/\n", exclude.read_text(encoding="utf-8"))
+        self.assertFalse((folder / ".gitignore").exists())
+        self.assertEqual(self.git_status(), "")
         result = self.run_lead("init", "other", cwd=self.repo / "sub")
         self.assertEqual(result.returncode, 1)
         self.assertIn("a lead state already exists here", result.stderr)
         self.assertIn("Lead state: demo", self.ok("show"))
+
+    def test_init_names_the_rule_that_ignores_scratch(self) -> None:
+        (self.repo / ".gitignore").write_text("/.scratch/\n", encoding="utf-8")
+        output = self.ok("init", "demo")
+        self.assertEqual(output.splitlines()[0], "Ignore: Git ignores .scratch/ (.gitignore:1:/.scratch/)")
+        self.assertFalse((self.folder() / ".gitignore").exists())
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root writes every file")
+    def test_init_keeps_the_folder_out_of_git_when_info_exclude_cannot_be_written(self) -> None:
+        # Codex 0.172.0 workspace-write refuses a write to .git/info/exclude of a main checkout (#599).
+        exclude = self.repo / ".git" / "info" / "exclude"
+        exclude.parent.mkdir(exist_ok=True)
+        exclude.write_text("", encoding="utf-8")
+        exclude.chmod(0o444)
+        self.addCleanup(exclude.chmod, 0o644)
+        first = words(self.ok("init", "demo").splitlines()[0])
+        self.assertTrue(first.startswith(f"Ignore: cannot add /.scratch/ to {exclude}: "), first)
+        self.assertTrue(first.endswith(". A .gitignore of * keeps the lead folder out of Git."), first)
+        self.assertEqual((self.folder() / ".gitignore").read_text(encoding="utf-8"), "*\n")
+        self.assertEqual(self.git_status(), "")
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "root reads every folder")
+    def test_a_scratch_that_cannot_be_read_is_refused_not_skipped(self) -> None:
+        # The old lead skipped a .scratch that it could not read, so a lead state there was missed (#599).
+        other = self.worktree("b")
+        for top in (self.repo, other):
+            (top / ".scratch").mkdir()
+        (other / ".scratch").chmod(0)
+        self.addCleanup((other / ".scratch").chmod, 0o755)
+        output = self.ok("start")
+        self.assertIn(f"- Cannot look for a lead state: cannot read {other / '.scratch'}: ", output)
+        init = self.run_lead("init", "demo")
+        self.assertEqual(init.returncode, 1)
+        self.assertIn("another worktree holds a lead state:", init.stderr)
+        result = self.run_lead("start", cwd=other)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"cannot look for a lead state: cannot read {other / '.scratch'}: ", result.stderr)
+        self.assertIn(LEAD_STEPS, result.stdout)
+
+    def test_start_prints_the_fixed_lead_steps_once_in_each_thread(self) -> None:
+        # A lead session ran start 133 times, and the fixed steps were most of its tool output (#603).
+        self.assertIn(LEAD_STEPS, self.ok("start"))
+        self.ok("init", "demo")
+        first = self.ok("start")
+        self.assertIn(LEAD_STEPS, first)
+        self.assertNotIn(STEPS_SHOWN, words(first))
+        self.assertEqual({key: self.events()[-1][key] for key in ("command", "shown")},
+                         {"command": "start", "shown": "lead steps"})
+        self.assertEqual(json.loads(self.state_text())["steps_shown"], OWNER)
+        again = self.ok("start")
+        self.assertEqual(again.splitlines()[:2], [f'Steps: "{SCRIPT}"', STEPS_SHOWN])
+        self.assertNotIn(LEAD_STEPS, again)
+        self.assertIn("\nLead state: demo, ", again)
+        self.assertLess(2 * len(again.split()), len(first.split()))
+        before = (self.state_text(), self.events())
+        self.assertIn(LEAD_STEPS, self.ok("start", "--steps"))
+        self.assertEqual((self.state_text(), self.events()), before)
+        # Another thread cannot record that it saw them, so it gets them each time until its takeover.
+        for _ in range(2):
+            self.assertIn(LEAD_STEPS, self.ok("start", thread=OTHER))
+        self.ok("takeover", thread=OTHER)
+        self.assertIn(LEAD_STEPS, self.ok("start", thread=OTHER))
+        self.assertNotIn(LEAD_STEPS, self.ok("start", thread=OTHER))
+        self.assertIn(LEAD_STEPS, self.ok("start"))
+
+    def test_start_steps_before_the_first_start_records_the_steps(self) -> None:
+        self.ok("init", "demo")
+        self.assertIn(LEAD_STEPS, self.ok("start", "--steps"))
+        self.assertNotIn(LEAD_STEPS, self.ok("start"))
+
+    def test_a_failed_thread_start_sends_the_next_task_to_an_idle_worker(self) -> None:
+        # Eight new threads timed out while they started, and four tasks stalled 35 to 50 minutes (#602).
+        self.ok("init", "demo")
+        self.ok("outcome", "Ship it.")
+        idle, failed = WORKER.format("done"), WORKER.format("a1")
+        self.ok("task", "add", "done", "Finished task")
+        self.ok("task", "start", "done", idle, "--worktree", "/wt/t3-done")
+        self.ok("task", "verified", "done", "--decisions", "0")
+        for name in ("a", "b", "cause"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.ok("task", "start", "a", failed, "--worktree", "/wt/t3-a1")
+        output = words(self.ok("task", "start-failed", "a"))
+        task = self.task("a")
+        self.assertEqual((task["state"], task["worker"], task["started"], task["worktrees"]),
+                         ("planned", None, None, ["/wt/t3-a1"]))
+        line = (f"A thread start failed for a, first at {self.events()[-1]['time']}; failed threads: {failed}. "
+                "Start no new thread until the cause is fixed. Give each next task to an idle worker: "
+                "t3_thread_send to its thread with freshContext true and the brief, then task start <name> <its "
+                f"link>. Ask an idle worker to find the cause. Idle workers: {idle}. A new thread that task start "
+                "records closes this line.")
+        self.assertEqual(output, f"a: the thread start failed, and a is planned. {line}")
+        self.assertIn(f"- {line}", words(self.ok("start")))
+        self.assertIn(line, words(self.ok("dispatch")))
+        # A thread that failed before task start has no link.
+        self.ok("task", "start-failed", "b")
+        self.assertIn("A thread start failed for a, b, first at ", words(self.ok("start")))
+        # The idle worker takes the task in its own worktree; the record stays open.
+        self.assertEqual(self.ok("task", "start", "cause", idle).strip(), "cause is running.")
+        self.assertEqual(self.task("cause")["worktrees"], ["/wt/t3-done"])
+        self.assertIn("Idle workers: none: tell the user, and add the cause with wait.", words(self.ok("start")))
+        self.refused("task", "start", "a", idle, reason=f"{idle} is the worker of cause, which is running")
+        # A new thread closes the record.
+        output = self.ok("task", "start", "a", WORKER.format("a2"), "--worktree", "/wt/t3-a2")
+        self.assertIn("A new thread started, so the failed thread start is closed.", output)
+        self.assertEqual(self.events()[-1]["closed_failed_starts"], 2)
+        self.assertEqual(self.task("a")["worktrees"], ["/wt/t3-a1", "/wt/t3-a2"])
+        for step in ("start", "dispatch"):
+            with self.subTest(step=step):
+                self.assertNotIn("A thread start failed", self.ok(step))
+
+    def test_task_start_failed_and_a_reused_worker_are_checked(self) -> None:
+        self.ok("init", "demo")
+        for name in ("a", "b", "c"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.ok("task", "start", "a", WORKER.format(1))
+        self.ok("task", "pr", "a", "5")
+        self.refused("task", "start-failed", "a", reason="a is pr-open; task start-failed needs planned or running")
+        self.ok("task", "start", "b", WORKER.format(2))
+        self.refused("task", "start-failed", "b", WORKER.format(3),
+                     reason=f"b runs on {WORKER.format(2)}, not on {WORKER.format(3)}")
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        self.refused("task", "start", "c", WORKER.format(1),
+                     reason=f"{WORKER.format(1)} is the worker of a, which is merged")
+        self.ok("task", "add", "e", "Task e", "--batch", "2")
+        self.ok("task", "start", "e", WORKER.format(4))
+        self.ok("task", "verified", "e", "--decisions", "0")
+        self.ok("task", "settled", "e")
+        self.refused("task", "start", "c", WORKER.format(4),
+                     reason=f"{WORKER.format(4)} is the settled worker of e; never reuse a settled worker")
+        # A replacement worker from the flag step is a new thread too.
+        self.ok("task", "start-failed", "c")
+        self.assertIn("A new thread started, so the failed thread start is closed.",
+                      self.ok("task", "worker", "b", WORKER.format(5)))
+
+    def test_a_reused_worker_keeps_its_thread_until_its_last_task(self) -> None:
+        self.ok("init", "demo")
+        worker = WORKER.format("w")
+        self.ok("task", "add", "a", "Task a")
+        self.ok("task", "start", "a", worker, "--worktree", "/wt/w")
+        self.ok("task", "verified", "a", "--decisions", "0")
+        self.ok("task", "add", "b", "Task b", "--batch", "2")
+        self.ok("task", "start", "b", worker)
+        view = words(self.ok("start"))
+        self.assertIn(f"- Run task settled a, and keep its worker's thread: b runs on it now: {worker}", view)
+        self.assertNotIn("Settle the worker of a", view)
+        self.ok("task", "settled", "a")
+        self.ok("task", "verified", "b", "--decisions", "0")
+        self.assertIn(f"- Settle the worker of b, then run task settled b: {worker}", words(self.ok("start")))
 
     def test_a_command_from_a_subfolder_finds_the_lead_state(self) -> None:
         self.ok("init", "demo")
@@ -805,6 +972,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "pr", "pr", "4")
         self.ok("task", "add", "next", "Ready task", "--batch", "1")
         self.ok("wait", "Approve the release?")
+        # The first start after init prints the fixed lead steps (#603); later ones print one line instead.
+        self.ok("start")
         before = self.ok("start").splitlines()
         for index in range(10):
             self.merged_task(f"v{index}", str(10 + index))
