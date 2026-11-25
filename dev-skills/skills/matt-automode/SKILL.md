@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.28.1
+version: 1.29.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -82,8 +82,11 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    "Pin the requirement sources" in the review mode of
    [lean-tests](../lean-tests/SKILL.md) says. Make the pin record with
    `lean_tests.py pin --record`, which needs Python 3.9 or newer. Do not
-   write the record with another script: `pin --check` rejects it. Record the
-   pin directory and the SHA-256 value of each source.
+   write the record with another script: `pin --check` rejects it. Without a
+   file after `--record`, the record lasts after the worktree is removed.
+   Record its path and the SHA-256 value of each source. When the task names
+   the pin record of an earlier session, run `pin --check` on it, and do not
+   pin its sources again.
 4. **Implement.** Start coding or coding delegation only after phases 1–3
    pass and every blocking ticket's PR merges. When the tracker is GitHub,
    first run
@@ -264,8 +267,10 @@ Require measured evidence for claims about external tool behavior.
 ## Finish
 
 Report completed and blocked phases accurately, with evidence, review results,
-retro history limits, issue and PR links, and remaining work. Include requirement
-pin paths and hashes when used. Distinguish instruction checks and
+retro history limits, issue and PR links, and remaining work. When the run
+pinned requirement sources or received a pin record, run `pin --check` on each
+pin record, and report its path and the SHA-256 value of each source.
+Distinguish instruction checks and
 simulated scenarios from demonstrated agent behavior. Stop for missing access,
 enforced restrictions, or repeated failures with no viable next step; retain
 the work and report the blocker.

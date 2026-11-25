@@ -22,7 +22,8 @@ the default batch of `plan`. Issue #567 adds the count of a report's decisions
 to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
 decisions that only the user can make to `report`. Issue #602 adds the
 `start-failed` line of `dispatch`, issue #603 the `start --steps` line of the
-skill, and issue #607 the plain-text question line of `brief`. Agent behavior
+skill, issue #607 the plain-text question line of `brief`, and issue #623 the
+pin record line of `dispatch`. Agent behavior
 is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
 its own tests in test_t3_project_lead_hook.py.
 """
@@ -51,6 +52,7 @@ NO_STATE = tempfile.TemporaryDirectory()
 # triage lines. #554, #555, and #560 took `start` to 244 words with the plain-text rule and the show
 # line, `plan` to 243 with the default batch, and `brief` to 237 with the worker's question line.
 # #607 took `brief` to 248 words: the worker asks in plain text, then ends its turn.
+# #623 took `dispatch` to 249 words with the pin record line.
 STEP_WORD_LIMIT = 250
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -171,6 +173,8 @@ REQUIRED = {
                  '"You may start your own subagents. Keep your report short, and leave the '
                  'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
+                 # A follow-up worker checks the pin record of the earlier one (#623).
+                 "Name each earlier pin record of the task's issue.",
                  'In the last line of its brief, replace "with evidence and links" with "in one '
                  'line, with links. Keep scientific detail in this thread and the PR".',
                  # The close-out passes each worker's worktree to retro_sessions.py (#556).

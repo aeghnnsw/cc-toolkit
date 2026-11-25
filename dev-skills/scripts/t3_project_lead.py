@@ -169,7 +169,8 @@ and your decisions. For a scientific task, give the issue link, not the content.
 In the last line of its brief, replace "with evidence and links" with "in one
 line, with links. Keep scientific detail in this thread and the PR".
 For a task after a merged PR, name the PR, and tell the worker to start from
-the default branch that contains it.
+the default branch that contains it. Name each earlier pin record of the
+task's issue.
 Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
 Then run task start <name> <worker link> --worktree <path> [--branch NAME].

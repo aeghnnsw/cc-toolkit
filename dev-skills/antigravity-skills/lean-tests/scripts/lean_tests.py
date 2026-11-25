@@ -216,17 +216,26 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[output],
         help="pin requirement sources with SHA-256 hashes, or check a pin record",
         description=(
-            "With --record, write each --source file's text and SHA-256 hash to a new pin record. With "
+            "With --record, write each --source file's text and SHA-256 hash to a new pin record. Without "
+            "FILE, the record is a new private file in lean-tests-pins/ of the Git common folder of "
+            "--project, which lasts after the worktree is removed; the summary gives its path. With "
             "--check, recompute the hash of each pinned text, and with --quote, find the pinned requirement "
             "sources that contain the quote. Exit status 1 means that the check failed."
         ),
     )
     action = pin.add_mutually_exclusive_group(required=True)
-    action.add_argument("--record", metavar="FILE", help="write a new pin record; the file must not exist")
+    action.add_argument(
+        "--record", nargs="?", const="", metavar="FILE",
+        help="write a new pin record: FILE, which must not exist, or without FILE a new file in the Git common folder",
+    )
     action.add_argument("--check", metavar="FILE", help="check the pin record FILE")
     pin.add_argument(
         "--source", action="append", default=[], metavar="NAME=PATH",
         help="a requirement source to pin (repeatable; goes with --record)",
+    )
+    pin.add_argument(
+        "--project", default=".",
+        help="a directory in the Git checkout whose common folder holds a record without FILE (default: .)",
     )
     pin.add_argument(
         "--quote",

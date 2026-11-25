@@ -5,28 +5,81 @@ is the user's request, or a spec or issue text, recorded with its SHA-256
 hash before implementation starts. pin writes a new pin record and never
 changes one. pin --check recomputes the hash of each pinned text, and with
 --quote finds the pinned requirement sources that contain a quote.
+
+pin --record without a file writes the record in lean-tests-pins/ of the Git
+common folder of --project (#623). That folder lasts after a temporary folder
+or a worktree is removed, each worktree of the clone can read it, and Git never
+commits or pushes it. The record holds each source text, so pin --check needs
+only the record.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import os
+import tempfile
 from pathlib import Path
 
-from lt_common import UsageError, load_json, sha256
+from lt_common import UsageError, git, load_json, sha256
+
+PIN_FOLDER = "lean-tests-pins"
 
 
 def pin_command(args) -> dict:
-    if args.record:
+    if args.record is not None:
         if args.quote is not None:
             raise UsageError("--quote goes with --check")
-        return pin_sources(Path(args.record).resolve(), args.source)
+        return pin_sources(args.record, args.source, Path(args.project))
     if args.source:
         raise UsageError("--source goes with --record")
     return check_pins(Path(args.check).resolve(), args.quote)
 
 
-def pin_sources(record: Path, specs: list[str]) -> dict:
+def pin_folder(project: Path) -> Path:
+    """Return the private folder for pin records in the Git common folder of project, and make it."""
+    result = git(project, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if result.returncode != 0:
+        raise UsageError(
+            f"pin --record without a file needs a Git checkout, and {project} is not one: "
+            f"{result.stderr.strip()}; give --project or a record file"
+        )
+    folder = Path(result.stdout.strip()) / PIN_FOLDER
+    try:
+        folder.mkdir(mode=0o700, exist_ok=True)
+    except OSError as error:
+        raise UsageError(f"cannot make the pin folder {folder}: {error.strerror}") from error
+    return folder
+
+
+def write_record(record: str, project: Path, data: dict, stamp: str) -> Path:
+    """Write data to a new record: the file record, or a new private file in the pin folder of project."""
+    if record:
+        path = Path(record).resolve()
+        try:
+            with open(path, "x", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=1)
+        except FileExistsError as error:
+            raise UsageError(f"the pin record {path} exists; pin writes a new record and never changes one") from error
+        except OSError as error:
+            raise UsageError(f"cannot write the pin record {path}: {error.strerror}") from error
+        return path
+    folder = pin_folder(project)
+    try:
+        # mkstemp makes a new file that only the user can read and write.
+        handle, name = tempfile.mkstemp(prefix=f"pins-{stamp}-", suffix=".json", dir=folder)
+    except OSError as error:
+        raise UsageError(f"cannot write a pin record in {folder}: {error.strerror}") from error
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(data, stream, indent=1)
+    except OSError as error:
+        os.unlink(name)
+        raise UsageError(f"cannot write the pin record {name}: {error.strerror}") from error
+    return Path(name)
+
+
+def pin_sources(record: str, specs: list[str], project: Path) -> dict:
     """Write each source's text and SHA-256 hash to a new pin record."""
     if not specs:
         raise UsageError("pin --record needs at least one --source NAME=PATH")
@@ -48,17 +101,12 @@ def pin_sources(record: Path, specs: list[str]) -> dict:
         sources.append({
             "name": name, "path": str(Path(path).resolve()), "sha256": sha256(data), "bytes": len(data), "text": text,
         })
-    pinned_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        with open(record, "x", encoding="utf-8") as handle:
-            json.dump({"pinned_at": pinned_at, "sources": sources}, handle, indent=1)
-    except FileExistsError as error:
-        raise UsageError(f"the pin record {record} exists; pin writes a new record and never changes one") from error
-    except OSError as error:
-        raise UsageError(f"cannot write the pin record {record}: {error.strerror}") from error
+    now = datetime.datetime.now(datetime.timezone.utc)
+    pinned_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    path = write_record(record, project, {"pinned_at": pinned_at, "sources": sources}, now.strftime("%Y%m%dT%H%M%SZ"))
     return {
         "summary": {
-            "record": str(record),
+            "record": str(path),
             "pinned_at": pinned_at,
             "sources": len(sources),
             "sha256": {source["name"]: source["sha256"] for source in sources},
