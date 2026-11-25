@@ -26,7 +26,7 @@ omitted from the list; resolve their paths and read them directly:
 ```bash
 python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
   mattpocock-skills:to-spec mattpocock-skills:to-tickets \
-  mattpocock-skills:implement mattpocock-skills:retro
+  mattpocock-skills:retro
 ```
 
 `<plugin-root>` is this plugin's root, two levels above the skill folder.
@@ -78,29 +78,33 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
    the same shared file, including manifests, registries, and changelogs. Choose
    release versions when a PR is ready, not in tickets. For pytest repositories,
-   use [lean-tests](../lean-tests/SKILL.md), review mode's "Pin the requirement
-   sources", before implementation. Pin the original request, spec, and tickets
-   using Python 3.9 or newer; record the directory and SHA-256 values.
-4. **Implement — `mattpocock-skills:implement`.** Start coding or coding
-   delegation only after phases 1–3 pass and every blocking ticket's PR merges.
-   When the tracker is GitHub, first run
+   pin the original request, spec, and tickets before implementation, as
+   "Pin the requirement sources" in the review mode of
+   [lean-tests](../lean-tests/SKILL.md) says. Make the pin record with
+   `lean_tests.py pin --record`, which needs Python 3.9 or newer. Do not
+   write the record with another script: `pin --check` rejects it. Record the
+   pin directory and the SHA-256 value of each source.
+4. **Implement.** Start coding or coding delegation only after phases 1–3
+   pass and every blocking ticket's PR merges. When the tracker is GitHub,
+   first run
    `python3 "<plugin-root>/scripts/phase_gate.py" --ticket <N>`. On exit status 1,
    do not start. Each `FAIL` line names the missing issue, the blocker
-   without a merged PR, or the reason that the script cannot decide. Follow
-   the testing workflow and commit the changes. Before committing, run
+   without a merged PR, or the reason that the script cannot decide. Use
+   `mattpocock-skills:tdd` at the testing seams of the spec. Run the
+   typecheck, when the repository has one, and single test files often. Run
+   the full test suite once at the end. Before committing, run
    `python3 "<plugin-root>/scripts/avoid_terms.py" --base <comparison commit>`.
    It lists each added Markdown line that uses a glossary `_Avoid_` term. Use
    the glossary term where the line names its concept. Report helpers
-   imported from other modules. Complete when the ticket's tests pass and
-   edits are committed for review.
+   imported from other modules. Commit the changes. Phase 5 runs the review.
+   Complete when the ticket's tests pass and edits are committed for review.
 5. **Review — `mattpocock-skills:code-review`.** Run one full review against
-   the ticket spec and a recorded comparison commit. This fulfills
-   `implement`'s review step. Only these findings block: a regression that a
-   failing run or a reproducible case shows at the head, a missed ticket
-   requirement, a broken cited rule, and shipped text that the change makes
-   false. A problem present at the comparison commit blocks only when the
-   ticket requires its fix. List other findings with a reason in the review
-   record. Open or reuse an issue only for a defect that a user can hit.
+   the ticket spec and a recorded comparison commit. Only these findings block:
+   a regression that a failing run or a reproducible case shows at the head, a
+   missed ticket requirement, a broken cited rule, and shipped text that the
+   change makes false. A problem present at the comparison commit blocks only
+   when the ticket requires its fix. List other findings with a reason in the
+   review record. Open or reuse an issue only for a defect that a user can hit.
    Close all blocking findings in one fix, commit, and pass the affected
    checks. The fix has no size limit. Run no second full review and no
    focused check of the fix. Stop the ticket without a merge only for a

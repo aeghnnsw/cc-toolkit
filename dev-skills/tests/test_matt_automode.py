@@ -13,6 +13,9 @@ Issue #458: phase 4 runs the phase gate and the glossary term scripts, and a
 full test suite runs through the suite lock script.
 Issue #298: after a rebase whose resolution changes only versions and
 changelog entries, only the version and changelog checks run again locally.
+Issue #608: phase 3 makes the requirement pins with `lean_tests.py pin --record`.
+Issue #609: phase 4 names no user-invoked skill and states the steps of
+`mattpocock-skills:implement` itself.
 Agent behavior is checked by the scenario review in
 matt-automode-scenarios.md.
 """
@@ -66,6 +69,19 @@ PLUGIN_ROOT_PATHS = {"skills": "${CLAUDE_PLUGIN_ROOT}", "codex-skills": "<plugin
                      "antigravity-skills": "<plugin-root>"}
 SAFETY_RULE = ("For a change to a safety check, such as a command hook, the spec states what the "
                "check must block. Where the check cannot decide, it blocks: it fails closed.")
+PIN_LINK = '"Pin the requirement sources" in the review mode of [lean-tests](../lean-tests/SKILL.md)'
+PIN_RULE = ("Make the pin record with `lean_tests.py pin --record`, which needs Python 3.9 or newer. "
+            "Do not write the record with another script: `pin --check` rejects it. Record the pin "
+            "directory and the SHA-256 value of each source.")
+IMPLEMENT_STEPS = (
+    "4. **Implement.** Start coding",
+    "Use `mattpocock-skills:tdd` at the testing seams of the spec.",
+    "Run the typecheck, when the repository has one, and single test files often. Run the full test "
+    "suite once at the end.",
+    "Commit the changes. Phase 5 runs the review.",
+)
+# Issue #609: mattpocock-skills 1.3.2 sets disable-model-invocation: true in implement.
+USER_INVOKED_IMPLEMENT = "mattpocock-skills:implement"
 
 
 def automode(host: str) -> str:
@@ -219,6 +235,33 @@ class RetrospectiveProposesACheckFirstTest(unittest.TestCase):
                               "lines.", steps)
                 self.assertIn("it also states why no check, script, or test can work.", steps)
                 self.assertNotIn("Prefer a tool fix or an automated check", steps)
+
+
+class PhasesThreeAndFourNameTheirStepsTest(unittest.TestCase):
+    """Issues #608 and #609: phase 3 names the pin command, and phase 4 states its own steps."""
+
+    def test_phase_three_makes_the_pins_with_lean_tests(self) -> None:
+        for host in HOSTS:
+            phase = between(host, "3. **Tickets", "4. **Implement")
+            with self.subTest(host=host):
+                self.assertIn(PIN_LINK, phase)
+                self.assertIn(PIN_RULE, phase)
+                self.assertNotIn("using Python 3.9 or newer; record", phase)
+
+    def test_phase_four_states_the_steps_of_implement(self) -> None:
+        for host in HOSTS:
+            phase = between(host, "4. **Implement", "5. **Review")
+            with self.subTest(host=host):
+                for step in IMPLEMENT_STEPS:
+                    self.assertIn(step, phase)
+                self.assertNotIn("testing workflow", phase)
+
+    def test_no_copy_names_the_user_invoked_implement_skill(self) -> None:
+        for host in HOSTS:
+            text = automode(host)
+            with self.subTest(host=host):
+                self.assertNotIn(USER_INVOKED_IMPLEMENT, text)
+                self.assertNotIn("`implement`", text)
 
 
 if __name__ == "__main__":
