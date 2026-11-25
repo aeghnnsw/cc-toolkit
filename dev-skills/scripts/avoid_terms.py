@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
-"""Print the glossary _Avoid_ terms in the Markdown lines that a change adds.
+"""Print the glossary _Avoid_ terms in the added Markdown lines or named files.
 
 Usage:
 
     python3 dev-skills/scripts/avoid_terms.py --base <ref>
+    python3 dev-skills/scripts/avoid_terms.py <file>...
+    python3 dev-skills/scripts/avoid_terms.py --base <ref> <file>...
 
 The glossary is every tracked file named GLOSSARY.md in the repository. A
 glossary term is a line that starts with a bold name, such as "**Worker**:".
 The "_Avoid_: term one, term two" line under it gives the comma-separated
 terms that the glossary term replaces.
 
-The added lines are the lines of the Markdown files (*.md) that the diff adds
-from the merge base of <ref> and HEAD to the working tree, so committed and
-uncommitted changes both count. Every line of an untracked Markdown file that
-Git does not ignore also counts. The glossary files are not checked.
+With --base, the added lines are the lines of the Markdown files (*.md) that
+the diff adds from the merge base of <ref> and HEAD to the working tree, so
+committed and uncommitted changes both count. Every line of an untracked
+Markdown file that Git does not ignore also counts.
+
+Each named file counts with every line, whatever its extension, for example
+a draft of an issue under .scratch/ that no diff holds. A file path is
+relative to the current folder. With --base and files, both count, and a
+changed file that is also named counts with every line. A named path that
+leads to a changed file or a glossary file, such as a symbolic link, counts
+as that file. The glossary files are not checked.
 
 A term matches without regard to case, as a whole word or phrase. Inline code
 spans in backticks and the lines of fenced code blocks are code or quotations,
@@ -22,17 +31,19 @@ sorted by path and line, for example:
 
     docs/setup.md:12: "Subagent" (glossary term: Worker)
 
-Run it from any folder of the checkout. Paths are relative to the repository
-root.
+Run it from any folder of the checkout. A path in the output is relative to
+the repository root, or absolute for a named file outside the checkout.
 
-Exit status: 0 when no added line has an _Avoid_ term, or when the repository
-has no tracked glossary; 1 when a hit exists; 2 for a usage error or a git
-failure, such as an unknown ref. The message goes to stderr.
+Exit status: 0 when no checked line has an _Avoid_ term, or when the
+repository has no tracked glossary; 1 when a hit exists; 2 for a usage error,
+a named file that cannot be read, or a git failure, such as an unknown ref.
+The message goes to stderr.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -150,17 +161,54 @@ def added_lines(root: Path, base: str, skip: set[str]) -> dict[str, set[int] | N
     return added
 
 
+def file_id(path: Path) -> tuple[int, int] | None:
+    """Return the device and inode of a file, or None when it cannot be read."""
+    try:
+        status = path.stat()
+    except OSError:
+        return None
+    return status.st_dev, status.st_ino
+
+
+def read_named(files: list[str], root: Path) -> dict[tuple[int, int] | None, tuple[str, str]]:
+    """Map the file_id of each named file to its output path and its text.
+
+    Exit 2 when a file cannot be read. The output path is relative to the
+    repository root, or absolute for a file outside the checkout. Only the
+    folder of a path is resolved, so a symbolic link keeps its own name.
+    """
+    named, real_root = {}, root.resolve()
+    for name in files:
+        absolute = Path(os.path.abspath(name))
+        path = absolute.parent.resolve() / absolute.name
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            fail(f"cannot read {name}: {error.strerror or error}")
+        try:
+            shown = path.relative_to(real_root).as_posix()
+        except ValueError:
+            shown = str(path)
+        named[file_id(path)] = (shown, text)
+    return named
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--base", required=True,
-                        help="ref whose merge base with HEAD starts the diff")
+    parser.add_argument("--base", help="ref whose merge base with HEAD starts the diff")
+    parser.add_argument("files", nargs="*", metavar="FILE",
+                        help="file whose every line is checked")
     args = parser.parse_args()
-    if args.base.startswith("-"):
+    if args.base is None and not args.files:
+        parser.error("give --base <ref>, a file, or both")
+    if args.base is not None and args.base.startswith("-"):
         parser.error(f"--base must name a ref, not an option: {args.base}")
     root = Path(git(None, "rev-parse", "--show-toplevel").strip())
+    named = read_named(args.files, root)
     glossaries = [name for name in git(root, "ls-files", "-z", "--", "*" + GLOSSARY).split("\0")
                   if name.rsplit("/", 1)[-1] == GLOSSARY]
+    skip = set(glossaries)
     terms: dict[str, tuple[str, list[str]]] = {}
     for name in glossaries:
         try:
@@ -170,20 +218,35 @@ def main() -> None:
     if not terms:
         print(f"No tracked {GLOSSARY} with _Avoid_ terms; nothing was checked.")
         return
-    base = git(root, "merge-base", args.base, "HEAD").strip()
+    checked: dict[str, set[int] | None] = {}
+    if args.base is not None:
+        base = git(root, "merge-base", args.base, "HEAD").strip()
+        checked = added_lines(root, base, skip)
+    # File identity, not path text, finds a named file among the changed and
+    # glossary files, also through a link or a letter case that differs.
+    known = {file_id(root / name): name for name in [*skip, *checked]}
+    known.pop(None, None)
+    texts = {}
+    for identity, (shown, text) in named.items():
+        name = known.get(identity, shown)
+        if name not in skip:
+            checked[name], texts[name] = None, text
     pattern = term_pattern(terms)
     hits = []
-    for name, lines in added_lines(root, base, set(glossaries)).items():
-        try:
-            text = (root / name).read_text(encoding="utf-8", errors="replace")
-        except (FileNotFoundError, IsADirectoryError):
-            continue
+    for name, lines in checked.items():
+        text = texts.get(name)
+        if text is None:
+            try:
+                text = (root / name).read_text(encoding="utf-8", errors="replace")
+            except (FileNotFoundError, IsADirectoryError):
+                continue
         hits += [(name, *hit) for hit in find_hits(text, lines, pattern, terms)]
     for name, number, avoided, glossary in sorted(hits):
         print(f'{name}:{number}: "{avoided}" (glossary term: {glossary})')
     if hits:
         sys.exit(1)
-    print("No added Markdown line has a glossary _Avoid_ term.")
+    print("No checked line has a glossary _Avoid_ term." if args.files
+          else "No added Markdown line has a glossary _Avoid_ term.")
 
 
 if __name__ == "__main__":
