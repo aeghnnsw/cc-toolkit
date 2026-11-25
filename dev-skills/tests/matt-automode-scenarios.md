@@ -181,8 +181,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 46. **Implement step.** Phases 1–3 passed for ticket T1, and the phase gate
     passed. The spec names two test seams. In Claude Code,
     `mattpocock-skills:implement` sets `disable-model-invocation: true`.
-47. **Pin record in a brief.** An earlier batch pinned the request and issue 12, and
-    left issue 12 open. This run's brief continues issue 12 and names the
+47. **Pin record in the task.** An earlier batch pinned the request and issue 12, and
+    left issue 12 open. This run's task continues issue 12 and names the
     earlier pin record. The temporary source folder of the earlier batch is
     gone.
 
@@ -236,7 +236,7 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Fix that needs a scope choice | Stop T1 without a merge, keep the branch, and report the choice and both fixes to the user. Continue independent tickets. | Choosing a fix for the user; merging T1. | The finding, the two fixes, the kept branch, and the report. |
 | Requirement pins | Write the request, S, and T1 to files in a temporary folder as the lean-tests "Pin the requirement sources" section says. Run `lean_tests.py pin --record --project <project>` with one `--source NAME=PATH` for each file. Record the `record` path that it prints and each SHA-256 value. | Writing `pins.json` with another script, such as inline `python3` with `hashlib`; writing the record into the temporary folder. | A record in `lean-tests-pins/` of the Git common folder that `lean_tests.py pin --check` accepts, and the recorded values. |
 | Implement step | Use `mattpocock-skills:tdd` at the two seams. When the repository has a typecheck, run it often. Run single test files often, and the full suite once at the end, then `avoid_terms.py`, and commit. Go to phase 5. | Calling the Skill tool with `mattpocock-skills:implement`; reading its `SKILL.md` by path; skipping `tdd` at a seam. | The `tdd` cycles at both seams, the full-suite result, and the commit. |
-| Pin record in a brief | Run `lean_tests.py pin --check` on the named record before phase 4, and use its hashes. Pin only a new source, such as a new ticket, in a new record. Report each record path and its SHA-256 values at the end, after `pin --check` passes. | Pinning the request or issue 12 again; rebuilding the sources from history; stopping because the source folder is gone. | The `pin --check` output with the earlier `pinned_at`, and the record paths in the report. |
+| Pin record in the task | Run `lean_tests.py pin --check` on the named record before phase 4, and use its hashes. Pin only a new source, such as a new ticket, in a new record. Report each record path and its SHA-256 values at the end, after `pin --check` passes. | Pinning the request or issue 12 again; rebuilding the sources from history; stopping because the source folder is gone. | The `pin --check` output with the earlier `pinned_at`, and the record paths in the report. |
 
 ## Validation limits
 
@@ -270,9 +270,9 @@ copies and pass after the change. No simulated review of cases 45 and 46 ran.
 ### 2026-11-25, issue #623
 
 **Static checks.** `test_matt_automode.py` now requires in every copy that
-phase 3 records the pin record path, checks a pin record that the brief
+phase 3 records the pin record path, checks a pin record that the task
 names, and does not pin its sources again, and that Finish reports the path
-of a checked pin record. `test_lean_tests.py` pins into the default record,
+of each checked pin record, also of a received one. `test_lean_tests.py` pins into the default record,
 removes the source folder and the worktree, and passes `pin --check`. These
 checks fail on the 007727c copies and pass after the change. No simulated
 review of cases 45 and 47 ran.

@@ -174,7 +174,7 @@ REQUIRED = {
                  'detail in this thread."',
                  "tell the worker to start from the default branch that contains it",
                  # A follow-up worker checks the pin record of the earlier one (#623).
-                 "Name an earlier worker's pin record for its issue.",
+                 "Name each earlier pin record of the task's issue.",
                  'In the last line of its brief, replace "with evidence and links" with "in one '
                  'line, with links. Keep scientific detail in this thread and the PR".',
                  # The close-out passes each worker's worktree to retro_sessions.py (#556).

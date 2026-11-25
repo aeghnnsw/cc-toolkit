@@ -56,9 +56,9 @@ hash.
    Give one `--source NAME=PATH` for each file. Without a file after
    `--record`, pin writes a new record that only the user can read, in
    `lean-tests-pins/` of the Git common folder of `<project>`: the folder
-   that `git rev-parse --git-common-dir` prints. That record lasts after
-   the temporary folder and the worktree are removed, each worktree of the
-   clone can read it, and Git never commits or pushes it. Write the
+   that `git rev-parse --git-common-dir` prints. The record lasts after
+   the temporary folder and the worktree are removed. Each worktree of the
+   clone can read it. Git never commits or pushes it. Write the
    `record` path of the summary as `<pin-record>`. The record holds each
    source text, so `pin --check` needs only the record, and you can remove
    `<source-dir>`. pin never changes a record. `--record FILE` writes the

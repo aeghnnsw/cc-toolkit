@@ -84,7 +84,7 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    `lean_tests.py pin --record`, which needs Python 3.9 or newer. Do not
    write the record with another script: `pin --check` rejects it. Without a
    file after `--record`, the record lasts after the worktree is removed.
-   Record its path and the SHA-256 value of each source. When the brief names
+   Record its path and the SHA-256 value of each source. When the task names
    the pin record of an earlier session, run `pin --check` on it, and do not
    pin its sources again.
 4. **Implement.** Start coding or coding delegation only after phases 1–3
@@ -268,8 +268,9 @@ Require measured evidence for claims about external tool behavior.
 
 Report completed and blocked phases accurately, with evidence, review results,
 retro history limits, issue and PR links, and remaining work. When the run
-pinned requirement sources, run `pin --check` on the pin record, and report
-its path and the SHA-256 value of each source. Distinguish instruction checks and
+pinned requirement sources or received a pin record, run `pin --check` on each
+pin record, and report its path and the SHA-256 value of each source.
+Distinguish instruction checks and
 simulated scenarios from demonstrated agent behavior. Stop for missing access,
 enforced restrictions, or repeated failures with no viable next step; retain
 the work and report the blocker.

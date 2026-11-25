@@ -2600,7 +2600,7 @@ class DefaultPinRecordTest(unittest.TestCase):
         self.sources = self.tmp / "sources"
         self.sources.mkdir()
         self.request = self.sources / "request.txt"
-        self.request.write_text("Keep the pin record after a handoff.\n", encoding="utf-8")
+        self.request.write_text("Keep the pin record for a later session.\n", encoding="utf-8")
 
     def pin(self, project: Path) -> tuple[int, dict, str]:
         return run_cli("pin", "--record", "--project", str(project), "--source", f"request={self.request}",

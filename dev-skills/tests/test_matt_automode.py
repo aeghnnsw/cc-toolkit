@@ -75,10 +75,10 @@ PIN_LINK = '"Pin the requirement sources" in the review mode of [lean-tests](../
 PIN_RULE = ("Make the pin record with `lean_tests.py pin --record`, which needs Python 3.9 or newer. "
             "Do not write the record with another script: `pin --check` rejects it. Without a file after "
             "`--record`, the record lasts after the worktree is removed. Record its path and the SHA-256 "
-            "value of each source. When the brief names the pin record of an earlier session, run "
+            "value of each source. When the task names the pin record of an earlier session, run "
             "`pin --check` on it, and do not pin its sources again.")
-PIN_REPORT = ("When the run pinned requirement sources, run `pin --check` on the pin record, and report its "
-              "path and the SHA-256 value of each source.")
+PIN_REPORT = ("When the run pinned requirement sources or received a pin record, run `pin --check` on each "
+              "pin record, and report its path and the SHA-256 value of each source.")
 IMPLEMENT_STEPS = (
     "4. **Implement.** Start coding",
     "Use `mattpocock-skills:tdd` at the test seams of the spec.",
