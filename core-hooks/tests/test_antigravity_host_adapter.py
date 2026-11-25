@@ -267,7 +267,7 @@ class AntigravityHostAdapterTests(unittest.TestCase):
             ("pre_git_hook.py", 'gh pr edit 1 --body "## Test plan"', "Test plan"),
             ("zsh_traps.py", "echo =====CODEX", "echo '=====CODEX'"),
             ("zsh_traps.py", "echo ok; echo =====", "echo ok; echo '====='"),
-            ("zsh_traps.py", "echo ok; echo ===== | cat", "Quote the word"),
+            ("zsh_traps.py", "echo ok; echo ===== | cat", "Run it as it is:\necho ok; echo \\===== | cat"),
         )
         for script_name, command, reason in cases:
             with self.subTest(command=command):
