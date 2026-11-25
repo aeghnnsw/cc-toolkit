@@ -2,7 +2,8 @@
 
 Each check builds a temporary Git repository with a small fixture glossary:
 GLOSSARY.md at the root and lab/GLOSSARY.md in a subfolder. The base commit is
-tagged "base", and the checks read the lines that the script prints.
+tagged "base", and the checks read the lines that the script prints. Other
+checks name files instead of, or as well as, the base.
 """
 
 from __future__ import annotations
@@ -61,7 +62,10 @@ class AvoidTermsTests(unittest.TestCase):
                      **(files or {})}, tag="base")
 
     def run_script(self, ref: str = "base", cwd: Path | None = None):
-        return subprocess.run([sys.executable, str(SCRIPT), "--base", ref],
+        return self.run_args("--base", ref, cwd=cwd)
+
+    def run_args(self, *args: str, cwd: Path | None = None):
+        return subprocess.run([sys.executable, str(SCRIPT), *args],
                               cwd=cwd or self.repo, env=self.env, capture_output=True, text=True)
 
     def test_committed_added_line_hits_from_a_subfolder(self):
@@ -108,6 +112,52 @@ class AvoidTermsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
         self.assertIn("no-such-ref", result.stderr)
+
+    def test_named_files_check_every_line_from_a_subfolder(self):
+        self.base({"docs/a.md": "Start a subagent.\n", ".gitignore": "/.scratch/\n"})
+        self.write(".scratch/draft.txt", "Intro.\nPass the block to a `subagent`.\n")
+        self.write("docs/clean.md", "Start a worker.\n")
+        outside = self.tmp / "outside.md"
+        outside.write_text("A safety stop.\n")
+        result = self.run_args("a.md", "../.scratch/draft.txt", "../GLOSSARY.md", "clean.md",
+                               str(outside), cwd=self.repo / "docs")
+        # The old docs/a.md line is a hit, and the glossary is not checked.
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), sorted([
+            '.scratch/draft.txt:2: "block" (glossary term: Flag)',
+            'docs/a.md:1: "Subagent" (glossary term: Worker)',
+            f'{outside.resolve()}:1: "Safety stop" (glossary term: Flag)',
+        ]))
+        clean = self.run_args("docs/clean.md")
+        self.assertEqual((clean.returncode, clean.stdout),
+                         (0, "No checked line has a glossary _Avoid_ term.\n"), clean.stderr)
+
+    def test_base_and_named_files_check_both_and_base_alone_is_unchanged(self):
+        self.base({"README.md": "Old subagent line.\n", "notes.md": "Old block line.\n"})
+        self.write("README.md", "Old subagent line.\nA new block.\n")
+        result = self.run_args("--base", "base", "README.md", "notes.md")
+        # README.md is in the diff and named: all its lines count, and each hit is listed once.
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            'README.md:1: "Subagent" (glossary term: Worker)',
+            'README.md:2: "block" (glossary term: Flag)',
+            'notes.md:1: "block" (glossary term: Flag)',
+        ])
+        self.write("README.md", "Old subagent line.\nA new worker.\n")
+        alone = self.run_script()
+        self.assertEqual((alone.returncode, alone.stdout),
+                         (0, "No added Markdown line has a glossary _Avoid_ term.\n"), alone.stderr)
+
+    def test_missing_file_folder_or_no_argument_exits_2(self):
+        self.commit({"README.md": "Intro.\n"}, tag="base")
+        for args in (["README.md", "no-such.md"], ["--base", "base", "docs"], []):
+            (self.repo / "docs").mkdir(exist_ok=True)
+            with self.subTest(args=args):
+                result = self.run_args(*args)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertTrue(result.stderr)
+        self.assertIn("no-such.md", self.run_args("README.md", "no-such.md").stderr)
 
 
 if __name__ == "__main__":
