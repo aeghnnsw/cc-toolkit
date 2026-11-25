@@ -409,7 +409,7 @@ change from the repository root:
 | --- | --- |
 | Any change | `git diff --check` |
 | Documentation | Check accuracy, relative links, and referenced paths. |
-| Markdown prose | `python3 dev-skills/scripts/avoid_terms.py --base origin/master`. For a draft that no diff holds, such as an issue body under `.scratch/`, name its files: `python3 dev-skills/scripts/avoid_terms.py <file>...`. Where a listed line names a glossary concept, use the glossary term. |
+| Markdown prose | `python3 dev-skills/scripts/avoid_terms.py --base origin/master`. For a file that no diff holds, such as a draft of an issue under `.scratch/`, name it: `python3 dev-skills/scripts/avoid_terms.py <file>...`. Where a listed line names a glossary concept, use the glossary term. |
 | A skill | Check its frontmatter and invocation guidance. |
 | A plugin file, an entry file, a marketplace registry, `package-validation.json`, or the validator | `uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master` |
 | A skill, an agent, a plugin Python file, a root Python helper or test, `README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a Codex manifest, `allowed-models.json`, or `package-validation.json` | `uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'` |

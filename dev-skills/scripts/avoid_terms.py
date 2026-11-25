@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Print the glossary _Avoid_ terms in the Markdown lines that a change adds,
-or in every line of named files.
+"""Print the glossary _Avoid_ terms in the added Markdown lines or named files.
 
 Usage:
 
@@ -21,8 +20,9 @@ Markdown file that Git does not ignore also counts.
 Each named file counts with every line, whatever its extension, for example
 a draft of an issue under .scratch/ that no diff holds. A file path is
 relative to the current folder. With --base and files, both count, and a
-changed file that is also named counts with every line. The glossary files
-are not checked.
+changed file that is also named counts with every line. A named path that
+leads to a changed file or a glossary file, such as a symbolic link, counts
+as that file. The glossary files are not checked.
 
 A term matches without regard to case, as a whole word or phrase. Inline code
 spans in backticks and the lines of fenced code blocks are code or quotations,
@@ -43,6 +43,7 @@ The message goes to stderr.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -160,24 +161,35 @@ def added_lines(root: Path, base: str, skip: set[str]) -> dict[str, set[int] | N
     return added
 
 
-def read_named(files: list[str], root: Path) -> dict[str, str]:
-    """Map each named file to its text, or exit 2 when one cannot be read.
+def file_id(path: Path) -> tuple[int, int] | None:
+    """Return the device and inode of a file, or None when it cannot be read."""
+    try:
+        status = path.stat()
+    except OSError:
+        return None
+    return status.st_dev, status.st_ino
 
-    The key is the path relative to the repository root, or the absolute path
-    of a file outside the checkout.
+
+def read_named(files: list[str], root: Path) -> dict[tuple[int, int] | None, tuple[str, str]]:
+    """Map the file_id of each named file to its output path and its text.
+
+    Exit 2 when a file cannot be read. The output path is relative to the
+    repository root, or absolute for a file outside the checkout. Only the
+    folder of a path is resolved, so a symbolic link keeps its own name.
     """
-    named, top = {}, root.resolve()
+    named, real_root = {}, root.resolve()
     for name in files:
-        path = Path(name).resolve()
+        absolute = Path(os.path.abspath(name))
+        path = absolute.parent.resolve() / absolute.name
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as error:
             fail(f"cannot read {name}: {error.strerror or error}")
         try:
-            key = path.relative_to(top).as_posix()
+            shown = path.relative_to(real_root).as_posix()
         except ValueError:
-            key = str(path)
-        named[key] = text
+            shown = str(path)
+        named[file_id(path)] = (shown, text)
     return named
 
 
@@ -196,6 +208,7 @@ def main() -> None:
     named = read_named(args.files, root)
     glossaries = [name for name in git(root, "ls-files", "-z", "--", "*" + GLOSSARY).split("\0")
                   if name.rsplit("/", 1)[-1] == GLOSSARY]
+    skip = set(glossaries)
     terms: dict[str, tuple[str, list[str]]] = {}
     for name in glossaries:
         try:
@@ -208,12 +221,20 @@ def main() -> None:
     checked: dict[str, set[int] | None] = {}
     if args.base is not None:
         base = git(root, "merge-base", args.base, "HEAD").strip()
-        checked = added_lines(root, base, set(glossaries))
-    checked.update((name, None) for name in named if name not in glossaries)
+        checked = added_lines(root, base, skip)
+    # File identity, not path text, finds a named file among the changed and
+    # glossary files, also through a link or a letter case that differs.
+    known = {file_id(root / name): name for name in [*skip, *checked]}
+    known.pop(None, None)
+    texts = {}
+    for identity, (shown, text) in named.items():
+        name = known.get(identity, shown)
+        if name not in skip:
+            checked[name], texts[name] = None, text
     pattern = term_pattern(terms)
     hits = []
     for name, lines in checked.items():
-        text = named.get(name)
+        text = texts.get(name)
         if text is None:
             try:
                 text = (root / name).read_text(encoding="utf-8", errors="replace")
