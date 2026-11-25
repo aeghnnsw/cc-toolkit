@@ -9,8 +9,10 @@ and later changes from issues #302, #305, #354,
 [#421](https://github.com/aeghnnsw/cc-toolkit/issues/421),
 [#432](https://github.com/aeghnnsw/cc-toolkit/issues/432),
 [#409](https://github.com/aeghnnsw/cc-toolkit/issues/409),
-[#475](https://github.com/aeghnnsw/cc-toolkit/issues/475), and
-[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504).
+[#475](https://github.com/aeghnnsw/cc-toolkit/issues/475),
+[#504](https://github.com/aeghnnsw/cc-toolkit/issues/504),
+[#608](https://github.com/aeghnnsw/cc-toolkit/issues/608), and
+[#609](https://github.com/aeghnnsw/cc-toolkit/issues/609).
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -173,6 +175,12 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     missed ticket requirement. Two fixes can close it: one changes the hook
     interface, and one adds a second hook. The ticket and the spec name
     neither.
+45. **Requirement pins.** The repository runs its tests with pytest. Phase 3
+    published ticket T1 for spec S. The run is about to pin the original
+    request, S, and T1 before phase 4.
+46. **Implement step.** Phases 1–3 passed for ticket T1, and the phase gate
+    passed. The spec names two test seams. In Claude Code,
+    `mattpocock-skills:implement` sets `disable-model-invocation: true`.
 
 ## Expected results
 
@@ -222,6 +230,8 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Old problem in the full review | Fix the regression, commit, and pass the affected checks. List the old hook gap and the naming finding with a reason in the review record. Open or reuse an issue for the hook gap. Then go to phase 6. | Fixing the hook gap or the name in T1; a focused check or a second full review. | The review record with each finding that is not blocking and its reason, and the issue link. |
 | Fix for a failing check | Run no review of the fix. When the checks pass on head C, post the record for head C, then merge with `--match-head-commit` on head C. When the lint check still fails on head C, stop T1 without a merge, keep the branch, and report the failure to the user. | A focused check or a new full review of the fix; merging before the checks pass. | The passing checks, the record for head C, and the merge command with the SHA of head C; or the failing check and the report. |
 | Fix that needs a scope choice | Stop T1 without a merge, keep the branch, and report the choice and both fixes to the user. Continue independent tickets. | Choosing a fix for the user; merging T1. | The finding, the two fixes, the kept branch, and the report. |
+| Requirement pins | Write the request, S, and T1 to files as the lean-tests "Pin the requirement sources" section says. Run `lean_tests.py pin --record <pin-dir>/pins.json` with one `--source NAME=PATH` for each file. Record the pin directory and each SHA-256 value. | Writing `pins.json` with another script, such as inline `python3` with `hashlib`. | A `pins.json` that `lean_tests.py pin --check` accepts, and the recorded values. |
+| Implement step | Use `mattpocock-skills:tdd` at the two seams. When the repository has a typecheck, run it often. Run single test files often, and the full suite once at the end, then `avoid_terms.py`, and commit. Go to phase 5. | Calling the Skill tool with `mattpocock-skills:implement`; reading its `SKILL.md` by path; skipping `tdd` at a seam. | The `tdd` cycles at both seams, the full-suite result, and the commit. |
 
 ## Validation limits
 
@@ -242,3 +252,12 @@ settle. It also requires that a fix for a failing check gets no review, that
 "focused check" occurs only as "no focused check", and that the review record
 names no focused check. These checks fail on the 953103b copies and pass after
 the change. No simulated review of cases 40–44 ran.
+
+### 2026-11-25, issues #608 and #609
+
+**Static checks.** `test_matt_automode.py` now requires in every copy that
+phase 3 names the lean-tests pin section and `lean_tests.py pin --record`,
+and forbids another script. It also requires that phase 4 names no skill in
+its heading and states the `tdd`, test cadence, and commit steps, and that no
+copy names `mattpocock-skills:implement`. These checks fail on the 2a6d840
+copies and pass after the change. No simulated review of cases 45 and 46 ran.
