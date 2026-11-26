@@ -325,7 +325,9 @@ never their text. In a recorded session, the hook of
 the T3 Code MCP tool `read_issue`, and `pull_request_read` with an `include`
 other than `checks`, in Claude Code and Codex. (Superseded by #604: the tool
 takes `sections`; read
-[The sections of pull_request_read](#the-sections-of-pull_request_read).)
+[The sections of pull_request_read](#the-sections-of-pull_request_read).
+Superseded in part by #638: another build takes `include`, and the hook
+passes either name.)
 Antigravity has no known hook payload for MCP calls, so there only the step
 text holds the rule.
 
@@ -606,12 +608,12 @@ names, the one build that was measured rejects an argument that it does not
 have, and the old rule blocked every check read in an `include` build.
 
 Without `maxCharsPerItem`, `t3_thread_read` gives each item in pages of 500
-characters. After a context summary, a lead left the option out and read
-one worker report in 8 calls. Now, in a recorded session, the hook blocks
-`t3_thread_read` unless `maxCharsPerItem` is a positive integer, and the
-block names 8000. The Claude Code and Codex hook matchers select
-`t3_thread_read`, and `start` tells the lead to pass `maxCharsPerItem`
-8000. Antigravity has no known hook payload for MCP calls, so there only
+characters. After a context summary, a lead left the option out, read one
+worker report in 8 calls, and stopped before its end. Now, in a recorded
+session, the hook blocks `t3_thread_read` unless `maxCharsPerItem` is a
+positive integer, and the block names 8000. The Claude Code and Codex hook
+matchers select `t3_thread_read`, and `start` tells the lead to pass
+`maxCharsPerItem` 8000. Antigravity has no known hook payload for MCP calls, so there only
 the step text holds both rules.
 `dev-skills/tests/test_t3_project_lead_hook.py` and
 `dev-skills/tests/test_t3_project_lead.py` check these rules.

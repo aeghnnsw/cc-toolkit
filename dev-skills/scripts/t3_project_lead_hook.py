@@ -59,8 +59,8 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   hook payload for its question tool, so there only the step text holds the
   rule.
 - Thread reads (issue #632): without `maxCharsPerItem`, `t3_thread_read`
-  gives each item in pages of 500 characters, and a lead read one worker
-  report in 8 calls. So in a recorded session, the hook blocks
+  gives each item in pages of 500 characters, and a lead spent 8 calls on
+  one worker report and stopped before its end. So in a recorded session, the hook blocks
   `t3_thread_read` unless `maxCharsPerItem` is a positive integer; the
   block names 8000. In Antigravity, only the step text holds the rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
@@ -370,9 +370,9 @@ def check_thread_read(tool, arguments):
     """Raise Blocked when a `t3_thread_read` call has no page size (#632).
 
     Without `maxCharsPerItem`, the tool gives each item in pages of 500
-    characters, so a lead read one worker report in 8 calls. Only a positive
-    integer passes; a missing or other value, and an input that is not an
-    object, fail closed.
+    characters, so a lead spent 8 calls on one worker report and stopped
+    before its end. Only a positive integer passes; a missing or other
+    value, and an input that is not an object, fail closed.
     """
     if tool != "t3_thread_read":
         return
