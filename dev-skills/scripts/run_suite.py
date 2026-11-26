@@ -24,16 +24,21 @@ ignores other fields. The merge-lock tool writes the file when it takes or
 renews its lock, and removes it when it releases the lock. This script only
 reads it. A marker is fresh for 60 minutes from "started". While a fresh
 marker names another worktree, each run waits before it takes its suite
-lock, for every suite, and reads the marker again each second. After it
-takes the suite lock, the script reads the marker again. When a fresh marker
-names another worktree, it releases the suite lock and waits again. A run
-whose command already runs is not stopped. A run in the named worktree does
-not wait: the script compares the folder that the marker names with the
-worktree root, so a path through a symbolic link or in another letter case
-names the same worktree. A missing, unreadable, or stale marker gives no
-priority. So does a marker that is not a JSON object with both fields, that
-has a time in another form or after the current time, or that names a folder
-that does not exist. When the marker wait starts, the script prints one line
+lock, for every suite, and reads the marker again each second. The
+merge-lock tool removes its marker before the next holder of its lock writes
+a new one. So when the marker is gone, the run waits up to 15 seconds for a
+new marker: a fresh marker that names another worktree continues the wait,
+and a marker that names this worktree ends it at once. After it takes the
+suite lock, the script reads the marker again. When a fresh marker names
+another worktree, it releases the suite lock and waits again. A run whose
+command already runs is not stopped. A run in the named worktree does not
+wait for the marker: the script compares the folder that the marker names
+with the worktree root, so a path through a symbolic link or in another
+letter case names the same worktree. A missing, unreadable, or stale marker
+gives no priority. So does a marker that is not a JSON object with both
+fields, that has a time in another form or after the current time, or that
+names a folder that does not exist. Such a marker starts no wait, and
+during a wait it counts as gone. When the marker wait starts, the script prints one line
 to stderr with the named worktree and the time that the marker gives.
 
 Recorded pass. A run passes when the command exits 0. When the working tree
@@ -108,6 +113,10 @@ PRIORITY = "run-suite-priority.json"
 PRIORITY_FRESH = 60 * 60
 # While it waits for a priority marker, the script reads it this often, in seconds.
 PRIORITY_POLL = 1.0
+# When the marker that a run waits for is gone, the run waits this many seconds
+# for the marker of the next merge-lock holder. merge-lock.py of
+# aeghnnsw/researcher reads its lock every 10 s, so it writes the new marker in time.
+HANDOVER_WAIT = 15.0
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 TIME_PATTERN = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 # The script keeps only the newest records.
@@ -171,11 +180,13 @@ def suite_lock_path(common: Path, suite: dict) -> Path:
     return common / f"run-suite-{digest[:16]}.lock"
 
 
-def priority_marker(common: Path, top: str) -> dict | None:
-    """Return a fresh priority marker that names another worktree, or None.
+def read_marker(common: Path, top: str) -> dict | None:
+    """Return a fresh priority marker, or None.
 
-    A missing, unreadable, stale, or malformed marker, and a marker that names
-    a folder that does not exist or this worktree, give no priority.
+    The marker has the keys "worktree", "started", and "here", which is True
+    when the marker names this worktree. A missing, unreadable, stale, or
+    malformed marker, and a marker that names a folder that does not exist,
+    give None.
     """
     try:
         marker = json.loads((common / PRIORITY).read_text())
@@ -191,27 +202,47 @@ def priority_marker(common: Path, top: str) -> dict | None:
     if not isinstance(worktree, str) or not os.path.isabs(worktree):
         return None
     try:
-        # The same folder, also through a symbolic link or in another letter case.
-        if not os.path.isdir(worktree) or os.path.samefile(worktree, top):
+        if not os.path.isdir(worktree):
             return None
+        # The same folder, also through a symbolic link or in another letter case.
+        here = os.path.samefile(worktree, top)
     except OSError:
         return None
-    return {"worktree": worktree, "started": started}
+    return {"worktree": worktree, "started": started, "here": here}
+
+
+def priority_marker(common: Path, top: str) -> dict | None:
+    """Return a fresh priority marker that names another worktree, or None."""
+    marker = read_marker(common, top)
+    return None if marker is None or marker["here"] else marker
 
 
 def wait_for_priority(common: Path, top: str) -> tuple[float, str | None]:
     """Wait while a fresh priority marker names another worktree.
 
-    Return the seconds of the wait and the worktree that the marker named, or
-    0 and None when the script did not wait.
+    When the marker is gone, wait up to HANDOVER_WAIT seconds for the marker of
+    the next merge-lock holder. A new marker that names another worktree
+    continues the wait, and a marker that names this worktree ends it at once.
+    Return the seconds of the wait and the worktree that the first marker
+    named, or 0 and None when the script did not wait.
     """
     marker = priority_marker(common, top)
     if marker is None:
         return 0.0, None
     print(f"run_suite: waiting for the priority marker, which names {marker['worktree']}, "
           f"started {marker['started']}", file=sys.stderr, flush=True)
-    begin = time.monotonic()
-    while priority_marker(common, top) is not None:
+    # gone_since: the time of the first read that found no marker, or None.
+    begin, gone_since = time.monotonic(), None
+    while True:
+        current = read_marker(common, top)
+        if current is not None:
+            if current["here"]:
+                break
+            gone_since = None
+        elif gone_since is None:
+            gone_since = time.monotonic()
+        elif time.monotonic() - gone_since >= HANDOVER_WAIT:
+            break
         time.sleep(PRIORITY_POLL)
     return time.monotonic() - begin, marker["worktree"]
 
