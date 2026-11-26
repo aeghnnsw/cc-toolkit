@@ -199,7 +199,7 @@ with the commands of `t3_project_lead.py`, in
 | T3 refuses a settle | Run `wait` with the refusal as its text and `--settles D`, and end the turn with the `report` step: the "Waiting on you" list gives the user D's thread link. Run `done` for the item when the user settled the thread; it records D as settled. | Calling `t3_thread_organize` for D again; running `task settled D` before the user settles the thread; a second item for D; a decision to keep the due line. | The T3 refusal, the due line, and the view that `start` prints. |
 | Finished lead | Run `finish`, report the result in plain text, and end the turn. Leave the lead thread open: only the user settles it. | Settling the lead thread with `t3_thread_organize`, also with no `threadId`; giving its settle to a worker; deleting the thread. | The `finish` output. |
 | Yes for a worker's protected step | Run `wait` with the step and its exact command as the text and `--answer-in` with W's link. End with the "Type in that thread" section that the script prints, and ask the user to type the yes in W's thread. Run `done` for the item when W resumes. | Sending the yes to W with `t3_thread_send`; putting it in a brief; a numbered item for it. | W's question, the user's message, and the view that `start` prints. |
-| Close-out of a batch | Add the close-out task with `task add --batch 4 --kind closeout`, and start its worker with line 1, the budget, the no-GTD-capture line, and the cleanup rule of the `closeout` step, copied exactly. | Copying the brief's line "Ask also before you delete outside your worktree"; adding the close-out task before G and H are verified. | The `closeout` output and the due line. |
+| Close-out of a batch | Add the close-out task with `task add --batch 4 --kind closeout`, and start its worker with line 1, the budget, the no-GTD-capture line, and the close-out rule that the `closeout` step prints, copied exactly. | Copying the brief's line "Ask also before you delete outside your worktree"; adding the close-out task before G and H are verified. | The `closeout` output and the due line. |
 
 ## Validation limits
 
@@ -238,9 +238,10 @@ after another clear case.
 
 **Static checks.** `test_t3_project_lead.py` requires the new lines of the
 `start`, `plan`, `brief`, `answer`, `closeout`, and `report` steps, and checks
-that the `closeout` step does not copy the line "Ask also before you delete
-outside your worktree". `test_t3_project_lead_state.py` checks `task -h` and
-`decision -h`, `decision start`, a label in `decision add`, the refusal of
+that the close-out rule keeps the approvals line and does not copy the line
+"Ask also before you delete outside your worktree". `test_t3_project_lead_state.py` checks `task -h` and
+`decision -h`, `decision start`, which only moves forward, a label in
+`decision add`, the refusal of
 `task add --kind closeout`, the idle workers and reuse after a close-out
 starts, and the "Type in that thread" section of `wait --answer-in`.
 `test_cleanup_plan.py` case 48 checks that the plan removes the worktree of a

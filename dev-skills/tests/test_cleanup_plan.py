@@ -18,9 +18,8 @@ sections that `git branch -D` leaves when it cannot write the config. Case 48
 comes from issue #639: the batch close-out removes the worktrees of its
 verified tasks. Each check builds a temporary repository with a bare origin,
 runs the script with a fake gh (fake_gh.py), and reads the lines that it
-prints. No
-check runs the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and
-the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
+prints. No check runs the real t3 CLI: the checks of #578 use a fake t3
+(fake_t3.py), and the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
 live_worktrees.py runs, so most checks need lsof. Each class makes as few plan
 runs as it can, because each run takes some seconds: one, or one for each mode.
 No check touches another repository.

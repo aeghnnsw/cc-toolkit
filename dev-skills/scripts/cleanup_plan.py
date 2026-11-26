@@ -20,8 +20,9 @@ section; and the reason. The rules:
   except a task that is verified or closed-out once the close-out task of its
   batch has started (#639): the batch close-out removes the worktrees of its
   verified tasks. A task matches no worktree by its branch: T3 Code renames a
-  branch after the task starts. When a .scratch, a lead folder, or a lead state cannot be read,
-  keep every worktree that the plan would otherwise remove, with the error.
+  branch after the task starts. When a .scratch, a lead folder, or a lead
+  state cannot be read, keep every worktree that the plan would otherwise
+  remove, with the error.
 - Keep each worktree that a T3 Code thread owns while the thread is not
   settled (#578). The t3 CLI is T3CODE_CLI_PATH when it is set, else t3 on
   PATH. Run `t3 thread list --json --project <main checkout>` once, then

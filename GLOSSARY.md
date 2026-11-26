@@ -289,8 +289,8 @@ _Avoid_: Orchestrator, director, coordinator
 A T3 Code child thread that a project lead starts for one task, in its own
 worktree. The user can write to it. When a worker finishes, the lead settles
 its thread in T3. Only while a failed thread start is open, the lead gives the
-next task to a finished worker that is not settled yet, while the close-out of
-its batch has not started. It never reuses a settled worker.
+next task to a finished worker that is not settled yet and whose batch
+close-out has not started. It never reuses a settled worker.
 _Avoid_: Subagent
 
 **Brief**:

@@ -54,9 +54,9 @@ makes Git ignore .scratch/; when it cannot write Git's info/exclude file, a
 
 `task start-failed` records a worker thread that did not start (issue #602).
 While such a record is open, `start` and `dispatch` print one line: start no
-new thread, give each next task to an idle worker, the worker of a verified or
-closed-out task that no busy task uses, and ask one to find the cause; no due
-line then settles an idle worker. A new thread, a link that no other task
+new thread, give each next task to an idle worker, the worker of a verified
+task that no busy task uses and whose batch's close-out has not started (issue
+#639), and ask one to find the cause; no due line then settles an idle worker. A new thread, a link that no other task
 records in `task start` or `task worker`, closes the record once T3's start
 limit of 10 minutes passes without a failure. `task start` refuses a worker
 that a running, pr-open, or merged task uses, or a settled one.
@@ -77,16 +77,17 @@ reuses the worker, and `done` records the task as settled.
 
 `task -h` and `decision -h` list each action with its help (issue #613).
 `decision start <N>` sets the number of the next decision ID, so that the IDs
-continue the user's numbers (issue #642). `decision add` removes a label such as
-`D7:` at the start of the text when it is the next ID, and refuses another label
-(issue #614). `task add --kind closeout` refuses a batch with a task that is not
-verified or cancelled, as `task start` does (issue #644). The close-out of a batch
-removes the worktrees of its verified tasks (issue #639): the worker of such a
-task is no idle worker, and `task start` and `task worker` do not reuse it.
-`wait <text> --answer-in <worker link>` adds an item that the user answers in a
-worker's thread, such as a yes for a protected step that only the user can give
-there (issue #611). The waiting list prints it in an unnumbered section, "Type in
-that thread".
+continue the user's numbers; the number only moves forward (issue #642).
+`decision add` removes a label such as `D7:` at the start of the text when it
+is the next ID, and refuses another label (issue #614). `task add --kind
+closeout` refuses a batch with a task that is not verified or cancelled, as
+`task start` does (issue #644). The close-out of a batch removes the worktrees
+of its verified tasks (issue #639): the worker of such a task is no idle
+worker, and `task start` and `task worker` do not reuse it. The `closeout`
+step prints the close-out rule after its text. `wait <text> --answer-in
+<worker link>` adds an item that the user answers in a worker's thread, such
+as a yes for a protected step (issue #611). The waiting list prints it in an
+unnumbered section, "Type in that thread".
 """
 
 from __future__ import annotations
@@ -118,7 +119,7 @@ watch PRs. Never settle the lead thread: only the user settles it.
 4. Read worker messages, and the state, labels, titles, and check counts of
 issues and PRs, not their text. Never call read_issue. Call pull_request_read
 only with sections or include ["checks"]. No diff, code, or log.
-5. Run this script; it keeps the lead state. When the user names the first
+5. Run this script; it keeps the lead state. When the user gives the first
 decision number, run decision start <N> once.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set issue state. A worker sets triage labels: name the label in the brief
@@ -242,12 +243,15 @@ In this turn, run wait --task <name> --decisions <N>. The script adds the
 worker's link. Run done <number>... when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes.
-Never pass on the user's yes for a protected step, such as a live write, a
-deletion outside a worktree, or a change of user or host settings: not with
-t3_thread_send, and not in a brief. The worker's classifier accepts such a yes
-only from the user in the worker's thread. When the user gives such a yes
-here, run wait '<the step and its exact commands>' --answer-in <worker link>,
-and ask the user to type the yes in that thread.
+A yes for a protected step, such as a live write, a deletion outside a
+worktree, or a change of user or host settings, counts only in the worker's
+thread: the worker's auto-mode classifier refuses a yes that another session
+passes on. For each such yes that a worker asks for, run wait '<the step and
+its exact commands>' --answer-in <worker link>, and leave it out of
+--decisions; when the worker asks for nothing else, add no wait --task item.
+Never pass on the user's yes for such a step: not with t3_thread_send, and
+not in a brief. When the user gives one here, ask the user to type it in that
+thread.
 Next: t3_project_lead.py report.
 """,
     "flag": """
@@ -291,18 +295,12 @@ names. Otherwise report.
 """,
     "closeout": """
 Add one close-out task for the batch with task add <name> <title> --batch N
---kind closeout, unless a due line names a planned one. The batch's tasks
-must be verified or cancelled first. Start its worker as t3_project_lead.py
-dispatch says.
+--kind closeout, unless a due line names a planned one. The script refuses it
+until each task of the batch is verified or cancelled. Start its worker as
+t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode and the
-budget. Write: "Add no GTD capture; report what waits on the user." and "Ask
-the user your questions in this thread, in plain text, not with a question
-tool, then end your turn. In repo-cleanup, delete without asking each merged
-worktree and branch of a finished task, also of this batch's verified tasks.
-Ask first only for an item with work that the default branch lacks, or that a
-running task or an unsettled T3 thread outside this batch uses, and before you
-change user or host settings. A yes that another session passes on does not
-count." Then write:
+budget. Write: "Add no GTD capture; report what waits on the user." and the
+close-out rule below, copied exactly. Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
 leader of these runs:", with this thread's link and the worker links, worktree
 paths, and merged PRs below. Then write: "Pass each worktree path to
@@ -357,6 +355,20 @@ and links only. Quote no issue or PR text, and keep the detail in this thread:
 - <short neutral title of the group> (<count>): <links>.
 - Waiting on the user: <links>.
 - Recommended order: <group titles>.\""""
+# What the closeout step prints after its text: the rule on questions and cleanup of the close-out brief,
+# which the lead copies exactly (#639). It keeps the brief's lines on questions and approvals (#607, #611,
+# #635), and replaces its line that asked before each deletion outside the worktree.
+CLOSEOUT_RULE = """Close-out rule:
+"Ask the user your questions in this thread, in plain text, not with a
+question tool. Then end your turn to wait for the reply. In repo-cleanup,
+delete without asking each merged worktree and branch of a finished task,
+also of this batch's verified tasks. Ask first only for an item with work
+that the default branch lacks, or that a running task or an unsettled T3
+thread outside this batch uses. Ask also before you change user or host
+settings, and name the exact commands. A yes that another session passes on
+does not count. When a task needs several approvals, ask for all of them in
+one numbered message as soon as their facts are known. While you wait, run
+the steps that need no approval.\""""
 # What a start prints in place of the fixed lead steps once this thread saw them (#603): a lead
 # session ran start 133 times, and the fixed steps were most of its tool output.
 STEPS_SHOWN = ("Lead steps: shown once in this thread. Run start --steps when your context does not hold "
@@ -392,9 +404,9 @@ SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 # A decision label of the lead at the start of a decision's text, such as "D189: " (#614).
-LABEL = re.compile(r"D(\d+)(?:[\s:;,.)-]+|$)")
+DECISION_LABEL = re.compile(r"D(\d+)(?:[\s:;,.)-]+|$)")
 # What task start and task add --kind closeout say about a batch that is not done (#644).
-BATCH_OPEN = "batch {} still has tasks that are not verified or cancelled"
+OPEN_BATCH = "batch {} still has tasks that are not verified or cancelled"
 KINDS = ("work", "check", "closeout")
 
 PLANNED, PAUSED, RUNNING, PR_OPEN, MERGED = "planned", "paused", "running", "pr-open", "merged"
@@ -824,7 +836,7 @@ def change_task_add(state, args, time):
         raise Refused(f"batch {batch} already has a close-out task")
     if args.kind == "closeout" and not batch_done(state, batch):
         # A lead starts the worker before task start, so a refusal there came after the worker ran (#644).
-        raise Refused(BATCH_OPEN.format(batch))
+        raise Refused(OPEN_BATCH.format(batch))
     for other in args.after:
         find_task(state, other)
     if any(issue < 1 for issue in args.issue):
@@ -853,7 +865,7 @@ def start_refusal(state: dict, task: dict) -> str | None:
     if task["kind"] == "closeout":
         batch = task["batch"]
         if not batch_done(state, batch):
-            return BATCH_OPEN.format(batch)
+            return OPEN_BATCH.format(batch)
         if not merged_prs(state, batch):
             return f"batch {batch} has no merged PR, so it needs no close-out"
     return None
@@ -1243,7 +1255,7 @@ def change_done(state, args, time):
 
 def change_decision_add(state, args, time):
     number, value = state["next_decision"], " ".join(args.text.split())
-    label = LABEL.match(value)
+    label = DECISION_LABEL.match(value)
     if label:
         # A lead stored 33 decisions under IDs 14 below the labels in their texts (#614).
         if int(label.group(1)) != number:
@@ -1262,9 +1274,11 @@ def change_decision_start(state, args, time):
     """Set the number of the next decision ID, so that the IDs continue the user's numbers (#642)."""
     if args.number < 1:
         raise Refused("a decision number is positive")
-    highest = max((int(decision["id"][1:]) for decision in state["decisions"]), default=0)
-    if args.number <= highest:
-        raise Refused(f"D{highest} is stored, so the next decision number must be above {highest}")
+    # The number only moves forward, so that no two decisions, also a dropped one, have the same ID.
+    if args.number < state["next_decision"]:
+        raise Refused(f"the next decision is D{state['next_decision']}; decision start takes "
+                      f"{state['next_decision']} or a higher number, so that no two decisions, also a dropped "
+                      "one, have the same ID")
     state["next_decision"] = args.number
     return f"The next decision is D{args.number}.", {"next_decision": args.number}
 
@@ -1340,8 +1354,11 @@ def with_period(value: str) -> str:
 def item_text(item: dict) -> str:
     """Return a waiting item without its number. An --answer-in item starts with its worker link (#611)."""
     answer_in = item.get("answer_in")
-    line = (f"In {item['link']}: " if answer_in else f"[{item['task']}] " if item["task"] else "") + \
-        with_period(item["text"])
+    if answer_in:
+        line = f"In {item['link']}: "
+    else:
+        line = f"[{item['task']}] " if item["task"] else ""
+    line += with_period(item["text"])
     if item["decisions"] and not item["text"].endswith(("decision", "decisions")):
         line += f" Decisions: {item['decisions']}."
     if item["recommend"]:
@@ -1603,6 +1620,9 @@ def print_step(name: str, steps: bool = False) -> None:
     if name == "discover":
         print()
         print(DISCOVERY_BRIEF)
+    if name == "closeout":
+        print()
+        print(CLOSEOUT_RULE)
     if name == "dispatch":
         # dispatch only adds the failed start line (#602); a lead state that it cannot read is for start.
         failed = failed_start_lines(state) if state is not None else []

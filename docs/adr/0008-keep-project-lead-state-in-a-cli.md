@@ -77,13 +77,10 @@
 > thread open, and the hook blocks a lead's settle of its own thread. Read
 > [Only the user settles the lead thread](#only-the-user-settles-the-lead-thread).
 >
-> **Superseded in part (2026-11-26, issues #611, #613, #614, #639, #642, and
-> #644).** A batch close-out removes the worktrees of its verified tasks: the
-> cleanup plan keeps no worktree of a `verified` or `closed-out` task once the
-> close-out task of its batch has started. `task add --kind closeout` refuses
-> a batch that is not done. `decision start` sets the next decision number.
-> `wait --answer-in` adds an item that the user answers in a worker's thread.
-> Read [Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).
+> **Superseded in part (2026-11-26, issue #639).** A batch close-out removes
+> the worktrees of its verified tasks: the cleanup plan keeps no worktree of a
+> `verified` or `closed-out` task once the close-out task of its batch has
+> started, and the worker of such a task is no idle worker. Read [Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -749,8 +746,9 @@ leads had the lower numbers. The lead state numbered from D1, so the lead
 added 14 to each ID that the script printed. It also put its own label, such
 as `D189`, at the start of each text, and the script stored that text as
 `D175`. Now `decision start <N>` sets the next ID to `D<N>`. It refuses a
-number that is not above the highest stored decision, so that two stored
-decisions cannot have the same ID. It also works on a lead state that already
+number below the next ID, so the number only moves forward, and no two
+decisions, also a dropped one, have the same ID. It also works on a lead state
+that already
 has decisions, so `init` gets no such option. `decision add` removes a label
 at the start of the text when the label is the next ID, and refuses another
 label. Its output starts with the stored ID. `task -h` and `decision -h` list
@@ -762,11 +760,13 @@ The `closeout` step told the lead to copy the brief line "Ask also before you
 delete outside your worktree". Each item that repo-cleanup removes is outside
 the close-out worktree, so one close-out asked the user about 34 merged items
 and waited about 7 hours. The user decided that a batch close-out removes the
-worktrees of its verified tasks. Now the `closeout` step gives the close-out
-brief a cleanup rule: delete without asking each merged worktree and branch
-of a finished task, also of the batch's verified tasks; ask first only for an
-item with work that the default branch lacks, or that a running task or an
-unsettled T3 thread outside the batch uses.
+worktrees of its verified tasks. Now the `closeout` step prints a close-out
+rule after its text, and the lead copies it into the close-out brief: delete
+without asking each merged worktree and branch of a finished task, also of
+the batch's verified tasks; ask first only for an item with work that the
+default branch lacks, or that a running task or an unsettled T3 thread
+outside the batch uses. The rule keeps the brief's lines on questions and
+approvals (#607, #635).
 
 This changes the #575 rule of
 [The worktrees of lead tasks](#the-worktrees-of-lead-tasks). The cleanup plan
@@ -794,7 +794,8 @@ user's yes with `t3_thread_send` and in briefs, and the classifiers refused
 each one. A list that numbered such an item made the user answer "1, yes" in
 the lead thread. Now the `answer` step tells the lead never to pass on such a
 yes. `wait <text> --answer-in <worker link>` adds an item whose text names the
-step and its exact commands. The waiting list prints such items after the
+step and its exact commands. For each such yes that a worker asks for, the
+lead adds this item in place of a numbered worker item. The waiting list prints such items after the
 numbered items, without numbers, in the section "Type in that thread", with
 the link. A due line gives the lead the item number for `done`. The worker
 brief says that a yes that another session passes on does not count, and

@@ -60,9 +60,9 @@ NO_STATE = tempfile.TemporaryDirectory()
 # words with the page size of t3_thread_read and the include of pull_request_read. #635 took `brief` to
 # 278 words with the approvals line, #631 and #633 took `verify` to 266 with the --no-pr and settle
 # lines, and #634 took `start` to 260 with the brief of lead action 7. #645 added 10 words to `start`
-# with the lead-thread rule of lead action 3. #642 took `start` to 285 words with decision start. #611 took
-# `brief` to 295 with the rule that a yes that another session passes on does not count, and #639 took
-# `closeout` to 297 with the cleanup rule of the close-out brief.
+# with the lead-thread rule of lead action 3. #642 took `start` to 285 words with decision start, and #611
+# took `brief` to 295 with the rule that a yes that another session passes on does not count. #639 put the
+# close-out rule after the `closeout` text, as `discover` prints the discovery brief.
 STEP_WORD_LIMIT = 300
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -126,6 +126,9 @@ REPORT_FORM = ("Put each item in one group. Report one line for each group, with
                "titles>.\"")
 # The lead copies the discovery brief into a worker's brief; like a step, it stays short.
 DISCOVERY_BRIEF_WORD_LIMIT = 120
+# The lead copies the close-out rule into the close-out brief (#639); it holds the brief's lines on questions
+# and approvals, and the cleanup rule.
+CLOSEOUT_RULE_WORD_LIMIT = 130
 # A worker asks for all approvals of a task at once (#635): a worker that asked for each one at its step
 # waited across four one-hour sign-ins. matt-automode has the same sentence.
 WORKER_APPROVALS = ("When a task needs several approvals, ask for all of them in one numbered message as soon "
@@ -139,12 +142,14 @@ WORKER_QUESTIONS = ('"Ask the user your questions in this thread, in plain text,
                     f'another session passes on does not count. {WORKER_APPROVALS}"')
 # The close-out worker deletes merged work without asking (#639): a close-out that asked about 34 merged
 # items waited 7 hours for the user. A batch close-out removes the worktrees of its verified tasks.
-CLEANUP_RULE = ('"Ask the user your questions in this thread, in plain text, not with a question tool, then end '
-                "your turn. In repo-cleanup, delete without asking each merged worktree and branch of a "
-                "finished task, also of this batch's verified tasks. Ask first only for an item with work that "
-                "the default branch lacks, or that a running task or an unsettled T3 thread outside this batch "
-                "uses, and before you change user or host settings. A yes that another session passes on does "
-                'not count."')
+# The rule keeps the brief's lines on questions and approvals (#607, #611, #635).
+CLEANUP_RULE = ('Close-out rule: "Ask the user your questions in this thread, in plain text, not with a question '
+                "tool. Then end your turn to wait for the reply. In repo-cleanup, delete without asking each "
+                "merged worktree and branch of a finished task, also of this batch's verified tasks. Ask first "
+                "only for an item with work that the default branch lacks, or that a running task or an "
+                "unsettled T3 thread outside this batch uses. Ask also before you change user or host settings, "
+                "and name the exact commands. A yes that another session passes on does not count. "
+                f'{WORKER_APPROVALS}"')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -160,7 +165,7 @@ REQUIRED = {
               # start prints a compact view (#555).
               "Run this step after each wake or user message. Run show for the full view.",
               # The IDs continue the user's numbers (#642).
-              "When the user names the first decision number, run decision start <N> once.",
+              "When the user gives the first decision number, run decision start <N> once.",
               READING_RULE],
     "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
                  "When the user named the work, record it with outcome <text> and criteria <text>, and start "
@@ -240,11 +245,15 @@ REQUIRED = {
                "In this turn, run wait --task <name> --decisions <N>.",
                "Run done <number>... when the worker resumes or finishes.",
                # The lead passes on no yes for a protected step (#611).
-               "Never pass on the user's yes for a protected step, such as a live write, a deletion outside "
-               "a worktree, or a change of user or host settings: not with t3_thread_send, and not in a "
-               "brief. The worker's classifier accepts such a yes only from the user in the worker's thread.",
-               "When the user gives such a yes here, run wait '<the step and its exact commands>' "
-               "--answer-in <worker link>, and ask the user to type the yes in that thread."],
+               "A yes for a protected step, such as a live write, a deletion outside a worktree, or a change "
+               "of user or host settings, counts only in the worker's thread: the worker's auto-mode "
+               "classifier refuses a yes that another session passes on.",
+               # A numbered worker item for such a yes made the user answer it by number here (#611).
+               "For each such yes that a worker asks for, run wait '<the step and its exact commands>' "
+               "--answer-in <worker link>, and leave it out of --decisions; when the worker asks for nothing "
+               "else, add no wait --task item.",
+               "Never pass on the user's yes for such a step: not with t3_thread_send, and not in a brief. "
+               "When the user gives one here, ask the user to type it in that thread."],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
              "Run task worker <name> <new link> --worktree <path>, with the path as dispatch says,",
@@ -273,9 +282,10 @@ REQUIRED = {
                "names."],
     "closeout": ["--kind closeout, unless a due line names a planned one.",
                  # task add refuses a close-out task for a batch that is not done (#644).
-                 "The batch's tasks must be verified or cancelled first.",
+                 "The script refuses it until each task of the batch is verified or cancelled.",
                  "From t3_project_lead.py brief, use only line 1 for matt-automode and the budget.",
-                 f"Write: {NO_GTD_CAPTURE} and {CLEANUP_RULE}",
+                 f"Write: {NO_GTD_CAPTURE} and the close-out rule below, copied exactly.",
+                 CLEANUP_RULE,
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",
                  '"After the retrospective, run repo-cleanup."',
@@ -586,8 +596,9 @@ class StepTests(unittest.TestCase):
     def test_the_close_out_brief_does_not_ask_before_each_deletion(self) -> None:
         # The close-out brief copied the worker's ask line, and the close-out asked before it deleted 34 merged
         # items (#639).
-        text = " ".join(step("closeout").split())
+        text = words(step("closeout"))
         self.assertIn(CLEANUP_RULE, text)
+        self.assertLessEqual(len(CLEANUP_RULE.split()), CLOSEOUT_RULE_WORD_LIMIT)
         for line in ("Ask also before you delete outside your worktree", 'the line "Ask the user your questions'):
             with self.subTest(line=line):
                 self.assertNotIn(line, text)

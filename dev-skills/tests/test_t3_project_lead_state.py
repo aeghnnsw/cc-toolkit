@@ -1262,15 +1262,18 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("decision", "add", "Squash each merge.")
         self.refused("decision", "start", "0", reason="a decision number is positive")
-        self.refused("decision", "start", "1", reason="D1 is stored, so the next decision number must be above 1")
+        self.refused("decision", "start", "1",
+                     reason="the next decision is D2; decision start takes 2 or a higher number, so that no two "
+                            "decisions, also a dropped one, have the same ID")
         self.assertEqual(self.ok("decision", "start", "76").strip(), "The next decision is D76.")
         self.assertEqual(self.events()[-1], {"time": self.events()[-1]["time"], "command": "decision start",
                                              "next_decision": 76})
         self.assertEqual(self.ok("decision", "add", "Merge one PR at a time.").strip(), "D76: decision added.")
-        self.refused("decision", "start", "76", reason="D76 is stored, so the next decision number must be above 76")
+        # A dropped decision keeps its ID: the number only moves forward.
+        self.ok("decision", "drop", "D76")
+        self.refused("decision", "start", "76", reason="the next decision is D77")
         self.ok("decision", "start", "80")
         self.ok("decision", "add", "Workers start from master.")
-        self.ok("decision", "drop", "D76")
         view = self.ok("show")
         self.assertIn("- D1 Squash each merge.\n- D80 Workers start from master.", view)
 
