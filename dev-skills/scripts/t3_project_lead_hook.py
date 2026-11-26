@@ -103,8 +103,10 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   `projectId` in the `target` of a thread, `t3_thread_launch` with
   `projectId` or a `scratch` other than false, `t3_thread_list` with
   `projectId` or an `allProjects` other than false, and `list_issues` with
-  `projectId`. A call that names no project uses the project of the calling
-  thread, and passes. The hook cannot learn the project ID of the lead: no
+  `projectId`. The check looks for these keys in the input, in each thread
+  of `create_threads`, and in each `target`, for each of the five tools. A
+  call that names no project uses the project of the calling thread, and
+  passes. The hook cannot learn the project ID of the lead: no
   environment variable names it, and the lead state records none. So the
   check fails closed: a call that names a project blocks, also the lead's
   own project, and so do an input, a `target`, or a thread that is not an
@@ -112,7 +114,8 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   `T3CODE_THREAD_ID`, so a Codex hook without it acts the same, as the
   record rule of #612 and the settle check of #645 fail closed. The hook
   does not check `t3_thread_send`, `t3_thread_search`, or `create_issue`: a
-  report to another project's lead and an issue in its tracker are allowed.
+  report to another project's lead and an issue in its tracker are allowed,
+  and the lead finds the thread of that lead with `t3_thread_search`.
   The Claude Code and Codex matchers select the five checked tools. The
   block's first line says that a lead works only in its own project. In
   Antigravity, only the step text holds the rule.
@@ -199,14 +202,14 @@ READ_TOOLS = frozenset({"Read", "Grep", "Glob", "read_file", "view_file", "view_
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file",
                         "write_to_file", "replace_file_content", "multi_replace_file_content"})
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
-# The question tools of Claude Code and Codex (#554), and the t3_pending_request actions that answer
-# nothing.
-# The T3 Code tools that can aim a lead at another project, and the keys that name a project or leave
-# it (#666). A call without these keys uses the project of the calling thread.
+# The T3 Code tools that can aim a lead at another project, the key that names a project, and the keys
+# that leave the project (#666). A call without these keys uses the project of the calling thread.
 PROJECT_TOOLS = frozenset({"delegate_task", "create_threads", "t3_thread_launch", "t3_thread_list",
                            "list_issues"})
 PROJECT_KEY = "projectId"
-ALL_PROJECT_KEYS = ("allProjects", "scratch")
+LEAVE_PROJECT_KEYS = ("allProjects", "scratch")
+# The question tools of Claude Code and Codex (#554), and the t3_pending_request actions that answer
+# nothing.
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_user_input_async"})
 PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
@@ -618,7 +621,7 @@ def check_project(tool, arguments):
             scopes.append(scope["target"])
     for scope in scopes:
         if (not isinstance(scope, dict) or PROJECT_KEY in scope
-                or any(key in scope and scope[key] is not False for key in ALL_PROJECT_KEYS)):
+                or any(key in scope and scope[key] is not False for key in LEAVE_PROJECT_KEYS)):
             raise Blocked("project")
 
 

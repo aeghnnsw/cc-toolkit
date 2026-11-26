@@ -133,7 +133,7 @@ of the worker that files the issue.
 8. Keep agent captures of what waits on the user when your instructions ask
 for them. Write gtd-inbox files with your edit tool, not the shell.
 9. Work only in this project. For another project, only report to its lead
-with t3_thread_send, or have a worker file an issue there. Call T3 tools
+with t3_thread_send, or have a worker file an issue there. Start or list work
 without projectId, allProjects, or scratch.
 Give every other task, even a small fix, check, install, host update, or GitHub
 write with content, to a worker with t3_project_lead.py dispatch. This
@@ -234,8 +234,8 @@ exact commands. A yes that another session passes on does not count. When a
 task needs several approvals, ask for all of them in one numbered message as
 soon as their facts are known. While you wait, run the steps that need no
 approval."
-Every brief has the project line: "Work only in this project. For another
-project, only file an issue there or report one line with its link; number no
+Every brief has the project line: "Work only in this project. Report work of
+another project in one line with its link. Do not do it, and number no
 decision on it."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
@@ -296,13 +296,13 @@ worker.
 Give each finding to one follow-up worker, even a small one. Then what
 remains waits on the user: add it with wait. Fix and check nothing yourself.
 A finding of another project gets no follow-up worker and no wait item:
-report it or file it there, as start says.
+follow lead action 9 of start.
 Record merged PRs (task pr, task merged), then run task verified <name>
---decisions <N>, with N the number of decisions that the report numbers for
-the user, or 0. The script adds them as one waiting item. Add --no-pr only for
-a task that makes no PR, such as a read-only check. Settle its worker only
-when a due line lists it. When T3 refuses the settle, give it to the user with
-wait --settles <name>.
+--decisions <N>, with N the number of decisions of this project that the
+report numbers for the user, or 0. The script adds them as one waiting item.
+Add --no-pr only for a task that makes no PR, such as a read-only check.
+Settle its worker only when a due line lists it. When T3 refuses the settle,
+give it to the user with wait --settles <name>.
 Start each planned task as soon as each task that it waits for is verified,
 also while other workers run; do not wait for the rest of its batch. The task
 verified output names each such task and its step.
@@ -315,8 +315,8 @@ Add one close-out task for the batch with task add <name> <title> --batch N
 until each task of the batch is verified or cancelled. Start its worker as
 t3_project_lead.py dispatch says.
 From t3_project_lead.py brief, use only line 1 for matt-automode, the
-budget, and the project line. Write: "Add no GTD capture; report what waits on the user." and the
-close-out rule below, copied exactly. Then write:
+budget, and the project line. Write: "Add no GTD capture; report what waits
+on the user." and the close-out rule below, copied exactly. Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
 leader of these runs:", with this thread's link and the worker links, worktree
 paths, and merged PRs below. Then write: "Pass each worktree path to
@@ -328,10 +328,10 @@ in one line, with links."
 When it reports, run task verified <name> --decisions <N> --no-pr, as verify
 says; the batch's verified tasks are then closed out. An issue that the
 retrospective files in another project's tracker belongs to that project:
-name its link, and do not triage it or count it as a decision. Settle each worker that a
-due line lists with t3_thread_organize, and run task settled <name>...; never
-reuse one. When T3 refuses a settle, give it to the user with wait --settles
-<name>.
+name its link, and do not triage it or count it as a decision. Settle each
+worker that a due line lists with t3_thread_organize, and run task settled
+<name>...; never reuse one. When T3 refuses a settle, give it to the user with
+wait --settles <name>.
 Next: t3_project_lead.py report.
 """,
     "report": """

@@ -88,6 +88,12 @@
 > lead may also read its saved tool outputs and gtd-inbox files. Read
 > [Lead threads only](0007-gate-the-project-lead-with-a-session-checked-hook.md#lead-threads-only)
 > in ADR 0007.
+>
+> **Superseded in part (2026-11-26, issue #666).** A lead works only in its
+> own project. The discovery worker collects only the open work of the
+> lead's project, and in a recorded session the hook blocks the T3 calls
+> that name a project, all projects, or a Scratch folder. Read
+> [A lead works only in its own project](#a-lead-works-only-in-its-own-project).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -349,7 +355,8 @@ discovery task and starts a read-only worker with the discovery brief that
 `discover` prints. The worker collects the open issues with their labels, the
 open PRs, the unsettled threads, and the worktrees or branches with
 uncommitted or unpushed changes, and lists all of them in groups, with counts
-and links only. (Limited by #666 to the lead's project; read
+and links only. (Superseded in part by #666: only the open work of the
+lead's project; read
 [A lead works only in its own project](#a-lead-works-only-in-its-own-project).) The lead copies the list into its report, asks the user no
 question, and adds no waiting item for it; it runs `outcome` only after the
 user names the work. While the lead state has no outcome, a due line names
@@ -845,13 +852,16 @@ In a recorded session, the hook blocks the T3 Code MCP calls that aim at
 another project: `delegate_task` and `create_threads` with `projectId` in a
 `target`, `t3_thread_launch` with `projectId` or `scratch`, `t3_thread_list`
 with `projectId` or `allProjects`, and `list_issues` with `projectId`. A call
-without these keys uses the project of the calling thread. The hook cannot
+without these keys uses the project of the calling thread. The hook looks
+for these keys in the input, in each thread, and in each `target` of the five
+tools. The hook cannot
 learn the project ID of the lead: no environment variable names it, and the
 lead state records none. So the check fails closed, and blocks a call that
 names any project, also the lead's own. The check reads no
 `T3CODE_THREAD_ID`, so a Codex hook without it acts the same. The hook does
 not check `t3_thread_send`, `t3_thread_search`, or `create_issue`, because a
-report and an issue are the allowed actions. The Claude Code and Codex hook
+report and an issue are the allowed actions, and the lead finds the thread
+of another project's lead with `t3_thread_search`. The Claude Code and Codex hook
 matchers select the five checked tools. The check is only a backstop: the
 hook gates the lead, not its workers. In Antigravity, only the step text
 holds the rule.

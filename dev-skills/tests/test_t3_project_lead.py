@@ -64,9 +64,9 @@ NO_STATE = tempfile.TemporaryDirectory()
 # with the lead-thread rule of lead action 3. #642 took `start` to 285 words with decision start, and #611
 # took `brief` to 295 with the rule that a yes that another session passes on does not count. #639 put the
 # close-out rule after the `closeout` text, as `discover` prints the discovery brief. #666 took `start` to
-# 330 words with lead action 9 and `brief` to 326 with the project line: a lead works only in its own
+# 331 words with lead action 9 and `brief` to 327 with the project line: a lead works only in its own
 # project.
-STEP_WORD_LIMIT = 330
+STEP_WORD_LIMIT = 335
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -91,8 +91,8 @@ GLOSSARY_RULE = ("It works only in its project: the T3 Code project of the lead 
                  "its issues, PRs, worktrees, and threads. For work of another project, it only reports to that "
                  "project's lead or has a worker file an issue in that project's tracker. It never lists or "
                  "offers that work.")
-PROJECT_LINE = ('Every brief has the project line: "Work only in this project. For another project, only file an '
-                'issue there or report one line with its link; number no decision on it."')
+PROJECT_LINE = ('Every brief has the project line: "Work only in this project. Report work of another project in '
+                'one line with its link. Do not do it, and number no decision on it."')
 # The actions that the lead does itself, in the order that `start` prints them (#520).
 LEAD_ACTIONS = (
     "1. Talk with the user in plain text, never with a question tool: decisions, triage, priorities.",
@@ -187,7 +187,7 @@ REQUIRED = {
               "When the user gives the first decision number, run decision start <N> once.",
               # A lead works only in its own project, and the hook blocks the keys of another project (#666).
               "9. Work only in this project. For another project, only report to its lead with t3_thread_send, "
-              "or have a worker file an issue there. Call T3 tools without projectId, allProjects, or scratch.",
+              "or have a worker file an issue there. Start or list work without projectId, allProjects, or scratch.",
               READING_RULE],
     "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
                  "When the user named the work, record it with outcome <text> and criteria <text>, and start "
@@ -291,12 +291,12 @@ REQUIRED = {
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
                # A finding of another project goes to that project (#666).
-               "A finding of another project gets no follow-up worker and no wait item: report it or file it "
-               "there, as start says.",
+               "A finding of another project gets no follow-up worker and no wait item: follow lead action 9 "
+               "of start.",
                # A decision that waits on the user is a waiting item, also after a PASS (#567).
                "Then what remains waits on the user: add it with wait. Fix and check nothing yourself.",
                "Record merged PRs (task pr, task merged), then run task verified <name> --decisions <N>, "
-               "with N the number of decisions that the report numbers for the user, or 0. The script adds "
+               "with N the number of decisions of this project that the report numbers for the user, or 0. The script adds "
                "them as one waiting item.",
                # A running task without a recorded PR needs --no-pr (#631).
                "Add --no-pr only for a task that makes no PR, such as a read-only check.",

@@ -13,9 +13,9 @@ can answer a worker's question. Issue #574 also records a session for
 `takeover`, and a `start` of the owner thread, and adds `unmark`. Issue #621
 allows reads of the session's saved tool outputs and gtd-inbox files. Issue
 #666 blocks the T3 Code MCP calls that aim a lead at another project. Each
-test runs the hook as a
-process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
-do, and checks the exit status, stdout, stderr, and the state folder.
+test runs the hook as a process with a JSON payload on stdin, as Claude Code,
+Codex, and Antigravity do, and checks the exit status, stdout, stderr, and
+the state folder.
 """
 from __future__ import annotations
 
@@ -135,8 +135,8 @@ OWN_PROJECT_CALLS = {
 }
 # A report to another project's lead and an issue in another project's tracker are allowed (#666).
 ALLOWED_PROJECT_CALLS = {
-    "t3_thread_send": ({"threadId": "thread:other-lead", "message": "Report: a shared script fails. Link: "
-                        "https://github.com/o/r/issues/1"},),
+    "t3_thread_send": ({"threadId": "thread:other-lead", "projectId": OTHER_PROJECT,
+                        "message": "Report: a shared script fails. Link: https://github.com/o/r/issues/1"},),
     "t3_thread_search": ({"query": "lead", "projectId": OTHER_PROJECT},),
     "create_issue": ({"projectId": OTHER_PROJECT, "title": "A shared script fails", "body": "Facts."},),
 }
