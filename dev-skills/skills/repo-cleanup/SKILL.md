@@ -70,11 +70,10 @@ the Default Branch or is the head commit of any merged PR: such a branch has
 no commit of its own. The plan keeps such a branch when its reflog shows that
 it was created less than 60 minutes ago. When a check cannot run, the plan
 keeps the item and gives the error as the reason.
-The plan removes each `branch.<name>` section of the repository's Git config
-whose local branch does not exist. `git branch -D` deletes a branch and exits
-0 also when it cannot write the Git config, for example in a sandbox that
-makes the config read-only. It then prints `could not lock config file`, and
-the section `branch.<name>` stays.
+The plan removes each `branch.<name>` section of the Git config whose local
+branch does not exist. `git branch -D` deletes a branch and exits 0 also when
+it cannot lock the Git config, for example in a sandbox. It then prints
+`could not lock config file`, and the section `branch.<name>` stays.
 
 Before deleting anything, record the merged PRs that the plan names,
 including the PR of the current worktree, their linked tickets, and parent
@@ -127,13 +126,16 @@ order:
 2. Remove each `worktree` with `git worktree remove <path>`.
 3. Delete each `branch` with `git branch -D <name>`. A squash-merged branch
    needs `-D`; the plan verified its merged PR.
-4. Run the plan command again with the same options and `--config-sections`.
-   It prints only the `config-section` lines, also one for each section that
-   step 3 left. Remove each section that it lists with
-   `git config --remove-section <section>`. When this command fails, the Git
-   config is read-only, for example in a sandbox. Then remove no other
-   section, and report each section that stays with the error, which names
-   the config file.
+4. Remove the `branch.<name>` sections of the Git config:
+   1. Run the plan command again with `--config-sections`. It prints only the
+      `config-section` lines, also one for each section that step 3 left.
+   2. Remove each section that it lists with
+      `git config --remove-section <section>`. The output `no such section`
+      means that the section is already gone.
+   3. When the output is `could not lock config file`, Git cannot lock the
+      Git config, for example in a sandbox. Remove no other section. Report
+      each section that stays with the error, which names the file of the
+      Git config. Then go on with step 5.
 5. Delete each `remote-branch` `<remote>/<name>` from the upstream remote
    with `git push <remote> --delete <name>`.
 

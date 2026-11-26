@@ -67,11 +67,11 @@ section; and the reason. The rules:
   branch of each kept local branch: the remote branch with its name or its
   upstream. A branch's PRs are those whose head is its upstream branch, or
   the branch name when it has no upstream on the remote.
-- Remove each branch.<name> section of the repository config whose local
-  branch does not exist. `git branch -D` deletes a branch and exits 0 also
-  when it cannot write the config, for example in a sandbox, and the section
-  then stays (#643). With --config-sections, print only these lines, and read
-  only the Git config and the local branches.
+- Remove each branch.<name> section of the Git config whose local branch
+  does not exist. `git branch -D` deletes a branch and exits 0 also when it
+  cannot lock the Git config, for example in a sandbox, and the section then
+  stays (#643). With --config-sections, print only these lines, and run none
+  of the other checks.
 
 The exit status is 0 when the plan is printed, and 1 when no plan can be
 made, for example outside a repository or without a known Default Branch.
@@ -436,12 +436,10 @@ def refs(repo: str, prefix: str) -> dict[str, tuple[str, str]]:
 
 def config_sections(repo: str,
                     local: dict[str, tuple[str, str]]) -> list[tuple[str, str, str, str]]:
-    """Return a REMOVE line for each branch.<name> section of the config with no local branch.
+    """Return a REMOVE line for each branch.<name> section of the Git config with no local branch.
 
-    `git branch -D` deletes the branch and exits 0 also when it cannot write
-    the config, for example in a sandbox, and the section stays (#643). A key
-    of a branch section has a subsection, the branch name, between its first
-    and last dot; a key without one, such as branch.autoSetupMerge, is a
+    A key of a branch section has a subsection, the branch name, between its
+    first and last dot; a key without one, such as branch.autoSetupMerge, is a
     setting.
     """
     output = git(repo, "config", "--local", "--name-only", "-z", "--list")
@@ -463,13 +461,14 @@ def main() -> None:
                         help="the repository documents the planning folder location "
                              "in the main checkout")
     parser.add_argument("--config-sections", action="store_true",
-                        help="print only the config-section lines; read only the Git config "
-                             "and the local branches")
+                        help="print only the config-section lines, and run none of the other "
+                             "checks")
     args = parser.parse_args()
 
     current = os.path.realpath(git(args.repo, "rev-parse", "--show-toplevel").strip())
+    local = refs(args.repo, "refs/heads/")
     if args.config_sections:
-        for line in config_sections(args.repo, refs(args.repo, "refs/heads/")):
+        for line in config_sections(args.repo, local):
             print("\t".join(line))
         return
     default, default_ref = default_branch(args.repo, args.remote, args.default_branch)
@@ -478,7 +477,6 @@ def main() -> None:
     planner = Planner(args.repo, default_ref, GitHub(current))
     lines: list[tuple[str, str, str, str]] = []
     remote_prefix = f"refs/remotes/{args.remote}/"
-    local = refs(args.repo, "refs/heads/")
 
     def pr_head(branch: str) -> str:
         """Return the head branch name of the branch's PRs: its upstream branch, or its name."""

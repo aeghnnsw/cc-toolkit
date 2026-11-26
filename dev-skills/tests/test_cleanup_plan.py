@@ -986,20 +986,19 @@ class ConfigSectionCases(PlanTestCase):
         repo.git("config", "branch.autoSetupMerge", "always")
         lock = repo.path / ".git" / "config.lock"
         lock.write_text("")
-        cls.delete = subprocess.run(["git", "branch", "-D", "feat-gone"], cwd=repo.path,
-                                    env=repo.env, capture_output=True, text=True)
+        cls.branch_delete = subprocess.run(["git", "branch", "-D", "feat-gone"], cwd=repo.path,
+                                           env=repo.env, capture_output=True, text=True)
         lock.unlink()
         cls.sections = repo.run("--config-sections")
-        cls.gh_calls_of_sections = repo.gh_calls()
+        cls.gh_calls_of_config_sections_run = repo.gh_calls()
         cls.plan = repo.plan()
 
     def config_lines(self) -> dict[str, tuple[str, str]]:
         return {item: line for (kind, item), line in self.plan.items() if kind == "config-section"}
 
-    def test_case_44_lists_the_section_that_git_branch_d_leaves_when_it_cannot_write_the_config(
-            self):
-        self.assertEqual(self.delete.returncode, 0, self.delete.stderr)
-        self.assertIn("could not lock config file", self.delete.stderr)
+    def test_case_44_lists_the_section_that_git_branch_d_leaves_on_a_locked_config(self):
+        self.assertEqual(self.branch_delete.returncode, 0, self.branch_delete.stderr)
+        self.assertIn("could not lock config file", self.branch_delete.stderr)
         self.assertEqual(self.line("config-section", "branch.feat-gone"),
                          ("REMOVE", "no local branch feat-gone"))
 
@@ -1011,7 +1010,7 @@ class ConfigSectionCases(PlanTestCase):
         self.assertEqual(self.sections.stdout.splitlines(),
                          [f"{action}\tconfig-section\t{item}\t{reason}"
                           for item, (action, reason) in self.config_lines().items()])
-        self.assertEqual(self.gh_calls_of_sections, [])
+        self.assertEqual(self.gh_calls_of_config_sections_run, [])
 
     def test_case_47_git_config_remove_section_removes_each_listed_section(self):
         for item in self.config_lines():
