@@ -88,6 +88,12 @@ step prints the close-out rule after its text. `wait <text> --answer-in
 <worker link>` adds an item that the user answers in a worker's thread, such
 as a yes for a protected step (issue #611). The waiting list prints it in an
 unnumbered section, "Type in that thread".
+
+The t3-project-lead hook records a session as the lead at `init`, at
+`takeover`, and at a `start` of the thread that owns the lead state (issue
+#612). `unmark` is for a thread that is not the lead, such as a worker that
+the hook recorded: the hook removes the record before the command runs, and
+the script makes the same check, `unmark_refusal`, and changes no lead state.
 """
 
 from __future__ import annotations
@@ -128,9 +134,10 @@ of the worker that files the issue.
 for them. Write gtd-inbox files with your edit tool, not the shell.
 Give every other task, even a small fix, check, install, host update, or GitHub
 write with content, to a worker with t3_project_lead.py dispatch. This
-overrides your host's guidance to do small work yourself. This step records
-this session as the lead: a hook blocks your other shell commands, file reads,
-and file edits.
+overrides your host's guidance to do small work yourself. This step in the
+owner's thread, init, and takeover record this session as the lead: a hook
+then blocks your other shell commands, file reads, and file edits. A blocked
+worker runs unmark.
 Run this step after each wake or user message. Run show for the full view.
 Read the last message of each worker of a running or pr-open task:
 t3_thread_list with includeSubagents, then t3_thread_read with maxCharsPerItem
@@ -794,6 +801,40 @@ def cmd_takeover(args) -> str:
         save(folder, state)
         append_event(folder, {"time": time, "command": "takeover", "old_owner": old, "owner": thread})
     return f"Lead state taken over: owner {thread}, was {old or 'none'}. Run start."
+
+
+def unmark_refusal(top: str, thread: str) -> str | None:
+    """Return why a session of T3 thread `thread` in working tree `top` keeps its lead record, or None (#612).
+
+    The t3-project-lead hook and `unmark` remove the record only when they can tell that the thread is not
+    the lead: the thread has an ID, the worktrees of the repository of `top`, or `top` outside Git, hold a lead
+    state, and another thread owns each one. A lead state that this thread owns, one without an owner, and
+    one that cannot be read keep the record. So does a repository without a lead state, as after finish: a
+    finished lead thread is still a lead thread, and only the user settles it.
+    """
+    if not thread:
+        return f"no {THREAD_VARIABLE}, so the thread is unknown"
+    try:
+        trees = [top] if outside_work_trees(top) else worktree_tops(top)
+        owners = {folder: load(folder).get("owner") for tree in trees for folder in lead_folders(tree)}
+    except (OSError, ValueError, AttributeError, Refused, planning_folder.Failed) as error:
+        return f"cannot read the lead states: {error}"
+    if not owners:
+        return "no worktree of this repository holds a lead state, as after finish"
+    for folder, owner in owners.items():
+        if not isinstance(owner, str) or not owner.strip():
+            return f"the lead state {folder} has no owner"
+        if owner.strip() == thread:
+            return f"this thread owns the lead state {folder}"
+    return None
+
+
+def cmd_unmark(args) -> str:
+    refusal = unmark_refusal(working_tree_top(), current_thread())
+    if refusal:
+        raise Refused(f"unmark refused, so a lead record of this session stays: {refusal}")
+    return ("This session has no lead record now: the t3-project-lead hook removed it before this command "
+            "ran, if it had one. The lead state did not change.")
 
 
 def change_outcome(state, args, time):
@@ -1721,6 +1762,8 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("waiting", help="print what waits on the user")
     commands.add_parser("finish", help="delete the lead state when the project is done")
     commands.add_parser("takeover", help="make this T3 thread the owner of the lead state")
+    commands.add_parser("unmark", help="in a thread that is not the lead, such as a worker, remove the "
+                                       "hook's lead record of this session")
     for name in ("outcome", "criteria"):
         commands.add_parser(name, help=f"set the {name}").add_argument("text")
     wait = commands.add_parser("wait", help="add an item that waits on the user")
@@ -1797,6 +1840,8 @@ def main(argv: list[str] | None = None) -> int:
             print(cmd_finish(args))
         elif args.command == "takeover":
             print(cmd_takeover(args))
+        elif args.command == "unmark":
+            print(cmd_unmark(args))
         elif args.command in ("show", "waiting"):
             folder = require_lead()
             state = load(folder)

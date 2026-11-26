@@ -9,7 +9,10 @@ user message. Issue #545 also blocks the T3 Code MCP calls that return issue
 or PR text, in the Claude Code and Codex names. Issue #554 also blocks the
 question tools of Claude Code and Codex, and a `t3_pending_request` call that
 can answer a worker's question. Issue #574 also records a session for
-`start` in a command list. Each test runs the hook as a
+`start` in a command list. Issue #612 records a session only at `init`,
+`takeover`, and a `start` of the owner thread, and adds `unmark`. Issue #621
+allows reads of the session's saved tool outputs and gtd-inbox files. Each
+test runs the hook as a
 process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
 do, and checks the exit status, stdout, stderr, and the state folder.
 """
@@ -34,8 +37,17 @@ SESSION = "lead-session-1"
 LEAD_NAME = "20261122-lead-x"
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
+# The reminder also names unmark for a thread that is not the lead (#612).
 REMINDER = ('This is a t3-project-lead session. Before anything else in this turn, run: '
-            f'python3 "{STEP_SCRIPT}" start')
+            f'python3 "{STEP_SCRIPT}" start. When this thread is not the lead, as in a worker, run '
+            f'python3 "{STEP_SCRIPT}" unmark instead.')
+# The block of an unmark that the hook refuses (#612), and the start of its second line.
+UNMARK_LINE = "BLOCKED: t3-project-lead: The hook keeps the lead record of this session."
+UNMARK_REASON = "It removes the record only when it can tell that this thread is not the lead: "
+# The second line of a blocked read (#621).
+READ_LINE = ("Allowed reads: T3 attachments, the GTD binding, gtd-inbox .json files outside every Git work tree, "
+             "the installed Productivity Skills plugin, and the tool outputs that Claude Code saved for this "
+             "session. Print the lead state with t3_project_lead.py show.")
 DAY = 24 * 60 * 60
 TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
              'pull_request_list, and pull_request_read with sections or include, as your tool names it, set '
@@ -261,7 +273,93 @@ class SessionWithoutRecordTests(HookCase):
         self.assert_passes(self.run_hook("antigravity", payload))
 
 
+def write_lead_state(root, owner, name=LEAD_NAME):
+    """Write a lead state in `root` that `owner` owns, or with no owner when `owner` is None."""
+    state = Path(root) / ".scratch" / name / "state.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    fields = {"schema": 1, "slug": "x"}
+    if owner is not None:
+        fields["owner"] = owner
+    state.write_text(json.dumps(fields), encoding="utf-8")
+    return state
+
+
 class RecordTests(HookCase):
+    """A start records a session only in the thread that owns the lead state (#612). Unless a check
+    names another thread, the hook runs in the owner's thread, and the main work tree and the folder of
+    the installed copy each hold a lead state of that owner."""
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(shutil.rmtree, self.installed.parents[1] / ".scratch", True)
+        for root in (self.main, self.installed.parents[1]):
+            self.addCleanup(write_lead_state(root, OWNER_THREAD).unlink, missing_ok=True)
+
+    def run_hook(self, host, payload, env=None):
+        return super().run_hook(host, payload, {"T3CODE_THREAD_ID": OWNER_THREAD, **(env or {})})
+
+    def assert_records(self, host, payload, env=None, recorded=True):
+        shutil.rmtree(self.state, ignore_errors=True)
+        self.assert_passes(self.run_hook(host, payload, env))
+        self.assertEqual((self.state / SESSION).is_file(), recorded)
+
+    def test_a_start_in_another_thread_records_nothing(self):
+        """Issue #612: a worker ran start, and the hook blocked its work as a lead's."""
+        start = f'python3 "{STEP_SCRIPT}" start'
+        for host in HOSTS:
+            # A worker in the lead's work tree, and a worker in its own worktree, with no lead state.
+            for cwd, thread in ((self.main, WORKER_THREAD), (self.dev, WORKER_THREAD), (self.dev, OWNER_THREAD),
+                                (self.dev, "")):
+                with self.subTest(host=host, cwd=cwd, thread=thread):
+                    self.assert_records(host, shell_payload(host, start, cwd), {"T3CODE_THREAD_ID": thread},
+                                        recorded=False)
+        self.assert_records("claude", shell_payload("claude", f"S={STEP_SCRIPT}; python3 $S start | head", self.main),
+                            {"T3CODE_THREAD_ID": WORKER_THREAD}, recorded=False)
+
+    def test_init_and_takeover_record_the_session(self):
+        """Issue #612: init and takeover make a lead in any thread."""
+        commands = (f"python3 {STEP_SCRIPT} init x", f"python3 {STEP_SCRIPT} init x --also",
+                    f"python3 {STEP_SCRIPT} init --also x", f"python3 '{self.installed}' takeover",
+                    f"S={STEP_SCRIPT}; python3 $S takeover 2>&1 | head -20",
+                    f"S={STEP_SCRIPT}; python3 $S init x | head")
+        for index, command in enumerate(commands):
+            host = HOSTS[index % len(HOSTS)]
+            for thread in (WORKER_THREAD, ""):
+                with self.subTest(host=host, command=command, thread=thread):
+                    self.assert_records(host, shell_payload(host, command, self.dev), {"T3CODE_THREAD_ID": thread})
+
+    def test_init_or_takeover_with_other_words_records_nothing(self):
+        for command in (f"python3 {STEP_SCRIPT} init", f"python3 {STEP_SCRIPT} init -h",
+                        f"python3 {STEP_SCRIPT} init x y", f"python3 {STEP_SCRIPT} init x --also --also",
+                        f"python3 {STEP_SCRIPT} takeover x", f"python3 {self.dev_script} takeover",
+                        f"python3 {STEP_SCRIPT} unmark"):
+            with self.subTest(command=command):
+                self.assert_records("claude", shell_payload("claude", command, self.main), recorded=False)
+
+    def test_a_start_that_the_hook_cannot_check_records_the_session(self):
+        """Issue #612: the check fails closed. When a lead state may be there and the hook cannot tell its
+        owner, a start records the session."""
+        start = f'python3 "{STEP_SCRIPT}" start'
+        self.assert_records("codex", shell_payload("codex", start, self.main), {"T3CODE_THREAD_ID": ""})
+        self.assert_records("claude", shell_payload("claude", start, "relative/cwd"),
+                            {"T3CODE_THREAD_ID": WORKER_THREAD})
+        self.assert_records("claude", shell_payload("claude", f"cd {self.dev} && {start}", self.dev),
+                            {"T3CODE_THREAD_ID": WORKER_THREAD})
+        self.assert_records("claude", shell_payload("claude", start, self.main),
+                            {"T3CODE_THREAD_ID": WORKER_THREAD, "PATH": "/nonexistent"})
+        second = self.main / ".scratch" / "20261126-lead-two"
+        self.addCleanup(shutil.rmtree, second, True)
+        for owner, text in ((None, None), (OWNER_THREAD, "{not json"), (OWNER_THREAD, None)):
+            state = write_lead_state(self.main, owner)
+            if text is not None:
+                state.write_text(text, encoding="utf-8")
+            if owner is not None and text is None:
+                # The third case: two lead states in one work tree.
+                write_lead_state(self.main, OWNER_THREAD, second.name)
+            with self.subTest(owner=owner, text=text):
+                self.assert_records("antigravity", shell_payload("antigravity", start, self.main),
+                                    {"T3CODE_THREAD_ID": WORKER_THREAD})
+
     def test_start_from_the_hooks_own_copy_records_the_session(self):
         for host in HOSTS:
             with self.subTest(host=host):
@@ -282,7 +380,7 @@ class RecordTests(HookCase):
                 self.assertTrue((self.state / SESSION).is_file())
 
     def test_a_relative_or_variable_path_resolves_before_the_check(self):
-        cases = (("python scripts/t3_project_lead.py start", PLUGIN_ROOT, {}),
+        cases = (("python scripts/t3_project_lead.py start", self.installed.parents[1], {}),
                  ('python3 "$LEAD_TEST_ROOT/scripts/t3_project_lead.py" start', self.main,
                   {"LEAD_TEST_ROOT": str(PLUGIN_ROOT)}),
                  ("python3 ${LEAD_TEST_ROOT}/scripts/t3_project_lead.py start", self.main,
@@ -815,6 +913,138 @@ class SettleTests(HookCase):
                             {"action": "archive", "threadId": WORKER_THREAD}), allowed=True)
 
 
+class UnmarkTests(HookCase):
+    """`unmark` removes the record of a session whose thread is not a lead (#612). The main work tree holds
+    a lead state that the lead thread owns; the developer's worktree is a worker's worktree."""
+
+    def setUp(self):
+        super().setUp()
+        self.record()
+        self.lead_state = write_lead_state(self.main, OWNER_THREAD)
+        self.addCleanup(self.lead_state.unlink, missing_ok=True)
+        self.unmark = f'python3 "{STEP_SCRIPT}" unmark'
+
+    def check_unmark(self, cwd, thread, reason=None, extra=None):
+        """Run unmark in `cwd` in a session of T3 thread `thread`, with the variables `extra` added; with a
+        `reason`, check that the hook blocks it with that reason and keeps the record."""
+        before = self.lead_state.read_bytes() if self.lead_state.exists() else None
+        for host in HOSTS:
+            with self.subTest(host=host, cwd=cwd, thread=thread):
+                self.record()
+                result = self.run_hook(host, shell_payload(host, self.unmark, cwd),
+                                       {"T3CODE_THREAD_ID": thread, **(extra or {})})
+                if reason is None:
+                    self.assert_passes(result)
+                    self.assertFalse((self.state / SESSION).exists())
+                else:
+                    self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+                    first, second = result.stderr.splitlines()
+                    self.assertEqual(first, UNMARK_LINE)
+                    self.assertTrue(second.startswith(UNMARK_REASON), second)
+                    self.assertIn(reason, second)
+                    self.assertTrue((self.state / SESSION).is_file())
+        self.assertEqual(self.lead_state.read_bytes() if self.lead_state.exists() else None, before)
+
+    def test_unmark_removes_the_record_of_a_worker(self):
+        self.check_unmark(self.dev, WORKER_THREAD)
+        self.check_unmark(self.main, WORKER_THREAD)
+
+    def test_unmark_keeps_the_record_of_a_lead(self):
+        # The owner of a lead state, also in another worktree of the repository.
+        self.check_unmark(self.main, OWNER_THREAD, "this thread owns the lead state")
+        self.check_unmark(self.dev, OWNER_THREAD, "this thread owns the lead state")
+        # A lead after finish: only the user settles a lead thread, so the hook keeps its record.
+        self.lead_state.unlink()
+        self.check_unmark(self.dev, WORKER_THREAD, "no worktree of this repository holds a lead state")
+
+    def test_an_unmark_that_the_hook_cannot_check_keeps_the_record(self):
+        self.check_unmark(self.dev, "", "no T3CODE_THREAD_ID")
+        self.check_unmark("relative/cwd", WORKER_THREAD, "the call has no absolute cwd")
+        write_lead_state(self.main, None)
+        self.check_unmark(self.dev, WORKER_THREAD, "has no owner")
+        self.lead_state.write_text("{not json", encoding="utf-8")
+        self.check_unmark(self.dev, WORKER_THREAD, "cannot read the lead states")
+        write_lead_state(self.main, OWNER_THREAD)
+        self.check_unmark(self.dev, WORKER_THREAD, "could not check the lead states", extra={"PATH": "/nonexistent"})
+
+    def test_an_unmark_in_another_folder_keeps_the_record(self):
+        # The record covers the whole session, and a Codex workdir or an Antigravity Cwd can name a folder of
+        # another repository, so the call must run in the session's cwd.
+        cases = (("codex", "exec_command", {"cmd": self.unmark, "workdir": str(self.dev)}),
+                 ("antigravity", "run_command", {"CommandLine": self.unmark, "Cwd": str(self.dev)}))
+        for host, name, tool_input in cases:
+            with self.subTest(host=host):
+                result = self.run_hook(host, tool_payload(host, name, tool_input, self.main),
+                                       {"T3CODE_THREAD_ID": WORKER_THREAD})
+                self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+                self.assertEqual(result.stderr.splitlines(), [
+                    UNMARK_LINE, UNMARK_REASON + "the call names a folder other than the session's cwd."])
+                self.assertTrue((self.state / SESSION).is_file())
+        same = tool_payload("codex", "exec_command", {"cmd": self.unmark, "workdir": str(self.main)}, self.main)
+        self.assert_passes(self.run_hook("codex", same, {"T3CODE_THREAD_ID": WORKER_THREAD}))
+        self.assertFalse((self.state / SESSION).exists())
+
+    def test_unmark_with_more_words_is_no_unmark(self):
+        self.check([(host, shell_payload(host, f"{self.unmark} now", self.dev)) for host in HOSTS], allowed=True,
+                   env={"T3CODE_THREAD_ID": WORKER_THREAD})
+        self.assertTrue((self.state / SESSION).is_file())
+
+
+class ToolResultReadTests(HookCase):
+    """A recorded session reads the tool outputs that Claude Code saved for it (#621): a lead could not
+    read a long `show` output."""
+
+    def setUp(self):
+        super().setUp()
+        self.record()
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        self.project = Path(temp_dir.name).resolve() / "projects" / "-repo"
+        self.transcript = self.project / f"{SESSION}.jsonl"
+        self.results = self.project / SESSION / "tool-results"
+        self.saved = self.results / "btcdkaz4q.txt"
+        self.other = self.project / "other-session" / "tool-results" / "b1.txt"
+        for path in (self.transcript, self.saved, self.other):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("Lead state: x\n", encoding="utf-8")
+
+    def check_reads(self, cases, *, allowed, transcript=None):
+        jobs = []
+        for host, name, tool_input in cases:
+            payload = tool_payload(host, name, tool_input, self.main)
+            payload["transcript_path"] = str(self.transcript) if transcript is None else transcript
+            if transcript is False:
+                payload.pop("transcript_path")
+            jobs.append((host, payload))
+        self.check(jobs, allowed=allowed)
+
+    def test_a_saved_tool_output_of_this_session_is_readable(self):
+        self.check_reads((("claude", "Read", {"file_path": str(self.saved)}),
+                          ("claude", "Read", {"file_path": str(self.saved), "offset": 200, "limit": 200}),
+                          ("claude", "Bash", {"command": f"head -c 4000 {self.saved}"}),
+                          ("claude", "Bash", {"command": f"sed -n 1,80p '{self.saved}'"}),
+                          ("claude", "Bash", {"command": f"ls {self.results}"}),
+                          ("claude", "Grep", {"pattern": "Decisions", "path": str(self.results)}),
+                          ("codex", "Bash", {"command": f"cat {self.saved}"})), allowed=True)
+
+    def test_other_saved_outputs_are_blocked(self):
+        blocked = (("claude", "Read", {"file_path": str(self.other)}),
+                   ("claude", "Read", {"file_path": str(self.transcript)}),
+                   ("claude", "Read", {"file_path": f"{self.results}/../../other-session/tool-results/b1.txt"}),
+                   ("claude", "Bash", {"command": f"cat {self.saved} | head"}))
+        self.check_reads(blocked, allowed=False)
+        payload = tool_payload("claude", "Read", {"file_path": str(self.other)}, self.main)
+        payload["transcript_path"] = str(self.transcript)
+        self.assertEqual(self.run_hook("claude", payload).stderr.splitlines(), [BLOCK_LINE, READ_LINE])
+        mine = (("claude", "Read", {"file_path": str(self.saved)}), ("codex", "Bash", {"command": f"cat {self.saved}"}))
+        # The rule needs the transcript path of this session, as Claude Code gives it.
+        for transcript in (False, str(self.project / "other-session.jsonl"), f"{SESSION}.jsonl", 7):
+            with self.subTest(transcript=transcript):
+                self.check_reads(mine, allowed=False, transcript=transcript)
+        self.check([("antigravity", tool_payload("antigravity", "view_file", {"AbsolutePath": str(self.saved)},
+                                                 self.main))], allowed=False)
+
+
 BINDING = '{"project_id": "abcdefghijklmnopqrst", "owner_id": "11111111-1111-4111-8111-111111111111"}'
 REQUEST = json.dumps({"request_id": "22222222-2222-4222-8222-222222222222", "operations": [{
     "op": "create", "id": "33333333-3333-4333-8333-333333333333",
@@ -893,6 +1123,29 @@ class GtdInboxTests(HookCase):
                    ("codex", "Bash", {"command": f"cat {cloud} | head"}),
                    ("codex", "Bash", {"command": f"cp {self.binding} {self.private}/binding.json"}),
                    ("antigravity", "read_file", {"Path": str(self.main / "notes.md")}))
+        self.check_gtd(allowed, blocked)
+
+    def test_reads_of_gtd_files_outside_git_pass(self):
+        """Issue #621: a lead could not read the binding copy and request files that it wrote."""
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        folder = Path(temp_dir.name).resolve() / "gtd-31"
+        folder.mkdir()
+        for name, text in (("binding.json", BINDING), ("request.json", REQUEST), ("other.json", '{"a": 1}'),
+                           ("request.txt", REQUEST), ("broken.json", REQUEST[:-1])):
+            (folder / name).write_text(text, encoding="utf-8")
+        (folder / "link.json").symlink_to(self.main / "notes.json")
+        inside = self.main / "r.json"
+        inside.write_text(REQUEST, encoding="utf-8")
+        self.addCleanup(inside.unlink)
+        allowed = (("claude", "Read", {"file_path": str(folder / "binding.json")}),
+                   ("claude", "Read", {"file_path": str(folder / "request.json")}),
+                   ("codex", "Bash", {"command": f"cat {folder}/request.json"}),
+                   ("antigravity", "view_file", {"AbsolutePath": str(folder / "binding.json")}))
+        blocked = [("claude", "Read", {"file_path": str(folder / name)})
+                   for name in ("other.json", "request.txt", "broken.json", "link.json", "missing.json")]
+        blocked += [("claude", "Read", {"file_path": str(inside)}), ("codex", "Bash", {"command": f"ls {folder}"}),
+                    ("codex", "Bash", {"command": f"cat {folder}/request.json {self.main}/notes.md"})]
         self.check_gtd(allowed, blocked)
 
     def test_the_renderer_of_an_installed_copy_passes(self):

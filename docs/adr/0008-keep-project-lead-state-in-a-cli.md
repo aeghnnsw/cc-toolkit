@@ -81,6 +81,13 @@
 > the worktrees of its verified tasks: the cleanup plan keeps no worktree of a
 > `verified` or `closed-out` task once the close-out task of its batch has
 > started, and the worker of such a task is no idle worker. Read [Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).
+>
+> **Superseded in part (2026-11-26, issues #612 and #621).** Only `init`,
+> `takeover`, and a `start` of the thread that owns the lead state record a
+> session, and `unmark` removes a wrong record. In a recorded session, the
+> lead may also read its saved tool outputs and gtd-inbox files. Read
+> [Lead threads only](0007-gate-the-project-lead-with-a-session-checked-hook.md#lead-threads-only)
+> in ADR 0007.
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -158,11 +165,15 @@ reads of T3 attachments, also through one simple read command such as `cat`.
 It blocks every other shell command, every other file read, and every file
 edit, so it also blocks reads, edits, and `rm` of the lead folder.
 (Superseded in part by #531: the hook also passes the calls of a gtd-inbox
-capture.) So the
+capture.) (Superseded in part by #621: it also allows reads of the saved
+tool outputs of the session and of gtd-inbox files.) So the
 lead state changes only through the script. Only a three-word
 `python3 "<script>" start` records a session. (Superseded by #574: that
 command also records a session in a command list; read
 [Start in a command list](0007-gate-the-project-lead-with-a-session-checked-hook.md#start-in-a-command-list)
+in ADR 0007.) (Superseded by #612: `start` records only the owner thread,
+and `init` and `takeover` also record; read
+[Lead threads only](0007-gate-the-project-lead-with-a-session-checked-hook.md#lead-threads-only)
 in ADR 0007.)
 
 The lead state is independent of GTD: the script reads and writes no GTD

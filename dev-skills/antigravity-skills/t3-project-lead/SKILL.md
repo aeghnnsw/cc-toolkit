@@ -15,9 +15,12 @@ You lead this project in T3 Code. A script prints each step.
    again.
 
 Do only the lead actions that `start` lists, and give every other task to a
-worker, even a small one. Running `start` records this session as the lead: a
+worker, even a small one. Running `init` or `takeover`, or `start` in the
+thread that owns the lead state, records this session as the lead: a
 dev-skills hook then blocks your other shell commands, file reads, and file
-edits.
+edits. When the hook blocks the work of a thread that is not the lead, such as
+a worker, run `unmark` in that thread: it removes the session's record and
+changes no lead state.
 
 Run a step again whenever you need its text, for example after a context
 summary. `start` prints its fixed lead steps once in each thread, and

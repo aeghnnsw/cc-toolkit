@@ -15,7 +15,25 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   earlier command in the list sets `$S`. A copy inside a Git work tree,
   such as a developer's worktree, records nothing, and so do `start` with
   more words and a script path that the hook cannot resolve. Each new
-  record deletes records older than 30 days.
+  record deletes records older than 30 days. Issue #612, the next bullet,
+  limits which `start` records and adds `init` and `takeover`.
+- Lead threads only (issue #612): a worker ran `start`, and the hook blocked
+  its work. So `start` records a session only when `T3CODE_THREAD_ID` in the
+  hook's environment is the owner of the lead state in the Git working tree
+  of the call's cwd; a working tree without a lead state records nothing.
+  `init <slug>` with an optional `--also`, and `takeover`, record a session
+  in any thread, in the same command forms as `start`. The check fails closed: when a lead state may be there and
+  the hook cannot tell its owner, as without `T3CODE_THREAD_ID` (a Codex
+  hook may lack it) or an absolute cwd, or with a lead state that it cannot
+  read or that has no owner, `start` records the session.
+- Unmark (issue #612): in a recorded session, `python3 <script> unmark`
+  removes the record before the script runs, only when the hook can tell
+  that the thread is not the lead: `unmark_refusal` of the step script finds
+  a lead state in the worktrees of the repository of the session's cwd, and
+  another thread owns each one. Otherwise the hook blocks the call with the
+  reason and keeps the record, also when no lead state is left, as after
+  `finish` (only the user settles a lead thread), and when a Codex `workdir`
+  or an Antigravity `Cwd` names another folder.
 - Other sessions: without a record, the hook exits 0 with no output, even on
   an error.
 - Gate (issue #530): in a recorded session, the hook allows one simple shell
@@ -85,8 +103,16 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   absolute path outside every Git work tree and outside the binding's
   folder, whose content is a GTD binding or a GTD request. The written file
   must be new or hold a GTD binding or request already.
+- Reads of a lead's own files (issue #621): the gate also allows reads of
+  the tool outputs that Claude Code saved for this session, in
+  `<folder>/<session>/tool-results/` next to the transcript
+  `<folder>/<session>.jsonl` that the payload names, and of a `.json` file
+  outside every Git work tree that holds a GTD binding or request, by the
+  content check of the write rule. A payload without such a transcript path, as from Codex
+  and Antigravity, allows no saved output.
 - Reminder: on a user message in a recorded session, Claude Code and Codex
-  get additional context that tells the lead to run `start` first.
+  get additional context that tells the lead to run `start` first, and a
+  thread that is not the lead to run `unmark`.
 
 `T3_PROJECT_LEAD_STATE_DIR` sets the state folder; the default is
 `${XDG_STATE_HOME:-$HOME/.local/state}/dev-skills/t3-project-lead/sessions`.
@@ -104,16 +130,18 @@ RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
 # The first line of a block that is not BLOCK_LINE: no worker may settle a lead thread either (#645).
-FIRST_LINES = {"settle": "BLOCKED: t3-project-lead: Only the user settles a lead thread."}
+FIRST_LINES = {"settle": "BLOCKED: t3-project-lead: Only the user settles a lead thread.",
+               "unmark": "BLOCKED: t3-project-lead: The hook keeps the lead record of this session."}
 ALLOWED = {
     "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; uv run '
               "--no-project --python '>=3.11' python <installed Productivity Skills>/scripts/gtd_sql.py "
-              "[arguments]; one cat, head, tail, wc, ls, grep, or sed -n of T3 attachments, the GTD "
-              "binding, or the installed Productivity Skills plugin. Each is one simple command: no "
+              "[arguments]; one cat, head, tail, wc, ls, grep, or sed -n of the files that the read tools "
+              "may read. Each is one simple command: no "
               "pipe, redirect, list, or substitution. Write a gtd-inbox file with the file edit tool. "
               "Quote text with single quotes."),
-    "read": ("Allowed reads: T3 attachments, the GTD binding, and the installed Productivity Skills "
-             "plugin. Print the lead state with t3_project_lead.py show."),
+    "read": ("Allowed reads: T3 attachments, the GTD binding, gtd-inbox .json files outside every Git "
+             "work tree, the installed Productivity Skills plugin, and the tool outputs that Claude Code "
+             "saved for this session. Print the lead state with t3_project_lead.py show."),
     "edit": ("No file edits, except a whole-file write of a gtd-inbox .json file (a GTD binding copy "
              "or request, new or replacing one) at an absolute path outside every Git work tree. "
              "Change the lead state with t3_project_lead.py commands."),
@@ -132,6 +160,7 @@ ALLOWED = {
     "settle": ("Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, "
                "name its threadId. When the hook blocks the settle of a worker's thread, give it to the "
                "user with t3_project_lead.py wait --settles <task>."),
+    "unmark": "It removes the record only when it can tell that this thread is not the lead: {reason}.",
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
 }
@@ -246,7 +275,8 @@ def main(argv):
     if event == "UserPromptSubmit":
         if host != ANTIGRAVITY:
             reminder = ("This is a t3-project-lead session. Before anything else in this turn, run: "
-                        f'python3 "{sibling_script()}" start')
+                        f'python3 "{sibling_script()}" start. When this thread is not the lead, as in a '
+                        f'worker, run python3 "{sibling_script()}" unmark instead.')
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                                      "additionalContext": reminder}}))
         return 0
@@ -255,8 +285,9 @@ def main(argv):
     try:
         gate(payload, host, folder, session)
     except Blocked as blocked:
-        kind = blocked.args[0]
-        return block(ALLOWED[kind].format(script=sibling_script()), FIRST_LINES.get(kind, BLOCK_LINE))
+        kind, reason = blocked.args[0], blocked.args[1] if len(blocked.args) > 1 else ""
+        return block(ALLOWED[kind].format(script=sibling_script(), reason=reason),
+                     FIRST_LINES.get(kind, BLOCK_LINE))
     except Exception as error:
         return block(ALLOWED["error"].format(error=f"{type(error).__name__}: {error}"))
     return 0
@@ -288,7 +319,8 @@ def payload_cwd(payload):
 
 
 def start_run(payload, host, folder, session):
-    """Write the record when `payload` runs the start step of a qualifying script.
+    """Write the record when `payload` runs a step of a qualifying script that records a lead (#612):
+    `init`, `takeover`, or a `start` of the thread that owns the lead state (owns_lead).
 
     The step can also be one simple command of a command list (issue #574),
     as in `S=<script>; python3 $S start 2>&1 | head -80`.
@@ -300,10 +332,91 @@ def start_run(payload, host, folder, session):
     if name not in SHELL_TOOLS or not isinstance(arguments, dict):
         return
     for words, cwd in start_commands(arguments, SHELL_TOOLS[name], payload_cwd(payload)):
-        if (len(words) == 3 and None not in words and words[0] in ("python3", "python")
-                and words[2] == "start" and step_script(words, cwd)):
+        if (len(words) >= 3 and None not in words and words[0] in ("python3", "python")
+                and is_record_step(words[2:]) and step_script(words, cwd)
+                and (words[2] != "start" or owns_lead(cwd))):
             write_record(folder, session)
             return
+
+
+def is_record_step(words):
+    """Return whether `words`, a step and its arguments, can record a lead (#612): `start`, `takeover`, or
+    `init <slug>` with an optional `--also`."""
+    step, rest = words[0], words[1:]
+    if step == "init":
+        slugs = [word for word in rest if word != "--also"]
+        return len(rest) <= 2 and len(slugs) == 1 and not slugs[0].startswith("-")
+    return step in ("start", "takeover") and not rest
+
+
+def owns_lead(cwd):
+    """Return whether a `start` in `cwd` records the session (#612): T3CODE_THREAD_ID of the hook owns the
+    lead state in the Git working tree of `cwd`.
+
+    A working tree without a lead state gives False, so a worker in its own worktree is no lead. The
+    check fails closed: when a lead state may be there and the hook cannot tell its owner, as without an
+    absolute cwd or T3CODE_THREAD_ID, or with a lead state that it cannot read or that has no owner, the
+    result is True.
+    """
+    if cwd is None:
+        return True
+    try:
+        lead = step_module()
+        folder = lead.find_lead(tree_top(cwd))
+        if folder is None:
+            return False
+        owner, thread = lead.load(folder).get("owner"), lead.current_thread()
+    except Exception:
+        return True
+    if not isinstance(owner, str) or not owner.strip() or not thread:
+        return True
+    return owner.strip() == thread
+
+
+def check_unmark(cwd, session_cwd, folder, session):
+    """Remove the record of `session` when this thread is not the lead (#612); raise Blocked otherwise.
+
+    unmark_refusal of the step script decides, with T3CODE_THREAD_ID of the hook's environment. The record
+    covers the whole session, so the call must run in the session's cwd: a Codex `workdir` or an
+    Antigravity `Cwd` could name a folder of another repository. The check fails closed: without an
+    absolute cwd, in another folder, or when the check fails, the record stays.
+    """
+    if cwd is None or session_cwd is None:
+        raise Blocked("unmark", "the call has no absolute cwd")
+    if os.path.realpath(cwd) != os.path.realpath(session_cwd):
+        raise Blocked("unmark", "the call names a folder other than the session's cwd")
+    try:
+        lead = step_module()
+        reason = lead.unmark_refusal(tree_top(cwd), lead.current_thread())
+    except Exception as error:
+        reason = f"the hook could not check the lead states ({type(error).__name__}: {error})"
+    if reason is not None:
+        raise Blocked("unmark", reason)
+    try:
+        os.unlink(os.path.join(folder, session))
+    except FileNotFoundError:
+        pass
+
+
+def step_module():
+    """Import and return the step script, this hook's sibling, which finds and reads the lead state."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import t3_project_lead
+
+    return t3_project_lead
+
+
+def tree_top(cwd):
+    """Return the top of the Git working tree of `cwd`, or `cwd` outside every work tree; raise an error
+    when Git fails otherwise."""
+    result = git_run(cwd, "rev-parse", "--show-toplevel")
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    if "not a git repository" in result.stderr:
+        return cwd
+    raise OSError(result.stderr.strip() or f"git exited {result.returncode}")
 
 
 def gate(payload, host, folder, session):
@@ -315,6 +428,7 @@ def gate(payload, host, folder, session):
         raise Blocked("question")
     tool = t3_tool(name)
     cwd = payload_cwd(payload)
+    saved_outputs = tool_results(payload, host, session)
     check_text_read(tool, arguments)
     check_pending_request(tool, arguments)
     check_thread_read(tool, arguments)
@@ -332,14 +446,29 @@ def gate(payload, host, folder, session):
     if not isinstance(arguments, dict):
         raise Blocked(kind)
     if kind == "shell":
-        check_shell(arguments, SHELL_TOOLS[name], cwd, folder, session)
+        check_shell(arguments, SHELL_TOOLS[name], cwd, folder, session, saved_outputs)
         return
     if name == "Glob":
         pattern = arguments.get("pattern")
         if not isinstance(pattern, str) or pattern.startswith(("/", "~")) or ".." in pattern.split("/"):
             raise Blocked(kind)
     default = cwd if name in ("Grep", "Glob") else None
-    check_reads(tool_paths(arguments, default), cwd)
+    check_reads(tool_paths(arguments, default), cwd, saved_outputs)
+
+
+def tool_results(payload, host, session):
+    """Return the real path of the folder of tool outputs that Claude Code saved for this session, or None
+    (#621).
+
+    Claude Code keeps a session's transcript at <folder>/<session>.jsonl and saves a tool output over its
+    inline limit in <folder>/<session>/tool-results/. A payload without such a transcript path, as from
+    Codex or Antigravity, gives None.
+    """
+    path = payload.get("transcript_path")
+    if (host == ANTIGRAVITY or not isinstance(path, str) or not os.path.isabs(path)
+            or os.path.basename(path) != session + ".jsonl"):
+        return None
+    return os.path.realpath(os.path.join(os.path.dirname(path), session, "tool-results"))
 
 
 def t3_tool(name):
@@ -467,15 +596,18 @@ def tool_paths(arguments, default):
     return paths
 
 
-def check_reads(paths, cwd):
+def check_reads(paths, cwd, saved_outputs):
     """Raise Blocked unless `paths` is not empty and each path is in T3
-    attachments, is the GTD binding, or is in an installed Productivity Skills plugin."""
+    attachments, is the GTD binding, is in an installed Productivity Skills plugin,
+    is in `saved_outputs`, the folder of this session's saved tool outputs or None
+    (#621), or is a gtd-inbox file (#621)."""
     if not paths:
         raise Blocked("read")
     for path in paths:
         resolved = resolve(path, cwd)
         if resolved is None or not (in_attachments(resolved) or resolved == gtd_binding()
-                                    or productivity_root(resolved) is not None):
+                                    or (saved_outputs is not None and inside(resolved, saved_outputs))
+                                    or productivity_root(resolved) is not None or gtd_file(resolved)):
             raise Blocked("read")
 
 
@@ -499,7 +631,11 @@ def resolve(path, cwd):
 
 def in_attachments(path):
     """Return whether `path` is in T3 Code's attachments folder, where the user's files arrive."""
-    folder = os.path.realpath(os.path.join(os.path.expanduser("~"), ".t3", "userdata", "attachments"))
+    return inside(path, os.path.realpath(os.path.join(os.path.expanduser("~"), ".t3", "userdata", "attachments")))
+
+
+def inside(path, folder):
+    """Return whether the real path `path` is `folder` or in it."""
     return path == folder or path.startswith(folder + os.sep)
 
 
@@ -559,6 +695,20 @@ def is_gtd_json(text):
     if set(value) == {"project_id", "owner_id"}:
         return all(isinstance(item, str) for item in value.values())
     return set(value) == {"request_id", "operations"} and isinstance(value["operations"], list)
+
+
+def gtd_file(path):
+    """Return whether the real path `path` is a gtd-inbox file (#621): a .json file outside every Git work
+    tree whose content is a GTD binding or request, the content that check_gtd_write requires."""
+    if not path.endswith(".json") or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as handle:
+            if not is_gtd_json(handle.read(1_000_000)):
+                return False
+    except (OSError, ValueError):
+        return False
+    return outside_work_trees(path)
 
 
 def check_gtd_write(name, arguments, cwd):
@@ -651,13 +801,15 @@ def write_record(folder, session):
 
 # Shell commands.
 
-def check_shell(arguments, key, cwd, folder, session):
+def check_shell(arguments, key, cwd, folder, session, saved_outputs):
     """Return when the shell command is a lead action; raise Blocked otherwise.
 
     The command is `python3|python <script> <subcommand> [arguments...]`, the
     gtd-inbox renderer, or one read command of the files that check_reads
-    allows. Only an exact `python3|python <script> start` refreshes the record.
+    allows. Only an exact `python3|python <script> start` refreshes the record,
+    and only an exact `python3|python <script> unmark` can remove it (#612).
     """
+    session_cwd = cwd
     words, cwd = shell_words(arguments, key, cwd)
     if not words:
         raise Blocked("shell")
@@ -671,13 +823,15 @@ def check_shell(arguments, key, cwd, folder, session):
         if paths is None:
             raise Blocked("shell")
         try:
-            check_reads(paths, cwd)
+            check_reads(paths, cwd, saved_outputs)
         except Blocked:
             raise Blocked("shell") from None
         return
     if len(words) < 3 or not is_step(words[2]) or not step_script(words, cwd):
         raise Blocked("shell")
-    if words[2:] == ["start"]:
+    if words[2:] == ["unmark"]:
+        check_unmark(cwd, session_cwd, folder, session)
+    elif words[2:] == ["start"]:
         try:
             write_record(folder, session)
         except OSError:

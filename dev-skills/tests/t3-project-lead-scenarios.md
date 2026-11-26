@@ -160,6 +160,10 @@ with the commands of `t3_project_lead.py`, in
     The user writes "yes, delete old-x" in the lead thread.
 35. **Close-out of a batch.** The PRs of batch 4 merged, and its tasks G and
     H are verified. A due line says to run `closeout`.
+36. **Worker runs start.** Worker W, a child thread in its own worktree, gets
+    the `/dev-skills:t3-project-lead` command and runs `start`.
+37. **Long show output.** The lead runs `show`. Claude Code saves the output
+    in a file and shows a preview.
 
 ## Expected results
 
@@ -200,6 +204,8 @@ with the commands of `t3_project_lead.py`, in
 | Finished lead | Run `finish`, report the result in plain text, and end the turn. Leave the lead thread open: only the user settles it. | Settling the lead thread with `t3_thread_organize`, also with no `threadId`; giving its settle to a worker; deleting the thread. | The `finish` output. |
 | Yes for a worker's protected step | Run `wait` with the step and its exact command as the text and `--answer-in` with W's link. End with the "Type in that thread" section that the script prints, and ask the user to type the yes in W's thread. Run `done` for the item when W resumes. | Sending the yes to W with `t3_thread_send`; putting it in a brief; a numbered item for it. | W's question, the user's message, and the view that `start` prints. |
 | Close-out of a batch | Add the close-out task with `task add --batch 4 --kind closeout`, and start its worker with line 1, the budget, the no-GTD-capture line, and the close-out rule that the `closeout` step prints, copied exactly. | Copying the brief's line "Ask also before you delete outside your worktree"; adding the close-out task before G and H are verified. | The `closeout` output and the due line. |
+| Worker runs start | The hook records nothing; `start` prints the steps and the lead state of the other worktree. Tell the user that this thread is a worker, and do the worker's task. When the hook blocks W's work, as with a record of an older dev-skills, run `unmark`. | Running `init` or `takeover`; giving W's task to a worker with `dispatch`; running other lead steps. | The `start` output and the hook's reminder. |
+| Long show output | Read the saved file with the Read tool, in parts. | Searching threads for what the lead state holds; giving the read to a worker. | The path of the saved output. |
 
 ## Validation limits
 
@@ -233,6 +239,23 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-26, issues #612 and #621
+
+**Static checks.** `test_t3_project_lead_hook.py` checks, for the three
+hosts, that `start` records a session only in the thread that owns the lead
+state, also not from another worktree or a worker thread; that `init` and
+`takeover` record it in any thread; that a `start` the hook cannot check
+records it; and that `unmark` removes the record of a worker and keeps the
+record of a lead, after `finish`, in another folder, and when the hook
+cannot check. It checks
+that a recorded session reads the tool outputs that Claude Code saved for
+it, and gtd-inbox files outside Git, and no other session's outputs.
+`test_t3_project_lead_state.py` checks the refusals of `unmark` and that it
+changes no lead state.
+
+**Not shown.** No simulated or live review of cases 36 and 37 ran. A Codex
+hook was not run to show whether it gets `T3CODE_THREAD_ID`.
 
 ### 2026-11-26, issues #611, #613, #614, #639, #642, and #644
 
