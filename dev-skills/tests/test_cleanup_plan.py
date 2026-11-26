@@ -14,11 +14,12 @@ Cases 36-41 come from issue #610: the session logs of a worktree whose task the
 lead accepted, and the end of the 60-minute window. Cases 42 and 43 come from
 issue #599: planning_folder.py lists the planning location and the lead folders
 for the plan. Cases 44-47 come from issue #643: the branch.<name> config
-sections that `git branch -D` leaves when it cannot write the config. Each
-check builds a temporary repository with a bare origin, runs the script with a
-fake gh (fake_gh.py), and reads the lines that it prints. No
-check runs the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and
-the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
+sections that `git branch -D` leaves when it cannot write the config. Case 48
+comes from issue #639: the batch close-out removes the worktrees of its
+verified tasks. Each check builds a temporary repository with a bare origin,
+runs the script with a fake gh (fake_gh.py), and reads the lines that it
+prints. No check runs the real t3 CLI: the checks of #578 use a fake t3
+(fake_t3.py), and the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
 live_worktrees.py runs, so most checks need lsof. Each class makes as few plan
 runs as it can, because each run takes some seconds: one, or one for each mode.
 No check touches another repository.
@@ -525,17 +526,21 @@ class DocumentedLocationCase(PlanTestCase):
 
 
 def lead_state(folder: Path, *tasks: dict) -> None:
-    """Write a lead state with schema 1 and the tasks; the worktrees of a task are paths."""
+    """Write a lead state with schema 1 and the tasks; the worktrees of a task are paths. A task is a work
+    task of batch 1 unless it names another kind or batch."""
     (folder / "state.json").write_text(json.dumps({"schema": 1, "tasks": [
-        dict(task, worktrees=[str(path) for path in task["worktrees"]]) for task in tasks]}))
+        {"kind": "work", "batch": 1, **task, "worktrees": [str(path) for path in task["worktrees"]]}
+        for task in tasks]}))
 
 
 @NEEDS_LSOF_AND_GIT
 class LeadStateCases(PlanTestCase):
-    """Cases 17, 18, and 26-28: merged worktrees and lead states, with and without --main-only.
+    """Cases 17, 18, 26-28, and 48: merged worktrees and lead states, with and without --main-only.
 
     The lead state in the main checkout records task-a, task-b, and the branch
-    of task-c. The lead state in lead-a records task-d.
+    of task-c. The lead state in lead-a records task-d, task-e of batch 2,
+    whose close-out task runs, and task-f of batch 3, whose close-out task is
+    planned.
     """
 
     plans: dict[str, dict[tuple[str, str], tuple[str, str]]]
@@ -544,13 +549,20 @@ class LeadStateCases(PlanTestCase):
     def setUpClass(cls):
         repo = cls.repo = cls.make_repo()
         worktrees = {}
-        for number, name in enumerate(("lead-a", "lead-b", "task-a", "task-b", "task-c", "task-d"),
-                                      start=70):
+        for number, name in enumerate(("lead-a", "lead-b", "task-a", "task-b", "task-c", "task-d",
+                                       "task-e", "task-f"), start=70):
             worktrees[name] = repo.worktree(name)
             repo.squash_merge(name, number)
-        cls.lead_a, cls.lead_b, cls.task_a, cls.task_b, cls.task_c, cls.task_d = worktrees.values()
+        (cls.lead_a, cls.lead_b, cls.task_a, cls.task_b, cls.task_c, cls.task_d, cls.task_e,
+         cls.task_f) = worktrees.values()
         cls.state = repo.folder(cls.lead_a, "20261122-lead-batch")
-        lead_state(cls.state, {"name": "check-574", "state": "pr-open", "worktrees": [cls.task_d]})
+        lead_state(cls.state, {"name": "check-574", "state": "pr-open", "worktrees": [cls.task_d]},
+                   {"name": "fix-639", "state": "verified", "batch": 2, "worktrees": [cls.task_e]},
+                   {"name": "close-2", "state": "running", "kind": "closeout", "batch": 2,
+                    "worktrees": []},
+                   {"name": "fix-640", "state": "verified", "batch": 3, "worktrees": [cls.task_f]},
+                   {"name": "close-3", "state": "planned", "kind": "closeout", "batch": 3,
+                    "worktrees": []})
         repo.folder(cls.lead_b, "20261122-lead-old")
         cls.main_state = repo.folder(repo.path, "20261124-lead-main")
         lead_state(cls.main_state,
@@ -597,6 +609,16 @@ class LeadStateCases(PlanTestCase):
             with self.subTest(mode=mode):
                 self.plan = plan
                 self.assert_removed_with_branches(self.task_c, "merged PR #74")
+
+    def test_case_48_a_started_close_out_removes_the_worktrees_of_its_verified_tasks(self):
+        # A close-out asked the user about each merged worktree of a finished task (#639).
+        for mode, plan in self.plans.items():
+            with self.subTest(mode=mode):
+                self.plan = plan
+                self.assert_removed_with_branches(self.task_e, "merged PR #76")
+                self.assert_kept_with_branches(
+                    self.task_f, f"task fix-640 of the lead state {self.state} is verified, "
+                    "not settled")
 
 
 @NEEDS_LSOF_AND_GIT

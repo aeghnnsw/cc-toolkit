@@ -289,8 +289,8 @@ _Avoid_: Orchestrator, director, coordinator
 A T3 Code child thread that a project lead starts for one task, in its own
 worktree. The user can write to it. When a worker finishes, the lead settles
 its thread in T3. Only while a failed thread start is open, the lead gives the
-next task to a finished worker that is not settled yet. It never reuses a
-settled worker.
+next task to a finished worker that is not settled yet and whose batch
+close-out has not started. It never reuses a settled worker.
 _Avoid_: Subagent
 
 **Brief**:
@@ -303,8 +303,10 @@ _Avoid_: Handoff, worker prompt
 
 **Close-out worker**:
 The worker that runs the navigation retrospective of a batch with merged PRs,
-and then repo-cleanup. The project lead settles the batch's workers only after
-the close-out worker reports, so that the retrospective can read their sessions.
+and then repo-cleanup. Its cleanup removes the merged worktrees of the batch's
+verified tasks without asking the user. The project lead settles the batch's
+workers only after the close-out worker reports, so that the retrospective can
+read their sessions.
 _Avoid_: Cleanup worker, retro worker
 
 **Task**:
@@ -359,8 +361,9 @@ _Avoid_: Handoff
 An entry in the lead state for something that only the user can give: a
 decision, an approval, access, or the answers to a worker's questions. It keeps
 one number, which is never reused. A worker's item points to the worker's
-thread and holds no detail of its decisions. It is separate from an agent
-capture.
+thread and holds no detail of its decisions. An item that the user answers in
+a worker's thread, such as a yes for a protected step, has no number in the
+list that the user reads. It is separate from an agent capture.
 _Avoid_: Open item, pending item
 
 ## Lean-tests language

@@ -54,9 +54,9 @@ makes Git ignore .scratch/; when it cannot write Git's info/exclude file, a
 
 `task start-failed` records a worker thread that did not start (issue #602).
 While such a record is open, `start` and `dispatch` print one line: start no
-new thread, give each next task to an idle worker, the worker of a verified or
-closed-out task that no busy task uses, and ask one to find the cause; no due
-line then settles an idle worker. A new thread, a link that no other task
+new thread, give each next task to an idle worker, the worker of a verified
+task that no busy task uses and whose batch's close-out has not started (issue
+#639), and ask one to find the cause; no due line then settles an idle worker. A new thread, a link that no other task
 records in `task start` or `task worker`, closes the record once T3's start
 limit of 10 minutes passes without a failure. `task start` refuses a worker
 that a running, pr-open, or merged task uses, or a settled one.
@@ -74,6 +74,20 @@ so that no due line settles a thread that another task runs on (issue #633).
 `wait --settles <task>` gives the settle of a worker to the user when T3
 refuses it: while the item waits, no due line names that settle and no task
 reuses the worker, and `done` records the task as settled.
+
+`task -h` and `decision -h` list each action with its help (issue #613).
+`decision start <N>` sets the number of the next decision ID, so that the IDs
+continue the user's numbers; the number only moves forward (issue #642).
+`decision add` removes a label such as `D7:` at the start of the text when it
+is the next ID, and refuses another label (issue #614). `task add --kind
+closeout` refuses a batch with a task that is not verified or cancelled, as
+`task start` does (issue #644). The close-out of a batch removes the worktrees
+of its verified tasks (issue #639): the worker of such a task is no idle
+worker, and `task start` and `task worker` do not reuse it. The `closeout`
+step prints the close-out rule after its text. `wait <text> --answer-in
+<worker link>` adds an item that the user answers in a worker's thread, such
+as a yes for a protected step (issue #611). The waiting list prints it in an
+unnumbered section, "Type in that thread".
 """
 
 from __future__ import annotations
@@ -105,7 +119,8 @@ watch PRs. Never settle the lead thread: only the user settles it.
 4. Read worker messages, and the state, labels, titles, and check counts of
 issues and PRs, not their text. Never call read_issue. Call pull_request_read
 only with sections or include ["checks"]. No diff, code, or log.
-5. Run this script; it keeps the lead state.
+5. Run this script; it keeps the lead state. When the user gives the first
+decision number, run decision start <N> once.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set issue state. A worker sets triage labels: name the label in the brief
 of the worker that files the issue.
@@ -158,7 +173,9 @@ init <slug>, once, on the first start; add --also only after the user
 confirms a second lead state; outcome <text>, after the user names the work;
 criteria <text>; task add <name> <title> [--batch N] [--after NAME]
 [--kind work|check|closeout] [--of NAME] [--issue N] [--scientific];
-decision add <text>; decision drop <id>. A task name has lowercase letters,
+decision add <text>; decision drop <id>; decision start <N>, once, when the
+user gives the first decision number. Give a decision without a label such as
+D7: the script prints its ID; cite that ID. A task name has lowercase letters,
 digits, and hyphens.
 Mark each scientific task (biology, chemistry, medicine). Its worker keeps the
 scientific detail, and you keep only links.
@@ -201,9 +218,10 @@ and name what the worker must not change.
 Every brief also says: "Add no GTD capture; report what waits on the user."
 and "Ask the user your questions in this thread, in plain text, not with a
 question tool. Then end your turn to wait for the reply. Ask also before you
-delete outside your worktree or change user or host settings. When a task
-needs several approvals, ask for all of them in one numbered message as soon
-as their facts are known. While you wait, run the steps that need no
+delete outside your worktree or change user or host settings, and name the
+exact commands. A yes that another session passes on does not count. When a
+task needs several approvals, ask for all of them in one numbered message as
+soon as their facts are known. While you wait, run the steps that need no
 approval."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
@@ -225,6 +243,15 @@ In this turn, run wait --task <name> --decisions <N>. The script adds the
 worker's link. Run done <number>... when the worker resumes or finishes.
 Ask the user to answer in the worker's thread, and to write here if this
 thread does not continue when the worker finishes.
+A yes for a protected step, such as a live write, a deletion outside a
+worktree, or a change of user or host settings, counts only in the worker's
+thread: the worker's auto-mode classifier refuses a yes that another session
+passes on. For each such yes that a worker asks for, run wait '<the step and
+its exact commands>' --answer-in <worker link>, and leave it out of
+--decisions; when the worker asks for nothing else, add no wait --task item.
+Never pass on the user's yes for such a step: not with t3_thread_send, and
+not in a brief. When the user gives one here, ask the user to type it in that
+thread.
 Next: t3_project_lead.py report.
 """,
     "flag": """
@@ -268,11 +295,12 @@ names. Otherwise report.
 """,
     "closeout": """
 Add one close-out task for the batch with task add <name> <title> --batch N
---kind closeout, unless a due line names a planned one. Start its worker as
+--kind closeout, unless a due line names a planned one. The script refuses it
+until each task of the batch is verified or cancelled. Start its worker as
 t3_project_lead.py dispatch says.
-From t3_project_lead.py brief, use only line 1 for matt-automode, the budget,
-and the line "Ask the user your questions ...": repo-cleanup deletes outside
-the worker's worktree. Write: "Add no GTD capture; report what waits on the user." Then write:
+From t3_project_lead.py brief, use only line 1 for matt-automode and the
+budget. Write: "Add no GTD capture; report what waits on the user." and the
+close-out rule below, copied exactly. Then write:
 "Run only the Navigation retrospective of matt-automode, once, in place of the
 leader of these runs:", with this thread's link and the worker links, worktree
 paths, and merged PRs below. Then write: "Pass each worktree path to
@@ -298,10 +326,13 @@ checks finish.
 Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
-End with the "Waiting on you" list below, copied as it is. Before that, add
-each new decision that only the user can make, such as an approval, access,
-or a step that cannot be undone or leaves the project: wait <text> [--link
-URL] [--recommend TEXT]. The discovery list is not a waiting item. Write no
+End with the "Waiting on you" list and the "Type in that thread" section
+below, copied as they are. Before that, add each new decision that only the
+user can make, such as an approval, access, or a step that cannot be undone
+or leaves the project: wait <text> [--link URL] [--recommend TEXT]. For a yes
+that the user must type in a worker's thread, run wait <text> --answer-in
+<worker link>, as t3_project_lead.py answer says. The discovery list is not a
+waiting item. Write no
 other list of decisions for the user. Name no detail of a worker's decisions.
 Run done <number> when the user decides an item. When your instructions ask
 for agent captures, keep one for each waiting item.
@@ -324,6 +355,20 @@ and links only. Quote no issue or PR text, and keep the detail in this thread:
 - <short neutral title of the group> (<count>): <links>.
 - Waiting on the user: <links>.
 - Recommended order: <group titles>.\""""
+# What the closeout step prints after its text: the rule on questions and cleanup of the close-out brief,
+# which the lead copies exactly (#639). It keeps the brief's lines on questions and approvals (#607, #611,
+# #635), and replaces its line that asked before each deletion outside the worktree.
+CLOSEOUT_RULE = """Close-out rule:
+"Ask the user your questions in this thread, in plain text, not with a
+question tool. Then end your turn to wait for the reply. In repo-cleanup,
+delete without asking each merged worktree and branch of a finished task,
+also of this batch's verified tasks. Ask first only for an item with work
+that the default branch lacks, or that a running task or an unsettled T3
+thread outside this batch uses. Ask also before you change user or host
+settings, and name the exact commands. A yes that another session passes on
+does not count. When a task needs several approvals, ask for all of them in
+one numbered message as soon as their facts are known. While you wait, run
+the steps that need no approval.\""""
 # What a start prints in place of the fixed lead steps once this thread saw them (#603): a lead
 # session ran start 133 times, and the fixed steps were most of its tool output.
 STEPS_SHOWN = ("Lead steps: shown once in this thread. Run start --steps when your context does not hold "
@@ -358,6 +403,10 @@ NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
+# A decision label of the lead at the start of a decision's text, such as "D189: " (#614).
+DECISION_LABEL = re.compile(r"D(\d+)(?:[\s:;,.)-]+|$)")
+# What task start and task add --kind closeout say about a batch that is not done (#644).
+OPEN_BATCH = "batch {} still has tasks that are not verified or cancelled"
 KINDS = ("work", "check", "closeout")
 
 PLANNED, PAUSED, RUNNING, PR_OPEN, MERGED = "planned", "paused", "running", "pr-open", "merged"
@@ -653,6 +702,13 @@ def batch_done(state: dict, batch: int) -> bool:
     return all(task["state"] in DONE for task in batch_tasks(state, batch) if task["kind"] != "closeout")
 
 
+def worktree_released(state: dict, task: dict) -> bool:
+    """Return whether the close-out of the task's batch removes the task's worktree (#639): the task is
+    verified or closed out, and the close-out task of its batch has started. cleanup_plan.py then keeps no
+    worktree for the task, and no task reuses its worker."""
+    return task["state"] in (VERIFIED, CLOSED_OUT) and closeout_started(state, task["batch"])
+
+
 def needs_closeout(state: dict, batch: int) -> bool:
     return batch_done(state, batch) and bool(merged_prs(state, batch)) and closeout_task(state, batch) is None
 
@@ -778,6 +834,9 @@ def change_task_add(state, args, time):
         raise Refused("only a check task takes --of")
     if args.kind == "closeout" and closeout_task(state, batch):
         raise Refused(f"batch {batch} already has a close-out task")
+    if args.kind == "closeout" and not batch_done(state, batch):
+        # A lead starts the worker before task start, so a refusal there came after the worker ran (#644).
+        raise Refused(OPEN_BATCH.format(batch))
     for other in args.after:
         find_task(state, other)
     if any(issue < 1 for issue in args.issue):
@@ -806,7 +865,7 @@ def start_refusal(state: dict, task: dict) -> str | None:
     if task["kind"] == "closeout":
         batch = task["batch"]
         if not batch_done(state, batch):
-            return f"batch {batch} still has tasks that are not verified or cancelled"
+            return OPEN_BATCH.format(batch)
         if not merged_prs(state, batch):
             return f"batch {batch} has no merged PR, so it needs no close-out"
     return None
@@ -838,10 +897,10 @@ def busy_task(state: dict, worker: str, task: dict | None = None) -> dict | None
 
 
 def idle_workers(state: dict) -> list[str]:
-    """Return the workers of verified or closed-out tasks that no busy task uses (#602), and whose settle
-    the lead did not give to the user (#633)."""
+    """Return the workers of verified tasks that no busy task uses (#602), whose settle the lead did not give
+    to the user (#633), and whose worktree the close-out of their batch does not remove (#639)."""
     links = [task["worker"] for task in state["tasks"]
-             if task["state"] in (VERIFIED, CLOSED_OUT) and task["worker"]]
+             if task["state"] == VERIFIED and task["worker"] and not worktree_released(state, task)]
     given = settle_items(state)
     return [worker for worker in dict.fromkeys(links)
             if busy_task(state, worker) is None and worker not in given]
@@ -896,6 +955,10 @@ def reuse_refusal(state: dict, worker: str, task: dict) -> str | None:
                 "an idle worker or a new thread")
     if others and all(other["state"] == SETTLED for other in others):
         return f"{worker} is the settled worker of {others[0]['name']}; never reuse a settled worker"
+    if others and all(other["state"] == SETTLED or worktree_released(state, other) for other in others):
+        released = next(other for other in others if worktree_released(state, other))
+        return (f"{worker} is the worker of {released['name']}, and the close-out of batch {released['batch']} "
+                f"removes its worktree; give {task['name']} to an idle worker or a new thread")
     item = settle_items(state).get(worker)
     if item is not None:
         return (f"item {item['number']} gives the settle of {worker} to the user; never reuse a worker that "
@@ -1107,7 +1170,27 @@ def change_wait_settles(state, args, time):
             f"done records {name} as settled."), {"item": number, "to": "open", "task": name, "settles": True}
 
 
+def change_wait_answer_in(state, args, time):
+    """Add an item that the user answers in a worker's thread (#611).
+
+    A worker's classifier accepts a yes for a protected step only from the user in the worker's thread, so the
+    lead passes on no such yes. The waiting list prints the item without its number, in its own section, so
+    that the user does not answer it by number in the lead thread; a due line gives the number to the lead.
+    """
+    if args.task or args.decisions is not None or args.link or args.settles is not None:
+        raise Refused("an --answer-in item takes only a text and --recommend: it points to the worker's thread")
+    if args.text is None:
+        raise Refused("an --answer-in item needs a text: the step and its exact commands")
+    item = add_item(state, time, body=text(args.text, "item text"), item_link=worker_link(args.answer_in),
+                    recommend=text(args.recommend, "recommendation") if args.recommend else None, answer_in=True)
+    number = item["number"]
+    return (f"Item {number} added: {item_text(item)} Ask the user to type the answer in that thread. Run done "
+            f"{number} when the worker resumes."), {"item": number, "to": "open", "answer_in": item["link"]}
+
+
 def change_wait(state, args, time):
+    if args.answer_in is not None:
+        return change_wait_answer_in(state, args, time)
     if args.settles is not None:
         return change_wait_settles(state, args, time)
     task = find_task(state, args.task) if args.task else None
@@ -1131,12 +1214,13 @@ def change_wait(state, args, time):
 
 def add_item(state: dict, time: str, body: str | None = None, task: dict | None = None,
              decisions: int | None = None, item_link: str | None = None,
-             recommend: str | None = None, settles: bool = False) -> dict:
+             recommend: str | None = None, settles: bool = False, answer_in: bool = False) -> dict:
     """Add a waiting item. A worker item points to the worker's thread.
 
     An item for a task that is verified, closed out, cancelled, or settled holds decisions of the
     worker's final report (#567): no due line offers done for it, because only the user ends it. A settle
-    item gives the settle of the task's worker to the user (#633); only the user ends it too.
+    item gives the settle of the task's worker to the user (#633); only the user ends it too. An --answer-in
+    item waits for the user's answer in a worker's thread (#611).
     """
     if body is None:
         body = plural(decisions, "decision") if decisions else "waits on you"
@@ -1145,6 +1229,8 @@ def add_item(state: dict, time: str, body: str | None = None, task: dict | None 
             "recommend": recommend, "opened": time}
     if settles:
         item["settles"] = True
+    elif answer_in:
+        item["answer_in"] = True
     elif task is not None and task["state"] in DONE:
         item["from_report"] = True
     state["items"].append(item)
@@ -1168,10 +1254,33 @@ def change_done(state, args, time):
 
 
 def change_decision_add(state, args, time):
-    decision = {"id": f"D{state['next_decision']}", "text": text(args.text, "decision"), "added": time}
+    number, value = state["next_decision"], " ".join(args.text.split())
+    label = DECISION_LABEL.match(value)
+    if label:
+        # A lead stored 33 decisions under IDs 14 below the labels in their texts (#614).
+        if int(label.group(1)) != number:
+            raise Refused(f"the decision starts with the label D{label.group(1)}, but its ID is D{number}. Give "
+                          "the text without a label, and cite the ID that the script prints. When the user "
+                          "numbers the decisions from another number, run decision start <N> first")
+        # The ID replaces a label equal to it, which then does not count toward the limit.
+        value = value[label.end():]
+    decision = {"id": f"D{number}", "text": text(value, "decision"), "added": time}
     state["decisions"].append(decision)
     state["next_decision"] += 1
-    return f"Decision {decision['id']} added.", {"decision": decision["id"], "to": "added"}
+    return f"{decision['id']}: decision added.", {"decision": decision["id"], "to": "added"}
+
+
+def change_decision_start(state, args, time):
+    """Set the number of the next decision ID, so that the IDs continue the user's numbers (#642)."""
+    if args.number < 1:
+        raise Refused("a decision number is positive")
+    # The number only moves forward, so that no two decisions, also a dropped one, have the same ID.
+    if args.number < state["next_decision"]:
+        raise Refused(f"the next decision is D{state['next_decision']}; decision start takes "
+                      f"{state['next_decision']} or a higher number, so that no two decisions, also a dropped "
+                      "one, have the same ID")
+    state["next_decision"] = args.number
+    return f"The next decision is D{args.number}.", {"next_decision": args.number}
 
 
 def change_decision_drop(state, args, time):
@@ -1243,24 +1352,37 @@ def with_period(value: str) -> str:
 
 
 def item_text(item: dict) -> str:
-    """Return a waiting item without its number."""
-    line = (f"[{item['task']}] " if item["task"] else "") + with_period(item["text"])
+    """Return a waiting item without its number. An --answer-in item starts with its worker link (#611)."""
+    answer_in = item.get("answer_in")
+    if answer_in:
+        line = f"In {item['link']}: "
+    else:
+        line = f"[{item['task']}] " if item["task"] else ""
+    line += with_period(item["text"])
     if item["decisions"] and not item["text"].endswith(("decision", "decisions")):
         line += f" Decisions: {item['decisions']}."
     if item["recommend"]:
         line += f" Lead recommends: {with_period(item['recommend'])}"
-    if item["link"]:
+    if item["link"] and not answer_in:
         line += f" {item['link']}"
     return line
 
 
 def waiting_lines(state: dict) -> list[str]:
     """Return the waiting list. Each item is a bullet that keeps its number as text (#534): a
-    Markdown renderer renumbers a numbered list from its first number."""
-    items = state["items"]
-    if not items:
-        return ["Waiting on you: nothing."]
-    return [f"Waiting on you ({len(items)}):"] + [f"- {item['number']}: {item_text(item)}" for item in items]
+    Markdown renderer renumbers a numbered list from its first number.
+
+    The items that the user answers in a worker's thread follow in a section without numbers (#611): a
+    user answered "1, yes" in the lead thread to a numbered item that asked for a yes in a worker's thread.
+    """
+    items = [item for item in state["items"] if not item.get("answer_in")]
+    typed = [item for item in state["items"] if item.get("answer_in")]
+    lines = [f"Waiting on you ({len(items)}):"] + [f"- {item['number']}: {item_text(item)}" for item in items]
+    if not typed:
+        return lines if items else ["Waiting on you: nothing."]
+    return (lines + [""] if items else []) + [
+        f"Type in that thread ({len(typed)}): write each answer in the linked worker thread, not here. A yes "
+        "written here does not reach the worker."] + [f"- {item_text(item)}" for item in typed]
 
 
 def task_line(task: dict, now: datetime.datetime) -> str:
@@ -1366,6 +1488,9 @@ def due_lines(state: dict) -> list[str]:
                 lines.append(line)
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
+        if item.get("answer_in"):
+            lines.append(f"Item {item['number']} waits for the user's answer in {item['link']}: run done "
+                         f"{item['number']} when that worker resumes.")
         task = tasks.get(item["task"])
         only_user = item.get("from_report") or item.get("settles")
         if task is not None and task["state"] in DONE and not only_user:
@@ -1495,6 +1620,9 @@ def print_step(name: str, steps: bool = False) -> None:
     if name == "discover":
         print()
         print(DISCOVERY_BRIEF)
+    if name == "closeout":
+        print()
+        print(CLOSEOUT_RULE)
     if name == "dispatch":
         # dispatch only adds the failed start line (#602); a lead state that it cannot read is for start.
         failed = failed_start_lines(state) if state is not None else []
@@ -1572,7 +1700,7 @@ TASK_CHANGES = {
     "settled": change_task_settled, "cancel": change_task_cancel, "pause": change_task_pause,
     "resume": change_task_resume,
 }
-DECISION_CHANGES = {"add": change_decision_add, "drop": change_decision_drop}
+DECISION_CHANGES = {"add": change_decision_add, "start": change_decision_start, "drop": change_decision_drop}
 # The commands that take one or more arguments (#555), with the name of the argument.
 SEVERAL = {"done": "number", "task pause": "name", "task resume": "name", "task verified": "name",
            "task settled": "name"}
@@ -1603,11 +1731,14 @@ def parser() -> argparse.ArgumentParser:
     wait.add_argument("--recommend")
     wait.add_argument("--settles", metavar="TASK",
                       help="give the settle of the task's worker to the user, when T3 refused it")
+    wait.add_argument("--answer-in", metavar="WORKER_LINK",
+                      help="add an item that the user answers in that worker's thread, such as a yes for a "
+                           "protected step; the text names the step and its exact commands")
     commands.add_parser("done", help="remove answered items").add_argument("number", type=int, nargs="+")
 
-    task = commands.add_parser("task", help="change a task").add_subparsers(
-        dest="action", required=True, metavar="action")
-    add = task.add_parser("add")
+    # No metavar: argparse then lists each action with its help in task -h (#613).
+    task = commands.add_parser("task", help="change a task").add_subparsers(dest="action", required=True)
+    add = task.add_parser("add", help="add a planned task")
     add.add_argument("name")
     add.add_argument("title")
     add.add_argument("--batch", type=int)
@@ -1616,37 +1747,41 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--of")
     add.add_argument("--issue", type=int, action="append", default=[])
     add.add_argument("--scientific", action="store_true")
-    start = task.add_parser("start")
+    start = task.add_parser("start", help="record the worker of a planned task, which then runs")
     start.add_argument("name")
     start.add_argument("worker")
     start.add_argument("--branch")
     start.add_argument("--worktree")
-    worker = task.add_parser("worker")
+    worker = task.add_parser("worker", help="record a new worker of a running or pr-open task")
     worker.add_argument("name")
     worker.add_argument("worker")
     worker.add_argument("--worktree")
     failed = task.add_parser("start-failed", help="record a worker thread that did not start")
     failed.add_argument("name")
     failed.add_argument("thread", nargs="?")
-    pr = task.add_parser("pr")
+    pr = task.add_parser("pr", help="record a PR of a task")
     pr.add_argument("name")
     pr.add_argument("number", type=int)
-    merged = task.add_parser("merged")
+    merged = task.add_parser("merged", help="record the merge of a PR of a task")
     merged.add_argument("name")
     merged.add_argument("number", type=int)
     merged.add_argument("commit")
-    for name in ("verified", "settled", "pause", "resume"):
-        task.add_parser(name).add_argument("name", nargs="+")
+    for name, about in (("verified", "accept the result of each task"),
+                        ("settled", "record that the worker of each task is settled"),
+                        ("pause", "pause each planned task"), ("resume", "plan each paused task again")):
+        task.add_parser(name, help=about).add_argument("name", nargs="+")
     task.choices["verified"].add_argument("--decisions", type=int,
                                           help="the number of decisions that the report numbers for the user")
     task.choices["verified"].add_argument("--no-pr", action="store_true",
                                           help="verify a running task that makes no PR, such as a check")
-    task.add_parser("cancel").add_argument("name")
+    task.add_parser("cancel", help="cancel a task").add_argument("name")
 
-    decision = commands.add_parser("decision", help="add or drop a decision").add_subparsers(
-        dest="action", required=True, metavar="action")
-    decision.add_parser("add").add_argument("text")
-    decision.add_parser("drop").add_argument("id")
+    decision = commands.add_parser("decision", help="add, drop, or number the decisions").add_subparsers(
+        dest="action", required=True)
+    decision.add_parser("add", help="add a decision; the script prints its ID").add_argument("text")
+    decision.add_parser("start", help="set the number of the next decision ID, such as 76 for D76").add_argument(
+        "number", type=int)
+    decision.add_parser("drop", help="drop a decision by its ID").add_argument("id")
     return root
 
 

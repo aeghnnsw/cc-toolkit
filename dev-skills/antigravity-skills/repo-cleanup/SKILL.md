@@ -47,7 +47,9 @@ window ends, or says that the end is unknown. It keeps each worktree that
 holds a lead state of t3-project-lead,
 `.scratch/<YYYYMMDD>-lead-<slug>/state.json`, also with `--main-only`. It
 reads each lead state, also the one in the main checkout, and keeps each
-worktree whose path a task records while the task is not `settled`. Session
+worktree whose path a task records while the task is not `settled`, except a
+`verified` or `closed-out` task once the close-out task of its batch has
+started: the batch close-out removes the worktrees of its verified tasks. Session
 logs and Antigravity conversations do not keep a worktree when each task that
 records its path is in an accepted state: `verified`, `closed-out`, or
 `settled`, and not cancelled. The workers of such a task have ended their
