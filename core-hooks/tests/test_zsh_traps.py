@@ -1,11 +1,14 @@
+import contextlib
 import difflib
 import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -45,6 +48,91 @@ EQUALS_TRAPS = {
     "n=$(echo ====)": "====",
     "echo \"$(cat <<'EOF'\n1) a list item\nEOF\n)\"; echo ====": "====",
     'echo "$(echo ====)"': "====",
+    # Array elements, the value after `[key]=`, and parts after a `:`.
+    "x=(=a b)": "=a",
+    "a=(==x b)": "==x",
+    "a=(b ==q9)": "==q9",
+    "local -a q=(==q9)": "==q9",
+    "typeset -A h=([k]=v [j]==q9)": "=q9",
+    "a=([k]=v ==q9)": "==q9",
+    'a=(""=q9 b)': "=q9",
+    "a=($(echo ==q9))": "==q9",
+    "a=(x:=q9)": "=q9",
+    "a=({=q9,b})": "=q9",
+    # Parts before the `=` that can expand to nothing.
+    "echo ''==a": "==a",
+    'echo ""==y': "==y",
+    "echo $''==q9": "==q9",
+    "x=; echo $x==q9": "==q9",
+    'x=; echo "$x"==q9': "==q9",
+    "echo $(true)==q9": "==q9",
+    "echo `true`==q9": "==q9",
+    'echo x >""=q9': "=q9",
+    'for x in ""==q9; do :; done': "==q9",
+    'case ""==q9 in *) echo m;; esac': "==q9",
+    # Brace expansion.
+    "echo {=a,b}": "=a",
+    "echo {,=q9}": "=q9",
+    "echo {a,}=q9": "=q9",
+    "echo {{=q9,b},c}": "=q9",
+    # Operands of a `[[ ... ]]` test.
+    "[[ ==a == x ]]": "==a",
+    "[[ x == ==q9 ]]": "==q9",
+    "[[ -n == ]]": "==",
+    "[[ == ]]": "==",
+    "[[ x =~ =q9 ]]": "=q9",
+    "[[ a != =q9 ]]": "=q9",
+    "[[ a < =q9 ]]": "=q9",
+    "[[ ! ==q9 ]]": "==q9",
+    "[[ a == a && ==q9 ]]": "==q9",
+    '[[ a == "]]" ]] || echo ==': "==",
+    # Default words and assignment values.
+    "echo ${x:-==}": "==",
+    "echo a${x:-==q9}": "==q9",
+    "y=${x:-==q9}": "==q9",
+    "echo ${x:-${y:-==q9}}": "==q9",
+    "cat <<< ${x:-==q9}": "==q9",
+    "x=a:=q9": "=q9",
+    "export P=/bin:=q9": "=q9",
+    "x=:=q9": "=q9",
+    # Subshells that start with `((`, and substitutions in arithmetic.
+    "((echo a) ; echo ==); echo after": "==",
+    "echo $((echo a) ; echo ==)": "==",
+    "x=$(( $(echo ==q9) ))": "==q9",
+    "(( $(echo ==q9) + 1 ))": "==q9",
+    # A `)` that ends a `case` pattern in a substitution.
+    'echo "$(case x in a) echo hi;; esac; echo ==)"': "==",
+    # Redirections, prefixes, declarations, and other command forms.
+    ">! out x==y": "=y",
+    ">>! out x==q9": "=q9",
+    # `&>!` also sends the "not found" message of zsh to the file.
+    "&>! out x==q9": "=q9",
+    "private X==nosuchcmd": "=nosuchcmd",
+    "nocorrect x==q9": "=q9",
+    "builtin local x==q9": "=q9",
+    "noglob typeset x==q9": "=q9",
+    "time y==q9 true": "=q9",
+    "time x==q9 | cat": "=q9",
+    "time x==q9 >out": "=q9",
+    "for x (==q9) echo $x": "==q9",
+    "function f { echo ==q9 }; f": "==q9",
+    "repeat 1 echo ==q9": "==q9",
+    "repeat =q9 true": "=q9",
+    "echo x > {=q9,b}": "=q9",
+    "case ==q9 in (x) echo m;; esac": "==q9",
+    "case x in a|=q9) echo m;; esac": "=q9",
+    # Assignment parts after a quoted or escaped `:`, an empty array
+    # element, and substitutions or names inside `${ }`.
+    'x="a:"=q9': "=q9",
+    "x='a:'=q9": "=q9",
+    "x=a\\:=q9": "=q9",
+    "x=(); echo $x[1]==q9": "==q9",
+    "echo ${${x}:-==q9}": "==q9",
+    "echo ${x:-$(echo ==q9)}": "==q9",
+    # A name with a `/` names a file, which is no command here.
+    "printf =missing/path": "=missing/path",
+    "echo =~/x": "=~/x",
+    "echo =./nosuch": "=./nosuch",
 }
 
 # Commands that zsh runs without an `=name` expansion.
@@ -65,17 +153,66 @@ EQUALS_SAFE = [
     "echo \"$(cat <<'EOF'\nDone :) now `==` is quoted\nEOF\n)\"",
     "printf '%s\\n' \"$(cat <<'EOF'\n1) Compare with \"a == b\"\nEOF\n)\"",
     "echo $'it\\'s ==x'",
+    # Assignments after `time` with no command, redirection, or pipe after
+    # them, and after a `time` that does not start the pipeline.
+    "time x==y",
+    "time x==q9 && echo ok",
+    "echo a | time x==q9",
+    "! time x==q9",
+    # The body of a function, the command after `repeat N` or `coproc`, and
+    # the list of `for x ( )`.
+    "function f { [[ a == a ]] }; f",
+    "function { [[ a == a ]] }",
+    "repeat 1 (( 1 == 1 ))",
+    "repeat 1 [[ a == a ]]",
+    "coproc [[ a == a ]]",
+    "for x (a==b) echo $x",
+    "for x y (a==b c d) echo $x",
+    "echo $(( (1) == 1 ))",
+    # Heredoc end words.
+    "cat <<=EOF\nhi\n=EOF",
+    "cat <<-=EOF\n\thi\n\t=EOF",
+    "cat << =EOF\nhi\n=EOF",
+    # A lone `=`, a quoted or escaped `=`, and words that do not start
+    # with `=`.
+    "[[ = ]]",
+    "[[ a = = ]]",
+    'echo "${x:-==q9}" ${x:-"==q9"} ${x:-\\==q9}',
+    'a=(\\=q9 "=q9")',
+    'echo "="q9 {"=q9",b} x{=q9,b} {=q9}',
+    # The word of `?` and of a pattern operator.
+    "echo ${x#==q9}",
+    "echo ${x:?==q9}",
+    # No brace expansion in a scalar value, and no `:` parts outside an
+    # assignment, or after a quoted `=`.
+    "x={=q9,b}; echo $x",
+    "echo a:=q9",
+    'x=a:"="q9',
+    'x="a:b"=q9',
+    # A pattern group in a test, and no brace expansion in a test, a `case`
+    # word or pattern, or a here-string.
+    "[[ a == (b|c) ]]",
+    "[[ a == (=q9|c) ]]",
+    "[[ {=q9,b} == a ]]",
+    "case {=q9,b} in *) echo m;; esac",
+    "case x in {=q9,b}) echo m;; esac",
+    "cat <<< {=q9,b}",
+    # Expansions that are never empty, and a quoted substitution.
+    "echo $#==q9 $?==q9 ${#x}==q9 $[1]==q9 $((1))==q9",
+    "echo ${x:-'$(echo ==q9)'}",
 ]
 
-# zsh replaces `=sh` with the path of `sh`; the hook warns but allows it.
-EQUALS_FOUND = "echo =sh"
+# zsh replaces each word with the path of `sh`; the hook denies it, with
+# no corrected command.
+EQUALS_FOUND = ["echo =sh", "echo =/bin/sh"]
 
 # Each denied command and its corrected command, which has a backslash
 # before the `=` of each word that names no command.
 CORRECTED_COMMANDS = {
     "echo =====; ls": "echo \\=====; ls",
     "echo ===== | cat; echo === =missing_command_361": "echo \\===== | cat; echo \\=== \\=missing_command_361",
-    "echo =sh ====": "echo =sh \\====",
+    'echo ""==y {=a,b} ${x:-==}': 'echo ""\\==y {\\=a,b} ${x:-\\==}',
+    "x=(=a b); y=a:=q9; [[ ==a == x ]]": "x=(\\=a b); y=a:\\=q9; [[ \\==a == x ]]",
     "SEP=====; a[1]==x; export B===": "SEP=\\====; a[1]=\\=x; export B=\\==",
     "cat <<< === > =out": "cat <<< \\=== > \\=out",
     "x=`echo ==a` y=$(echo \"$(echo ==b)\")": "x=`echo \\==a` y=$(echo \"$(echo \\==b)\")",
@@ -84,9 +221,11 @@ CORRECTED_COMMANDS = {
 
 # Denied commands that get no corrected command. The analysis can read a
 # heredoc body or end word as code, and a backslash there changes the command.
+# A word that names a command, such as `=sh`, can be meant as its path.
 UNCORRECTED_COMMANDS = [
     "cat <<'EOF'\n====\nEOF\necho ====",
-    "cat <<=EOF\nhi $HOME\n=EOF",
+    "cat <<=EOF\nhi $HOME\n=EOF\necho ==a",
+    "echo =sh ====",
     "cat <<EOF \\\n| cat\n==a\nEOF",
     "echo $'a\\'b' && cat <<EOF\n==x\nEOF",
 ]
@@ -281,9 +420,10 @@ def glob_directory(temp_dir):
     return temp_dir
 
 
-def run_zsh(command, cwd):
+def run_zsh(command, cwd, equals=True):
+    """Run `command` with zsh's default options, or with NO_EQUALS."""
     return subprocess.run(
-        [ZSH, "-f", "-c", command],
+        [ZSH, "-f", *(() if equals else ("-o", "NO_EQUALS")), "-c", command],
         text=True,
         capture_output=True,
         cwd=cwd,
@@ -384,11 +524,64 @@ class ZshTrapTests(unittest.TestCase):
             message = zsh_traps._trap_message(traps, "echo =====", None, None)
         self.assertEqual(message, traps[0].message)
 
-    def test_warns_about_an_equals_word_that_names_a_command(self):
-        traps = zsh_traps.zsh_traps(EQUALS_FOUND)
+    def test_denies_an_equals_word_that_names_a_command(self):
+        for command in EQUALS_FOUND:
+            with self.subTest(command=command):
+                traps = zsh_traps.zsh_traps(command)
+                word = command.split()[-1]
+                self.assertEqual([trap.blocks for trap in traps], [True], traps)
+                self.assertIn(f"`{word}` starts with `=`", traps[0].message)
+                self.assertIn(f"path of the command `{word[1:]}`", traps[0].message)
+                self.assertIn(f"`$(command -v {word[1:]})`", traps[0].message)
+                self.assertIsNone(zsh_traps.corrected_command(command))
 
-        self.assertEqual([trap.blocks for trap in traps], [False], traps)
-        self.assertIn("`=sh` starts with `=`", traps[0].message)
+    def test_denies_substitutions_nested_deeper_than_the_check_reads(self):
+        depth = zsh_traps.MAX_NESTED_SHELL_DEPTH + 2
+        deep = "echo " + "$(" * depth + "printf ==z" + ")" * depth
+        traps = zsh_traps.zsh_traps(deep)
+        self.assertEqual([trap.blocks for trap in traps], [True], traps)
+        self.assertIn("levels deep", traps[0].message)
+        self.assertIsNone(zsh_traps.corrected_command(deep))
+        # Without an `=` in the unread text, no word can start with `=`.
+        self.assertEqual(zsh_traps.zsh_traps(deep.replace("==z", "z")), [])
+        if ZSH:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                self.assertIn(" not found", run_zsh(deep, temp_dir).stderr)
+
+    def test_hook_denies_a_command_that_it_fails_to_read(self):
+        payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "echo hi"}})
+        for host in ("claude", "codex", "antigravity"):
+            with self.subTest(host=host):
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with mock.patch.object(zsh_traps, "_analyze", side_effect=RecursionError), \
+                        mock.patch.object(sys, "stdin", io.StringIO(payload)), \
+                        mock.patch.object(sys, "argv", ["zsh_traps.py", "--host", host]), \
+                        mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}), \
+                        contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
+                        self.assertRaises(SystemExit) as exit_status:
+                    zsh_traps.main()
+                steps = zsh_traps.TURN_OFF_PLUGIN_STEPS.get(
+                    host, zsh_traps.TURN_OFF_PLUGIN_STEPS[None]
+                )
+                if host == "antigravity":
+                    self.assertEqual(exit_status.exception.code, zsh_traps.block_status(host))
+                    message = stderr.getvalue()
+                else:
+                    self.assertEqual(exit_status.exception.code, 0)
+                    output = json.loads(stdout.getvalue())["hookSpecificOutput"]
+                    self.assertEqual(output["permissionDecision"], "deny")
+                    message = output["permissionDecisionReason"]
+                self.assertIn("failed to read the command (RecursionError", message)
+                self.assertIn(steps, message)
+
+    def test_reads_many_brace_alternatives_quickly(self):
+        # Brace expansion doubles the words for each `{,}`; the check must
+        # not do the same.
+        command = "echo " + "{,}" * 40 + "=q9"
+        started = time.monotonic()
+        traps = zsh_traps.zsh_traps(command)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual([trap.blocks for trap in traps], [True], traps)
 
     def test_warns_about_an_unsplit_variable(self):
         for command, word in SPLIT_TRAPS.items():
@@ -575,15 +768,23 @@ class ZshTrapTests(unittest.TestCase):
 
     @unittest.skipUnless(ZSH, "zsh is not installed")
     def test_equals_cases_match_zsh(self):
+        # zsh expands an `=` word when the command runs differently with the
+        # EQUALS option on, its default, and off.
         cases = [(command, True) for command in EQUALS_TRAPS]
-        cases += [(command, False) for command in EQUALS_SAFE + [EQUALS_FOUND]]
+        cases += [(command, False) for command in EQUALS_SAFE + EQUALS_FOUND]
         with tempfile.TemporaryDirectory() as temp_dir:
             for command, fails in cases:
                 with self.subTest(command=command):
                     result = run_zsh(command, temp_dir)
+                    unexpanded = run_zsh(command, temp_dir, equals=False)
                     self.assertEqual(
-                        " not found" in result.stderr, fails, result.stderr
+                        " not found" in result.stderr, fails and "&>" not in command,
+                        result.stderr,
                     )
+                    self.assertNotIn(" not found", unexpanded.stderr)
+                    runs = [(run.returncode, run.stdout, run.stderr) for run in (result, unexpanded)]
+                    expands = command in EQUALS_TRAPS or command in EQUALS_FOUND
+                    self.assertEqual(runs[0] != runs[1], expands, runs)
 
     @unittest.skipUnless(ZSH, "zsh is not installed")
     def test_glob_cases_match_zsh(self):
@@ -817,7 +1018,7 @@ class ZshTrapTests(unittest.TestCase):
                         self.assertIn(warning, output["permissionDecisionReason"])
                         self.assertNotIn("updatedInput", output)
 
-    def test_valid_equals_expansions_keep_their_existing_warning(self):
+    def test_valid_equals_expansions_are_denied_without_a_corrected_command(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             executable = Path(temp_dir, "====CODEX")
             executable.write_text("#!/bin/sh\nexit 0\n")
@@ -830,10 +1031,12 @@ class ZshTrapTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stderr)
                         response = json.loads(result.stdout)
                         output = response["hookSpecificOutput"]
-                        self.assertNotIn("permissionDecision", output)
+                        self.assertEqual(output["permissionDecision"], "deny")
                         self.assertNotIn("updatedInput", output)
-                        self.assertIn("Quote the word", output["additionalContext"])
-                        self.assertEqual(response["systemMessage"], output["additionalContext"])
+                        reason = output["permissionDecisionReason"]
+                        self.assertIn("$(command -v ", reason)
+                        self.assertNotIn("Corrected command", reason)
+                        self.assertEqual(response["systemMessage"], reason)
             for host in ("claude", "codex"):
                 with self.subTest(host=host, mixed=True):
                     result = run_hook("echo ===== =====CODEX", host=host, env=env)
@@ -933,7 +1136,7 @@ class ZshTrapTests(unittest.TestCase):
     def test_hook_gives_the_agent_a_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             for command, text in (
-                (EQUALS_FOUND, "Quote the word"), ("ls *.md", "matches no file"), ("cat -A a.txt", "`cat -vet`"),
+                ("ls *.md", "matches no file"), ("cat -A a.txt", "`cat -vet`"),
             ):
                 with self.subTest(command=command):
                     result = run_hook(command, cwd=temp_dir)
