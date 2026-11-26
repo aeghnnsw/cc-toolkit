@@ -349,7 +349,8 @@ discovery task and starts a read-only worker with the discovery brief that
 `discover` prints. The worker collects the open issues with their labels, the
 open PRs, the unsettled threads, and the worktrees or branches with
 uncommitted or unpushed changes, and lists all of them in groups, with counts
-and links only. The lead copies the list into its report, asks the user no
+and links only. (Limited by #666 to the lead's project; read
+[A lead works only in its own project](#a-lead-works-only-in-its-own-project).) The lead copies the list into its report, asks the user no
 question, and adds no waiting item for it; it runs `outcome` only after the
 user names the work. While the lead state has no outcome, a due line names
 `discover`, or, after the discovery task is verified, says to start no second
@@ -815,3 +816,45 @@ that the worker names the exact commands when it asks.
 `dev-skills/tests/test_t3_project_lead.py`,
 `dev-skills/tests/test_t3_project_lead_state.py`, and
 `dev-skills/tests/test_cleanup_plan.py` check these rules.
+
+## A lead works only in its own project
+
+Added on 2026-11-26 for
+[#666](https://github.com/aeghnnsw/cc-toolkit/issues/666).
+
+A lead of another project ran a close-out retrospective, which filed issues
+in this repository's tracker. The lead then listed their triage as options
+and waiting items, and started a worker that labeled one of them. Another
+session offered to start a worker for a cause in another project's
+repository. No lead text defined the project, and several steps collected
+open work and decisions with no project limit.
+
+Now a lead works only in its project: the T3 Code project of the lead thread
+and its repository, with its issues, PRs, worktrees, and threads. For work of
+another project, the lead only reports it to that project's lead with
+`t3_thread_send`, or has a worker file an issue in that project's tracker.
+It names the link in one line of its report. It adds no option, no waiting
+item, no triage, and no follow-up worker for that work. The skill copies,
+the "Project lead" entry of the glossary, lead action 9 of `start`, and the
+`discover`, `brief`, `verify`, `closeout`, and `report` steps state the rule.
+Each brief has a project line, and the discovery brief puts the project limit
+first. The `report` step no longer makes a step that leaves the project a
+decision for the user.
+
+In a recorded session, the hook blocks the T3 Code MCP calls that aim at
+another project: `delegate_task` and `create_threads` with `projectId` in a
+`target`, `t3_thread_launch` with `projectId` or `scratch`, `t3_thread_list`
+with `projectId` or `allProjects`, and `list_issues` with `projectId`. A call
+without these keys uses the project of the calling thread. The hook cannot
+learn the project ID of the lead: no environment variable names it, and the
+lead state records none. So the check fails closed, and blocks a call that
+names any project, also the lead's own. The check reads no
+`T3CODE_THREAD_ID`, so a Codex hook without it acts the same. The hook does
+not check `t3_thread_send`, `t3_thread_search`, or `create_issue`, because a
+report and an issue are the allowed actions. The Claude Code and Codex hook
+matchers select the five checked tools. The check is only a backstop: the
+hook gates the lead, not its workers. In Antigravity, only the step text
+holds the rule.
+
+`dev-skills/tests/test_t3_project_lead_hook.py` and
+`dev-skills/tests/test_t3_project_lead.py` check these rules.

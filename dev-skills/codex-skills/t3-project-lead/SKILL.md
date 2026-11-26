@@ -21,6 +21,10 @@ edits. When the hook blocks the work of a thread that is not the lead, such as
 a worker, run `unmark` in that thread: it removes the session's record and
 changes no lead state.
 
+Work only in this project: the T3 Code project of this thread and its
+repository. Never list or offer the work of another project: report it to
+that project's lead, or have a worker file an issue there.
+
 Run a step again whenever you need its text, for example after a context
 summary. `start` prints its fixed lead steps once in each thread, and
 `start --steps` prints them again. The script also keeps the lead state:

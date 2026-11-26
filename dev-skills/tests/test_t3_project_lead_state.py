@@ -216,7 +216,7 @@ class LeadStateTests(unittest.TestCase):
                 self.assertIn(f'python3 "{SCRIPT}" init <slug>', output)
                 self.assertIn("On this first start, run: ", output)
                 self.assertIn("start the discovery task as t3_project_lead.py discover says, and come to the "
-                              "user only with its list of open work.", words(output))
+                              "user only with its list of open work of this project.", words(output))
                 self.assertNotIn("other worktrees", output)
 
     def test_a_git_failure_prints_a_listing_problem_and_refuses_init(self) -> None:

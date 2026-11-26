@@ -1,6 +1,6 @@
 ---
 name: t3-project-lead
-version: 1.7.0
+version: 1.8.0
 description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and judge their reports, while workers do all other work."
 disable-model-invocation: true
 ---
@@ -21,6 +21,10 @@ dev-skills hook then blocks your other shell commands, file reads, and file
 edits. When the hook blocks the work of a thread that is not the lead, such as
 a worker, run `unmark` in that thread: it removes the session's record and
 changes no lead state.
+
+Work only in this project: the T3 Code project of this thread and its
+repository. Never list or offer the work of another project: report it to
+that project's lead, or have a worker file an issue there.
 
 Run a step again whenever you need its text, for example after a context
 summary. `start` prints its fixed lead steps once in each thread, and

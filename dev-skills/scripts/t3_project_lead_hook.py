@@ -43,8 +43,9 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. Other tools pass, and so do MCP tools, except the reads of issue
-  and PR text, the questions, and the thread reads below. A blocked call
-  exits 2 with the reason on stderr. A call that the hook cannot check also
+  and PR text, the questions, the thread reads, the settles of a lead
+  thread, and the calls of another project below. A blocked call exits 2
+  with the reason on stderr. A call that the hook cannot check also
   exits 2.
 - Issue and PR text (issue #545): a lead that read open issues itself was
   flagged by the model provider's safeguards, and a flag stops the whole lead
@@ -95,6 +96,26 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   line says that only the user settles a lead thread, in place of the line
   that gives the call to a worker. In Antigravity, only the step text holds
   the rule.
+- Project (issue #666): a lead offered the work of another project to the
+  user. A lead works only in its own project. So in a recorded session, the
+  hook blocks the T3 Code MCP calls that aim at another project:
+  `delegate_task` with `projectId` in `target`, `create_threads` with
+  `projectId` in the `target` of a thread, `t3_thread_launch` with
+  `projectId` or a `scratch` other than false, `t3_thread_list` with
+  `projectId` or an `allProjects` other than false, and `list_issues` with
+  `projectId`. A call that names no project uses the project of the calling
+  thread, and passes. The hook cannot learn the project ID of the lead: no
+  environment variable names it, and the lead state records none. So the
+  check fails closed: a call that names a project blocks, also the lead's
+  own project, and so do an input, a `target`, or a thread that is not an
+  object, and `threads` that is not a list. The check reads no
+  `T3CODE_THREAD_ID`, so a Codex hook without it acts the same, as the
+  record rule of #612 and the settle check of #645 fail closed. The hook
+  does not check `t3_thread_send`, `t3_thread_search`, or `create_issue`: a
+  report to another project's lead and an issue in its tracker are allowed.
+  The Claude Code and Codex matchers select the five checked tools. The
+  block's first line says that a lead works only in its own project. In
+  Antigravity, only the step text holds the rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -129,10 +150,15 @@ SESSION_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
-# The first line of a block that is not BLOCK_LINE: no worker may settle a lead thread either (#645).
+# The first line of a block that is not BLOCK_LINE: no worker may settle a lead thread (#645) or do
+# the work of another project (#666) either.
 FIRST_LINES = {"settle": "BLOCKED: t3-project-lead: Only the user settles a lead thread.",
-               "unmark": "BLOCKED: t3-project-lead: The hook keeps the lead record of this session."}
+               "unmark": "BLOCKED: t3-project-lead: The hook keeps the lead record of this session.",
+               "project": "BLOCKED: t3-project-lead: A lead works only in its own project."}
 ALLOWED = {
+    "project": ("Leave out projectId, allProjects, and scratch: the call then uses this project. For work of "
+                "another project, report it to that project's lead with t3_thread_send, or have a worker file "
+                "an issue there. Do not list or offer that work."),
     "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; uv run '
               "--no-project --python '>=3.11' python <installed Productivity Skills>/scripts/gtd_sql.py "
               "[arguments]; one cat, head, tail, wc, ls, grep, or sed -n of the files that the read tools "
@@ -175,6 +201,12 @@ EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "write_fil
 AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
 # The question tools of Claude Code and Codex (#554), and the t3_pending_request actions that answer
 # nothing.
+# The T3 Code tools that can aim a lead at another project, and the keys that name a project or leave
+# it (#666). A call without these keys uses the project of the calling thread.
+PROJECT_TOOLS = frozenset({"delegate_task", "create_threads", "t3_thread_launch", "t3_thread_list",
+                           "list_issues"})
+PROJECT_KEY = "projectId"
+ALL_PROJECT_KEYS = ("allProjects", "scratch")
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_user_input_async"})
 PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
@@ -433,6 +465,7 @@ def gate(payload, host, folder, session):
     check_pending_request(tool, arguments)
     check_thread_read(tool, arguments)
     check_settle(tool, arguments, cwd)
+    check_project(tool, arguments)
     if name == "apply_patch" or name in EDIT_TOOLS:
         # Only t3_project_lead.py writes the lead state; the lead writes only gtd-inbox files.
         check_gtd_write(name, arguments, cwd)
@@ -558,6 +591,35 @@ def check_settle(tool, arguments, cwd):
         raise Blocked("settle") from None
     if not leads or thread.strip() in leads:
         raise Blocked("settle")
+
+
+def check_project(tool, arguments):
+    """Raise Blocked when a T3 Code MCP call aims a lead at another project (#666).
+
+    A call that names no project uses the project of the calling thread. The
+    hook cannot learn the project ID of the lead, so a `projectId` key blocks
+    in the input, in the `target` of `delegate_task`, and in each thread of
+    `create_threads` and its `target`. An `allProjects` or a `scratch` other
+    than false blocks. An input, a `target`, or a thread that is not an
+    object, and `threads` that is not a list, fail closed.
+    """
+    if tool not in PROJECT_TOOLS:
+        return
+    if not isinstance(arguments, dict):
+        raise Blocked("project")
+    scopes = [arguments]
+    if tool == "create_threads":
+        threads = arguments.get("threads")
+        if not isinstance(threads, list):
+            raise Blocked("project")
+        scopes += threads
+    for scope in list(scopes):
+        if isinstance(scope, dict) and "target" in scope:
+            scopes.append(scope["target"])
+    for scope in scopes:
+        if (not isinstance(scope, dict) or PROJECT_KEY in scope
+                or any(key in scope and scope[key] is not False for key in ALL_PROJECT_KEYS)):
+            raise Blocked("project")
 
 
 def lead_threads(cwd):

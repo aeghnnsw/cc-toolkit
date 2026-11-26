@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Monitor|Read|Grep|Glob|Write|Edit|MultiEdit|NotebookEdit|Agent|Task|AskUserQuestion|mcp__t3-code__read_issue|mcp__t3-code__pull_request_read|mcp__t3-code__t3_pending_request|mcp__t3-code__t3_thread_read|mcp__t3-code__t3_thread_organize",
+        "matcher": "Bash|Monitor|Read|Grep|Glob|Write|Edit|MultiEdit|NotebookEdit|Agent|Task|AskUserQuestion|mcp__t3-code__read_issue|mcp__t3-code__pull_request_read|mcp__t3-code__t3_pending_request|mcp__t3-code__t3_thread_read|mcp__t3-code__t3_thread_organize|mcp__t3-code__delegate_task|mcp__t3-code__create_threads|mcp__t3-code__t3_thread_launch|mcp__t3-code__t3_thread_list|mcp__t3-code__list_issues",
         "hooks": [
           {
             "type": "command",
