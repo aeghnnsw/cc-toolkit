@@ -126,7 +126,7 @@ class BridgeToolTests(unittest.TestCase):
 
 class LocalBindCheckTests(unittest.TestCase):
     def test_denied_bind_raises_one_error_with_the_sandbox_and_the_fix(self):
-        # The Claude Code sandbox denies the bind with this error.
+        # The Claude Code sandbox denies the bind with errno 1, "Operation not permitted".
         denied = PermissionError(1, 'Operation not permitted')
         with mock.patch('socket.create_server', side_effect=denied), \
                 self.assertRaises(RuntimeError) as raised:

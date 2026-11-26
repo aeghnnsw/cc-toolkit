@@ -249,7 +249,7 @@ class DatabaseCase(RendererCase):
                 check=True, capture_output=True, text=True, timeout=30,
             )
         except subprocess.CalledProcessError as error:
-            denied = [line.strip() for line in (error.stderr + error.stdout).splitlines()
+            denied = [line.strip() for line in error.stderr.splitlines() + error.stdout.splitlines()
                       if "Operation not permitted" in line]
             if not denied:
                 raise
@@ -306,9 +306,12 @@ class DatabaseCase(RendererCase):
 
 
 class SandboxCheckTests(unittest.TestCase):
-    """The Claude Code sandbox denies the shared memory of initdb: one error names it."""
+    """The Claude Code sandbox denies the shared memory of initdb.
 
-    def start_server_with_initdb(self, stderr):
+    Each SQL class then fails with an error that names the sandbox.
+    """
+
+    def start_server_with_failing_initdb(self, stderr):
         """Start the test server with a fake initdb that writes this stderr line and exits 1."""
         with tempfile.TemporaryDirectory(prefix="bin-") as folder:
             for tool, body in (("initdb", f"echo {shlex.quote(stderr)} >&2\nexit 1\n"),
@@ -322,7 +325,7 @@ class SandboxCheckTests(unittest.TestCase):
     def test_initdb_that_a_sandbox_denies_raises_one_error_with_the_sandbox_and_the_fix(self):
         line = "FATAL:  could not create shared memory segment: Operation not permitted"
         with self.assertRaises(RuntimeError) as raised:
-            self.start_server_with_initdb(line)
+            self.start_server_with_failing_initdb(line)
 
         message = str(raised.exception)
         self.assertTrue(message.startswith(f"a sandbox blocks initdb ({line}), and the SQL "
@@ -331,7 +334,7 @@ class SandboxCheckTests(unittest.TestCase):
 
     def test_other_initdb_failure_raises_as_before(self):
         with self.assertRaises(subprocess.CalledProcessError):
-            self.start_server_with_initdb("initdb: error: directory exists but is not empty")
+            self.start_server_with_failing_initdb("initdb: error: directory exists but is not empty")
 
 
 class ContractTests:
