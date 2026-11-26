@@ -11,8 +11,9 @@ and later changes from issues #302, #305, #354,
 [#409](https://github.com/aeghnnsw/cc-toolkit/issues/409),
 [#475](https://github.com/aeghnnsw/cc-toolkit/issues/475),
 [#504](https://github.com/aeghnnsw/cc-toolkit/issues/504),
-[#608](https://github.com/aeghnnsw/cc-toolkit/issues/608), and
-[#609](https://github.com/aeghnnsw/cc-toolkit/issues/609).
+[#608](https://github.com/aeghnnsw/cc-toolkit/issues/608),
+[#609](https://github.com/aeghnnsw/cc-toolkit/issues/609), and
+[#615](https://github.com/aeghnnsw/cc-toolkit/issues/615).
 Apply each case to the [Claude Code skill](../skills/matt-automode/SKILL.md),
 the [Codex skill](../codex-skills/matt-automode/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/matt-automode/SKILL.md).
@@ -185,6 +186,18 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
     left issue 12 open. This run's task continues issue 12 and names the
     earlier pin record. The temporary source folder of the earlier batch is
     gone.
+48. **Spec step.** Phase 1 passed for issue 20, and no conflict is
+    unresolved. In Claude Code, `mattpocock-skills:to-spec` sets
+    `disable-model-invocation: true`.
+49. **Ticket step.** Spec S passed phase 2. The work needs two tickets, and
+    T2 edits a file that T1 adds. In Claude Code,
+    `mattpocock-skills:to-tickets` sets `disable-model-invocation: true`.
+50. **Retro step.** Cleanup reported, and the task names no leader. In
+    Claude Code, `mattpocock-skills:retro` sets
+    `disable-model-invocation: true`.
+51. **User-invoked nested skill.** In phase 5, `mattpocock-skills:code-review`
+    names a nested skill N. The resolver with `--model-invoked` exits with
+    status 3 for N.
 
 ## Expected results
 
@@ -236,6 +249,10 @@ sed -n '/^## Scenarios/,/^## Expected results/p' dev-skills/tests/matt-automode-
 | Fix that needs a scope choice | Stop T1 without a merge, keep the branch, and report the choice and both fixes to the user. Continue independent tickets. | Choosing a fix for the user; merging T1. | The finding, the two fixes, the kept branch, and the report. |
 | Requirement pins | Write the request, S, and T1 to files in a temporary folder as the lean-tests "Pin the requirement sources" section says. Run `lean_tests.py pin --record --project <project>` with one `--source NAME=PATH` for each file. Record the `record` path that it prints and each SHA-256 value. | Writing `pins.json` with another script, such as inline `python3` with `hashlib`; writing the record into the temporary folder. | A record in `lean-tests-pins/` of the Git common folder that `lean_tests.py pin --check` accepts, and the recorded values. |
 | Implement step | Use `mattpocock-skills:tdd` at the two seams. When the repository has a typecheck, run it often. Run single test files often, and the full suite once at the end, then `avoid_terms.py`, and commit. Go to phase 5. | Calling the Skill tool with `mattpocock-skills:implement`; reading its `SKILL.md` by path; skipping `tdd` at a seam. | The `tdd` cycles at both seams, the full-suite result, and the commit. |
+| Spec step | Write spec S in the glossary terms, and keep to the ADRs. Choose the test seams yourself: existing seams, the highest seam, the fewest seams. Give S the problem statement, the solution, the user stories, the implementation decisions, the testing decisions with the test seams, and what is out of scope. Publish S with the `ready-for-agent` label, verify it, and go to phase 3. | Calling the Skill tool with `mattpocock-skills:to-spec`; reading its `SKILL.md` by path; asking the user to confirm the test seams. | The published S with its sections and test seams. |
+| Ticket step | Publish T1, then T2, as sub-issues of S with the `ready-for-agent` label. Give each ticket the `## Parent`, `## What to build`, `## Acceptance criteria`, and `## Blocked by` sections. The `## Blocked by` section of T2 lists T1 as `#N`. Verify that T1 and T2 cover S. | Calling the Skill tool with `mattpocock-skills:to-tickets`; reading its `SKILL.md` by path; asking the user to approve the breakdown; closing or editing S. | T1 and T2 with their sections, and a passing `phase_gate.py --ticket` result for T1. |
+| Retro step | Follow "Navigation retrospective": run the cutoff script, read the sessions, and post the record on the last merged PR. | Calling the Skill tool with `mattpocock-skills:retro`; reading its `SKILL.md` by path. | The posted record with its **Reviewed through** cutoff. |
+| User-invoked nested skill | Report a blocker that names N and the resolver output, and keep the work. | Reading the `SKILL.md` of N by path; following the steps of N by other means. | The resolver output with exit status 3, and the report. |
 | Pin record in the task | Run `lean_tests.py pin --check` on the named record before phase 4, and use its hashes. Pin only a new source, such as a new ticket, in a new record. Report each record path and its SHA-256 values at the end, after `pin --check` passes. | Pinning the request or issue 12 again; rebuilding the sources from history; stopping because the source folder is gone. | The `pin --check` output with the earlier `pinned_at`, and the record paths in the report. |
 
 ## Validation limits
@@ -276,3 +293,14 @@ of each checked pin record, also of a received one. `test_lean_tests.py` pins in
 removes the source folder and the worktree, and passes `pin --check`. These
 checks fail on the 007727c copies and pass after the change. No simulated
 review of cases 45 and 47 ran.
+
+### 2026-11-26, issue #615
+
+**Static checks.** `test_matt_automode.py` now requires in every copy that
+phases 2, 3, and 8 name no skill in their headings, that phase 2 states the
+glossary, test seam, and publish steps, and that phase 3 states the ticket
+slices, the ticket sections, and the publish steps. It also requires that
+each named Matt skill is `tdd`, `code-review`, or `pr`, and that "Load skills
+as needed" runs the resolver with `--model-invoked` and reports a
+user-invoked skill as a blocker. These checks fail on the 6c6943a copies and
+pass after the change. No simulated review of cases 48–51 ran.

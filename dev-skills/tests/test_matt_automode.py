@@ -18,6 +18,8 @@ Issue #623: the pin record lasts after the worktree, a later session checks
 it and does not pin again, and the report gives its path.
 Issue #609: phase 4 names no user-invoked skill and states the steps of
 `mattpocock-skills:implement` itself.
+Issue #615: phases 2, 3, and 8 name no user-invoked skill and state their
+steps, and a user-invoked skill is a blocker when skills load.
 Agent behavior is checked by the scenario review in
 matt-automode-scenarios.md.
 """
@@ -88,6 +90,29 @@ IMPLEMENT_STEPS = (
 )
 # Issue #609: mattpocock-skills 1.3.2 sets disable-model-invocation: true in implement.
 USER_INVOKED_IMPLEMENT = ("mattpocock-skills:implement", "`implement`")
+# Issue #615: mattpocock-skills 1.3.2 sets disable-model-invocation: true in to-spec, to-tickets, and retro,
+# so a copy names only these Matt skills.
+MODEL_INVOKED_SKILLS = {"mattpocock-skills:tdd", "mattpocock-skills:code-review", "mattpocock-skills:pr"}
+SPEC_STEPS = (
+    "2. **Spec.** After phase 1",
+    "write the spec in the glossary terms, and keep to the ADRs of the area.",
+    "Choose the test seams: prefer existing seams, the highest seam, and the fewest seams.",
+    "Publish the spec on the tracker with the `ready-for-agent` triage label, and verify it.",
+)
+TICKET_STEPS = (
+    "3. **Tickets.** After phase 2, break the spec into tracer-bullet tickets.",
+    "Publish one ticket per slice, blocking tickets first, with the `ready-for-agent` triage label.",
+    "On GitHub, publish each ticket as an issue and a sub-issue of the spec. On a tracker of local files, "
+    "write one file per ticket,",
+    "On GitHub, `## Parent` references the spec as `#N`, and `## Blocked by` lists each blocking ticket as "
+    "`#N`, or `None (can start immediately)`; native blocking links can replace it.",
+    "Verify that the tickets cover the spec.",
+)
+RETRO_STEP = '8. **Retro.** After cleanup reports, follow "Navigation retrospective" below once for the run.'
+LOAD_RULE = ("When the resolver exits with status 3 because a skill is user-invoked, also report a blocker, "
+             "and use no other workflow for that skill.")
+OLD_LOAD_RULES = ("user-invoked skills, resolve their paths", "Explicit-only skills may be omitted",
+                  "including user-invoked skills")
 
 
 def automode(host: str) -> str:
@@ -274,6 +299,39 @@ class PhasesThreeAndFourNameTheirStepsTest(unittest.TestCase):
             with self.subTest(host=host):
                 for name in USER_INVOKED_IMPLEMENT:
                     self.assertNotIn(name, text)
+
+
+class PhasesTwoThreeAndEightNameTheirStepsTest(unittest.TestCase):
+    """Issue #615: phases 2, 3, and 8 state their steps, as phase 4 does, and name no user-invoked skill."""
+
+    def test_phases_two_three_and_eight_state_their_steps(self) -> None:
+        for host in HOSTS:
+            spec = between(host, "2. **Spec", "3. **Tickets")
+            tickets = between(host, "3. **Tickets", "4. **Implement")
+            retro = between(host, "8. **Retro", "### When work changes")
+            with self.subTest(host=host):
+                for step in SPEC_STEPS:
+                    self.assertIn(step, spec)
+                for step in TICKET_STEPS:
+                    self.assertIn(step, tickets)
+                self.assertIn(RETRO_STEP, retro)
+
+    def test_every_named_matt_skill_is_model_invoked(self) -> None:
+        for host in HOSTS:
+            text = automode(host)
+            with self.subTest(host=host):
+                self.assertLessEqual(set(re.findall(r"mattpocock-skills:[\w-]+", text)), MODEL_INVOKED_SKILLS)
+
+    def test_a_user_invoked_skill_is_a_blocker(self) -> None:
+        for host in HOSTS:
+            section = between(host, "## Load skills as needed", "## Plan and decide")
+            with self.subTest(host=host):
+                self.assertIn("/scripts/resolve_skill.py\" ", section)
+                self.assertIn(" --model-invoked \\ mattpocock-skills:tdd mattpocock-skills:code-review "
+                              "mattpocock-skills:pr ```", section)
+                self.assertIn(LOAD_RULE, section)
+                for rule in OLD_LOAD_RULES:
+                    self.assertNotIn(rule, section)
 
 
 if __name__ == "__main__":
