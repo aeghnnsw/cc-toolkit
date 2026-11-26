@@ -33,9 +33,9 @@ session runs the installed copy that it loaded at start.
 **Marketplace clone**:
 A host's local clone of a marketplace repository. A marketplace refresh
 (`claude plugin marketplace update`, `codex plugin marketplace upgrade`)
-updates it. The Claude Code refresh does not change the installed copy.
-With codex-cli 0.172.0, a Codex refresh that gets new commits also installs
-the new version of each installed plugin of the marketplace.
+updates it. The Claude Code refresh does not change the installed copy. The
+Codex refresh can also update the installed copies; see
+[Updates and removal](README.md#updates-and-removal).
 
 **Stale install**:
 An installed copy that is older than the same plugin in the marketplace
