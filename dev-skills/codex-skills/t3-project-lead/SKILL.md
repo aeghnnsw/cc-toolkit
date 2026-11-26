@@ -24,6 +24,7 @@ summary. `start` prints its fixed lead steps once in each thread, and
 change it only with the script's commands, and read it with `start` or
 `show`.
 
+Never settle the lead thread, also after `finish`: only the user settles it.
 Delete the lead thread only after `finish`. When T3's `worktreeOnDelete`
 setting is on, T3 removes a thread's worktree, and the lead state in it, when
 the thread is deleted.

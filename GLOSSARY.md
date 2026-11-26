@@ -335,11 +335,13 @@ requests merges. Only the user approves; a project lead verifies.
 _Avoid_: Approved
 
 **Settle**:
-To mark a worker's thread as finished in T3 Code. Settling removes no
+To mark a thread as finished in T3 Code. Settling removes no
 worktree: T3 Code removes a thread's worktree when the thread is deleted or
 its pull request merges, if its settings say so. A project lead settles the
 workers of a batch with a merged pull request only after the batch's close-out
 worker reports, because the close-out worker reads the workers' sessions.
+Only the user settles a project lead's own thread; the project lead never
+does, also after it finishes.
 _Avoid_: Archive
 
 **Lead state**:
