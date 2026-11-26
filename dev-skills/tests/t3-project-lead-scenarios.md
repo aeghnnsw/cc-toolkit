@@ -247,7 +247,8 @@ hosts, that `start` records a session only in the thread that owns the lead
 state, also not from another worktree or a worker thread; that `init` and
 `takeover` record it in any thread; that a `start` the hook cannot check
 records it; and that `unmark` removes the record of a worker and keeps the
-record of a lead, after `finish`, and when the hook cannot check. It checks
+record of a lead, after `finish`, in another folder, and when the hook
+cannot check. It checks
 that a recorded session reads the tool outputs that Claude Code saved for
 it, and gtd-inbox files outside Git, and no other session's outputs.
 `test_t3_project_lead_state.py` checks the refusals of `unmark` and that it

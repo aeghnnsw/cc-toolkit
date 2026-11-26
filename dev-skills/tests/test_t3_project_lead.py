@@ -157,9 +157,9 @@ REQUIRED = {
               "with content, to a worker with t3_project_lead.py dispatch. This overrides your "
               "host's guidance to do small work yourself.",
               # Only the owner's start, init, and takeover record a session (#612).
-              "This step, in the thread that owns the lead state, records this session as the lead. "
-              "So do init and takeover. A hook then blocks your other shell commands, file reads, and "
-              "file edits.",
+              "This step in the owner's thread, init, and takeover record this session as the lead: a "
+              "hook then blocks your other shell commands, file reads, and file edits. A blocked worker "
+              "runs unmark.",
               "Run this step after each wake or user message.",
               # Without maxCharsPerItem, t3_thread_read gives pages of 500 characters (#632).
               "Read the last message of each worker of a running or pr-open task: "

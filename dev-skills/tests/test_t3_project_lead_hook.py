@@ -43,7 +43,11 @@ REMINDER = ('This is a t3-project-lead session. Before anything else in this tur
             f'python3 "{STEP_SCRIPT}" unmark instead.')
 # The block of an unmark that the hook refuses (#612), and the start of its second line.
 UNMARK_LINE = "BLOCKED: t3-project-lead: The hook keeps the lead record of this session."
-UNMARK_REASON = "It removes the record only when it can tell that this thread is not a lead: "
+UNMARK_REASON = "It removes the record only when it can tell that this thread is not the lead: "
+# The second line of a blocked read (#621).
+READ_LINE = ("Allowed reads: T3 attachments, the GTD binding, gtd-inbox .json files outside every Git work tree, "
+             "the installed Productivity Skills plugin, and the tool outputs that Claude Code saved for this "
+             "session. Print the lead state with t3_project_lead.py show.")
 DAY = 24 * 60 * 60
 TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
              'pull_request_list, and pull_request_read with sections or include, as your tool names it, set '
@@ -350,6 +354,7 @@ class RecordTests(HookCase):
             if text is not None:
                 state.write_text(text, encoding="utf-8")
             if owner is not None and text is None:
+                # The third case: two lead states in one work tree.
                 write_lead_state(self.main, OWNER_THREAD, second.name)
             with self.subTest(owner=owner, text=text):
                 self.assert_records("antigravity", shell_payload("antigravity", start, self.main),
@@ -919,14 +924,15 @@ class UnmarkTests(HookCase):
         self.addCleanup(self.lead_state.unlink, missing_ok=True)
         self.unmark = f'python3 "{STEP_SCRIPT}" unmark'
 
-    def check_unmark(self, cwd, thread, reason=None):
-        """Run unmark in `cwd` in a session of T3 thread `thread`; with a `reason`, check that the hook
-        blocks it with that reason and keeps the record."""
+    def check_unmark(self, cwd, thread, reason=None, extra=None):
+        """Run unmark in `cwd` in a session of T3 thread `thread`, with the variables `extra` added; with a
+        `reason`, check that the hook blocks it with that reason and keeps the record."""
         before = self.lead_state.read_bytes() if self.lead_state.exists() else None
         for host in HOSTS:
             with self.subTest(host=host, cwd=cwd, thread=thread):
                 self.record()
-                result = self.run_hook(host, shell_payload(host, self.unmark, cwd), {"T3CODE_THREAD_ID": thread})
+                result = self.run_hook(host, shell_payload(host, self.unmark, cwd),
+                                       {"T3CODE_THREAD_ID": thread, **(extra or {})})
                 if reason is None:
                     self.assert_passes(result)
                     self.assertFalse((self.state / SESSION).exists())
@@ -958,6 +964,25 @@ class UnmarkTests(HookCase):
         self.check_unmark(self.dev, WORKER_THREAD, "has no owner")
         self.lead_state.write_text("{not json", encoding="utf-8")
         self.check_unmark(self.dev, WORKER_THREAD, "cannot read the lead states")
+        write_lead_state(self.main, OWNER_THREAD)
+        self.check_unmark(self.dev, WORKER_THREAD, "could not check the lead states", extra={"PATH": "/nonexistent"})
+
+    def test_an_unmark_in_another_folder_keeps_the_record(self):
+        # The record covers the whole session, and a Codex workdir or an Antigravity Cwd can name a folder of
+        # another repository, so the call must run in the session's cwd.
+        cases = (("codex", "exec_command", {"cmd": self.unmark, "workdir": str(self.dev)}),
+                 ("antigravity", "run_command", {"CommandLine": self.unmark, "Cwd": str(self.dev)}))
+        for host, name, tool_input in cases:
+            with self.subTest(host=host):
+                result = self.run_hook(host, tool_payload(host, name, tool_input, self.main),
+                                       {"T3CODE_THREAD_ID": WORKER_THREAD})
+                self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+                self.assertEqual(result.stderr.splitlines(), [
+                    UNMARK_LINE, UNMARK_REASON + "the call names a folder other than the session's cwd."])
+                self.assertTrue((self.state / SESSION).is_file())
+        same = tool_payload("codex", "exec_command", {"cmd": self.unmark, "workdir": str(self.main)}, self.main)
+        self.assert_passes(self.run_hook("codex", same, {"T3CODE_THREAD_ID": WORKER_THREAD}))
+        self.assertFalse((self.state / SESSION).exists())
 
     def test_unmark_with_more_words_is_no_unmark(self):
         self.check([(host, shell_payload(host, f"{self.unmark} now", self.dev)) for host in HOSTS], allowed=True,
@@ -1008,6 +1033,9 @@ class ToolResultReadTests(HookCase):
                    ("claude", "Read", {"file_path": f"{self.results}/../../other-session/tool-results/b1.txt"}),
                    ("claude", "Bash", {"command": f"cat {self.saved} | head"}))
         self.check_reads(blocked, allowed=False)
+        payload = tool_payload("claude", "Read", {"file_path": str(self.other)}, self.main)
+        payload["transcript_path"] = str(self.transcript)
+        self.assertEqual(self.run_hook("claude", payload).stderr.splitlines(), [BLOCK_LINE, READ_LINE])
         mine = (("claude", "Read", {"file_path": str(self.saved)}), ("codex", "Bash", {"command": f"cat {self.saved}"}))
         # The rule needs the transcript path of this session, as Claude Code gives it.
         for transcript in (False, str(self.project / "other-session.jsonl"), f"{SESSION}.jsonl", 7):

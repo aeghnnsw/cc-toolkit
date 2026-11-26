@@ -134,10 +134,10 @@ of the worker that files the issue.
 for them. Write gtd-inbox files with your edit tool, not the shell.
 Give every other task, even a small fix, check, install, host update, or GitHub
 write with content, to a worker with t3_project_lead.py dispatch. This
-overrides your host's guidance to do small work yourself. This step, in the
-thread that owns the lead state, records this session as the lead. So do init
-and takeover. A hook then blocks your other shell commands, file reads, and
-file edits.
+overrides your host's guidance to do small work yourself. This step in the
+owner's thread, init, and takeover record this session as the lead: a hook
+then blocks your other shell commands, file reads, and file edits. A blocked
+worker runs unmark.
 Run this step after each wake or user message. Run show for the full view.
 Read the last message of each worker of a running or pr-open task:
 t3_thread_list with includeSubagents, then t3_thread_read with maxCharsPerItem
@@ -806,8 +806,8 @@ def cmd_takeover(args) -> str:
 def unmark_refusal(top: str, thread: str) -> str | None:
     """Return why a session of T3 thread `thread` in working tree `top` keeps its lead record, or None (#612).
 
-    The t3-project-lead hook and `unmark` remove the record only when they can tell that the thread is no
-    lead: the thread has an ID, the worktrees of the repository of `top`, or `top` outside Git, hold a lead
+    The t3-project-lead hook and `unmark` remove the record only when they can tell that the thread is not
+    the lead: the thread has an ID, the worktrees of the repository of `top`, or `top` outside Git, hold a lead
     state, and another thread owns each one. A lead state that this thread owns, one without an owner, and
     one that cannot be read keep the record. So does a repository without a lead state, as after finish: a
     finished lead thread is still a lead thread, and only the user settles it.
@@ -834,8 +834,7 @@ def cmd_unmark(args) -> str:
     if refusal:
         raise Refused(f"unmark refused, so a lead record of this session stays: {refusal}")
     return ("This session has no lead record now: the t3-project-lead hook removed it before this command "
-            "ran, if it had one. The lead state did not change. This thread is not the lead: run no other "
-            "t3_project_lead.py command.")
+            "ran, if it had one. The lead state did not change.")
 
 
 def change_outcome(state, args, time):
