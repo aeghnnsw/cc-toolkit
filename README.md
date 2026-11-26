@@ -308,12 +308,19 @@ To update the installed Claude Code copy:
    project or local installation, use that installation's scope instead.
 3. Start a new Claude Code session.
 
-To update the installed Codex copy:
+To update the installed Codex copy (measured with codex-cli 0.172.0):
 
-1. Run `codex plugin marketplace upgrade cc-toolkit`. It updates the
-   marketplace clone and does not change the installed copy.
-2. Run `codex plugin add creator-skills@cc-toolkit`. It installs the version
-   in the marketplace clone and removes the old version folder.
+1. Run `codex plugin marketplace upgrade cc-toolkit`. When the marketplace
+   has new commits, the command updates the marketplace clone. Then it
+   installs each installed cc-toolkit plugin again, also a disabled plugin.
+   Each plugin gets the version in the marketplace clone, and the command
+   removes the old version folders. So the command can update plugins
+   other than the plugin that you want to update. It does not install a
+   plugin that is not installed.
+2. If step 1 printed "Marketplace `cc-toolkit` is already up to date.", the
+   command changed no installed copy, and a stale install stays. Then run
+   `codex plugin add creator-skills@cc-toolkit`. It installs the version in
+   the marketplace clone and removes the old version folder.
 3. Restart each running Codex session, because the version folder that it
    loaded at start no longer exists. Start new sessions as usual.
 
@@ -325,9 +332,11 @@ the installed copies and the marketplace clone of that home, so one update
 covers both homes.
 
 Codex runs a plugin hook only after you trust it, and the trust ends when a
-file of the plugin changes (measured with Codex 0.172.0). So after you
-install or update `core-hooks`, trust its hooks again: start the Codex TUI
-and choose "Review hooks" or "Trust all and continue" at the "Hooks need
+file of the plugin changes (measured with codex-cli 0.172.0). So after you
+install or update `core-hooks`, trust its hooks again.
+`codex plugin marketplace upgrade cc-toolkit` updates an installed
+`core-hooks` too, when the marketplace has a new version of it. To trust
+the hooks, start the Codex TUI and choose "Review hooks" or "Trust all and continue" at the "Hooks need
 review" prompt, or use `/hooks`. `codex exec` and the Codex app server,
 which T3 Code uses, show no prompt. Until you trust the hooks, they skip a
 new hook, such as the SessionStart stale-install check, without a message,
