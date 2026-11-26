@@ -308,12 +308,19 @@ To update the installed Claude Code copy:
    project or local installation, use that installation's scope instead.
 3. Start a new Claude Code session.
 
-To update the installed Codex copy:
+To update the installed Codex copy (measured with codex-cli 0.172.0):
 
-1. Run `codex plugin marketplace upgrade cc-toolkit`. It updates the
-   marketplace clone and does not change the installed copy.
-2. Run `codex plugin add creator-skills@cc-toolkit`. It installs the version
-   in the marketplace clone and removes the old version folder.
+1. Run `codex plugin marketplace upgrade cc-toolkit`. When the marketplace
+   has new commits, the command updates the marketplace clone. It then
+   installs the version in the marketplace clone of each installed
+   cc-toolkit plugin, also of a disabled plugin, and removes the old
+   version folders. So it updates all installed cc-toolkit plugins, not
+   only the plugin that you want to update. It does not install a plugin
+   that is not installed.
+2. If step 1 printed "Marketplace `cc-toolkit` is already up to date.", the
+   command changed no installed copy, and a stale install stays. Then run
+   `codex plugin add creator-skills@cc-toolkit`. It installs the version in
+   the marketplace clone and removes the old version folder.
 3. Restart each running Codex session, because the version folder that it
    loaded at start no longer exists. Start new sessions as usual.
 
@@ -326,7 +333,8 @@ covers both homes.
 
 Codex runs a plugin hook only after you trust it, and the trust ends when a
 file of the plugin changes (measured with Codex 0.172.0). So after you
-install or update `core-hooks`, trust its hooks again: start the Codex TUI
+install or update `core-hooks`, also through a marketplace upgrade for
+another plugin, trust its hooks again: start the Codex TUI
 and choose "Review hooks" or "Trust all and continue" at the "Hooks need
 review" prompt, or use `/hooks`. `codex exec` and the Codex app server,
 which T3 Code uses, show no prompt. Until you trust the hooks, they skip a
