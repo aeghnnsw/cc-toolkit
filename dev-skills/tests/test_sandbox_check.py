@@ -27,6 +27,12 @@ class RequirePsTest(unittest.TestCase):
         self.assertRegex(message, r"^a sandbox blocks ps \(\[Errno \d+\] .+\), and these tests")
         self.assertIn("outside the sandbox: python3 dev-skills/scripts/run_suite.py --", message)
 
+    def test_missing_ps_raises_nothing(self):
+        # Without ps, the modules' own guards decide, as before the check.
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.dict(os.environ, {"PATH": folder}):
+            require_ps()
+
 
 if __name__ == "__main__":
     unittest.main()
