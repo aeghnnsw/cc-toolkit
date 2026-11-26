@@ -51,7 +51,10 @@ with substitutions nested deeper than it reads when the unread text holds an
 With `--host claude`, it denies a
 parameter flag, so that the agent reads how to replace it. For each other
 trap, it gives the agent a warning. It reads the command as shell words, so
-single-quoted text, heredoc bodies, and comments give no finding. Traps 1
+single-quoted text, heredoc bodies, and comments give no finding. The
+exception is trap 1 in a command substitution of a heredoc body whose end
+word has no quote or backslash, such as `<<EOF`: zsh runs the substitution,
+so the check reads it as a command for `=name` words. Traps 1
 to 3 also skip double-quoted text and `(( ... ))` arithmetic, and traps 2
 and 3 skip `[[ ... ]]` tests; zsh expands traps 4 and 5 in double quotes
 and tests too. This
@@ -88,7 +91,7 @@ from safety_guard import (
     _find_backtick_end,
     _find_substitution_end,
     _heredoc_delimiters,
-    strip_heredoc_bodies,
+    split_heredoc_bodies,
 )
 
 
@@ -403,17 +406,18 @@ def _arithmetic_end(text, index):
     return inner + 2
 
 
-def _nested_bodies(text, start, end, bodies):
+def _nested_bodies(text, start, end, bodies, quotes=True):
     """Add the command substitutions in text[start:end], the inside of
     arithmetic or of a `${...}` expansion, to `bodies`.
 
-    zsh runs them, as in `${x:-$(cmd)}`, but not in single quotes.
+    zsh runs them, as in `${x:-$(cmd)}`, but not in single quotes. With
+    `quotes` false, as in a heredoc body, a `'` is text.
     """
     index = start
     while index < end:
         if text[index] == "`" or text.startswith("$(", index):
             index = _substitution_end(text, index, bodies)
-        elif text[index] == "'":
+        elif quotes and text[index] == "'":
             index = _single_quote_end(text, index + 1) + 1
         else:
             index += 2 if text[index] == "\\" else 1
@@ -1029,7 +1033,8 @@ def _analyze(text, findings, depth, offset=0):
     timed_equals = []
     # True after the word `repeat`, whose next word is a count.
     repeat_count = False
-    for kind, token, start, _ in _spanned_tokens(strip_heredoc_bodies(text), bodies):
+    code, heredocs = split_heredoc_bodies(text)
+    for kind, token, start, _ in _spanned_tokens(code, bodies):
         if kind == "word":
             _record_expansions(token.text, offset + start, findings)
         if condition is not None:
@@ -1168,6 +1173,29 @@ def _analyze(text, findings, depth, offset=0):
     _end_command(words, None, piped_test, findings)
     for body_start, body in bodies:
         _analyze(body, findings, depth + 1, offset + body_start)
+    for body, quoted in heredocs:
+        if not quoted:
+            _record_heredoc_body(body, findings, depth)
+
+
+def _record_heredoc_body(body, findings, depth):
+    """Add the `=word`s of the command substitutions in a heredoc body to
+    `findings`.
+
+    zsh runs each `$(...)` and backtick substitution of the body of a
+    heredoc whose end word has no quote or backslash, also in `${...}` and
+    in arithmetic. Quotes are text in a body, and zsh removes each
+    backslash-newline first. Other traps of the substitutions give no
+    finding.
+    """
+    body = body.replace("\\\n", "")
+    commands = []
+    _nested_bodies(body, 0, len(body), commands, quotes=False)
+    for _, command in commands:
+        body_findings = Findings()
+        _analyze(command, body_findings, depth + 1)
+        findings.equals_words.extend(body_findings.equals_words)
+        findings.too_deep = findings.too_deep or body_findings.too_deep
 
 
 def _names_no_command(word):

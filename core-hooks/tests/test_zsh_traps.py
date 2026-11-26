@@ -133,6 +133,19 @@ EQUALS_TRAPS = {
     "printf =missing/path": "=missing/path",
     "echo =~/x": "=~/x",
     "echo =./nosuch": "=./nosuch",
+    # A substitution in the body of a heredoc with an unquoted end word.
+    # Quotes are text in a body, and an escaped backslash escapes no `$`.
+    "cat <<EOF\n$(echo ==q9)\nEOF": "==q9",
+    "cat <<-EOF\n\t$(echo ==q9)\n\tEOF": "==q9",
+    "cat <<EOF\n`echo ==q9`\nEOF": "==q9",
+    "cat <<EOF\n'$(echo ==q9)'\nEOF": "==q9",
+    "cat <<EOF\n${x:-'$(echo ==q9)'}\nEOF": "==q9",
+    "cat <<EOF\n$(( $(echo ==q9 | wc -c) ))\nEOF": "==q9",
+    "cat <<EOF\n\\\\$(echo ==q9)\nEOF": "==q9",
+    "cat <<EOF\n$(echo =\\\n=q9)\nEOF": "==q9",
+    "x=$(cat <<EOF\n$(echo ==q9)\nEOF\n)": "==q9",
+    "echo \"$(cat <<EOF\n$(echo ==q9)\nEOF\n)\"": "==q9",
+    "cat <<'A' <<B\n$(echo ==q8)\nA\n$(echo ==q9)\nB": "==q9",
 }
 
 # Commands that zsh runs without an `=name` expansion.
@@ -169,6 +182,19 @@ EQUALS_SAFE = [
     "for x (a==b) echo $x",
     "for x y (a==b c d) echo $x",
     "echo $(( (1) == 1 ))",
+    # A heredoc body whose end word has a quote or a backslash, an escaped
+    # substitution, body text, and a quoted word or a process substitution
+    # in a substitution of a body.
+    "cat <<'EOF'\n$(echo ==q9)\nEOF",
+    "cat <<\"EOF\"\n$(echo ==q9)\nEOF",
+    "cat <<\\EOF\n$(echo ==q9)\nEOF",
+    "cat <<E\"O\"F\n$(echo ==q9)\nEOF",
+    "cat <<$'EOF'\n$(echo ==q9)\nEOF",
+    "cat <<EOF\n\\$(echo ==q9) \\`echo ==q8\\`\nEOF",
+    "cat <<EOF\n${x:-==q9} ==q8\nEOF",
+    "cat <<EOF\n$(echo \"==q9\" '==q8')\nEOF",
+    "cat <<EOF\n$(cat <<'X'\n==q9\nX\n)\nEOF",
+    "cat <<EOF\n$(cat =(echo hi))\nEOF",
     # Heredoc end words.
     "cat <<=EOF\nhi\n=EOF",
     "cat <<-=EOF\n\thi\n\t=EOF",
@@ -544,6 +570,10 @@ class ZshTrapTests(unittest.TestCase):
         self.assertIsNone(zsh_traps.corrected_command(deep))
         # Without an `=` in the unread text, no word can start with `=`.
         self.assertEqual(zsh_traps.zsh_traps(deep.replace("==z", "z")), [])
+        # The same substitutions in a heredoc body give the same denial.
+        traps = zsh_traps.zsh_traps(f"cat <<EOF\n{deep}\nEOF")
+        self.assertEqual([trap.blocks for trap in traps], [True], traps)
+        self.assertIn("levels deep", traps[0].message)
         if ZSH:
             with tempfile.TemporaryDirectory() as temp_dir:
                 self.assertIn(" not found", run_zsh(deep, temp_dir).stderr)

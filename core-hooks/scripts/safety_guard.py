@@ -491,8 +491,10 @@ def _heredoc_delimiter_candidates(line, quote):
     """Return the delimiter words of each heredoc that one command line
     opens, in the order the shell reads their bodies.
 
-    Each item lists the words that can end one body; see
-    `_heredoc_delimiter_words`. Recognizes the operators outside quotes.
+    Each item is (words, quoted): the words that can end one body (see
+    `_heredoc_delimiter_words`), and whether the operator's word holds a
+    quote or a backslash, as in `<<'EOF'`. The shell expands nothing in the
+    body of such a word. Recognizes the operators outside quotes.
     Also returns the quote state at the end of the line, so a quoted string
     that spans lines cannot be read as a heredoc operator.
 
@@ -546,7 +548,9 @@ def _heredoc_delimiter_candidates(line, quote):
             if match is None or line[match.end():match.end() + 1] in (")", "]"):
                 index += 2
                 continue
-            delimiters.append(_heredoc_delimiter_words(match))
+            word = match.group("word")
+            quoted = any(character in word for character in "'\"\\")
+            delimiters.append((_heredoc_delimiter_words(match), quoted))
             index = match.end()
             continue
         index += 1
@@ -558,7 +562,7 @@ def _heredoc_delimiters(line, quote):
     the quote state for the next line. See `_heredoc_delimiter_candidates`.
     """
     candidates, quote = _heredoc_delimiter_candidates(line, quote)
-    return [words[0] for words in candidates], quote
+    return [words[0] for words, _ in candidates], quote
 
 
 def _can_start_comment(line, index):
@@ -661,11 +665,18 @@ def strip_heredoc_bodies(command):
     Ending a body early keeps more text under inspection, so the delimiter
     comparison ignores surrounding whitespace.
     """
-    def scan(line, quote):
-        candidates, quote = _heredoc_delimiter_candidates(line, quote)
-        return [(words, False) for words in candidates], quote
+    return split_heredoc_bodies(command)[0]
 
-    return _read_heredoc_lines(command, scan)[0]
+
+def split_heredoc_bodies(command):
+    """Return (code, bodies): `command` without its heredoc bodies, as
+    `strip_heredoc_bodies` returns it, and the bodies.
+
+    Each body is (text, quoted), where `quoted` tells whether the end word
+    of its operator holds a quote or a backslash, as in `<<'EOF'` or
+    `<<\\EOF`. The shell expands nothing in such a body.
+    """
+    return _read_heredoc_lines(command, _heredoc_delimiter_candidates)
 
 
 def _data_form_segments(line):
