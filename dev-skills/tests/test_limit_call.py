@@ -15,6 +15,15 @@ import time
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox_check import require_ps  # noqa: E402
+
+
+def setUpModule():
+    # In a sandbox that blocks ps, one error with the fix replaces a failure for each test.
+    require_ps()
+
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "codex-skills" / "pressure-test" / "scripts" / "limit_call.py"
 # A command that ignores SIGTERM, writes its process ID, and sleeps.

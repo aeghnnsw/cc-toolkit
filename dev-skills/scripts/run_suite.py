@@ -71,6 +71,15 @@ first holder had not written its details, the line names the last holder;
 when neither had, it names "another run". A run that reuses a recorded pass
 prints no summary; after a wait, it prints the wait lines as its last lines.
 
+Sandbox note. When the command fails and lines of its output contain
+"Operation not permitted", the summary adds a note just before the exit
+status: the number of such lines, the first 3 distinct ones, and the fix.
+A sandbox, such as the Claude Code sandbox, gives this error when it blocks
+an operation that a test needs, for example starting /bin/ps, a bind to
+127.0.0.1, or shared memory for initdb. The note says to run the same
+command again outside the sandbox. The script does not probe the sandbox
+before the run, because it cannot know which operations a suite needs.
+
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
 reuses a recorded pass; 2 outside a Git checkout or without a command.
@@ -111,6 +120,10 @@ UNITTEST_TOTALS = re.compile(r"Ran \d+ tests? in \S+|OK|OK \(.*\)|FAILED \(.*\)"
 PYTEST_FAILURE = re.compile(r"(FAILED|ERROR) (\S.*?)(?: - .*)?")
 # pytest: "==== 1 failed, 2 passed in 0.12s ====", with or without the equals signs.
 PYTEST_TOTALS = re.compile(r"(?:=+ )?(?:\d+ \w+(?:, \d+ \w+)*|no tests ran) in \d[\d.]*s\b.*")
+# A sandbox gives this error when it blocks an operation that a test needs.
+DENIED = "Operation not permitted"
+# The sandbox note shows at most this many distinct lines.
+DENIED_EXAMPLES = 3
 # The lock wait line shows a line break of a holder's command as \n.
 ESCAPE_LINE_BREAKS = str.maketrans({"\n": "\\n", "\r": "\\r"})
 
@@ -279,8 +292,10 @@ def record_pass(common: Path, entry: dict) -> None:
         os.replace(temporary, path)
 
 
-def parse(line: str, failures: list[str], totals: list[str]) -> None:
-    """Add a failing test ID or a totals line of unittest or pytest output."""
+def parse(line: str, failures: list[str], totals: list[str], denied: list[str]) -> None:
+    """Add a failing test ID, a totals line, or a line with a denied operation."""
+    if DENIED in line:
+        denied.append(line.strip())
     unittest_failure = UNITTEST_FAILURE.fullmatch(line)
     pytest_failure = PYTEST_FAILURE.fullmatch(line)
     if UNITTEST_TOTALS.fullmatch(line) or PYTEST_TOTALS.fullmatch(line):
@@ -293,18 +308,22 @@ def parse(line: str, failures: list[str], totals: list[str]) -> None:
         failures.append(f"{pytest_failure.group(2)} ({pytest_failure.group(1)})")
 
 
-def run(command: list[str]) -> tuple[int, list[str], list[str]]:
-    """Stream the command's output, and return its exit status, failures, and totals."""
+def run(command: list[str]) -> tuple[int, list[str], list[str], list[str]]:
+    """Stream the command's output.
+
+    Return its exit status, failures, totals, and lines with a denied operation.
+    """
     failures: list[str] = []
     totals: list[str] = []
+    denied: list[str] = []
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except FileNotFoundError:
         print(f"run_suite: command not found: {command[0]}", file=sys.stderr)
-        return 127, failures, totals
+        return 127, failures, totals, denied
     except OSError as error:
         print(f"run_suite: cannot run {command[0]}: {error}", file=sys.stderr)
-        return 126, failures, totals
+        return 126, failures, totals, denied
     # Write each chunk at once, so progress dots show before their line ends.
     out, pending = sys.stdout.buffer, b""
     while True:
@@ -315,10 +334,22 @@ def run(command: list[str]) -> tuple[int, list[str], list[str]]:
         out.flush()
         *lines, pending = (pending + chunk).split(b"\n")
         for raw in lines:
-            parse(raw.decode(errors="replace").rstrip(), failures, totals)
-    parse(pending.decode(errors="replace").rstrip(), failures, totals)
+            parse(raw.decode(errors="replace").rstrip(), failures, totals, denied)
+    parse(pending.decode(errors="replace").rstrip(), failures, totals, denied)
     status = process.wait()
-    return (128 - status if status < 0 else status), list(dict.fromkeys(failures)), totals
+    return ((128 - status if status < 0 else status), list(dict.fromkeys(failures)), totals,
+            denied)
+
+
+def sandbox_note(denied: list[str]) -> list[str]:
+    """Return the summary lines that name a sandbox as the probable cause."""
+    count = "1 output line reports" if len(denied) == 1 else f"{len(denied)} output lines report"
+    examples = list(dict.fromkeys(denied))[:DENIED_EXAMPLES]
+    return ([f'Sandbox: {count} "{DENIED}", for example:']
+            + [f"  {line}" for line in examples]
+            + ["A sandbox probably blocks the suite, so these failures may not come from the change.",
+               "Run the same command again outside the sandbox (in Claude Code: the Bash tool "
+               "with dangerouslyDisableSandbox)."])
 
 
 def main() -> None:
@@ -357,7 +388,7 @@ def main() -> None:
                 sys.exit(0)
     commit = git("rev-parse", "HEAD")
 
-    status, failures, totals = run(command)
+    status, failures, totals, denied = run(command)
     if status == 0:
         if tree and clean_tree() == tree:
             record_pass(common, {**key, "time": now(), "commit": commit})
@@ -373,6 +404,8 @@ def main() -> None:
     if totals:
         lines += ["Totals:"] + [f"  {total}" for total in totals]
     lines += wait_lines
+    if status != 0 and denied:
+        lines += sandbox_note(denied)
     lines.append(f"Exit status: {status}")
     print("\n".join(lines), flush=True)
     sys.exit(status)

@@ -20,6 +20,15 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox_check import require_ps  # noqa: E402
+
+
+def setUpModule():
+    # In a sandbox that blocks ps, one error with the fix replaces a failure for each test.
+    require_ps()
+
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "live_worktrees.py"
 
@@ -369,6 +378,27 @@ class LiveWorktreesTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("ps: broken", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_names_the_sandbox_when_ps_cannot_start(self):
+        # A sandbox that blocks ps makes starting it raise PermissionError, as
+        # starting a file without the execute bit does.
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        for tool in ("git", "lsof"):
+            (bin_dir / tool).symlink_to(shutil.which(tool))
+        (bin_dir / "ps").write_text("#!/bin/sh\n")
+        self.env["PATH"] = str(bin_dir)
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--repo", str(self.repo)],
+            env=self.env, capture_output=True, text=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stderr, r"^live_worktrees: cannot start ps: .+\. A sandbox "
+                                        r"probably blocks it, .+ Run the check again outside "
+                                        r"the sandbox\n$")
         self.assertEqual(result.stdout, "")
 
     def test_fails_outside_a_repository(self):

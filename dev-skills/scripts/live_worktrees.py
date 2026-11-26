@@ -27,7 +27,9 @@ named by CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID. An Antigravity
 conversation of the current session is not left out. The exit status is 0
 when the check ran and 1 when it could not run, for example without lsof or
 ps, or with an Antigravity folder, database, or recent conversation that
-cannot be read.
+cannot be read. When starting ps or lsof raises PermissionError, as it does
+in a sandbox that blocks them, the one error line names the tool and the
+sandbox, and says to run the check again outside the sandbox.
 
 Limit: a session with no process in the worktree and no log change in the
 last 60 minutes is not found, for example a Codex thread, whose app server
@@ -63,6 +65,12 @@ ANTIGRAVITY_TIME = re.compile(r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:[.,
 def fail(message: str) -> NoReturn:
     print(f"live_worktrees: {message}", file=sys.stderr)
     sys.exit(1)
+
+
+def blocked(error: PermissionError) -> NoReturn:
+    """Exit for a tool that this process may not start, for example in a sandbox."""
+    fail(f"cannot start {error.filename}: {error.strerror}. A sandbox probably blocks it, so "
+         "running processes cannot be checked. Run the check again outside the sandbox")
 
 
 def linked_worktrees(repo: str) -> dict[str, list[str]]:
@@ -109,6 +117,8 @@ def current_session_pids() -> set[str]:
         parent = dict(line.split() for line in result.stdout.splitlines() if len(line.split()) == 2)
     except FileNotFoundError:
         parent = {}
+    except PermissionError as error:
+        blocked(error)
     while pid and pid != "0" and pid not in pids:
         pids.add(pid)
         pid = parent.get(pid, "")
@@ -124,6 +134,8 @@ def process_dirs(skip: set[str]) -> list[tuple[str, str, str]]:
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except FileNotFoundError:
         fail("lsof is not installed, so running processes cannot be checked")
+    except PermissionError as error:
+        blocked(error)
     output, error = proc.communicate()
     if not output and proc.returncode != 0:
         fail(error.strip() or "lsof failed")
@@ -155,6 +167,8 @@ def config_dirs() -> dict[str, set[str]]:
         result = subprocess.run(["ps", "axeww", "-o", "command="], capture_output=True, text=True)
     except FileNotFoundError:
         fail("ps is not installed, so the config folders of running sessions cannot be found")
+    except PermissionError as error:
+        blocked(error)
     if result.returncode != 0:
         fail(result.stderr.strip() or "ps axeww failed")
     for name, value in CONFIG_VAR.findall(result.stdout):
