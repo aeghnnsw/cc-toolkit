@@ -65,6 +65,15 @@ that a running, pr-open, or merged task uses, or a settled one.
 lead state, on the owner's first start after `init` or `takeover`, and with
 `start --steps`. The state records the thread that saw them. Other `start`
 calls print one line that names `start --steps`, then the state.
+
+`task verified` refuses a running task with no recorded PR unless the lead
+gives `--no-pr`, and the refusal names `task pr` and `task merged` (issue
+#631). `task worker` takes a thread with the rules of `task start`, and
+settles each verified, closed-out, or cancelled task that recorded the thread,
+so that no due line settles a thread that another task runs on (issue #633).
+`wait --settles <task>` gives the settle of a worker to the user when T3
+refuses it: while the item waits, no due line names that settle and no task
+reuses the worker, and `done` records the task as settled.
 """
 
 from __future__ import annotations
@@ -98,7 +107,8 @@ issues and PRs, not their text. Never call read_issue. Call pull_request_read
 only with sections or include ["checks"]. No diff, code, or log.
 5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
-7. Set issue state; a worker sets triage labels.
+7. Set issue state. A worker sets triage labels: name the label in the brief
+of the worker that files the issue.
 8. Keep agent captures of what waits on the user when your instructions ask
 for them. Write gtd-inbox files with your edit tool, not the shell.
 Give every other task, even a small fix, check, install, host update, or GitHub
@@ -121,12 +131,12 @@ Otherwise add the discovery task: task add discover 'Discover open work'.
 Start its worker as t3_project_lead.py dispatch says, with the read-only
 brief, no outcome, and the discovery brief below, copied exactly. In the last
 line of its brief, replace "with evidence and links" with "in the form above".
-When it reports, run task verified discover --decisions 0. Copy its lines into
-your report as they are, and end your turn. The list is not a waiting item:
-add no wait item or GTD capture for it. Do not ask the user to choose, with a
-question tool or in text. When the user names the work, run outcome <text> and
-criteria <text>. When discover is verified and the user named no work, start
-no second discovery.
+When it reports, run task verified discover --decisions 0 --no-pr. Copy its
+lines into your report as they are, and end your turn. The list is not a
+waiting item: add no wait item or GTD capture for it. Do not ask the user to
+choose, with a question tool or in text. When the user names the work, run
+outcome <text> and criteria <text>. When discover is verified and the user
+named no work, start no second discovery.
 Next: t3_project_lead.py plan after the user names the work; else report.
 """,
     "plan": """
@@ -191,7 +201,10 @@ and name what the worker must not change.
 Every brief also says: "Add no GTD capture; report what waits on the user."
 and "Ask the user your questions in this thread, in plain text, not with a
 question tool. Then end your turn to wait for the reply. Ask also before you
-delete outside your worktree or change user or host settings."
+delete outside your worktree or change user or host settings. When a task
+needs several approvals, ask for all of them in one numbered message as soon
+as their facts are known. While you wait, run the steps that need no
+approval."
 Budget: name a round limit, and add: "At the limit, end your turn and report
 where you are, with links and what remains."
 For a code change: one full review and one fix of any size, then merge. Only
@@ -243,8 +256,10 @@ Give each finding to one follow-up worker, even a small one. Then what
 remains waits on the user: add it with wait. Fix and check nothing yourself.
 Record merged PRs (task pr, task merged), then run task verified <name>
 --decisions <N>, with N the number of decisions that the report numbers for
-the user, or 0. The script adds them as one waiting item. Settle its worker
-only when a due line lists it.
+the user, or 0. The script adds them as one waiting item. Add --no-pr only for
+a task that makes no PR, such as a read-only check. Settle its worker only
+when a due line lists it. When T3 refuses the settle, give it to the user with
+wait --settles <name>.
 Start each planned task as soon as each task that it waits for is verified,
 also while other workers run; do not wait for the rest of its batch. The task
 verified output names each such task and its step.
@@ -266,9 +281,11 @@ repo-cleanup." and "List the lead thread's tool calls other than T3, GitHub,
 and GTD tools and t3_project_lead.py. Its history with real times is in:"
 with the history path below. For a batch with a scientific task, add: "Reply
 in one line, with links."
-When it reports, run task verified <name> --decisions <N>, as verify says; the
-batch's verified tasks are then closed out. Settle each worker that a due line
-lists with t3_thread_organize, and run task settled <name>...; never reuse one.
+When it reports, run task verified <name> --decisions <N> --no-pr, as verify
+says; the batch's verified tasks are then closed out. Settle each worker that a
+due line lists with t3_thread_organize, and run task settled <name>...; never
+reuse one. When T3 refuses a settle, give it to the user with wait --settles
+<name>.
 Next: t3_project_lead.py report.
 """,
     "report": """
@@ -820,10 +837,13 @@ def busy_task(state: dict, worker: str, task: dict | None = None) -> dict | None
 
 
 def idle_workers(state: dict) -> list[str]:
-    """Return the workers of verified or closed-out tasks that no busy task uses (#602)."""
+    """Return the workers of verified or closed-out tasks that no busy task uses (#602), and whose settle
+    the lead did not give to the user (#633)."""
     links = [task["worker"] for task in state["tasks"]
              if task["state"] in (VERIFIED, CLOSED_OUT) and task["worker"]]
-    return [worker for worker in dict.fromkeys(links) if busy_task(state, worker) is None]
+    given = settle_items(state)
+    return [worker for worker in dict.fromkeys(links)
+            if busy_task(state, worker) is None and worker not in given]
 
 
 def add_worktree(task: dict, worktree: str | None) -> None:
@@ -859,6 +879,35 @@ def note_new_thread(state: dict, worker: str, task: dict, time: str, event: dict
             f"new thread of {trial['task']} fails before then, run task start-failed {trial['task']}.")
 
 
+def settle_items(state: dict) -> dict[str, dict]:
+    """Return the open items that give the settle of a worker to the user, by worker link (#633)."""
+    tasks = {task["name"]: task for task in state["tasks"]}
+    return {tasks[item["task"]]["worker"]: item for item in state["items"]
+            if item.get("settles") and item["task"] in tasks}
+
+
+def reuse_refusal(state: dict, worker: str, task: dict) -> str | None:
+    """Return why `task` cannot take `worker`, a thread that other tasks may record, or None (#602)."""
+    others = worker_tasks(state, worker, task)
+    busy = busy_task(state, worker, task)
+    if busy is not None:
+        return (f"{worker} is the worker of {busy['name']}, which is {busy['state']}; give {task['name']} to "
+                "an idle worker or a new thread")
+    if others and all(other["state"] == SETTLED for other in others):
+        return f"{worker} is the settled worker of {others[0]['name']}; never reuse a settled worker"
+    item = settle_items(state).get(worker)
+    if item is not None:
+        return (f"item {item['number']} gives the settle of {worker} to the user; never reuse a worker that "
+                "the user settles")
+    return None
+
+
+def thread_worktree(state: dict, worker: str, task: dict) -> str | None:
+    """Return the worktree of a reused thread: the last path of the task that started on it last (#602)."""
+    latest = max(worker_tasks(state, worker, task), key=lambda other: other["started"] or "", default=None)
+    return ((latest.get("worktrees") or [None])[-1]) if latest else None
+
+
 def change_task_start(state, args, time):
     task = find_task(state, args.name)
     require(task, (PLANNED,), "task start")
@@ -866,20 +915,11 @@ def change_task_start(state, args, time):
     if reason:
         raise Refused(reason)
     worker = worker_link(args.worker)
-    others = worker_tasks(state, worker, task)
-    busy = busy_task(state, worker, task)
-    if busy is not None:
-        raise Refused(f"{worker} is the worker of {busy['name']}, which is {busy['state']}; give "
-                      f"{task['name']} to an idle worker or a new thread")
-    if others and all(other["state"] == SETTLED for other in others):
-        raise Refused(f"{worker} is the settled worker of {others[0]['name']}; never reuse a settled "
-                      "worker")
-    if args.worktree:
-        worktree = worktree_path(args.worktree)
-    else:
-        # A reused idle worker keeps working in its worktree (#602).
-        latest = max(others, key=lambda other: other["started"] or "", default=None)
-        worktree = ((latest.get("worktrees") or [None])[-1]) if latest else None
+    reason = reuse_refusal(state, worker, task)
+    if reason:
+        raise Refused(reason)
+    # A reused idle worker keeps working in its worktree (#602).
+    worktree = worktree_path(args.worktree) if args.worktree else thread_worktree(state, worker, task)
     task["worker"] = worker
     task["branch"] = link(args.branch, "branch") if args.branch else None
     # A task that failed to start keeps the path of the failed thread.
@@ -917,14 +957,29 @@ def change_task_start_failed(state, args, time):
 def change_task_worker(state, args, time):
     task = find_task(state, args.name)
     require(task, ACTIVE, "task worker")
-    worktree = worktree_path(args.worktree) if args.worktree else None
-    old, task["worker"] = task["worker"], worker_link(args.worker)
+    worker = worker_link(args.worker)
+    reason = reuse_refusal(state, worker, task)
+    if reason:
+        raise Refused(reason)
+    # A thread that other tasks record keeps its worktree, as in task start, so that cleanup keeps it.
+    worktree = worktree_path(args.worktree) if args.worktree else thread_worktree(state, worker, task)
+    old, task["worker"] = task["worker"], worker
     # The replaced worker's path stays: the close-out reads its sessions too (#556).
     add_worktree(task, worktree)
     event = {"task": task["name"], "from": task["state"], "to": task["state"], "old_worker": old,
              "worker": task["worker"], "worktree": worktree}
+    # The thread is this task's now (#633): each accepted or cancelled task that records it has no thread
+    # of its own to settle, so it is settled here, also before its batch's close-out, and no due line names
+    # it. closeout_lines still reads its worker, worktrees, and PRs.
+    taken = [other for other in worker_tasks(state, worker, task)
+             if other["state"] in (VERIFIED, CLOSED_OUT, CANCELLED)]
+    for other in taken:
+        other["state"], other["changed"] = SETTLED, time
+    if taken:
+        event["settled"] = [other["name"] for other in taken]
+    taken_text = "".join(f" {other['name']} is settled: {task['name']} took its thread." for other in taken)
     trial = note_new_thread(state, task["worker"], task, time, event)
-    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}{trial}", event
+    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}{taken_text}{trial}", event
 
 
 def change_task_pr(state, args, time):
@@ -957,7 +1012,17 @@ def change_task_verified(state, args, time):
     if task["state"] == RUNNING and task["prs"]:
         raise Refused(f"{task['name']} has a PR that is not merged")
     require(task, (RUNNING, MERGED), "task verified")
+    name = task["name"]
+    if args.no_pr and task["prs"]:
+        raise Refused(f"{name} has a recorded PR; --no-pr is for a task that makes no PR")
+    if task["state"] == RUNNING and not args.no_pr:
+        # A lead verified four running tasks whose workers had merged PRs, so the state recorded none (#631).
+        raise Refused(f"{name} is running with no recorded PR. Record each PR with task pr {name} <n>, "
+                      f"and its merge with task merged {name} <n> <commit>, then verify it. For a task that "
+                      "makes no PR, such as a read-only check, add --no-pr.")
     event = move(task, VERIFIED, time, decisions=args.decisions)
+    if args.no_pr:
+        event["no_pr"] = True
     message = f"{task['name']} is verified."
     if task["kind"] == "closeout":
         closed = [other for other in batch_tasks(state, task["batch"])
@@ -1016,7 +1081,34 @@ def change_task_resume(state, args, time):
     return f"{task['name']} is planned again.", move(task, PLANNED, time)
 
 
+def change_wait_settles(state, args, time):
+    """Give the settle of a task's worker to the user, when T3 refused it (#633).
+
+    The task keeps its state, so that cleanup keeps its worktree while the thread is open. While the item
+    waits, no due line settles the worker; done records the task as settled.
+    """
+    if args.task or args.decisions is not None or args.link or args.recommend:
+        raise Refused("a settle item takes only a text: it points to the worker's thread")
+    task = find_task(state, args.settles)
+    reason = settle_refusal(state, task)
+    if reason:
+        raise Refused(reason)
+    name = task["name"]
+    if not task["worker"]:
+        raise Refused(f"{name} has no worker: run task settled {name}")
+    open_item = settle_items(state).get(task["worker"])
+    if open_item is not None:
+        raise Refused(f"item {open_item['number']} already gives the settle of {name} to the user")
+    body = text(args.text, "item text") if args.text is not None else "Settle the worker thread"
+    item = add_item(state, time, body=body, task=task, settles=True)
+    number = item["number"]
+    return (f"Item {number} added: {item_text(item)} Run done {number} when the user settled the thread; "
+            f"done records {name} as settled."), {"item": number, "to": "open", "task": name, "settles": True}
+
+
 def change_wait(state, args, time):
+    if args.settles is not None:
+        return change_wait_settles(state, args, time)
     task = find_task(state, args.task) if args.task else None
     if task is not None:
         if args.text is not None or args.recommend or args.link:
@@ -1038,18 +1130,21 @@ def change_wait(state, args, time):
 
 def add_item(state: dict, time: str, body: str | None = None, task: dict | None = None,
              decisions: int | None = None, item_link: str | None = None,
-             recommend: str | None = None) -> dict:
+             recommend: str | None = None, settles: bool = False) -> dict:
     """Add a waiting item. A worker item points to the worker's thread.
 
     An item for a task that is verified, closed out, cancelled, or settled holds decisions of the
-    worker's final report (#567): no due line offers done for it, because only the user ends it.
+    worker's final report (#567): no due line offers done for it, because only the user ends it. A settle
+    item gives the settle of the task's worker to the user (#633); only the user ends it too.
     """
     if body is None:
         body = plural(decisions, "decision") if decisions else "waits on you"
     item = {"number": state["next_item"], "text": body, "task": task["name"] if task else None,
             "link": item_link or (task["worker"] if task else None), "decisions": decisions,
             "recommend": recommend, "opened": time}
-    if task is not None and task["state"] in DONE:
+    if settles:
+        item["settles"] = True
+    elif task is not None and task["state"] in DONE:
         item["from_report"] = True
     state["items"].append(item)
     state["next_item"] += 1
@@ -1060,7 +1155,14 @@ def change_done(state, args, time):
     for item in state["items"]:
         if item["number"] == args.number:
             state["items"].remove(item)
-            return f"Item {args.number} is done.", {"item": args.number, "to": "done"}
+            message, event = f"Item {args.number} is done.", {"item": args.number, "to": "done"}
+            task = find_task(state, item["task"]) if item.get("settles") else None
+            if task is not None and task["state"] != SETTLED:
+                # The user settled the worker's thread (#633).
+                task["state"], task["changed"] = SETTLED, time
+                event["settled"] = task["name"]
+                message += f" {task['name']} is settled."
+            return message, event
     raise Refused(f"no waiting item {args.number}")
 
 
@@ -1234,11 +1336,13 @@ def due_lines(state: dict) -> list[str]:
                      "cancel <name>.")
     # While a failed thread start is open, the lead keeps its idle workers for the next tasks (#602).
     kept = set(idle_workers(state)) if open_failed_starts(state) else set()
+    # A settle that the lead gave to the user has no due line while its item waits (#633).
+    given_to_user = {item["task"] for item in state["items"] if item.get("settles")}
     for task in state["tasks"]:
         if task["state"] == SETTLED:
             continue
         if (task["state"] in (VERIFIED, CLOSED_OUT, CANCELLED) and settle_refusal(state, task) is None
-                and task["worker"] not in kept):
+                and task["worker"] not in kept and task["name"] not in given_to_user):
             runner = busy_task(state, task["worker"], task) if task["worker"] else None
             if runner is not None:
                 lines.append(f"Run task settled {task['name']}, and keep its worker's thread: "
@@ -1251,12 +1355,18 @@ def due_lines(state: dict) -> list[str]:
         if task["kind"] == "check" and task["state"] in ACCEPTED:
             target = find_task(state, task["of"])
             if target["state"] not in DONE:
-                lines.append(f"Check {task['name']} is verified: run task verified {target['name']} "
-                             "--decisions <N> when its verdict passes.")
+                line = (f"Check {task['name']} is verified: run task verified {target['name']} --decisions <N> "
+                        "when its verdict passes.")
+                if target["state"] == RUNNING and not target["prs"]:
+                    # task verified refuses a running task with no recorded PR (#631).
+                    line += (" Record its PRs first with task pr and task merged, or add --no-pr when it makes "
+                             "no PR.")
+                lines.append(line)
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
         task = tasks.get(item["task"])
-        if task is not None and task["state"] in DONE and not item.get("from_report"):
+        only_user = item.get("from_report") or item.get("settles")
+        if task is not None and task["state"] in DONE and not only_user:
             lines.append(f"Item {item['number']}: task {task['name']} is {task['state']}. Run done "
                          f"{item['number']}, or keep it.")
     # A lead state without an outcome has not started its work: a settled discovery task is not the end.
@@ -1489,6 +1599,8 @@ def parser() -> argparse.ArgumentParser:
     wait.add_argument("--decisions", type=int)
     wait.add_argument("--link")
     wait.add_argument("--recommend")
+    wait.add_argument("--settles", metavar="TASK",
+                      help="give the settle of the task's worker to the user, when T3 refused it")
     commands.add_parser("done", help="remove answered items").add_argument("number", type=int, nargs="+")
 
     task = commands.add_parser("task", help="change a task").add_subparsers(
@@ -1525,6 +1637,8 @@ def parser() -> argparse.ArgumentParser:
         task.add_parser(name).add_argument("name", nargs="+")
     task.choices["verified"].add_argument("--decisions", type=int,
                                           help="the number of decisions that the report numbers for the user")
+    task.choices["verified"].add_argument("--no-pr", action="store_true",
+                                          help="verify a running task that makes no PR, such as a check")
     task.add_parser("cancel").add_argument("name")
 
     decision = commands.add_parser("decision", help="add or drop a decision").add_subparsers(

@@ -15,7 +15,10 @@ discovery task, and names the `discover` step while no outcome is set.
 Issue #555 makes the view of `start` compact, gives all paused tasks one due
 line, and lets `done` and `task pause|resume|verified|settled` take several
 arguments. Issue #556 records each worker's worktree, and issue #560 starts a
-new batch for a work task once a PR of the highest batch merged.
+new batch for a work task once a PR of the highest batch merged. Issue #631
+makes `task verified` refuse a running task with no recorded PR unless
+`--no-pr` is given. Issue #633 settles the earlier task of a thread that
+`task worker` takes, and adds `wait --settles`.
 
 Issue #568: most checks call the script's `main()` in this process, with the
 check's environment and folder, because a new Python process for each of
@@ -454,7 +457,7 @@ class LeadStateTests(unittest.TestCase):
         idle, failed = WORKER.format("done"), WORKER.format("a1")
         self.ok("task", "add", "done", "Finished task")
         self.ok("task", "start", "done", idle, "--worktree", "/wt/t3-done")
-        self.ok("task", "verified", "done", "--decisions", "0")
+        self.ok("task", "verified", "done", "--decisions", "0", "--no-pr")
         for name in ("a", "b", "cause"):
             self.ok("task", "add", name, f"Task {name}")
         self.ok("task", "start", "a", failed, "--worktree", "/wt/t3-a1")
@@ -527,7 +530,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("task", "add", "d", "Task d")
         self.ok("task", "start", "d", WORKER.format("d"))
-        self.ok("task", "verified", "d", "--decisions", "0")
+        self.ok("task", "verified", "d", "--decisions", "0", "--no-pr")
         settle = f"- Settle the worker of d, then run task settled d: {WORKER.format('d')}"
         self.assertIn(settle, self.ok("start"))
         self.ok("task", "add", "a", "Task a", "--batch", "2")
@@ -551,7 +554,7 @@ class LeadStateTests(unittest.TestCase):
                      reason=f"{WORKER.format(1)} is the worker of a, which is merged")
         self.ok("task", "add", "e", "Task e", "--batch", "2")
         self.ok("task", "start", "e", WORKER.format(4))
-        self.ok("task", "verified", "e", "--decisions", "0")
+        self.ok("task", "verified", "e", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "e")
         self.refused("task", "start", "c", WORKER.format(4),
                      reason=f"{WORKER.format(4)} is the settled worker of e; never reuse a settled worker")
@@ -566,15 +569,116 @@ class LeadStateTests(unittest.TestCase):
         worker = WORKER.format("w")
         self.ok("task", "add", "a", "Task a")
         self.ok("task", "start", "a", worker, "--worktree", "/wt/w")
-        self.ok("task", "verified", "a", "--decisions", "0")
+        self.ok("task", "verified", "a", "--decisions", "0", "--no-pr")
         self.ok("task", "add", "b", "Task b", "--batch", "2")
         self.ok("task", "start", "b", worker)
         view = words(self.ok("start"))
         self.assertIn(f"- Run task settled a, and keep its worker's thread: b runs on it now: {worker}", view)
         self.assertNotIn("Settle the worker of a", view)
         self.ok("task", "settled", "a")
-        self.ok("task", "verified", "b", "--decisions", "0")
+        self.ok("task", "verified", "b", "--decisions", "0", "--no-pr")
         self.assertIn(f"- Settle the worker of b, then run task settled b: {worker}", words(self.ok("start")))
+
+    def test_task_verified_needs_a_recorded_pr_or_no_pr(self) -> None:
+        # A lead verified four running tasks whose workers had merged PRs, and the state recorded no PR (#631).
+        self.ok("init", "demo")
+        for name in ("a", "check"):
+            self.ok("task", "add", name, f"Task {name}")
+            self.ok("task", "start", name, WORKER.format(name))
+        reason = self.refused("task", "verified", "a", "--decisions", "0", reason="a is running with no recorded PR.")
+        self.assertIn("Record each PR with task pr a <n>, and its merge with task merged a <n> <commit>, then verify "
+                      "it. For a task that makes no PR, such as a read-only check, add --no-pr.", reason)
+        self.ok("task", "verified", "check", "--decisions", "0", "--no-pr")
+        self.assertEqual((self.task("check")["state"], self.events()[-1]["no_pr"]), ("verified", True))
+        self.ok("task", "pr", "a", "5")
+        self.ok("task", "merged", "a", "5", "abcdef1")
+        self.refused("task", "verified", "a", "--decisions", "0", "--no-pr",
+                     reason="a has a recorded PR; --no-pr is for a task that makes no PR")
+        self.ok("task", "verified", "a", "--decisions", "0")
+        self.assertEqual(self.task("a")["state"], "verified")
+        self.assertNotIn("no_pr", self.events()[-1])
+
+    def test_a_task_that_takes_a_thread_with_task_worker_settles_its_earlier_task(self) -> None:
+        # After task worker gave the thread of a verified task to a running one, start still said "Settle
+        # the worker of" the verified task, and the lead needed a decision to keep the thread (#633).
+        self.ok("init", "demo")
+        thread = WORKER.format("grill")
+        self.merged_task("pr-task", "5")
+        # grill's batch has a merged PR, so its own settle waits for the close-out of batch 1.
+        self.ok("task", "add", "grill", "Grill the move", "--batch", "1")
+        self.ok("task", "start", "grill", thread, "--worktree", "/wt/grill")
+        self.ok("task", "verified", "grill", "--decisions", "0", "--no-pr")
+        self.refused("task", "settled", "grill", reason="batch 1 has a merged PR")
+        self.ok("task", "add", "move", "Rehearse the move", "--batch", "2")
+        self.ok("task", "start", "move", WORKER.format("move"), "--worktree", "/wt/move")
+        output = words(self.ok("task", "worker", "move", thread))
+        self.assertIn("grill is settled: move took its thread.", output)
+        self.assertEqual(self.task("grill")["state"], "settled")
+        self.assertEqual(self.events()[-1]["settled"], ["grill"])
+        # Without --worktree, the task keeps the thread's worktree, as a reused worker of task start does.
+        self.assertEqual(self.task("move")["worktrees"], ["/wt/move", "/wt/grill"])
+        view = words(self.ok("start"))
+        self.assertNotIn("task settled grill", view)
+        self.assertNotIn("worker of grill", view)
+        # The close-out of batch 1 still names the worker and worktree of the settled task.
+        self.assertIn(f"Workers: {WORKER.format('pr-task')} {thread}", words(self.ok("closeout")))
+        self.ok("task", "verified", "move", "--decisions", "0", "--no-pr")
+        self.assertIn(f"- Settle the worker of move, then run task settled move: {thread}", words(self.ok("start")))
+        # task worker refuses a busy or a settled thread, as task start does.
+        self.ok("task", "add", "c", "Task c", "--batch", "2")
+        self.ok("task", "start", "c", WORKER.format("c"))
+        self.ok("task", "add", "d", "Task d", "--batch", "2")
+        self.ok("task", "start", "d", WORKER.format("d"))
+        self.refused("task", "worker", "d", WORKER.format("c"), reason=f"{WORKER.format('c')} is the worker of c, "
+                                                                       "which is running")
+        self.ok("task", "cancel", "c")
+        self.ok("task", "settled", "c")
+        self.refused("task", "worker", "d", WORKER.format("c"),
+                     reason=f"{WORKER.format('c')} is the settled worker of c; never reuse a settled worker")
+
+    def test_a_settle_given_to_the_user_drops_its_due_line(self) -> None:
+        # T3 refused two settles, and their due lines stayed in each start after the lead gave them to the
+        # user (#633).
+        self.ok("init", "demo")
+        worker = WORKER.format("d")
+        self.ok("task", "add", "d", "Task d")
+        self.ok("task", "start", "d", worker)
+        self.ok("task", "verified", "d", "--decisions", "0", "--no-pr")
+        settle = f"Settle the worker of d, then run task settled d: {worker}"
+        self.assertIn(settle, words(self.ok("start")))
+        self.ok("task", "add", "e", "Task e", "--batch", "2")
+        self.ok("task", "start", "e", WORKER.format("e"))
+        for args, reason in (
+                (("--settles", "e"), "e is running; settle needs closed-out, cancelled, or verified"),
+                (("--settles", "missing"), "no task named missing"),
+                (("--settles", "d", "--task", "d"), "a settle item takes only a text"),
+                (("--settles", "d", "--decisions", "1"), "a settle item takes only a text"),
+                (("--settles", "d", "--link", "https://example.com"), "a settle item takes only a text"),
+                (("--settles", "d", "--recommend", "Archive it."), "a settle item takes only a text")):
+            with self.subTest(args=args):
+                self.refused("wait", *args, reason=reason)
+        output = words(self.ok("wait", "T3 refused the settle.", "--settles", "d"))
+        self.assertEqual(output, f"Item 1 added: [d] T3 refused the settle. {worker} Run done 1 when the user "
+                                 "settled the thread; done records d as settled.")
+        self.assertEqual(self.task("d")["state"], "verified")
+        view = words(self.ok("start"))
+        self.assertNotIn(settle, view)
+        self.assertNotIn("Run done 1", view)
+        self.assertIn(f"- 1: [d] T3 refused the settle. {worker}", view)
+        self.refused("wait", "--settles", "d", reason="item 1 already gives the settle of d to the user")
+        # The user settles that thread, so no task reuses it, and a failed start lists it as no idle worker.
+        reuse = f"item 1 gives the settle of {worker} to the user; never reuse a worker that the user settles"
+        self.ok("task", "add", "f", "Task f", "--batch", "3")
+        self.refused("task", "start", "f", worker, reason=reuse)
+        self.refused("task", "worker", "e", worker, reason=reuse)
+        self.ok("task", "start-failed", "f")
+        self.assertIn("Idle workers: none: tell the user", words(self.ok("start")))
+        self.assertIn("Item 1 is done. d is settled.", self.ok("done", "1"))
+        self.assertEqual((self.task("d")["state"], self.events()[-1]["settled"]), ("settled", "d"))
+        self.assertNotIn(settle, words(self.ok("start")))
+        # Without a text, the item names the worker thread.
+        self.ok("task", "verified", "e", "--decisions", "0", "--no-pr")
+        self.assertIn("Item 2 added: [e] Settle the worker thread. ", self.ok("wait", "--settles", "e"))
 
     def test_a_command_from_a_subfolder_finds_the_lead_state(self) -> None:
         self.ok("init", "demo")
@@ -600,7 +704,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "verified", "fix-503", "--decisions", "0")
         self.ok("task", "add", "closeout-1", "Close out batch 1", "--kind", "closeout")
         self.ok("task", "start", "closeout-1", WORKER.format(2))
-        output = self.ok("task", "verified", "closeout-1", "--decisions", "0")
+        output = self.ok("task", "verified", "closeout-1", "--decisions", "0", "--no-pr")
         self.assertIn("Batch 1 is closed out: fix-503.", output)
         self.assertEqual(self.task("fix-503")["state"], "closed-out")
         self.ok("task", "settled", "fix-503")
@@ -646,7 +750,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
         self.ok("task", "start", "close-1", WORKER.format(9))
         self.refused("task", "settled", "a", reason="close-out task is verified")
-        self.ok("task", "verified", "close-1", "--decisions", "0")
+        self.ok("task", "verified", "close-1", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a")
 
     def test_a_batch_with_no_pr_settles_when_every_task_is_verified(self) -> None:
@@ -654,10 +758,10 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "research", "Research the cache")
         self.ok("task", "add", "audit", "Audit the hooks")
         self.ok("task", "start", "research", WORKER.format(1))
-        self.ok("task", "verified", "research", "--decisions", "0")
+        self.ok("task", "verified", "research", "--decisions", "0", "--no-pr")
         self.refused("task", "settled", "research", reason="batch 1 still has open tasks")
         self.ok("task", "start", "audit", WORKER.format(2))
-        self.ok("task", "verified", "audit", "--decisions", "0")
+        self.ok("task", "verified", "audit", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "research")
 
     def test_after_blocks_the_start_until_the_task_is_verified(self) -> None:
@@ -668,7 +772,7 @@ class LeadStateTests(unittest.TestCase):
                                                                       "verified")
         self.ok("task", "start", "research", WORKER.format(1))
         self.refused("task", "start", "impl", WORKER.format(2), reason="waits for research")
-        self.ok("task", "verified", "research", "--decisions", "0")
+        self.ok("task", "verified", "research", "--decisions", "0", "--no-pr")
         self.ok("task", "start", "impl", WORKER.format(2))
 
     def test_a_task_is_ready_when_the_task_that_it_waits_for_is_verified(self) -> None:
@@ -717,11 +821,11 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "a", "Task a")
         self.ok("task", "start", "a", WORKER.format(1))
         self.refused("task", "start", "close-1", WORKER.format(9), reason="batch 1 still has tasks")
-        self.ok("task", "verified", "a", "--decisions", "0")
+        self.ok("task", "verified", "a", "--decisions", "0", "--no-pr")
         self.refused("task", "start", "close-1", WORKER.format(9), reason="batch 1 has no merged PR")
         self.merged_task("b", "7")
         self.ok("task", "start", "close-1", WORKER.format(9))
-        self.ok("task", "verified", "close-1", "--decisions", "0")
+        self.ok("task", "verified", "close-1", "--decisions", "0", "--no-pr")
         self.refused("task", "add", "late", "Late task", "--batch", "1",
                      reason="the close-out of batch 1 has started; use --batch 2")
         self.refused("task", "add", "far", "Far task", "--batch", "3", reason="the batch must be from 1 to 2")
@@ -757,7 +861,7 @@ class LeadStateTests(unittest.TestCase):
         self.refused("task", "add", "late", "Late task", "--batch", "1",
                      reason="the close-out of batch 1 has started; use --batch 2")
         self.assertIn("Task late added to batch 2.", self.ok("task", "add", "late", "Late task"))
-        self.ok("task", "verified", "co", "--decisions", "0")
+        self.ok("task", "verified", "co", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "w")
         self.ok("task", "settled", "co")
 
@@ -769,7 +873,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "settled", "co")
         self.ok("task", "add", "co-2", "Close out batch 1 again", "--kind", "closeout", "--batch", "1")
         self.ok("task", "start", "co-2", WORKER.format(9))
-        self.ok("task", "verified", "co-2", "--decisions", "0")
+        self.ok("task", "verified", "co-2", "--decisions", "0", "--no-pr")
         self.assertEqual(self.task("w")["state"], "closed-out")
 
     def test_names_and_text_are_checked(self) -> None:
@@ -847,9 +951,10 @@ class LeadStateTests(unittest.TestCase):
                      "0 or more")
         self.refused("task", "verified", "survey", "audit", "--decisions", "2",
                      reason="a count above 0 takes one task name")
-        self.assertEqual(self.ok("task", "verified", "survey", "--decisions", "2").strip(),
+        self.assertEqual(self.ok("task", "verified", "survey", "--decisions", "2", "--no-pr").strip(),
                          "survey is verified. Item 1 added: [survey] 2 decisions. " + WORKER.format("survey"))
-        self.assertEqual(self.ok("task", "verified", "audit", "--decisions", "0").strip(), "audit is verified.")
+        self.assertEqual(self.ok("task", "verified", "audit", "--decisions", "0", "--no-pr").strip(),
+                         "audit is verified.")
         self.assertEqual([(event["task"], event["decisions"]) for event in self.events()
                           if event["command"] == "task verified"], [("survey", 2), ("audit", 0)])
         self.ok("task", "settled", "survey", "audit")
@@ -869,8 +974,13 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "add", "chk", "Check a", "--kind", "check", "--of", "a")
         self.ok("task", "start", "chk", WORKER.format("chk"))
-        self.ok("task", "verified", "chk", "--decisions", "0")
-        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes.",
+        self.ok("task", "verified", "chk", "--decisions", "0", "--no-pr")
+        # task verified refuses a running task with no recorded PR, so the line names both ways (#631).
+        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes. "
+                      "Record its PRs first with task pr and task merged, or add --no-pr when it makes no PR.",
+                      words(self.ok("show")))
+        self.ok("task", "pr", "a", "5")
+        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes.\n",
                       self.ok("show"))
 
     def test_wait_records_the_decisions_of_a_finished_worker(self) -> None:
@@ -880,7 +990,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "b", "Task b")
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
-        self.ok("task", "verified", "a", "b", "--decisions", "0")
+        self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a")
         self.assertIn("Item 1 added: [a] 2 decisions. " + WORKER.format("a"),
                       self.ok("wait", "--task", "a", "--decisions", "2"))
@@ -898,7 +1008,7 @@ class LeadStateTests(unittest.TestCase):
         self.merged_task("b", "6")
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
         self.ok("task", "start", "close-1", WORKER.format(9))
-        self.ok("task", "verified", "close-1", "--decisions", "0")
+        self.ok("task", "verified", "close-1", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a")
         self.ok("task", "add", "c", "Task c", "--batch", "2")
         self.ok("task", "start", "c", WORKER.format(3))
@@ -930,7 +1040,7 @@ class LeadStateTests(unittest.TestCase):
         self.assertIn(f"History: {self.folder() / 'events.jsonl'}", closeout)
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
         self.ok("task", "start", "close-1", WORKER.format(9))
-        self.ok("task", "verified", "close-1", "--decisions", "0")
+        self.ok("task", "verified", "close-1", "--decisions", "0", "--no-pr")
         view = self.ok("show")
         self.assertIn("- Settle the worker of a, then run task settled a: " + WORKER.format("a"), view)
         self.assertIn("- Settle the worker of close-1, then run task settled close-1:", view)
@@ -951,7 +1061,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "discover", "Discover open work")
         self.ok("task", "start", "discover", WORKER.format(1))
         self.assertIn(due, self.ok("show"))
-        self.ok("task", "verified", "discover", "--decisions", "0")
+        self.ok("task", "verified", "discover", "--decisions", "0", "--no-pr")
         view = self.ok("start")
         self.assertIn(done, view)
         self.assertNotIn(due, view)
@@ -1061,11 +1171,11 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "resume", "a", "b")
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
-        self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0").strip(),
+        self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
                          "a is verified. b is verified. c is "
                          "ready to start: run t3_project_lead.py dispatch for it now.")
         self.ok("task", "start", "c", WORKER.format("c"))
-        self.ok("task", "verified", "c", "--decisions", "0")
+        self.ok("task", "verified", "c", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a", "b")
         self.assertEqual([self.task(name)["state"] for name in ("a", "b", "c")], ["settled", "settled", "verified"])
         changes = [(event["command"], event.get("task", event.get("item"))) for event in self.events()
@@ -1084,7 +1194,7 @@ class LeadStateTests(unittest.TestCase):
         self.refused("done", "1", "9", reason="no waiting item 9")
         self.refused("task", "pause", "a", "missing", reason="no task named missing")
         self.refused("task", "pause", "a", "b", reason="b is running; task pause needs planned")
-        self.refused("task", "verified", "b", "a", "--decisions", "0", reason="a is planned")
+        self.refused("task", "verified", "b", "a", "--decisions", "0", "--no-pr", reason="a is planned")
         self.refused("task", "settled", "b", "a", reason="b is running")
         self.assertEqual(self.task("a")["state"], "planned")
 
@@ -1095,7 +1205,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "c", "Task c", "--after", "a", "--after", "b")
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
-        self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0").strip(),
+        self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
                          "a is verified. b is verified. c is "
                          "ready to start: run t3_project_lead.py dispatch for it now.")
 

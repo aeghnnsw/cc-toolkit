@@ -1,6 +1,6 @@
 ---
 name: matt-automode
-version: 1.29.0
+version: 1.30.0
 description: Run the Matt planning-to-merge workflow with code review and a navigation retrospective when the user delegates a task fully to the agent without human checkpoints. Requires Matt Pocock's skills plugin.
 ---
 
@@ -178,6 +178,10 @@ package validator, and let CI run the suites on the new head. Rerun a suite
 locally only when the resolution changes another file. If a required human
 review cannot be supplied, continue independent tickets, then report the
 blocker and keep the work. Respect branch protection.
+
+When a task needs several approvals, ask for all of them in one numbered
+message as soon as their facts are known. While you wait, run the steps that
+need no approval.
 
 ## Navigation retrospective
 
