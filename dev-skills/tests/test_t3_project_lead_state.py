@@ -1265,7 +1265,11 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "settled", "a")
         self.ok("done", "1")
         folder = self.folder()
-        self.assertIn("Settle this thread.", self.ok("finish"))
+        # Only the user settles the lead thread (#645).
+        output = self.ok("finish").strip()
+        self.assertTrue(output.startswith("Lead state deleted: "), output)
+        self.assertTrue(output.endswith(". Leave this thread open: only the user settles the lead thread."),
+                        output)
         self.assertFalse(folder.exists())
 
     def test_each_change_appends_one_event(self) -> None:

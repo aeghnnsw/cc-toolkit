@@ -340,6 +340,8 @@ worktree: T3 Code removes a thread's worktree when the thread is deleted or
 its pull request merges, if its settings say so. A project lead settles the
 workers of a batch with a merged pull request only after the batch's close-out
 worker reports, because the close-out worker reads the workers' sessions.
+Only the user settles a project lead's own thread; the project lead never
+does, also after it finishes.
 _Avoid_: Archive
 
 **Lead state**:

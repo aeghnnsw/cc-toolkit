@@ -61,6 +61,18 @@ THREAD_READ = {"claude": ("mcp__t3-code__t3_thread_read",),
 # The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
 # keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
 # mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
+# Only the user settles a lead thread (#645). t3_thread_organize settles the calling thread when the call
+# names no threadId.
+ORGANIZE = {"claude": ("mcp__t3-code__t3_thread_organize",),
+            "codex": ("mcp__t3_code__t3_thread_organize", "mcp__t3_code_direct__t3_thread_organize",
+                      "mcp__0123456789ab__t3_code__t3_thread_organize")}
+SETTLE_LINES = ["BLOCKED: t3-project-lead: Only the user settles a lead thread.",
+                "Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, name "
+                "its threadId. When this block stays, give that settle to the user with t3_project_lead.py "
+                "wait --settles <task>."]
+LEAD_THREAD = "thread:lead-1"
+OWNER_THREAD = "thread:owner-1"
+WORKER_THREAD = "thread:worker-1"
 READ_ISSUE = {"claude": ("mcp__t3-code__read_issue",),
               "codex": ("mcp__t3_code__read_issue", "mcp__t3_code_direct__read_issue",
                         "mcp__0123456789ab__t3_code__read_issue")}
@@ -75,9 +87,10 @@ def text_calls(names, inputs):
             for tool_input in inputs]
 GIT = ("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
        "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main")
-# Git variables of a calling process would point the test repository elsewhere.
+# Git variables of a calling process would point the test repository elsewhere, and the T3 thread of a
+# calling process would be the lead thread of each settle check (#645).
 CLEAN_ENV = {key: value for key, value in os.environ.items()
-             if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")}
+             if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "T3CODE_THREAD_ID")}
 
 
 def tool_payload(host, name, tool_input, cwd, session=SESSION):
@@ -232,6 +245,13 @@ class SessionWithoutRecordTests(HookCase):
     def test_thread_reads_pass(self):
         self.check([(host, tool_payload(host, name, {"threadId": "worker-1"}, self.main))
                     for host in ("claude", "codex") for name in THREAD_READ[host]], allowed=True)
+        self.assertFalse(self.state.exists())
+
+    def test_settles_pass(self):
+        self.check([(host, tool_payload(host, name, tool_input, self.main))
+                    for host in ("claude", "codex") for name in ORGANIZE[host]
+                    for tool_input in ({"action": "settle"}, {"action": "settle", "threadId": WORKER_THREAD})],
+                   allowed=True, env={"T3CODE_THREAD_ID": LEAD_THREAD})
         self.assertFalse(self.state.exists())
 
     def test_antigravity_reads_the_conversation_id_not_a_session_id(self):
@@ -714,6 +734,87 @@ class GateTests(HookCase):
                        allowed=expected)
 
 
+class SettleTests(HookCase):
+    """A recorded session settles no lead thread: only the user settles it (#645)."""
+
+    def setUp(self):
+        super().setUp()
+        self.record()
+        # A folder outside every Git work tree, with a lead state that another thread owns, as after a
+        # takeover.
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        self.tree = Path(temp_dir.name).resolve()
+        self.lead_state = self.tree / ".scratch" / "20261126-lead-y" / "state.json"
+        self.lead_state.parent.mkdir(parents=True)
+        self.lead_state.write_text(json.dumps({"schema": 1, "slug": "y", "owner": OWNER_THREAD}),
+                                   encoding="utf-8")
+
+    def check_settles(self, inputs, *, allowed, cwd=None, thread=LEAD_THREAD):
+        """Check each tool input with each Claude Code and Codex name of t3_thread_organize, in a session
+        of the T3 thread `thread`; a blocked call prints the settle lines."""
+        env = {"T3CODE_THREAD_ID": thread} if thread is not None else {}
+        jobs = [(host, tool_payload(host, name, tool_input, self.main if cwd is None else cwd))
+                for host, names in ORGANIZE.items() for name in names for tool_input in inputs]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda job: self.run_hook(*job, env), jobs))
+        for (host, payload), result in zip(jobs, results):
+            with self.subTest(host=host, payload=payload, thread=thread):
+                if allowed:
+                    self.assert_passes(result)
+                else:
+                    self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+                    self.assertEqual(result.stderr.splitlines(), SETTLE_LINES)
+
+    def test_a_settle_with_no_thread_is_blocked(self):
+        # A call with no threadId settles the calling thread, the lead thread.
+        inputs = ({"action": "settle"}, {"action": "settle", "environmentId": "env-1"},
+                  *({"action": "settle", "threadId": value} for value in (None, "", "  ", 7, [WORKER_THREAD])))
+        for thread in (LEAD_THREAD, None):
+            self.check_settles(inputs, allowed=False, thread=thread)
+        self.check_settles(inputs, allowed=False, cwd=self.tree)
+
+    def test_a_settle_of_the_lead_thread_is_blocked(self):
+        # The calling thread of a recorded session is a lead thread.
+        self.check_settles(({"action": "settle", "threadId": LEAD_THREAD},
+                            {"action": "settle", "threadId": f" {LEAD_THREAD} "},
+                            {"action": " Settle", "threadId": LEAD_THREAD}), allowed=False)
+        # The owner of the lead state is the lead thread, also for a session of another thread.
+        for thread in (LEAD_THREAD, None):
+            self.check_settles(({"action": "settle", "threadId": OWNER_THREAD},), allowed=False, cwd=self.tree,
+                               thread=thread)
+
+    def test_a_settle_of_a_worker_thread_passes(self):
+        inputs = ({"action": "settle", "threadId": WORKER_THREAD},
+                  {"action": "settle", "threadId": WORKER_THREAD, "environmentId": "env-1"})
+        self.check_settles(inputs, allowed=True)
+        self.check_settles(inputs, allowed=True, cwd=self.tree)
+        self.check_settles(inputs, allowed=True, cwd=self.tree, thread=None)
+
+    def test_a_settle_that_the_hook_cannot_check_is_blocked(self):
+        # The hook fails closed: it blocks a settle when it knows no lead thread, when the call has no
+        # absolute cwd, and when it cannot read the lead state.
+        worker = ({"action": "settle", "threadId": WORKER_THREAD},)
+        self.check_settles(worker, allowed=False, thread=None)
+        self.check_settles(worker, allowed=False, cwd="relative/cwd")
+        self.lead_state.write_text("{not json", encoding="utf-8")
+        self.check_settles(worker, allowed=False, cwd=self.tree)
+        second = self.tree / ".scratch" / "20261126-lead-z" / "state.json"
+        second.parent.mkdir()
+        second.write_text(json.dumps({"schema": 1, "slug": "z", "owner": OWNER_THREAD}), encoding="utf-8")
+        self.lead_state.write_text(json.dumps({"schema": 1, "slug": "y", "owner": OWNER_THREAD}),
+                                   encoding="utf-8")
+        self.check_settles(worker, allowed=False, cwd=self.tree)
+        self.check_settles(("not a dict", None, {"threadId": WORKER_THREAD},
+                            *({"action": value, "threadId": WORKER_THREAD} for value in (None, ["settle"], 1))),
+                           allowed=False)
+
+    def test_other_actions_pass(self):
+        self.check_settles(({"action": "pin"}, {"action": "unsettle"}, {"action": "mark_unread"},
+                            {"action": "snooze", "snoozedUntil": "2026-11-27T09:00:00Z"},
+                            {"action": "archive", "threadId": WORKER_THREAD}), allowed=True)
+
+
 BINDING = '{"project_id": "abcdefghijklmnopqrst", "owner_id": "11111111-1111-4111-8111-111111111111"}'
 REQUEST = json.dumps({"request_id": "22222222-2222-4222-8222-222222222222", "operations": [{
     "op": "create", "id": "33333333-3333-4333-8333-333333333333",
@@ -899,7 +1000,7 @@ def matcher_names(entry):
 class HookFileTests(HookCase):
     CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
                     "Agent", "Task", "AskUserQuestion", *READ_ISSUE["claude"], *PR_READ["claude"],
-                    *PENDING["claude"], *THREAD_READ["claude"]}
+                    *PENDING["claude"], *THREAD_READ["claude"], *ORGANIZE["claude"]}
     CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
@@ -945,14 +1046,15 @@ class HookFileTests(HookCase):
         # Codex reads a matcher with other characters than letters, digits, "_", and "|" as a regular
         # expression that can match part of a name. Its environment form needs one (#545).
         for name in (*READ_ISSUE["codex"], *PR_READ["codex"], *PENDING["codex"], *QUESTION_TOOLS["codex"],
-                     *THREAD_READ["codex"]):
+                     *THREAD_READ["codex"], *ORGANIZE["codex"]):
             with self.subTest(name=name):
                 self.assertRegex(name, entry["matcher"])
         for name in ("mcp__t3_code__list_issues", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
                      "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue",
                      "mcp__t3_code__t3_pending_requests", "mcp__other__t3_pending_request", "request_user_input_x",
                      "x_request_user_input", "mcp__t3_code__t3_thread_read_x", "mcp__other__t3_thread_read",
-                     "mcp__t3_code__t3_thread_list"):
+                     "mcp__t3_code__t3_thread_list", "mcp__t3_code__t3_thread_organize_x",
+                     "mcp__other__t3_thread_organize"):
             with self.subTest(name=name):
                 self.assertNotRegex(name, entry["matcher"])
         self.assertEqual(command, '[ -f "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '

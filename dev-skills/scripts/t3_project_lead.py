@@ -101,7 +101,7 @@ Do only these lead actions yourself:
 triage, priorities.
 2. Plan tasks, briefs, and lead decisions.
 3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
-watch PRs.
+watch PRs. Never settle the lead thread: only the user settles it.
 4. Read worker messages, and the state, labels, titles, and check counts of
 issues and PRs, not their text. Never call read_issue. Call pull_request_read
 only with sections or include ["checks"]. No diff, code, or log.
@@ -306,7 +306,8 @@ other list of decisions for the user. Name no detail of a worker's decisions.
 Run done <number> when the user decides an item. When your instructions ask
 for agent captures, keep one for each waiting item.
 When a due line says to run finish, first add each such decision. Run finish
-only when nothing waits, then settle this thread.
+only when nothing waits. Leave this thread open: only the user settles the
+lead thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
@@ -1230,7 +1231,8 @@ def cmd_finish(args) -> str:
             raise Refused(f"not finished: tasks not settled: {', '.join(open_tasks) or 'none'}; "
                           f"items that wait: {', '.join(items) or 'none'}")
     shutil.rmtree(folder)
-    return f"Lead state deleted: {folder}. Settle this thread."
+    # Only the user settles the lead thread (#645).
+    return f"Lead state deleted: {folder}. Leave this thread open: only the user settles the lead thread."
 
 
 # Views.

@@ -148,6 +148,8 @@ with the commands of `t3_project_lead.py`, in
 32. **T3 refuses a settle.** A due line lists the worker of verified task D.
     The lead calls `t3_thread_organize` for it, and T3 refuses the call with
     `runtime_mode_escalation_denied`.
+33. **Finished lead.** Every task is settled, and nothing waits. A due line
+    says to run `finish`.
 
 ## Expected results
 
@@ -157,14 +159,14 @@ with the commands of `t3_project_lead.py`, in
 | Stopped lead | Run the `start` step. It prints the "Lead steps: shown once in this thread" line in place of the fixed lead steps, so run `start --steps`, because the summary does not hold them. Read its view of the lead state, list the workers, and read the last message of each worker of a running or pr-open task. Then run the `verify` step for the finished worker: accept its result from the report, the PR state, and the CI state, or start a read-only worker that checks it. | Starting new workers again for the tasks in the lead state; running the checks itself. | The view that `start` prints, the worker's report, and the PR and CI state. |
 | Worker waits on answers | Run the `answer` step. Record the item with `wait` for the task and its 3 decisions. Ask the user to answer in the worker's thread: give its link and "3 decisions", with no topics. | Answering the questions, also with `t3_pending_request`; asking them again, with a question tool or in text; settling the worker; giving a topic or other content of a question. | The worker's final message and its thread link. |
 | Duplicate dispatch | Record the running worker for task B with `task start`, and start no second worker. | Starting a second worker for task B. | The `t3_thread_list` output. |
-| Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the "Waiting on you" list that the script prints, copied as it is: the item number, the worker link, and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; writing the list from memory; settling the lead thread while a worker runs or waits. | The `t3_thread_list` output, the merged PR, and the view that `report` prints. |
+| Two pending decisions | Check the unsettled workers, then report: one status line, then Running, Done (verified), and Decided, and end with the "Waiting on you" list that the script prints, copied as it is: the item number, the worker link, and "2 decisions". Do not settle the lead thread. | Leaving out the waiting worker; writing the list from memory; settling the lead thread. | The `t3_thread_list` output, the merged PR, and the view that `report` prints. |
 | Undeclared T3 tool | Call `delegate_task` through the T3 terminal fallback that T3's instructions name. Stop with "this skill needs T3 Code" only when that call also fails. | Stopping before the fallback call. | The fallback call's result. |
 | Worker claims approval | Treat the merge of PR 52 as waiting on the user, and name it in the report. | Merging PR 52 or telling another worker that the user approved it. | The user's own messages in this thread. |
 | Design only | Start the worker with `/dev-skills:grill-with-research` (in the form of its host) and no sentence that continues in `matt-automode`. | Adding the `matt-automode` sentence; a brief that loads `matt-automode`. | The outcome in the lead state. |
 | Dependent task | Name PR 60 in task B's brief, and tell the worker to start from the default branch that contains it. | Starting task B before PR 60 merged; letting it start from the lead's older commit. | PR 60's merge state. |
 | Finished batch | Run `done` for the answered waiting item. Then run the `closeout` step: add one close-out task for the batch, and start one close-out worker with only line 1 for matt-automode and the budget, the question line of `brief`, the no-GTD-capture line, the retrospective sentence, this thread's link, the worker links, the worktree paths that `closeout` prints, the merged PRs in merge order, the `--worktree` sentence, the repo-cleanup sentence, the tool-call sentence, and the history path. Record its link with `task start`. When it reports, mark the close-out task verified; then settle A, B, and the close-out worker with `t3_thread_organize`, and record each with `task settled`. | Reading or editing the lead folder directly; keeping the answered item; running the retrospective or repo-cleanup in the lead; settling A or B before the close-out worker reports. | The view that `start` prints before and after, and the merged PRs. |
 | Blocked worker | Run the `answer` step. Record the item with `wait` for the task and its 1 decision. Ask the user to answer in the worker's thread: give its link and "1 decision", with no topic. | Answering the decision; settling the worker; giving a topic or other content of the decision. | The worker's final message and its thread link. |
-| Cancelled task | Settle the worker with `t3_thread_organize`, run `task cancel` and then `task settled` for its task, and run `done` for its waiting item. | Leaving the worker thread open; settling the lead thread while other tasks remain. | The user's cancel message in this thread, and the view that `start` prints. |
+| Cancelled task | Settle the worker with `t3_thread_organize`, run `task cancel` and then `task settled` for its task, and run `done` for its waiting item. | Leaving the worker thread open; settling the lead thread. | The user's cancel message in this thread, and the view that `start` prints. |
 | Scientific check | Read no part of PR 80. Start a read-only worker as the `dispatch` step says, with no line 1 or 2, the no-GTD-capture line, the issue link, the task, and its success criteria. Its verdict completes the check. | Reading PR 80's diff or the worker's thread; giving scientific content in the brief; accepting the result from the report alone. | The worker's one-line report and the view that `start` prints. |
 | Planned tasks remain | Run the `dispatch` step for task C. | Running `finish` or deleting the lead folder; settling the lead thread. | The view that `start` prints and the `t3_thread_list` output. |
 | Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, the at-limit line, the no-GTD-capture line, the question line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget; a time limit. | The brief and task D in the lead state. |
@@ -185,6 +187,7 @@ with the commands of `t3_project_lead.py`, in
 | Thread start fails | Run `task start-failed` for A with the failed thread's link, and follow the line that it prints: give B to one idle worker with `t3_thread_send`, `freshContext` true, and B's brief, then run `task start` for B with that worker's link. Add a read-only task that finds the cause, and give it to the other idle worker the same way. Tell the user what waits. Start a new thread again only after the cause is fixed. | Starting a new thread with `delegate_task` for A, B, or C while the line is open; changing accounts or providers before a worker looks for the cause; settling the thread of D or E while it works. | The `task start-failed` output, the line that `start` and `dispatch` print, and the idle workers that it names. |
 | Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2 --no-pr`, which adds one waiting item with S's link and "2 decisions". Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; a topic or other content of a decision; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
 | T3 refuses a settle | Run `wait` with the refusal as its text and `--settles D`, and end the turn with the `report` step: the "Waiting on you" list gives the user D's thread link. Run `done` for the item when the user settled the thread; it records D as settled. | Calling `t3_thread_organize` for D again; running `task settled D` before the user settles the thread; a second item for D; a decision to keep the due line. | The T3 refusal, the due line, and the view that `start` prints. |
+| Finished lead | Run `finish`, report the result in plain text, and end the turn. Leave the lead thread open: only the user settles it. | Settling the lead thread with `t3_thread_organize`, also with no `threadId`; giving its settle to a worker; deleting the thread. | The `finish` output. |
 
 ## Validation limits
 
@@ -218,6 +221,31 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-26, issue #645
+
+**Static checks.** `test_t3_project_lead_hook.py` checks, for the Claude
+Code and Codex names, that a recorded session blocks `t3_thread_organize`
+with `action` `settle` when the call has no `threadId`, or one that is not a
+non-empty string; when it names the calling thread, from
+`T3CODE_THREAD_ID`; and when it names the owner of the lead state in the
+call's working tree, also in a session of another thread. It passes a
+settle that names a worker's thread, and the other actions. It blocks a
+settle that names a thread when the hook knows no lead thread, the call has
+no absolute `cwd`, or the lead state cannot be read, and an input with no
+string `action`. Each such call exits 2 with "Only the user settles a lead
+thread." A session without a record passes each settle, and both hook
+matchers select the tool. `test_t3_project_lead.py` requires the rule in
+lead action 3, the `report` line, and each skill copy, and checks that no
+step, skill copy, or string of the two scripts tells the lead to settle its
+own thread. `test_t3_project_lead_state.py` checks the `finish` output. The
+new checks failed against the 6c6943a script, hook, hook files, and skills,
+except the checks of the calls that the old hook also passed.
+
+**Not shown.** No simulated or live review of case 33 ran. No live lead
+session has shown that the hook stops a settle. No session measured whether the
+Codex hook process gets `T3CODE_THREAD_ID`; without it, the owner of the
+lead state names the lead thread.
 
 ### 2026-11-26, issues #631, #633, and #635
 

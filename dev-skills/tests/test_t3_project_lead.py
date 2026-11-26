@@ -32,6 +32,7 @@ tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
+import ast
 import functools
 import json
 import os
@@ -58,7 +59,8 @@ NO_STATE = tempfile.TemporaryDirectory()
 # #623 took `dispatch` to 249 words with the pin record line. #632 and #638 took `start` from 242 to 247
 # words with the page size of t3_thread_read and the include of pull_request_read. #635 took `brief` to
 # 278 words with the approvals line, #631 and #633 took `verify` to 266 with the --no-pr and settle
-# lines, and #634 took `start` to 260 with the brief of lead action 7.
+# lines, and #634 took `start` to 260 with the brief of lead action 7. #645 added 10 words to `start`
+# with the lead-thread rule of lead action 3.
 STEP_WORD_LIMIT = 280
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -78,7 +80,9 @@ BODY_WORD_LIMIT = 300
 LEAD_ACTIONS = (
     "1. Talk with the user in plain text, never with a question tool: decisions, triage, priorities.",
     "2. Plan tasks, briefs, and lead decisions.",
-    "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
+    # Only the user settles the lead thread (#645).
+    "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs. Never "
+    "settle the lead thread: only the user settles it.",
     "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
     'their text. Never call read_issue. Call pull_request_read only with sections or include ["checks"]. '
     "No diff, code, or log.",
@@ -271,8 +275,9 @@ REQUIRED = {
                "Run done <number> when the user decides an item.",
                "When your instructions ask for agent captures, keep one for each waiting item.",
                PR_WAIT_LEAD,
+               # Only the user settles the lead thread (#645).
                "When a due line says to run finish, first add each such decision. Run finish only when "
-               "nothing waits, then settle this thread.",
+               "nothing waits. Leave this thread open: only the user settles the lead thread.",
                "Next: after a wake or a user message, t3_project_lead.py start.",
                "Make no promise that needs a signal from the middle of a worker's run."],
 }
@@ -299,6 +304,16 @@ TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include 
 # Text that makes a task wait for its batch or for a free worker (#493). No step and no skill copy
 # may have it.
 BATCH_WAIT_TEXT = ("start together", "slot", "worker limit", "wave")
+
+
+# A settle of the lead thread, which only the user does (#645).
+SELF_SETTLE = re.compile(r"\bsettle (?:this|the lead|a lead|your|your own|its own) thread\b", re.IGNORECASE)
+
+
+def string_constants(path: Path) -> list[str]:
+    """Return the string constants of a Python file, also the literal parts of its f-strings."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
 
 
 def words(text: str) -> str:
@@ -399,6 +414,13 @@ class SkillCopyTests(unittest.TestCase):
             with self.subTest(host=host):
                 self.assertIn("Delete the lead thread only after `finish`.", shared_text(host))
 
+    def test_skill_leaves_the_lead_thread_to_the_user(self) -> None:
+        # Only the user settles the lead thread (#645).
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn("Never settle the lead thread, also after `finish`: only the user settles it.",
+                              shared_text(host))
+
     def test_skill_tries_the_t3_fallback_before_it_stops(self) -> None:
         self.assertIn("When `delegate_task` is not a declared tool, call it the way T3's "
                       "instructions say, such as through a deferred-tool search. Do not use a "
@@ -462,6 +484,20 @@ class StepTests(unittest.TestCase):
             for line in FORBIDDEN_LINES:
                 with self.subTest(step=name, line=line):
                     self.assertNotIn(line, words(step(name)))
+
+    def test_no_text_tells_the_lead_to_settle_its_own_thread(self) -> None:
+        # A lead settled its own thread because finish and report told it to (#645). Only the user
+        # settles the lead thread, so a settle of it may appear only after "never". The string constants
+        # of the two scripts hold the output of each command and of the hook.
+        texts = {f"step {name}": words(step(name)) for name in STEPS}
+        texts |= {f"copy {host}": words(split_skill(host)[1]) for host in HOSTS}
+        for script in (SCRIPT, SCRIPT.with_name("t3_project_lead_hook.py")):
+            texts[script.name] = words(" ".join(string_constants(script)))
+        for where, text in texts.items():
+            for match in SELF_SETTLE.finditer(text):
+                with self.subTest(where=where, text=match.group()):
+                    self.assertTrue(text[:match.start()].lower().endswith("never "), text[:match.end()])
+        self.assertNotIn("settle this thread", " ".join(texts.values()).lower())
 
     def test_closeout_runs_the_retrospective_before_cleanup(self) -> None:
         text = words(step("closeout"))

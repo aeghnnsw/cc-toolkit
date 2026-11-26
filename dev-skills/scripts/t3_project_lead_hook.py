@@ -63,6 +63,20 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   one worker report and stopped before its end. So in a recorded session, the hook blocks
   `t3_thread_read` unless `maxCharsPerItem` is a positive integer; the
   block names 8000. In Antigravity, only the step text holds the rule.
+- Lead thread (issue #645): a lead settled its own thread because the
+  `finish` output told it to, and only the user settles a lead thread. So
+  in a recorded session, the hook blocks `t3_thread_organize` with `action`
+  `settle` when the call names no `threadId`, which settles the calling
+  thread, or names the calling thread (`T3CODE_THREAD_ID` in the hook's
+  environment) or the owner of the lead state in the Git working tree of
+  the call's `cwd`. A settle that names another thread, such as a worker's,
+  passes, and so do the other actions. The check fails closed: a tool input
+  that is not an object, an action that is not a string, and a settle that
+  names a thread when the hook knows no lead thread, the call has no
+  absolute `cwd`, or the lead state cannot be read block. The block's first
+  line says that only the user settles a lead thread, in place of the line
+  that gives the call to a worker. In Antigravity, only the step text holds
+  the rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -84,11 +98,14 @@ import os
 import sys
 
 SCRIPT_NAME = "t3_project_lead.py"
+THREAD_VARIABLE = "T3CODE_THREAD_ID"
 ANTIGRAVITY = "antigravity"
 SESSION_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
 RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
+# The first line of a block that is not BLOCK_LINE: no worker may settle a lead thread either (#645).
+FIRST_LINES = {"settle": "BLOCKED: t3-project-lead: Only the user settles a lead thread."}
 ALLOWED = {
     "shell": ('Allowed commands: python3 "{script}" <step or command> [arguments]; uv run '
               "--no-project --python '>=3.11' python <installed Productivity Skills>/scripts/gtd_sql.py "
@@ -113,6 +130,9 @@ ALLOWED = {
              'set to ["checks"]. Give a triage that needs issue text to a read-only worker.'),
     "thread": ("Call t3_thread_read with maxCharsPerItem, such as 8000. Without it, a worker report "
                "comes in pages of 500 characters."),
+    "settle": ("Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, "
+               "name its threadId. When this block stays, give that settle to the user with "
+               "t3_project_lead.py wait --settles <task>."),
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
 }
@@ -236,14 +256,15 @@ def main(argv):
     try:
         gate(payload, host, folder, session)
     except Blocked as blocked:
-        return block(ALLOWED[blocked.args[0]].format(script=sibling_script()))
+        kind = blocked.args[0]
+        return block(ALLOWED[kind].format(script=sibling_script()), FIRST_LINES.get(kind, BLOCK_LINE))
     except Exception as error:
         return block(ALLOWED["error"].format(error=f"{type(error).__name__}: {error}"))
     return 0
 
 
-def block(allowed_line):
-    print(BLOCK_LINE, file=sys.stderr)
+def block(allowed_line, first_line=BLOCK_LINE):
+    print(first_line, file=sys.stderr)
     print(allowed_line, file=sys.stderr)
     return 2
 
@@ -294,10 +315,11 @@ def gate(payload, host, folder, session):
     if name in QUESTION_TOOLS:
         raise Blocked("question")
     tool = t3_tool(name)
+    cwd = payload_cwd(payload)
     check_text_read(tool, arguments)
     check_pending_request(tool, arguments)
     check_thread_read(tool, arguments)
-    cwd = payload_cwd(payload)
+    check_settle(tool, arguments, cwd)
     if name == "apply_patch" or name in EDIT_TOOLS:
         # Only t3_project_lead.py writes the lead state; the lead writes only gtd-inbox files.
         check_gtd_write(name, arguments, cwd)
@@ -379,6 +401,59 @@ def check_thread_read(tool, arguments):
     size = arguments.get("maxCharsPerItem") if isinstance(arguments, dict) else None
     if type(size) is not int or size < 1:
         raise Blocked("thread")
+
+
+def check_settle(tool, arguments, cwd):
+    """Raise Blocked when a `t3_thread_organize` call is a settle of a lead thread (#645).
+
+    Only the user settles a lead thread. A settle with no `threadId` settles
+    the calling thread, which is a lead thread in a recorded session. A
+    settle that names a thread of lead_threads also blocks. A settle that
+    names another thread, such as a worker's, passes, and so do the other
+    actions. An input that is not an object, an action that is not a
+    string, and a settle that names a thread when the hook knows no lead
+    thread or cannot read the lead state fail closed.
+    """
+    if tool != "t3_thread_organize":
+        return
+    action = arguments.get("action") if isinstance(arguments, dict) else None
+    if not isinstance(action, str):
+        raise Blocked("settle")
+    if action.strip().lower() != "settle":
+        return
+    thread = arguments.get("threadId")
+    if not isinstance(thread, str) or not thread.strip():
+        raise Blocked("settle")
+    try:
+        leads = lead_threads(cwd)
+    except Exception:
+        raise Blocked("settle") from None
+    if not leads or thread.strip() in leads:
+        raise Blocked("settle")
+
+
+def lead_threads(cwd):
+    """Return the IDs of the lead threads (#645), and raise an error when the lead state cannot be read.
+
+    They are the calling thread, from `T3CODE_THREAD_ID`, and the owner of
+    the lead state in the Git working tree of `cwd`, or in `cwd` outside a
+    work tree. The step script, this hook's sibling, finds and reads the
+    lead state.
+    """
+    if cwd is None:
+        raise ValueError("the call has no absolute cwd")
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import t3_project_lead
+
+    threads = {os.environ.get(THREAD_VARIABLE, "").strip()}
+    folder = t3_project_lead.find_lead(git(cwd, "rev-parse", "--show-toplevel") or cwd)
+    if folder is not None:
+        owner = t3_project_lead.load(folder).get("owner")
+        threads.add(owner.strip() if isinstance(owner, str) else "")
+    threads.discard("")
+    return threads
 
 
 def tool_paths(arguments, default):
