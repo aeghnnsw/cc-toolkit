@@ -317,7 +317,7 @@ HOST_LINES = {
 ''',
     'dev-skills/codex-skills/matt-automode/SKILL.md': r'''
 -In Claude Code, invoke listed skills with the Skill tool. If the Skill tool
--lacks one, resolve its path and read its `SKILL.md`:
+-lacks or refuses one, resolve its path and read its `SKILL.md`:
 +In Codex, open listed skills' `SKILL.md` files. If the skill list omits one,
 +resolve its path and read its `SKILL.md`:
 -python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \
@@ -326,7 +326,7 @@ HOST_LINES = {
 ''',
     'dev-skills/antigravity-skills/matt-automode/SKILL.md': r'''
 -In Claude Code, invoke listed skills with the Skill tool. If the Skill tool
--lacks one, resolve its path and read its `SKILL.md`:
+-lacks or refuses one, resolve its path and read its `SKILL.md`:
 +In Antigravity, resolve the paths of the needed skills, then read each
 +`SKILL.md`:
 -python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \

@@ -30,10 +30,9 @@ python3 "<plugin-root>/scripts/resolve_skill.py" --host codex --model-invoked \
 
 `<plugin-root>` is this plugin's root, two levels above the skill folder.
 Pass only the skills needed now. Use the same resolver for nested skills.
-Report a missing required skill or tracker configuration as a blocker. Also
-report a blocker when a skill is user-invoked: the resolver exits with status
-3, or the host refuses to start the skill. Then use no other workflow for that
-skill.
+Report a missing required skill or tracker configuration as a blocker. When
+the resolver exits with status 3 because a skill is user-invoked, also report
+a blocker, and use no other workflow for that skill.
 
 ## Plan and decide
 
@@ -83,17 +82,22 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    block. Where the check cannot decide, it blocks: it fails closed.
 3. **Tickets.** After phase 2, break the spec into tracer-bullet tickets.
    Each ticket is a narrow vertical slice through every layer. It can be
-   verified alone and fits in one fresh context window. Put prefactoring
-   first. Sequence a wide refactor, one mechanical change across the
-   codebase, as expand, migrate in batches, then contract. Publish one issue
-   per ticket, blockers first, as a sub-issue of the spec, with the
-   `ready-for-agent` triage label. Give each ticket the sections
-   `## Parent`, `## What to build`, `## Acceptance criteria`, and
-   `## Blocked by`. `## Blocked by` lists each blocking ticket as `#N`, or
-   `None (can start immediately)`; native blocking links can replace it.
-   Do not close or edit the spec issue. Verify that the tickets cover the
-   spec. Track the parent spec, tickets, and PRs. Order tickets that edit
-   the same shared file, including manifests, registries, and changelogs. Choose
+   verified alone and fits in one fresh context window. Put prefactoring, a
+   change that makes the later change easy, first. Sequence a wide refactor,
+   one mechanical change across the codebase, as expand (add the new form
+   beside the old), migrate in batches, then contract (remove the old form).
+   Publish one ticket per slice, blocking tickets first, with the
+   `ready-for-agent` triage label. On GitHub, publish each ticket as an issue
+   and a sub-issue of the spec. On a tracker of local files, write one file
+   per ticket, as the issue tracker document of the repository says. Give
+   each ticket the sections `## Parent`, `## What to build`,
+   `## Acceptance criteria`, and `## Blocked by`. On GitHub, `## Parent`
+   references the spec as `#N`, and `## Blocked by` lists each blocking
+   ticket as `#N`, or `None (can start immediately)`; native blocking links
+   can replace it. Do not close or edit the parent spec. Verify that the
+   tickets cover the spec. Track the parent spec, tickets, and PRs. Order
+   tickets that edit the same shared file, including manifests, registries,
+   and changelogs. Choose
    release versions when a PR is ready, not in tickets. For pytest repositories,
    pin the original request, spec, and tickets before implementation, as
    "Pin the requirement sources" in the review mode of
