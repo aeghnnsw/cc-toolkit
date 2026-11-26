@@ -16,6 +16,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+from unittest import mock
 import uuid
 
 
@@ -223,10 +224,7 @@ class DatabaseCase(RendererCase):
         root = Path(cluster.name)
         data, socket = root / "db", root / "s"
         socket.mkdir(mode=0o700)
-        subprocess.run(
-            ["initdb", "-D", str(data), "-A", "trust", "-U", "gtd_test", "--no-locale", "--encoding=UTF8"],
-            check=True, capture_output=True, text=True, timeout=30,
-        )
+        cls.run_initdb(data)
         unittest.addModuleCleanup(cls.stop_server, data)
         # With no locale variable, PostgreSQL 17 on macOS stops at startup.
         subprocess.run(
@@ -237,6 +235,29 @@ class DatabaseCase(RendererCase):
         )
         DatabaseCase.psql_prefix = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", str(socket),
                                     "-U", "gtd_test", "-A", "-t", "-q", "-d"]
+
+    @staticmethod
+    def run_initdb(data):
+        """Make the cluster; name the sandbox when it denies initdb, as it denies shared memory.
+
+        The check fails instead of skipping, because a skip prints OK and can pass as a local
+        test run. Other initdb failures raise CalledProcessError.
+        """
+        try:
+            subprocess.run(
+                ["initdb", "-D", str(data), "-A", "trust", "-U", "gtd_test", "--no-locale", "--encoding=UTF8"],
+                check=True, capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.CalledProcessError as error:
+            denied = [line.strip() for line in (error.stderr + error.stdout).splitlines()
+                      if "Operation not permitted" in line]
+            if not denied:
+                raise
+            raise RuntimeError(
+                f"a sandbox blocks initdb ({denied[0]}), and the SQL contract tests need it. Run the "
+                "productivity-skills suite again outside the sandbox: python3 dev-skills/scripts/run_suite.py "
+                "-- <suite command>, in Claude Code with dangerouslyDisableSandbox on the Bash call."
+            ) from None
 
     @staticmethod
     def stop_server(data):
@@ -282,6 +303,35 @@ class DatabaseCase(RendererCase):
 
     def get(self, item_id):
         return self.sql(self.cli("get", item_id))
+
+
+class SandboxCheckTests(unittest.TestCase):
+    """The Claude Code sandbox denies the shared memory of initdb: one error names it."""
+
+    def start_server_with_initdb(self, stderr):
+        """Start the test server with a fake initdb that writes this stderr line and exits 1."""
+        with tempfile.TemporaryDirectory(prefix="bin-") as folder:
+            for tool, body in (("initdb", f"echo {shlex.quote(stderr)} >&2\nexit 1\n"),
+                               ("pg_ctl", "exit 0\n"), ("psql", "exit 0\n")):
+                path = Path(folder) / tool
+                path.write_text("#!/bin/sh\n" + body)
+                path.chmod(0o755)
+            with mock.patch.dict(os.environ, {"PATH": folder}):
+                DatabaseCase.start_server()
+
+    def test_initdb_that_a_sandbox_denies_raises_one_error_with_the_sandbox_and_the_fix(self):
+        line = "FATAL:  could not create shared memory segment: Operation not permitted"
+        with self.assertRaises(RuntimeError) as raised:
+            self.start_server_with_initdb(line)
+
+        message = str(raised.exception)
+        self.assertTrue(message.startswith(f"a sandbox blocks initdb ({line}), and the SQL "
+                                           "contract tests need it."), message)
+        self.assertIn("outside the sandbox: python3 dev-skills/scripts/run_suite.py --", message)
+
+    def test_other_initdb_failure_raises_as_before(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.start_server_with_initdb("initdb: error: directory exists but is not empty")
 
 
 class ContractTests:
