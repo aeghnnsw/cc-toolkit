@@ -25,10 +25,10 @@ decisions that only the user can make to `report`. Issue #602 adds the
 skill, issue #607 the plain-text question line of `brief`, and issue #623 the
 pin record line of `dispatch`. Issue #631 adds `--no-pr` to `discover`,
 `verify`, and `closeout`, issue #633 the `wait --settles` line of `verify` and
-`closeout`, and issue #635 the approvals sentence of `brief` and matt-automode.
-Agent behavior
-is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
-its own tests in test_t3_project_lead_hook.py.
+`closeout`, issue #634 the brief of lead action 7, and issue #635 the
+approvals sentence of `brief` and matt-automode. Agent behavior is checked by
+the scenario review in t3-project-lead-scenarios.md; the hook has its own
+tests in test_t3_project_lead_hook.py.
 """
 from __future__ import annotations
 
@@ -57,8 +57,8 @@ NO_STATE = tempfile.TemporaryDirectory()
 # #607 took `brief` to 248 words: the worker asks in plain text, then ends its turn.
 # #623 took `dispatch` to 249 words with the pin record line. #632 and #638 took `start` from 242 to 247
 # words with the page size of t3_thread_read and the include of pull_request_read. #635 took `brief` to
-# 277 words with the approvals line, and #631 and #633 took `verify` to 263 with the --no-pr and settle
-# lines.
+# 278 words with the approvals line, #631 and #633 took `verify` to 266 with the --no-pr and settle
+# lines, and #634 took `start` to 260 with the brief of lead action 7.
 STEP_WORD_LIMIT = 280
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -84,7 +84,10 @@ LEAD_ACTIONS = (
     "No diff, code, or log.",
     "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
-    "7. Set issue state; a worker sets triage labels.",
+    # The lead cannot set a label (#604); it names the label in the brief of the worker that files the
+    # issue (#634).
+    "7. Set issue state. A worker sets triage labels: name the label in the brief of the worker that files "
+    "the issue.",
     "8. Keep agent captures of what waits on the user when your instructions ask for them. "
     "Write gtd-inbox files with your edit tool, not the shell.",
 )

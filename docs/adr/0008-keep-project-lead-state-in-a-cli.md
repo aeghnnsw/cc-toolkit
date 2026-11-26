@@ -100,18 +100,19 @@ The script keeps the life cycle of each task and refuses every transition
 that the life cycle does not allow. For example, it refuses to mark a task
 with an open pull request verified, to start a task before each task that it
 waits for (`--after`) is verified, and to settle a task of a batch with a
-merged pull request before the batch's close-out task is verified. It stamps
-each change with the real UTC time, refuses text over 200 characters, and
-prints a short view. `start` prints the step text, the UTC time, the view,
+merged pull request before the batch's close-out task is verified.
+(Superseded in part by #633: `task worker` settles a task whose thread it
+takes, also before the close-out; read
+[A recorded PR, a taken thread, and a refused settle](#a-recorded-pr-a-taken-thread-and-a-refused-settle).)
+It stamps each change with the real UTC time, refuses text over 200
+characters, and prints a short view. `start` prints the step text, the UTC time, the view,
 the due lines, and the list of what waits on the user, so that the lead
 copies that list and does not write it from memory. (Superseded in part by
 #555: `start` prints a compact view; read
 [The compact start view](#the-compact-start-view). Superseded in part by
 #603: `start` prints the fixed lead steps once in each thread; read
 [The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).
-Superseded in part by #633: `task worker` settles a task whose thread it
-takes, also before the close-out; read
-[A recorded PR, a taken thread, and a refused settle](#a-recorded-pr-a-taken-thread-and-a-refused-settle).)
+)
 `finish` deletes the lead
 state only when each task is in the `settled` state and nothing waits on the
 user.
@@ -455,6 +456,10 @@ script adds one worker item with the worker's link, as `wait --task` does.
 An item for a task that is verified, closed out, cancelled, or settled holds
 decisions of a finished report. No due line offers `done` for it, because
 only the user decides it, and `finish` refuses while an item waits.
+(Superseded in part by #633: an item of `wait --settles` is also for a
+verified, closed-out, or cancelled task, and it gives a settle to the user;
+no due line offers `done` for it either. Read
+[A recorded PR, a taken thread, and a refused settle](#a-recorded-pr-a-taken-thread-and-a-refused-settle).)
 `wait --task` now refuses only a task without a worker, so a lead can also
 record a finished worker's decisions after the worker is settled.
 
@@ -662,6 +667,7 @@ In the same session, T3 refused two settles with
 `runtime_mode_escalation_denied`, and the lead gave them to the user. Their
 due lines stayed in each `start`. Now `wait --settles <task>` adds an item
 with the worker's link for a task whose settle is due. While the item waits,
-no due line names that settle, and no due line offers `done` for the item.
+no due line names that settle, no due line offers `done` for the item, and
+no task reuses the worker, also as an idle worker after a failed start.
 The task keeps its state, so the cleanup plan keeps its worktree while the
 thread is open. `done` for the item records the task as `settled`.

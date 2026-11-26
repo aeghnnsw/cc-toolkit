@@ -651,9 +651,10 @@ class LeadStateTests(unittest.TestCase):
         for args, reason in (
                 (("--settles", "e"), "e is running; settle needs closed-out, cancelled, or verified"),
                 (("--settles", "missing"), "no task named missing"),
-                (("--settles", "d", "--task", "d"), "a settle item takes only a text and --recommend"),
-                (("--settles", "d", "--decisions", "1"), "a settle item takes only a text and --recommend"),
-                (("--settles", "d", "--link", "https://example.com"), "a settle item takes only a text")):
+                (("--settles", "d", "--task", "d"), "a settle item takes only a text"),
+                (("--settles", "d", "--decisions", "1"), "a settle item takes only a text"),
+                (("--settles", "d", "--link", "https://example.com"), "a settle item takes only a text"),
+                (("--settles", "d", "--recommend", "Archive it."), "a settle item takes only a text")):
             with self.subTest(args=args):
                 self.refused("wait", *args, reason=reason)
         output = words(self.ok("wait", "T3 refused the settle.", "--settles", "d"))
@@ -665,6 +666,13 @@ class LeadStateTests(unittest.TestCase):
         self.assertNotIn("Run done 1", view)
         self.assertIn(f"- 1: [d] T3 refused the settle. {worker}", view)
         self.refused("wait", "--settles", "d", reason="item 1 already gives the settle of d to the user")
+        # The user settles that thread, so no task reuses it, and a failed start lists it as no idle worker.
+        reuse = f"item 1 gives the settle of {worker} to the user; never reuse a worker that the user settles"
+        self.ok("task", "add", "f", "Task f", "--batch", "3")
+        self.refused("task", "start", "f", worker, reason=reuse)
+        self.refused("task", "worker", "e", worker, reason=reuse)
+        self.ok("task", "start-failed", "f")
+        self.assertIn("Idle workers: none: tell the user", words(self.ok("start")))
         self.assertIn("Item 1 is done. d is settled.", self.ok("done", "1"))
         self.assertEqual((self.task("d")["state"], self.events()[-1]["settled"]), ("settled", "d"))
         self.assertNotIn(settle, words(self.ok("start")))
@@ -967,7 +975,12 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "chk", "Check a", "--kind", "check", "--of", "a")
         self.ok("task", "start", "chk", WORKER.format("chk"))
         self.ok("task", "verified", "chk", "--decisions", "0", "--no-pr")
-        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes.",
+        # task verified refuses a running task with no recorded PR, so the line names both ways (#631).
+        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes. "
+                      "Record its PRs first with task pr and task merged, or add --no-pr when it makes no PR.",
+                      words(self.ok("show")))
+        self.ok("task", "pr", "a", "5")
+        self.assertIn("- Check chk is verified: run task verified a --decisions <N> when its verdict passes.\n",
                       self.ok("show"))
 
     def test_wait_records_the_decisions_of_a_finished_worker(self) -> None:
