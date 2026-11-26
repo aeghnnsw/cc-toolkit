@@ -32,12 +32,13 @@ and a marker that names this worktree ends it at once. After it takes the
 suite lock, the script reads the marker again. When a fresh marker names
 another worktree, it releases the suite lock and waits again. A run whose
 command already runs is not stopped. A run in the named worktree does not
-wait for the marker: the script compares the folder that the marker names with the
-worktree root, so a path through a symbolic link or in another letter case
-names the same worktree. A missing, unreadable, or stale marker gives no
-priority. So does a marker that is not a JSON object with both fields, that
-has a time in another form or after the current time, or that names a folder
-that does not exist. When the marker wait starts, the script prints one line
+wait for the marker: the script compares the folder that the marker names
+with the worktree root, so a path through a symbolic link or in another
+letter case names the same worktree. A missing, unreadable, or stale marker
+gives no priority. So does a marker that is not a JSON object with both
+fields, that has a time in another form or after the current time, or that
+names a folder that does not exist. Such a marker starts no wait, and
+during a wait it counts as gone. When the marker wait starts, the script prints one line
 to stderr with the named worktree and the time that the marker gives.
 
 Recorded pass. A run passes when the command exits 0. When the working tree
@@ -230,16 +231,17 @@ def wait_for_priority(common: Path, top: str) -> tuple[float, str | None]:
         return 0.0, None
     print(f"run_suite: waiting for the priority marker, which names {marker['worktree']}, "
           f"started {marker['started']}", file=sys.stderr, flush=True)
-    begin, gone = time.monotonic(), None
+    # gone_since: the time of the first read that found no marker, or None.
+    begin, gone_since = time.monotonic(), None
     while True:
         current = read_marker(common, top)
         if current is not None:
             if current["here"]:
                 break
-            gone = None
-        elif gone is None:
-            gone = time.monotonic()
-        elif time.monotonic() - gone >= HANDOVER_WAIT:
+            gone_since = None
+        elif gone_since is None:
+            gone_since = time.monotonic()
+        elif time.monotonic() - gone_since >= HANDOVER_WAIT:
             break
         time.sleep(PRIORITY_POLL)
     return time.monotonic() - begin, marker["worktree"]

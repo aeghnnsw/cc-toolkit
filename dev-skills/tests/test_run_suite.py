@@ -436,32 +436,32 @@ class PriorityMarkerTests(GitRepoTestCase):
         self.assertRegex(summary[-2], r"^Suite lock wait: \d+ s, held by another run ")
         self.assertEqual(summary[-1], "Exit status: 0")
 
-
     def test_run_in_the_named_worktree_waits_for_a_suite_lock_that_another_worktree_holds(self):
         # Case 1 of #641: a run of the other worktree took the suite lock
         # before the marker named the main checkout. The run in the main
         # checkout does not take the lock while that run holds it.
         self.release.touch()
-        command = self.hold("holder")
+        command = self.hold("named")
         self.write_marker(str(self.repo), marker_time(timedelta(0)))
         with open(self.suite_lock_path(command), "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            holder = self.start("--", *command, name="holder")
-            self.wait_for(self.tmp / "holder.err", "waiting for the suite lock")
+            named = self.start("--", *command, name="named")
+            self.wait_for(self.tmp / "named.err", "waiting for the suite lock")
             self.assertEqual(self.log_lines(), [])
-            self.assertIsNone(holder.poll())
-        self.assertEqual(holder.wait(timeout=20), 0)
-        self.assertEqual(self.log_lines(), ["start holder", "end holder"])
-        summary = self.summary("holder")
+            self.assertIsNone(named.poll())
+        self.assertEqual(named.wait(timeout=20), 0)
+        self.assertEqual(self.log_lines(), ["start named", "end named"])
+        summary = self.summary("named")
         self.assertRegex(summary[-2], r"^Suite lock wait: \d+ s, held by another run ")
-        self.assertNotIn("priority marker", (self.tmp / "holder.err").read_text())
+        self.assertNotIn("priority marker", (self.tmp / "named.err").read_text())
         self.assertNotIn("Priority marker wait", summary)
 
     def take_lock(self, events: list[tuple[float, Callable[[], object]]]
                   ) -> tuple[float, list[str], str]:
         """Take a suite lock for the other worktree in this process, with a fake clock.
 
-        Return the clock time when the lock was taken, the wait lines, and stderr.
+        Check that the lock is held, and release it. Return the clock time when
+        the lock was taken, the wait lines, and stderr.
         """
         command = self.hold()
         lock_path = self.suite_lock_path(command)
@@ -469,21 +469,30 @@ class PriorityMarkerTests(GitRepoTestCase):
         with mock.patch.object(RUN_SUITE, "time", clock), contextlib.redirect_stderr(stderr):
             handle, wait_lines = RUN_SUITE.take_lock(lock_path, command, self.repo / ".git",
                                                      str(self.other))
-        self.addCleanup(handle.close)
-        with open(lock_path, "a") as lock, self.assertRaises(BlockingIOError):
+        with handle, open(lock_path, "a") as lock, self.assertRaises(BlockingIOError):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return clock.now, wait_lines, stderr.getvalue()
 
     def test_run_whose_marker_is_gone_waits_for_a_new_marker_then_takes_the_lock(self):
-        self.write_marker(str(self.repo), marker_time(timedelta(0)))
-        taken, wait_lines, stderr = self.take_lock([(3, self.marker.unlink)])
-        self.assertEqual(taken, 3 + RUN_SUITE.HANDOVER_WAIT)
-        self.assertIn(f"waiting for the priority marker, which names {self.repo}", stderr)
-        self.assertEqual(wait_lines, [f"Priority marker wait: {round(taken)} s, for {self.repo}"])
+        # A removed, stale, or malformed marker counts as gone.
+        ends = {"removed": self.marker.unlink,
+                "stale": lambda: self.write_marker(str(self.repo),
+                                                   marker_time(timedelta(minutes=60))),
+                "malformed": lambda: self.marker.write_text("{")}
+        for case, end in ends.items():
+            with self.subTest(case):
+                self.write_marker(str(self.repo), marker_time(timedelta(0)))
+                taken, wait_lines, stderr = self.take_lock([(3, end)])
+                self.assertEqual(taken, 3 + RUN_SUITE.HANDOVER_WAIT)
+                self.assertIn(f"waiting for the priority marker, which names {self.repo}",
+                              stderr)
+                self.assertEqual(wait_lines,
+                                 [f"Priority marker wait: {round(taken)} s, for {self.repo}"])
 
     def test_new_marker_for_another_worktree_in_the_handover_wait_continues_the_wait(self):
         # Case 2 of #641: the merge lock passes from the main checkout to a
-        # third worktree. Its marker comes at the end of the handover wait.
+        # third worktree. Its marker comes at the last read of the handover
+        # wait, 15 s after the first read that found no marker.
         third = self.tmp / "third"
         third.mkdir()
         self.write_marker(str(self.repo), marker_time(timedelta(0)))

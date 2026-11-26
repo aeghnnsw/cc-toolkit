@@ -3,7 +3,9 @@
 > **Superseded in part (2026-11-26, issue #641).** When the marker that a
 > run waits for is gone, the run waits up to 15 s for a new marker before it
 > takes the suite lock. So a marker wait can end up to 15 s after the limits
-> of decisions 4 and 8. Read [Handover wait](#handover-wait).
+> of decision 4, decision 8, and the second consequence, and a bad marker
+> that comes during a marker wait does not end it at once. Read
+> [Handover wait](#handover-wait).
 
 `dev-skills/scripts/run_suite.py` gave its suite lock to the first run that
 asked: one try without a wait, then a blocking `flock` with no priority. In
@@ -42,7 +44,9 @@ Decisions:
    writes `started` again at each take and renewal, so the marker stays
    fresh while the holder renews its lock.
 4. **A bad marker gives no priority.** A missing, unreadable, or stale
-   marker gives no priority. So does a marker that is not a JSON object with
+   marker gives no priority. (Superseded in part: during a marker wait, a
+   bad marker counts as gone and starts the handover wait; read
+   [Handover wait](#handover-wait).) So does a marker that is not a JSON object with
    both fields, that has a time in another form or after the current time,
    or that names a folder that does not exist. A run in the named worktree
    does not wait. `run_suite.py` checks whether the named folder is the
@@ -93,7 +97,8 @@ Consequences:
 
 - cc-toolkit writes no marker, so its runs work as before.
 - When a holder stops without a release, the full tiers of other worktrees
-  wait up to 60 minutes. Without the marker, those worktrees also wait for
+  wait up to 60 minutes (superseded in part: 60 minutes and 15 s; read
+  [Handover wait](#handover-wait)). Without the marker, those worktrees also wait for
   the merge lock until it is stale, at 60 minutes.
 - The marker orders only runs that go through `run_suite.py`. It does not
   stop a run that already holds the suite lock when the merge lock is
@@ -104,7 +109,7 @@ Consequences:
 
 ## Handover wait
 
-Added 2026-11-26 for
+Added on 2026-11-26 for
 [#641](https://github.com/aeghnnsw/cc-toolkit/issues/641).
 
 aeghnnsw/researcher `scripts/merge-lock.py` removes its marker at release,
