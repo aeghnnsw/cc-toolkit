@@ -20,18 +20,20 @@ This invocation covers the skills needed for the active phases below. Load them
 when reached, including their referenced instructions. Skip skills for completed
 phases.
 
-In Antigravity, resolve the paths of the needed skills, including user-invoked
-skills, then read each `SKILL.md`:
+In Antigravity, resolve the paths of the needed skills, then read each
+`SKILL.md`:
 
 ```bash
-python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity \
-  mattpocock-skills:to-spec mattpocock-skills:to-tickets \
-  mattpocock-skills:retro
+python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity --model-invoked \
+  mattpocock-skills:tdd mattpocock-skills:code-review mattpocock-skills:pr
 ```
 
 `<plugin-root>` is this plugin's root, two levels above the skill folder.
 Pass only the skills needed now. Use the same resolver for nested skills.
-Report a missing required skill or tracker configuration as a blocker.
+Report a missing required skill or tracker configuration as a blocker. Also
+report a blocker when a skill is user-invoked: the resolver exits with status
+3, or the host refuses to start the skill. Then use no other workflow for that
+skill.
 
 ## Plan and decide
 
@@ -66,17 +68,32 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    Otherwise continue until no meaningful unresolved decision remains and no
    pending research could change one. Record domain terms, decisions, and safe
    nonblocking assumptions.
-2. **Spec — `mattpocock-skills:to-spec`.** After phase 1, check each item of
-   the source issue's problem statement against the phase 1 decisions. Unless
-   a decision names a conflict and gives a reason, record the conflict as an
-   unresolved decision and reopen phase 1. When no conflict is unresolved,
-   publish and verify the spec with scope, decisions, and test seams. Align
+2. **Spec.** After phase 1, check each item of the source issue's problem
+   statement against the phase 1 decisions. Unless a decision names a
+   conflict and gives a reason, record the conflict as an unresolved decision
+   and reopen phase 1. When no conflict is unresolved, write the spec in the
+   glossary terms, and keep to the ADRs of the area. Choose the test seams:
+   prefer existing seams, the highest seam, and the fewest seams. Give the
+   spec a problem statement, the solution, a numbered list of user stories,
+   the implementation decisions, the testing decisions with the test seams,
+   and what is out of scope. Put no file paths or code snippets in it, except
+   a prototype snippet that states a decision. Publish the spec on the
+   tracker with the `ready-for-agent` triage label, and verify it. Align
    any glossary entries added by this task with its decisions. For a change to
    a safety check, such as a command hook, the spec states what the check must
    block. Where the check cannot decide, it blocks: it fails closed.
-3. **Tickets — `mattpocock-skills:to-tickets`.** After phase 2, publish and
-   verify tickets with acceptance criteria and blocking dependencies that cover
-   the spec. Track the parent spec, tickets, and PRs. Order tickets that edit
+3. **Tickets.** After phase 2, break the spec into tracer-bullet tickets.
+   Each ticket is a narrow vertical slice through every layer. It can be
+   verified alone and fits in one fresh context window. Put prefactoring
+   first. Sequence a wide refactor, one mechanical change across the
+   codebase, as expand, migrate in batches, then contract. Publish one issue
+   per ticket, blockers first, as a sub-issue of the spec, with the
+   `ready-for-agent` triage label. Give each ticket the sections
+   `## Parent`, `## What to build`, `## Acceptance criteria`, and
+   `## Blocked by`. `## Blocked by` lists each blocking ticket as `#N`, or
+   `None (can start immediately)`; native blocking links can replace it.
+   Do not close or edit the spec issue. Verify that the tickets cover the
+   spec. Track the parent spec, tickets, and PRs. Order tickets that edit
    the same shared file, including manifests, registries, and changelogs. Choose
    release versions when a PR is ready, not in tickets. For pytest repositories,
    pin the original request, spec, and tickets before implementation, as
@@ -147,7 +164,7 @@ Run phases 4–6 per ticket in dependency order, then phases 7 and 8 once.
    `python3 "<plugin-root>/scripts/open_closing_issues.py" <pr>...` with the
    merged PRs and report its output. Report each `OPEN` issue with the reason
    that it stays open.
-8. **Retro — `mattpocock-skills:retro`.** After cleanup reports, follow
+8. **Retro.** After cleanup reports, follow
    "Navigation retrospective" below once for the run. Complete when its record
    is posted. When the task says that a leader runs the retrospective for
    this run, skip it and report the merged PR links to the leader. Repository

@@ -316,21 +316,21 @@ HOST_LINES = {
 +Record each **substantive** change in the changelog. If the project documents its changelog place or format, for example in `CONTRIBUTING.md`, `GEMINI.md`, `AGENTS.md`, or `CLAUDE.md`, follow it. Otherwise add an entry, newest first, under `## [Unreleased]` in a single central `CHANGELOG.md` at the repository root — or inside `docs/` if that is where documentation lives (create it if missing) — in the format below.
 ''',
     'dev-skills/codex-skills/matt-automode/SKILL.md': r'''
--In Claude Code, invoke listed skills with the Skill tool. For missing or
--user-invoked skills, resolve their paths and read their `SKILL.md` files:
-+In Codex, open listed skills' `SKILL.md` files. Explicit-only skills may be
-+omitted from the list; resolve their paths and read them directly:
--python3 "<plugin-root>/scripts/resolve_skill.py" \
-+python3 "<plugin-root>/scripts/resolve_skill.py" --host codex \
+-In Claude Code, invoke listed skills with the Skill tool. If the Skill tool
+-lacks one, resolve its path and read its `SKILL.md`:
++In Codex, open listed skills' `SKILL.md` files. If the skill list omits one,
++resolve its path and read its `SKILL.md`:
+-python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \
++python3 "<plugin-root>/scripts/resolve_skill.py" --host codex --model-invoked \
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
 ''',
     'dev-skills/antigravity-skills/matt-automode/SKILL.md': r'''
--In Claude Code, invoke listed skills with the Skill tool. For missing or
--user-invoked skills, resolve their paths and read their `SKILL.md` files:
-+In Antigravity, resolve the paths of the needed skills, including user-invoked
-+skills, then read each `SKILL.md`:
--python3 "<plugin-root>/scripts/resolve_skill.py" \
-+python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity \
+-In Claude Code, invoke listed skills with the Skill tool. If the Skill tool
+-lacks one, resolve its path and read its `SKILL.md`:
++In Antigravity, resolve the paths of the needed skills, then read each
++`SKILL.md`:
+-python3 "<plugin-root>/scripts/resolve_skill.py" --model-invoked \
++python3 "<plugin-root>/scripts/resolve_skill.py" --host antigravity --model-invoked \
 +`<plugin-root>` is this plugin's root, two levels above the skill folder.
 -Use `dev-skills:step-workflow` for numbered planning files and the session task
 -list, within repository layout rules. Keep the planning files in the planning
