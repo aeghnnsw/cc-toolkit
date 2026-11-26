@@ -84,6 +84,7 @@ from hook_payload import ANTIGRAVITY, block_status, get_shell_command, host_argu
 from safety_guard import (
     CONTROL_PREFIXES,
     MAX_NESTED_SHELL_DEPTH,
+    TURN_OFF_PLUGIN_STEPS,
     _find_backtick_end,
     _find_substitution_end,
     _heredoc_delimiters,
@@ -112,18 +113,28 @@ ASSIGNMENT_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?\+?=")
 # The `[key]=` or `[key]+=` start of an element of an array assignment.
 ARRAY_KEY_RE = re.compile(r"\[[^\]]*\]\+?=")
 IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-# A `$` expansion of a name or of a special parameter, such as `$x` or `$1`.
-NAME_EXPANSION_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])")
-# The start of a `${name...}` expansion with an operator whose word zsh
-# expands as a word, such as `${x:-word}`. zsh does not expand an `=word` in
-# the word of `?` or of a pattern operator, such as `#`.
-PARAMETER_DEFAULT_RE = re.compile(
-    r"\$\{(?:\([^)]*\))?[\^=~#]*"
-    r"(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[@*#?$!-])(?:\[[^\]]*\])*"
-    r"(?:::=|:?[-+=])"
+# A `$` expansion of a name or of a special parameter, such as `$x`, `$1`,
+# or `$x[1]`.
+NAME_EXPANSION_RE = re.compile(
+    r"\$(?:[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])*|[0-9@*#?$!-])"
 )
+# Expansions that always give text: `$#`, `$?`, `$$`, `$[...]`, and the
+# length `${#name}`. `$((` gives text when it is arithmetic.
+NEVER_EMPTY_RE = re.compile(r"\$(?:[#?$]|\[|\{#[A-Za-z_][A-Za-z0-9_]*\})")
+# The flags and modifiers after `${`, the name or special parameter, and
+# the subscripts of a `${...}` expansion.
+PARAMETER_START_RE = re.compile(r"\$\{(?:\([^)]*\))?[\^=~#]*")
+PARAMETER_NAME_RE = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[@*#?$!-])")
+SUBSCRIPTS_RE = re.compile(r"(?:\[[^\]]*\])*")
+# The operators whose word zsh expands as a word, such as `:-` in
+# `${x:-word}`. zsh does not expand an `=word` in the word of `?` or of a
+# pattern operator, such as `#`.
+DEFAULT_OPERATOR_RE = re.compile(r"::=|:?[-+=]")
 # The binary operators of a `[[ ... ]]` test that start with `=`.
 CONDITION_EQUALS_OPERATORS = {"=", "==", "=~"}
+# Precommand modifiers after which a declaration command still reads
+# assignments, as in `builtin local x==y`.
+DECLARATION_PRECOMMANDS = {"-", "builtin", "exec", "noglob"}
 # A word that is one unquoted variable and nothing else: `$NAME` or `${NAME}`.
 BARE_VARIABLE_RE = re.compile(
     r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})"
@@ -136,7 +147,7 @@ UNMODELED_RE = re.compile(r"""['"\\$`{}()]""")
 # After one of these commands, a glob expands in another directory.
 DIRECTORY_COMMANDS = {"cd", "popd", "pushd"}
 
-EQUALS_FOUND_DENIAL = (
+EQUALS_COMMAND_DENIAL = (
     "zsh trap: the unquoted word `{word}` starts with `=`, so zsh replaces "
     "it with the path of the command `{name}`. The command gets that path "
     "instead of the word, so the hook blocked the command. Quote the word, "
@@ -151,10 +162,11 @@ NESTING_DENIAL = (
     "by setting a variable first."
 )
 READ_ERROR_DENIAL = (
-    "zsh trap: the hook failed to read the command, so it cannot tell "
-    "whether zsh would stop the command line at an unquoted word that starts "
-    "with `=`. The hook blocked the command. Write the command in a simpler "
-    "form, and quote each word that starts with `=`."
+    "zsh trap: the hook failed to read the command ({error}), so it cannot "
+    "tell whether zsh would stop the command line at an unquoted word that "
+    "starts with `=`. The hook blocked the command. Write the command in a "
+    "simpler form, and quote each word that starts with `=`. To turn off the "
+    "core-hooks plugin, {steps}, then start a new session."
 )
 EQUALS_DENIAL = (
     "zsh trap: the unquoted word `{word}` starts with `=`, and no command "
@@ -369,7 +381,7 @@ def _substitution_end(text, index, bodies, command=True):
     if text[index] == "$" and text.startswith("((", index + 1):
         end = _arithmetic_end(text, index + 1)
         if end is not None:
-            _arithmetic_bodies(text, index + 3, end - 2, bodies)
+            _nested_bodies(text, index + 3, end - 2, bodies)
             return end
     end = _command_end(text, index + 2)
     if end is None:
@@ -391,15 +403,20 @@ def _arithmetic_end(text, index):
     return inner + 2
 
 
-def _arithmetic_bodies(text, start, end, bodies):
-    """Add the command substitutions of the arithmetic text[start:end] to
-    `bodies`."""
+def _nested_bodies(text, start, end, bodies):
+    """Add the command substitutions in text[start:end], the inside of
+    arithmetic or of a `${...}` expansion, to `bodies`.
+
+    zsh runs them, as in `${x:-$(cmd)}`, but not in single quotes.
+    """
     index = start
     while index < end:
         if text[index] == "`" or text.startswith("$(", index):
             index = _substitution_end(text, index, bodies)
+        elif text[index] == "'":
+            index = _single_quote_end(text, index + 1) + 1
         else:
-            index += 1
+            index += 2 if text[index] == "\\" else 1
 
 
 def _command_end(text, start):
@@ -516,7 +533,9 @@ def _read_word(text, index, bodies):
             command = character != "=" or index == start
             index = _substitution_end(text, index, bodies, command)
         elif text.startswith("${", index):
-            index = _brace_end(text, index + 2) + 1
+            end = _brace_end(text, index + 2)
+            _nested_bodies(text, index + 2, end, bodies)
+            index = end + 1
         elif character in WORD_BREAKS:
             break
         else:
@@ -542,9 +561,10 @@ def _spanned_tokens(text, bodies):
         elif character == "#":
             end = text.find("\n", index)
             index = len(text) if end < 0 else end
-        elif text.startswith("((", index) and _arithmetic_end(text, index):
-            index = _arithmetic_end(text, index)
-            _arithmetic_bodies(text, start + 2, index - 2, bodies)
+        elif text.startswith("((", index) and (end := _arithmetic_end(text, index)):
+            # A `((` that is no arithmetic is read as two `(` operators.
+            index = end
+            _nested_bodies(text, start + 2, index - 2, bodies)
             yield "arithmetic", text[start:index], start, index
         elif character in "<>" and text.startswith("(", index + 1):
             word, index = _read_word(text, index, bodies)
@@ -606,13 +626,16 @@ def _only_expansions(text, start, end):
 def _empty_part_end(text, index):
     """Return the index after a part of a word that can expand to nothing,
     such as `""`, `$''`, `$x`, `"$x"`, or `$(cmd)`, or None when the part at
-    `index` is literal text."""
+    `index` is literal text or an expansion that always gives text, such as
+    `$#` or `$((1))`."""
     if text.startswith(('""', "''"), index):
         return index + 2
     if text.startswith("$''", index):
         return index + 3
-    if text.startswith('$"', index):
-        index += 1
+    if NEVER_EMPTY_RE.match(text, index) or (
+        text.startswith("$((", index) and _arithmetic_end(text, index + 1) is not None
+    ):
+        return None
     if text[index] == '"':
         end = _double_quote_end(text, index + 1, [])[0]
         return end if _only_expansions(text, index + 1, end - 1) else None
@@ -645,7 +668,7 @@ def _brace_alternatives(text, index, end):
     return None
 
 
-def _leading_equals(text, spans, braces=True):
+def _leading_equals(text, spans, braces=True, memo=None):
     """Return (index, end) of the `=` that zsh reads as the start of
     `=name` in one word, or None; the `=` belongs to text[index:end].
 
@@ -654,8 +677,19 @@ def _leading_equals(text, spans, braces=True):
     before it, such as `""`, `$x`, or `$(cmd)`: zsh expands it when they
     are empty, and the check cannot know their values. With `braces`, brace
     expansion can put the `=` first, as in `{=a,b}` or `{a,}=b`. A lone `=`
-    and the process substitution `=(` stay words.
+    and the process substitution `=(` stay words. `memo` keeps the result for
+    each list of spans, so that many brace lists with empty alternatives, as
+    in `{,}{,}{,}a`, take linear time.
     """
+    memo = {} if memo is None else memo
+    key = tuple(spans)
+    if key not in memo:
+        memo[key] = _first_equals(text, spans, braces, memo)
+    return memo[key]
+
+
+def _first_equals(text, spans, braces, memo):
+    """Do the work of `_leading_equals` for one list of spans."""
     if not spans:
         return None
     (index, end), rest = spans[0], spans[1:]
@@ -669,48 +703,61 @@ def _leading_equals(text, spans, braces=True):
                 return None
             alternatives, close = found
             for start, stop in alternatives:
-                result = _leading_equals(text, [(start, stop), (close + 1, end), *rest])
+                result = _leading_equals(
+                    text, [(start, stop), (close + 1, end), *rest], braces, memo
+                )
                 if result is not None:
                     return result
             return None
         index = _empty_part_end(text, index)
         if index is None:
             return None
-    return _leading_equals(text, rest, braces)
+    return _leading_equals(text, rest, braces, memo)
 
 
-def _colons(text, start, end):
-    """Yield the index of each unquoted `:` in text[start:end] outside
-    braces and expansions."""
+def _part_starts(text, start, end):
+    """Yield the index where each part after a `:` of the assignment value
+    text[start:end] starts, outside braces and expansions.
+
+    zsh also splits the value at a quoted or escaped `:`. A part that starts
+    in quotes holds the rest of the quoted text, so only a `:` at the end of
+    the quoted text starts a part that can start with `=`, as in `"a:"=b`.
+    """
     index = start
     depth = 0
     while index < end:
         character = text[index]
+        following = _part_end(text, index)
         if character == "{":
             depth += 1
         elif character == "}":
             depth = max(depth - 1, 0)
-        elif character == ":" and depth == 0:
-            yield index
-        index = _part_end(text, index)
+        elif depth == 0 and (
+            character == ":" or text.startswith("\\:", index)
+            or character in "'\"" and text[index + 1:following - 1].endswith(":")
+        ):
+            yield following
+        index = following
 
 
 def _equals_words(text, base, start=0, end=None, colon=False, braces=True):
     """Return an EqualsWord for each `=` that zsh reads as `=name` in the
     word text[start:end]; `base` is the index of `text` in the whole command.
 
-    With `colon`, as in an assignment value, each part after an unquoted `:`
-    counts as the start of a word too. `braces` is false where zsh does no
-    brace expansion, as in a scalar assignment.
+    With `colon`, as in an assignment value, each part after a `:` counts as
+    the start of a word too, and the `=word` ends at the next `:`. `braces`
+    is false where zsh does no brace expansion, as in a scalar assignment or
+    a `[[ ... ]]` test.
     """
     end = len(text) if end is None else end
-    cuts = list(_colons(text, start, end)) if colon else []
+    starts = [start, *_part_starts(text, start, end)] if colon else [start]
     words = []
-    for part_start, part_end in zip([start] + [cut + 1 for cut in cuts], cuts + [end]):
-        found = _leading_equals(text, [(part_start, part_end)], braces)
+    for part_start in starts:
+        found = _leading_equals(text, [(part_start, end)], braces)
         if found is not None:
             index, stop = found
-            words.append(EqualsWord(base + index, text[index:stop]))
+            word = text[index:stop]
+            words.append(EqualsWord(base + index, word.split(":")[0] if colon else word))
     return words
 
 
@@ -753,6 +800,26 @@ def _expansions(text):
             index += 1
 
 
+def _default_word_start(text, index):
+    """Return the index where the word of the `${...}` expansion at `index`
+    starts, when zsh expands that word as a word, as in `${x:-word}` or
+    `${${x}:-word}`. Returns None for another expansion."""
+    match = PARAMETER_START_RE.match(text, index)
+    if not match:
+        return None
+    position = match.end()
+    if text.startswith(("$", "`"), position):
+        position = _expansion_end(text, position)
+    else:
+        name = PARAMETER_NAME_RE.match(text, position)
+        position = name and name.end()
+    if position is None:
+        return None
+    position = SUBSCRIPTS_RE.match(text, position).end()
+    operator = DEFAULT_OPERATOR_RE.match(text, position)
+    return operator.end() if operator else None
+
+
 def _record_expansions(text, start, findings):
     """Add the parameter flags, modifiers, and default-word `=word`s of the
     word `text`, which starts at the index `start` of the whole command, to
@@ -769,10 +836,10 @@ def _record_expansions(text, start, findings):
         modifier = MODIFIER_RE.match(expansion)
         if modifier:
             findings.modifiers.append(modifier.groups())
-        default = None if quoted else PARAMETER_DEFAULT_RE.match(text, index)
-        if default:
+        word_start = None if quoted else _default_word_start(text, index)
+        if word_start is not None:
             close = _brace_end(text, index + 2)
-            findings.equals_words.extend(_equals_words(text, start, default.end(), close))
+            findings.equals_words.extend(_equals_words(text, start, word_start, close))
 
 
 def _record_array(text, start, base, findings, depth, equals_words):
@@ -803,15 +870,16 @@ def _record_array(text, start, base, findings, depth, equals_words):
 def _record_condition(words, findings):
     """Add the `=word`s of one `[[ ... ]]` primary to `findings`.
 
-    `words` are (text, start) pairs; a binary operator such as `<` has no
-    start. zsh reads three words as an operand, a binary operator, and an
+    `words` are (text, start) pairs; a binary operator such as `<`, and a
+    pattern group such as `(a|b)`, has no start. zsh does no brace expansion
+    in a test. zsh reads three words as an operand, a binary operator, and an
     operand, and fewer words as a test and its operand. So `==` is an
     operand in `[[ -n == ]]` and an operator in `[[ a == b ]]`.
     """
     for position, (text, start) in enumerate(words):
         operator = position == 1 and len(words) >= 3 and text in CONDITION_EQUALS_OPERATORS
         if start is not None and not operator:
-            findings.equals_words.extend(_equals_words(text, start))
+            findings.equals_words.extend(_equals_words(text, start, braces=False))
 
 
 def _record_assignment(word, start, findings, depth, equals_words):
@@ -825,16 +893,12 @@ def _record_assignment(word, start, findings, depth, equals_words):
     value = word.text[match.end():]
     if value.startswith("("):
         _record_array(word.text, match.end(), start, findings, depth, equals_words)
+        kind = "array"
     else:
         equals_words.extend(_equals_words(
             word.text, start, match.end(), colon=True, braces=False,
         ))
-    if value.startswith("("):
-        kind = "array"
-    elif word.quoted_space:
-        kind = "spaced"
-    else:
-        kind = "scalar"
+        kind = "spaced" if word.quoted_space else "scalar"
     # An element assignment does not change the kind of the variable.
     if match.group(2) is None:
         findings.assignments[match.group(1)] = kind
@@ -939,8 +1003,10 @@ def _analyze(text, findings, depth, offset=0):
     # The redirection operator before the next word, such as `>` or `<<`.
     redirection = None
     # The (text, start) words of the current `[[ ... ]]` primary, or None
-    # outside a test.
+    # outside a test, and the depth of a pattern group such as `(b|c)` in
+    # `[[ a == (b|c) ]]`.
     condition = None
+    group_depth = 0
     # The state of a `for` loop before its list: "name", "in", or "list",
     # inside the parentheses of `for x (a b)`.
     for_state = None
@@ -948,22 +1014,34 @@ def _analyze(text, findings, depth, offset=0):
     split_words = None
     # True between `case` and `esac`, where words are patterns.
     in_case = False
+    # The part of a `case` statement: "word", "in", "pattern", or "body".
+    # zsh does no brace expansion in the word and the patterns.
+    case_state = None
     # The words of the current command, without redirection targets.
     words = []
     # The test word of an earlier command of the current pipeline.
     piped_test = None
-    # True after `time` at the start of the current command, and the
-    # `=word`s of the assignments after it. zsh expands them only when a
-    # command follows, as in `time x==y true`, not in `time x==y`.
+    # True after a `time` that starts the current command, and the `=word`s
+    # of the assignments after it. zsh expands them only when a command, a
+    # redirection, or a pipe follows, as in `time x==y true`, not in
+    # `time x==y`.
     timed = False
-    pending = []
+    timed_equals = []
     # True after the word `repeat`, whose next word is a count.
     repeat_count = False
     for kind, token, start, _ in _spanned_tokens(strip_heredoc_bodies(text), bodies):
         if kind == "word":
             _record_expansions(token.text, offset + start, findings)
         if condition is not None:
-            if kind == "word" and token.text == "]]" or kind == "operator":
+            if group_depth:
+                if kind == "operator" and token in "()":
+                    group_depth += 1 if token == "(" else -1
+            elif kind == "operator" and token == "(" and condition:
+                # After an operand, `(` starts a pattern group, not a group
+                # of tests.
+                group_depth = 1
+                condition.append(("(...)", None))
+            elif kind == "word" and token.text == "]]" or kind == "operator":
                 _record_condition(condition, findings)
                 condition = None if kind == "word" else []
             elif kind == "redirection":
@@ -980,22 +1058,36 @@ def _analyze(text, findings, depth, offset=0):
                 for_state = split_words = None
                 command_start, command_word, words = True, None, []
                 continue
+            if case_state == "pattern" and token in ("(", "|"):
+                continue
+            if case_state == "pattern" and token == ")":
+                case_state = "body"
+            elif case_state == "body" and token in (";;", ";&", ";;&", ";|"):
+                case_state = "pattern"
+            if token in ("|", "|&"):
+                findings.equals_words.extend(timed_equals)
             piped_test = _end_command(words, token, piped_test, findings)
             words = []
             command_start, command_word = True, None
             for_state = split_words = None
-            timed, pending = False, []
+            timed, timed_equals = False, []
             continue
         if kind == "redirection":
             redirection = token
+            findings.equals_words.extend(timed_equals)
+            timed_equals = []
             continue
         if kind == "arithmetic":
             command_start = False
             continue
         word = token.text
         if redirection is not None:
-            if redirection.lstrip("0123456789") not in HEREDOC_OPERATORS:
-                findings.equals_words.extend(_equals_words(word, offset + start))
+            operator = redirection.lstrip("0123456789")
+            if operator not in HEREDOC_OPERATORS:
+                # zsh does no brace expansion in a here-string word.
+                findings.equals_words.extend(
+                    _equals_words(word, offset + start, braces=operator != "<<<")
+                )
             redirection = None
             continue
         words.append(word)
@@ -1011,7 +1103,16 @@ def _analyze(text, findings, depth, offset=0):
                 split_words = []
                 findings.split_lists.append(split_words)
             continue
+        if case_state in ("word", "pattern") and word != "esac":
+            findings.equals_words.extend(_equals_words(word, offset + start, braces=False))
+            case_state = "in" if case_state == "word" else case_state
+            continue
+        if case_state == "in":
+            case_state = "pattern"
+            continue
         if repeat_count:
+            # zsh expands the count of `repeat` too.
+            findings.equals_words.extend(_equals_words(word, offset + start))
             repeat_count = False
             command_start = True
             continue
@@ -1020,20 +1121,21 @@ def _analyze(text, findings, depth, offset=0):
                 condition = []
                 continue
             if word in COMMAND_PREFIXES:
-                timed = timed or word == "time"
+                timed = word == "time" and all(prefix == "!" for prefix in words[:-1])
                 continue
             if ASSIGNMENT_RE.match(word):
-                target = pending if timed else findings.equals_words
+                target = timed_equals if timed else findings.equals_words
                 _record_assignment(token, offset + start, findings, depth, target)
                 continue
             command_start, command_word = False, word
-            findings.equals_words.extend(pending)
-            pending = []
+            findings.equals_words.extend(timed_equals)
+            timed_equals = []
             repeat_count = word == "repeat"
             if word in DIRECTORY_COMMANDS:
                 findings.changes_directory = True
             if word in ("case", "esac"):
                 in_case = word == "case"
+                case_state = "word" if in_case else None
             if word == "for":
                 for_state = "name"
                 continue
@@ -1043,6 +1145,9 @@ def _analyze(text, findings, depth, offset=0):
                 continue
         elif command_word in DECLARATION_COMMANDS and ASSIGNMENT_RE.match(word):
             _record_assignment(token, offset + start, findings, depth, findings.equals_words)
+            continue
+        elif command_word in DECLARATION_PRECOMMANDS and word in DECLARATION_COMMANDS:
+            command_word = word
             continue
         elif command_word == "function" and word == "{":
             # The body of `function NAME {` or `function {` starts here.
@@ -1211,7 +1316,7 @@ def zsh_traps(command, cwd=None, host=None):
         traps.append(Trap(EQUALS_DENIAL.format(word=word, name=word[1:]), True))
     elif findings.equals_words:
         word = findings.equals_words[0].text
-        traps.append(Trap(EQUALS_FOUND_DENIAL.format(word=word, name=word[1:]), True))
+        traps.append(Trap(EQUALS_COMMAND_DENIAL.format(word=word, name=word[1:]), True))
     elif findings.too_deep:
         traps.append(Trap(NESTING_DENIAL.format(depth=MAX_NESTED_SHELL_DEPTH), True))
     if unsplit:
@@ -1272,18 +1377,25 @@ def main():
     except Exception:
         # Without a command, the hook has nothing to check.
         sys.exit(0)
+    read_failed = False
     try:
         traps = zsh_traps(command, cwd, host)
-    except Exception:
+    except Exception as error:
         # The check cannot tell whether zsh would stop the command line, so
         # it blocks the command: it fails closed.
-        traps = [Trap(READ_ERROR_DENIAL, True)]
+        read_failed = True
+        steps = TURN_OFF_PLUGIN_STEPS.get(host, TURN_OFF_PLUGIN_STEPS[None])
+        reason = f"{type(error).__name__}: {error}"
+        traps = [Trap(READ_ERROR_DENIAL.format(error=reason, steps=steps), True)]
     updated_input = None
     corrected = None
     try:
         # Both current hosts supply Bash.command. Compatibility payloads
         # keep their existing decisions and never select a rewrite contract.
-        if (
+        # A command that the hook failed to read gets no rewrite.
+        if read_failed:
+            pass
+        elif (
             host in ("claude", "codex")
             and input_data.get("tool_name") == "Bash"
             and isinstance(input_data.get("tool_input"), dict)

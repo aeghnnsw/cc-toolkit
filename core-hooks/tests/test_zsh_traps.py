@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -108,10 +109,26 @@ EQUALS_TRAPS = {
     "&>! out x==q9": "=q9",
     "private X==nosuchcmd": "=nosuchcmd",
     "nocorrect x==q9": "=q9",
+    "builtin local x==q9": "=q9",
+    "noglob typeset x==q9": "=q9",
     "time y==q9 true": "=q9",
+    "time x==q9 | cat": "=q9",
+    "time x==q9 >out": "=q9",
     "for x (==q9) echo $x": "==q9",
     "function f { echo ==q9 }; f": "==q9",
     "repeat 1 echo ==q9": "==q9",
+    "repeat =q9 true": "=q9",
+    "echo x > {=q9,b}": "=q9",
+    "case ==q9 in (x) echo m;; esac": "==q9",
+    "case x in a|=q9) echo m;; esac": "=q9",
+    # Assignment parts after a quoted or escaped `:`, an empty array
+    # element, and substitutions or names inside `${ }`.
+    'x="a:"=q9': "=q9",
+    "x='a:'=q9": "=q9",
+    "x=a\\:=q9": "=q9",
+    "x=(); echo $x[1]==q9": "==q9",
+    "echo ${${x}:-==q9}": "==q9",
+    "echo ${x:-$(echo ==q9)}": "==q9",
     # A name with a `/` names a file, which is no command here.
     "printf =missing/path": "=missing/path",
     "echo =~/x": "=~/x",
@@ -136,8 +153,12 @@ EQUALS_SAFE = [
     "echo \"$(cat <<'EOF'\nDone :) now `==` is quoted\nEOF\n)\"",
     "printf '%s\\n' \"$(cat <<'EOF'\n1) Compare with \"a == b\"\nEOF\n)\"",
     "echo $'it\\'s ==x'",
-    # Assignments after `time` with no command.
+    # Assignments after `time` with no command, redirection, or pipe after
+    # them, and after a `time` that does not start the pipeline.
     "time x==y",
+    "time x==q9 && echo ok",
+    "echo a | time x==q9",
+    "! time x==q9",
     # The body of a function, the command after `repeat N` or `coproc`, and
     # the list of `for x ( )`.
     "function f { [[ a == a ]] }; f",
@@ -167,6 +188,18 @@ EQUALS_SAFE = [
     "x={=q9,b}; echo $x",
     "echo a:=q9",
     'x=a:"="q9',
+    'x="a:b"=q9',
+    # A pattern group in a test, and no brace expansion in a test, a `case`
+    # word or pattern, or a here-string.
+    "[[ a == (b|c) ]]",
+    "[[ a == (=q9|c) ]]",
+    "[[ {=q9,b} == a ]]",
+    "case {=q9,b} in *) echo m;; esac",
+    "case x in {=q9,b}) echo m;; esac",
+    "cat <<< {=q9,b}",
+    # Expansions that are never empty, and a quoted substitution.
+    "echo $#==q9 $?==q9 ${#x}==q9 $[1]==q9 $((1))==q9",
+    "echo ${x:-'$(echo ==q9)'}",
 ]
 
 # zsh replaces each word with the path of `sh`; the hook denies it, with
@@ -527,14 +560,28 @@ class ZshTrapTests(unittest.TestCase):
                         contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
                         self.assertRaises(SystemExit) as exit_status:
                     zsh_traps.main()
+                steps = zsh_traps.TURN_OFF_PLUGIN_STEPS.get(
+                    host, zsh_traps.TURN_OFF_PLUGIN_STEPS[None]
+                )
                 if host == "antigravity":
                     self.assertEqual(exit_status.exception.code, zsh_traps.block_status(host))
-                    self.assertIn("failed to read the command", stderr.getvalue())
-                    continue
-                self.assertEqual(exit_status.exception.code, 0)
-                output = json.loads(stdout.getvalue())["hookSpecificOutput"]
-                self.assertEqual(output["permissionDecision"], "deny")
-                self.assertIn("failed to read the command", output["permissionDecisionReason"])
+                    message = stderr.getvalue()
+                else:
+                    self.assertEqual(exit_status.exception.code, 0)
+                    output = json.loads(stdout.getvalue())["hookSpecificOutput"]
+                    self.assertEqual(output["permissionDecision"], "deny")
+                    message = output["permissionDecisionReason"]
+                self.assertIn("failed to read the command (RecursionError", message)
+                self.assertIn(steps, message)
+
+    def test_reads_many_brace_alternatives_quickly(self):
+        # Brace expansion doubles the words for each `{,}`; the check must
+        # not do the same.
+        command = "echo " + "{,}" * 40 + "=q9"
+        started = time.monotonic()
+        traps = zsh_traps.zsh_traps(command)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual([trap.blocks for trap in traps], [True], traps)
 
     def test_warns_about_an_unsplit_variable(self):
         for command, word in SPLIT_TRAPS.items():
