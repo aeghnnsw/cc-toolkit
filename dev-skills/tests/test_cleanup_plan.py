@@ -13,8 +13,10 @@ the worktrees of T3 Code threads that are not settled, read with the t3 CLI.
 Cases 36-41 come from issue #610: the session logs of a worktree whose task the
 lead accepted, and the end of the 60-minute window. Cases 42 and 43 come from
 issue #599: planning_folder.py lists the planning location and the lead folders
-for the plan. Each check builds a temporary repository with a bare origin, runs
-the script with a fake gh (fake_gh.py), and reads the lines that it prints. No
+for the plan. Cases 44-47 come from issue #643: the branch.<name> config
+sections that `git branch -D` leaves when it cannot write the config. Each
+check builds a temporary repository with a bare origin, runs the script with a
+fake gh (fake_gh.py), and reads the lines that it prints. No
 check runs the real t3 CLI: the checks of #578 use a fake t3 (fake_t3.py), and
 the other checks run with no t3 on PATH and no T3CODE_CLI_PATH. The real
 live_worktrees.py runs, so most checks need lsof. Each class makes as few plan
@@ -963,6 +965,59 @@ class MergedTipCases(PlanTestCase):
 
     def test_case_25_keeps_a_branch_whose_tip_is_the_head_of_an_open_pr(self):
         self.assert_kept_with_branches(self.queued, "not merged")
+
+
+@NEEDS_LSOF_AND_GIT
+class ConfigSectionCases(PlanTestCase):
+    """Cases 44-47: branch.<name> config sections whose local branch does not exist (#643).
+
+    While .git/config.lock exists, `git branch -D` cannot write the config, as
+    in a sandbox that makes the config read-only. It deletes feat-gone, exits
+    0, and leaves the section branch.feat-gone. feat-v1.2 has a section and no
+    branch; feat-kept and master have a branch and a section.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        repo = cls.repo = cls.make_repo()
+        for name in ("feat-gone", "feat-kept"):
+            repo.git("branch", "--track", name, "origin/master")
+        repo.git("config", "branch.feat-v1.2.remote", "origin")
+        repo.git("config", "branch.autoSetupMerge", "always")
+        lock = repo.path / ".git" / "config.lock"
+        lock.write_text("")
+        cls.branch_delete = subprocess.run(["git", "branch", "-D", "feat-gone"], cwd=repo.path,
+                                           env=repo.env, capture_output=True, text=True)
+        lock.unlink()
+        cls.sections = repo.run("--config-sections")
+        cls.gh_calls_of_config_sections_run = repo.gh_calls()
+        cls.plan = repo.plan()
+
+    def config_lines(self) -> dict[str, tuple[str, str]]:
+        return {item: line for (kind, item), line in self.plan.items() if kind == "config-section"}
+
+    def test_case_44_lists_the_section_that_git_branch_d_leaves_on_a_locked_config(self):
+        self.assertEqual(self.branch_delete.returncode, 0, self.branch_delete.stderr)
+        self.assertIn("could not lock config file", self.branch_delete.stderr)
+        self.assertEqual(self.line("config-section", "branch.feat-gone"),
+                         ("REMOVE", "no local branch feat-gone"))
+
+    def test_case_45_lists_no_section_of_an_existing_branch_and_no_branch_setting(self):
+        self.assertEqual(sorted(self.config_lines()), ["branch.feat-gone", "branch.feat-v1.2"])
+
+    def test_case_46_config_sections_prints_only_these_lines_and_calls_no_gh(self):
+        self.assertEqual(self.sections.returncode, 0, self.sections.stderr)
+        self.assertEqual(self.sections.stdout.splitlines(),
+                         [f"{action}\tconfig-section\t{item}\t{reason}"
+                          for item, (action, reason) in self.config_lines().items()])
+        self.assertEqual(self.gh_calls_of_config_sections_run, [])
+
+    def test_case_47_git_config_remove_section_removes_each_listed_section(self):
+        for item in self.config_lines():
+            self.repo.git("config", "--remove-section", item)
+        result = self.repo.run("--config-sections")
+        self.assertEqual((result.returncode, result.stdout), (0, ""), result.stderr)
+        self.assertIn("origin", self.repo.git("config", "branch.feat-kept.remote"))
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")
