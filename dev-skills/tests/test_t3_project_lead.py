@@ -23,7 +23,10 @@ to `task verified` in `discover`, `verify`, and `closeout`, and the rule for
 decisions that only the user can make to `report`. Issue #602 adds the
 `start-failed` line of `dispatch`, issue #603 the `start --steps` line of the
 skill, issue #607 the plain-text question line of `brief`, and issue #623 the
-pin record line of `dispatch`. Agent behavior
+pin record line of `dispatch`. Issue #631 adds `--no-pr` to `discover`,
+`verify`, and `closeout`, issue #633 the `wait --settles` line of `verify` and
+`closeout`, and issue #635 the approvals sentence of `brief` and matt-automode.
+Agent behavior
 is checked by the scenario review in t3-project-lead-scenarios.md; the hook has
 its own tests in test_t3_project_lead_hook.py.
 """
@@ -53,8 +56,10 @@ NO_STATE = tempfile.TemporaryDirectory()
 # line, `plan` to 243 with the default batch, and `brief` to 237 with the worker's question line.
 # #607 took `brief` to 248 words: the worker asks in plain text, then ends its turn.
 # #623 took `dispatch` to 249 words with the pin record line. #632 and #638 took `start` from 242 to 247
-# words with the page size of t3_thread_read and the include of pull_request_read.
-STEP_WORD_LIMIT = 250
+# words with the page size of t3_thread_read and the include of pull_request_read. #635 took `brief` to
+# 277 words with the approvals line, and #631 and #633 took `verify` to 263 with the --no-pr and settle
+# lines.
+STEP_WORD_LIMIT = 280
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -112,11 +117,15 @@ REPORT_FORM = ("Put each item in one group. Report one line for each group, with
                "titles>.\"")
 # The lead copies the discovery brief into a worker's brief; like a step, it stays short.
 DISCOVERY_BRIEF_WORD_LIMIT = 120
+# A worker asks for all approvals of a task at once (#635): a worker that asked for each one at its step
+# waited across four one-hour sign-ins. matt-automode has the same sentence.
+WORKER_APPROVALS = ("When a task needs several approvals, ask for all of them in one numbered message as soon "
+                    "as their facts are known. While you wait, run the steps that need no approval.")
 # A worker asks the user in its own thread, where an approval counts for it (#554), in plain text, and
 # then ends its turn (#607): the user does not want question dialogs.
 WORKER_QUESTIONS = ('"Ask the user your questions in this thread, in plain text, not with a question tool. '
                     'Then end your turn to wait for the reply. Ask also before you delete outside your '
-                    'worktree or change user or host settings."')
+                    f'worktree or change user or host settings. {WORKER_APPROVALS}"')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -141,7 +150,8 @@ REQUIRED = {
                  'In the last line of its brief, replace "with evidence and links" with "in the form '
                  'above".',
                  # The user chooses the work, or not; the lead asks no question, and keeps no item (#545).
-                 "When it reports, run task verified discover --decisions 0. Copy its lines into your report "
+                 "When it reports, run task verified discover --decisions 0 --no-pr. Copy its lines into your "
+                 "report "
                  "as they are, "
                  "and end your turn. The list is not a waiting item: add no wait item or GTD capture for it. "
                  "Do not ask the user to choose, with a question tool or in text. When the user names the "
@@ -221,7 +231,12 @@ REQUIRED = {
                "Then what remains waits on the user: add it with wait. Fix and check nothing yourself.",
                "Record merged PRs (task pr, task merged), then run task verified <name> --decisions <N>, "
                "with N the number of decisions that the report numbers for the user, or 0. The script adds "
-               "them as one waiting item. Settle its worker only when a due line lists it.",
+               "them as one waiting item.",
+               # A running task without a recorded PR needs --no-pr (#631).
+               "Add --no-pr only for a task that makes no PR, such as a read-only check.",
+               # A settle that T3 refuses goes to the user, and its due line goes (#633).
+               "Settle its worker only when a due line lists it. When T3 refuses the settle, give it to the "
+               "user with wait --settles <name>.",
                START_RULE,
                "The task verified output names each such task and its step.",
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
@@ -239,10 +254,11 @@ REQUIRED = {
                  '"Pass each worktree path to retro_sessions.py with --worktree."',
                  "List the lead thread's tool calls other than T3, GitHub, and GTD tools and "
                  "t3_project_lead.py.",
-                 "When it reports, run task verified <name> --decisions <N>, as verify says; the batch's "
-                 "verified tasks are then closed out.",
+                 "When it reports, run task verified <name> --decisions <N> --no-pr, as verify says; the "
+                 "batch's verified tasks are then closed out.",
                  "Settle each worker that a due line lists with t3_thread_organize, and run task "
-                 "settled <name>...; never reuse one."],
+                 "settled <name>...; never reuse one. When T3 refuses a settle, give it to the user with "
+                 "wait --settles <name>."],
     "report": ['End with the "Waiting on you" list below, copied as it is.',
                # Each decision for the user is on the waiting list, and nowhere else (#567).
                "add each new decision that only the user can make, such as an approval, access, or a step "
@@ -542,6 +558,8 @@ class StepTests(unittest.TestCase):
                 self.assertIn("When the task says that a leader runs the retrospective for this run",
                               words(text))
                 self.assertRegex(text, r"(?m)^## Navigation retrospective$")
+                # The worker brief and matt-automode ask for the approvals of a task at once (#635).
+                self.assertIn(WORKER_APPROVALS, words(text))
 
     def test_the_brief_names_no_question_tool_for_the_worker(self) -> None:
         # Workers asked with the question tool, 28 and 16 calls, and the user did not want it (#607).

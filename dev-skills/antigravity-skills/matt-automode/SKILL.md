@@ -181,6 +181,10 @@ locally only when the resolution changes another file. If a required human
 review cannot be supplied, continue independent tickets, then report the
 blocker and keep the work. Respect branch protection.
 
+When a task needs several approvals, ask for all of them in one numbered
+message as soon as their facts are known. While you wait, run the steps that
+need no approval.
+
 ## Navigation retrospective
 
 The retro edits no tracked file. It proposes changes for a human to choose.

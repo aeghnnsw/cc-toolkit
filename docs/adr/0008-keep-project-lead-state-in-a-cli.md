@@ -64,6 +64,13 @@
 > `pull_request_read` with `sections` or `include` set to `["checks"]`, and
 > blocks `t3_thread_read` without `maxCharsPerItem`. Read
 > [Both check parameters of pull_request_read, and the page size of t3_thread_read](#both-check-parameters-of-pull_request_read-and-the-page-size-of-t3_thread_read).
+>
+> **Superseded in part (2026-11-26, issues #631 and #633).** `task verified`
+> refuses a running task with no recorded PR unless the lead gives
+> `--no-pr`. `task worker` settles each task whose thread it takes, also
+> before the close-out of that task's batch. `wait --settles` gives a settle
+> that T3 refuses to the user. Read
+> [A recorded PR, a taken thread, and a refused settle](#a-recorded-pr-a-taken-thread-and-a-refused-settle).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -101,7 +108,10 @@ copies that list and does not write it from memory. (Superseded in part by
 #555: `start` prints a compact view; read
 [The compact start view](#the-compact-start-view). Superseded in part by
 #603: `start` prints the fixed lead steps once in each thread; read
-[The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).)
+[The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).
+Superseded in part by #633: `task worker` settles a task whose thread it
+takes, also before the close-out; read
+[A recorded PR, a taken thread, and a refused settle](#a-recorded-pr-a-taken-thread-and-a-refused-settle).)
 `finish` deletes the lead
 state only when each task is in the `settled` state and nothing waits on the
 user.
@@ -617,3 +627,41 @@ matchers select `t3_thread_read`, and `start` tells the lead to pass
 the step text holds both rules.
 `dev-skills/tests/test_t3_project_lead_hook.py` and
 `dev-skills/tests/test_t3_project_lead.py` check these rules.
+
+## A recorded PR, a taken thread, and a refused settle
+
+Added on 2026-11-26 for
+[#631](https://github.com/aeghnnsw/cc-toolkit/issues/631) and
+[#633](https://github.com/aeghnnsw/cc-toolkit/issues/633).
+
+On 2026-11-26, a lead verified four running tasks whose workers had merged
+PRs. Only the `verify` step named `task pr` and `task merged`, and the lead
+had read it once, before a context summary. So the lead state recorded none
+of the four PRs, and the close-out brief listed them by hand. Now
+`task verified` refuses a running task with no recorded PR, and the refusal
+names `task pr <name> <n>` and `task merged <name> <n> <commit>`. The lead
+gives `--no-pr` for a task that makes no PR, such as a read-only check, and
+the event records it. `--no-pr` for a task with a recorded PR is refused,
+because it contradicts the record.
+
+In an earlier session of that lead, `task worker` gave the thread of a
+verified task to a running one, and `start` still said "Settle the worker of"
+the verified task. Now `task worker` takes a thread with the rules of
+`task start`: it refuses a thread that a running, pr-open, or merged task
+uses, and a settled one. Each verified, closed-out, or cancelled task that
+records the thread is settled in the same command, because the thread is no
+longer its own. This happens also before the close-out of that task's batch:
+the close-out still names the task's worker, worktrees, and PRs, because it
+reads every task of the batch. Without `--worktree`, the new task records the
+thread's worktree, as a reused worker of `task start` does, so the cleanup
+plan keeps that worktree while the new task is not `settled`. A reused worker
+of `task start` keeps its due line from #602, which tells the lead to keep
+the thread.
+
+In the same session, T3 refused two settles with
+`runtime_mode_escalation_denied`, and the lead gave them to the user. Their
+due lines stayed in each `start`. Now `wait --settles <task>` adds an item
+with the worker's link for a task whose settle is due. While the item waits,
+no due line names that settle, and no due line offers `done` for the item.
+The task keeps its state, so the cleanup plan keeps its worktree while the
+thread is open. `done` for the item records the task as `settled`.
