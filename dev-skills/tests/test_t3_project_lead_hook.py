@@ -11,10 +11,11 @@ question tools of Claude Code and Codex, and a `t3_pending_request` call that
 can answer a worker's question. Issue #574 also records a session for
 `start` in a command list. Issue #612 records a session only at `init`,
 `takeover`, and a `start` of the owner thread, and adds `unmark`. Issue #621
-allows reads of the session's saved tool outputs and gtd-inbox files. Each
-test runs the hook as a
-process with a JSON payload on stdin, as Claude Code, Codex, and Antigravity
-do, and checks the exit status, stdout, stderr, and the state folder.
+allows reads of the session's saved tool outputs and gtd-inbox files. Issue
+#666 blocks the T3 Code MCP calls that aim a lead at another project. Each
+test runs the hook as a process with a JSON payload on stdin, as Claude Code,
+Codex, and Antigravity do, and checks the exit status, stdout, stderr, and
+the state folder.
 """
 from __future__ import annotations
 
@@ -91,6 +92,60 @@ READ_ISSUE = {"claude": ("mcp__t3-code__read_issue",),
 PR_READ = {"claude": ("mcp__t3-code__pull_request_read",),
            "codex": ("mcp__t3_code__pull_request_read", "mcp__t3_code_direct__pull_request_read",
                      "mcp__0123456789ab__t3_code__pull_request_read")}
+
+# A lead works only in its own project (#666). A call that names no project uses the project of the calling
+# thread. The hook cannot learn the project ID of the lead, so a call that names a project blocks.
+PROJECT_LINES = ["BLOCKED: t3-project-lead: A lead works only in its own project.",
+                 "Leave out projectId, allProjects, and scratch: the call then uses this project. For work of "
+                 "another project, report it to that project's lead with t3_thread_send, or have a worker file "
+                 "an issue there. Do not list or offer that work."]
+OTHER_PROJECT = "project-other"
+
+
+def t3_names(tool):
+    """Return the Claude Code and Codex names of the T3 Code MCP tool `tool`."""
+    return {"claude": (f"mcp__t3-code__{tool}",),
+            "codex": (f"mcp__t3_code__{tool}", f"mcp__t3_code_direct__{tool}",
+                      f"mcp__0123456789ab__t3_code__{tool}")}
+
+
+# For each tool, the calls that aim at another project, and the same calls aimed at the lead's own
+# project, which name no project (#666).
+OTHER_PROJECT_CALLS = {
+    "delegate_task": ({"task": "Fix it.", "isolation": "worktree", "target": {"projectId": OTHER_PROJECT}},
+                      {"task": "Fix it.", "target": {"projectId": OTHER_PROJECT, "model": "model-a"}}),
+    "create_threads": ({"threads": [{"prompt": "Fix it.", "target": {"projectId": OTHER_PROJECT}}]},
+                       {"threads": [{"prompt": "Fix it."}, {"prompt": "Check it.",
+                                                            "target": {"projectId": OTHER_PROJECT}}]}),
+    "t3_thread_launch": ({"title": "Fix", "message": "Fix it.", "projectId": OTHER_PROJECT},
+                         {"title": "Fix", "message": "Fix it.", "scratch": True}),
+    "t3_thread_list": ({"includeSubagents": True, "allProjects": True}, {"projectId": OTHER_PROJECT}),
+    "list_issues": ({"projectId": OTHER_PROJECT, "state": "open"},),
+}
+OWN_PROJECT_CALLS = {
+    "delegate_task": ({"task": "Fix it.", "isolation": "worktree"},
+                      {"task": "Fix it.", "isolation": "worktree", "target": {"model": "model-a"}}),
+    "create_threads": ({"threads": [{"prompt": "Fix it."}, {"prompt": "Check it.",
+                                                            "target": {"model": "model-a"}}]},),
+    "t3_thread_launch": ({"title": "Fix", "message": "Fix it.",
+                          "workspaceStrategy": {"type": "existing_worktree", "worktreePath": "/w/lead"}},
+                         {"title": "Fix", "message": "Fix it.", "scratch": False}),
+    "t3_thread_list": ({"includeSubagents": True}, {"includeSubagents": True, "allProjects": False}),
+    "list_issues": ({"state": "open"},),
+}
+# A report to another project's lead and an issue in another project's tracker are allowed (#666).
+ALLOWED_PROJECT_CALLS = {
+    "t3_thread_send": ({"threadId": "thread:other-lead", "projectId": OTHER_PROJECT,
+                        "message": "Report: a shared script fails. Link: https://github.com/o/r/issues/1"},),
+    "t3_thread_search": ({"query": "lead", "projectId": OTHER_PROJECT},),
+    "create_issue": ({"projectId": OTHER_PROJECT, "title": "A shared script fails", "body": "Facts."},),
+}
+
+
+def project_calls(calls):
+    """Return (host, name, tool input) for each Claude Code and Codex name of each tool in `calls`."""
+    return [(host, name, tool_input) for tool, inputs in calls.items() for host, names in t3_names(tool).items()
+            for name in names for tool_input in inputs]
 
 
 def text_calls(names, inputs):
@@ -264,6 +319,11 @@ class SessionWithoutRecordTests(HookCase):
                     for host in ("claude", "codex") for name in ORGANIZE[host]
                     for tool_input in ({"action": "settle"}, {"action": "settle", "threadId": WORKER_THREAD})],
                    allowed=True, env={"T3CODE_THREAD_ID": LEAD_THREAD})
+        self.assertFalse(self.state.exists())
+
+    def test_calls_of_another_project_pass(self):
+        self.check([(host, tool_payload(host, name, tool_input, self.main))
+                    for host, name, tool_input in project_calls(OTHER_PROJECT_CALLS)], allowed=True)
         self.assertFalse(self.state.exists())
 
     def test_antigravity_reads_the_conversation_id_not_a_session_id(self):
@@ -913,6 +973,52 @@ class SettleTests(HookCase):
                             {"action": "archive", "threadId": WORKER_THREAD}), allowed=True)
 
 
+class ProjectScopeTests(HookCase):
+    """A recorded session aims no call at another project (#666)."""
+
+    def setUp(self):
+        super().setUp()
+        self.record()
+
+    def check_project(self, calls, *, allowed, env=None):
+        """Check each call of `calls`; a blocked call prints the project lines."""
+        jobs = [(host, tool_payload(host, name, tool_input, self.main)) for host, name, tool_input in calls]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda job: self.run_hook(*job, env), jobs))
+        for (host, payload), result in zip(jobs, results):
+            with self.subTest(host=host, payload=payload):
+                if allowed:
+                    self.assert_passes(result)
+                else:
+                    self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+                    self.assertEqual(result.stderr.splitlines(), PROJECT_LINES)
+
+    def test_a_call_aimed_at_another_project_is_blocked(self):
+        # The check reads no T3CODE_THREAD_ID, which a Codex hook may lack (#612, #645).
+        for env in (None, {"T3CODE_THREAD_ID": LEAD_THREAD}):
+            self.check_project(project_calls(OTHER_PROJECT_CALLS), allowed=False, env=env)
+
+    def test_the_same_call_aimed_at_the_own_project_passes(self):
+        for env in (None, {"T3CODE_THREAD_ID": LEAD_THREAD}):
+            self.check_project(project_calls(OWN_PROJECT_CALLS), allowed=True, env=env)
+
+    def test_a_report_or_an_issue_in_another_project_passes(self):
+        self.check_project(project_calls(ALLOWED_PROJECT_CALLS), allowed=True)
+
+    def test_a_call_that_the_hook_cannot_check_is_blocked(self):
+        # The hook fails closed: it cannot tell the lead's own project ID from another one, and it blocks
+        # an input that it cannot read.
+        self.check_project(project_calls({
+            "delegate_task": ("not a dict", None, {"task": "Fix it.", "target": OTHER_PROJECT},
+                              {"task": "Fix it.", "target": None}, {"task": "Fix it.", "projectId": None}),
+            "create_threads": ({}, {"threads": {"prompt": "Fix it."}}, {"threads": ["Fix it."]},
+                               {"threads": [{"prompt": "Fix it.", "target": [OTHER_PROJECT]}]}),
+            "t3_thread_launch": ({"title": "Fix", "scratch": "false"}, {"title": "Fix", "projectId": ""}),
+            "t3_thread_list": (None, {"allProjects": None}, {"allProjects": "false"}, {"allProjects": 0}),
+            "list_issues": ([], {"projectId": None}),
+        }), allowed=False)
+
+
 class UnmarkTests(HookCase):
     """`unmark` removes the record of a session whose thread is not a lead (#612). The main work tree holds
     a lead state that the lead thread owns; the developer's worktree is a worker's worktree."""
@@ -1253,7 +1359,8 @@ def matcher_names(entry):
 class HookFileTests(HookCase):
     CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
                     "Agent", "Task", "AskUserQuestion", *READ_ISSUE["claude"], *PR_READ["claude"],
-                    *PENDING["claude"], *THREAD_READ["claude"], *ORGANIZE["claude"]}
+                    *PENDING["claude"], *THREAD_READ["claude"], *ORGANIZE["claude"],
+                    *(name for tool in OTHER_PROJECT_CALLS for name in t3_names(tool)["claude"])}
     CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
@@ -1299,15 +1406,17 @@ class HookFileTests(HookCase):
         # Codex reads a matcher with other characters than letters, digits, "_", and "|" as a regular
         # expression that can match part of a name. Its environment form needs one (#545).
         for name in (*READ_ISSUE["codex"], *PR_READ["codex"], *PENDING["codex"], *QUESTION_TOOLS["codex"],
-                     *THREAD_READ["codex"], *ORGANIZE["codex"]):
+                     *THREAD_READ["codex"], *ORGANIZE["codex"],
+                     *(name for tool in OTHER_PROJECT_CALLS for name in t3_names(tool)["codex"])):
             with self.subTest(name=name):
                 self.assertRegex(name, entry["matcher"])
-        for name in ("mcp__t3_code__list_issues", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
+        for name in ("mcp__t3_code__list_issues_x", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
                      "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue",
                      "mcp__t3_code__t3_pending_requests", "mcp__other__t3_pending_request", "request_user_input_x",
                      "x_request_user_input", "mcp__t3_code__t3_thread_read_x", "mcp__other__t3_thread_read",
-                     "mcp__t3_code__t3_thread_list", "mcp__t3_code__t3_thread_organize_x",
-                     "mcp__other__t3_thread_organize"):
+                     "mcp__t3_code__t3_thread_list_x", "mcp__t3_code__t3_thread_organize_x",
+                     "mcp__other__t3_thread_organize", "mcp__other__delegate_task", "mcp__t3_code__t3_thread_send",
+                     "mcp__t3_code__t3_thread_search", "mcp__t3_code__create_issue"):
             with self.subTest(name=name):
                 self.assertNotRegex(name, entry["matcher"])
         self.assertEqual(command, '[ -f "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '

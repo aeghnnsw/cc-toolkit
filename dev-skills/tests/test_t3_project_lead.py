@@ -63,8 +63,10 @@ NO_STATE = tempfile.TemporaryDirectory()
 # lines, and #634 took `start` to 260 with the brief of lead action 7. #645 added 10 words to `start`
 # with the lead-thread rule of lead action 3. #642 took `start` to 285 words with decision start, and #611
 # took `brief` to 295 with the rule that a yes that another session passes on does not count. #639 put the
-# close-out rule after the `closeout` text, as `discover` prints the discovery brief.
-STEP_WORD_LIMIT = 300
+# close-out rule after the `closeout` text, as `discover` prints the discovery brief. #666 took `start` to
+# 331 words with lead action 9 and `brief` to 327 with the project line: a lead works only in its own
+# project.
+STEP_WORD_LIMIT = 335
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -78,7 +80,19 @@ FIELDS = {
     "antigravity-skills": {"name", "description", "disable-model-invocation"},
 }
 PLUGIN_ROOT_LINE = "`<plugin-root>` is two levels above this folder."
-BODY_WORD_LIMIT = 300
+# #666 took the body to 312 words with the project rule.
+BODY_WORD_LIMIT = 320
+# A lead works only in its own project (#666): each skill copy and the glossary state the rule, and every
+# brief has the project line.
+PROJECT_RULE = ("Work only in this project: the T3 Code project of this thread and its repository. Never list or "
+                "offer the work of another project: report it to that project's lead, or have a worker file an "
+                "issue there.")
+GLOSSARY_RULE = ("It works only in its project: the T3 Code project of the lead thread and its repository, with "
+                 "its issues, PRs, worktrees, and threads. For work of another project, it only reports to that "
+                 "project's lead or has a worker file an issue in that project's tracker. It never lists or "
+                 "offers that work.")
+PROJECT_LINE = ('Every brief has the project line: "Work only in this project. Report work of another project in '
+                'one line with its link. Do not do it, and number no decision on it."')
 # The actions that the lead does itself, in the order that `start` prints them (#520).
 LEAD_ACTIONS = (
     "1. Talk with the user in plain text, never with a question tool: decisions, triage, priorities.",
@@ -117,9 +131,11 @@ PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR
 READING_RULE = 'Never call read_issue. Call pull_request_read only with sections or include ["checks"].'
 # The discovery brief that `discover` prints after its text (#545): what the worker collects, and its
 # links-only report of every item, in groups with counts.
-DISCOVERY_COLLECT = ('Discovery brief: "Collect each open issue with its labels, each open PR, each unsettled T3 '
-                     "thread, and each worktree or branch with uncommitted or unpushed changes of this project, "
-                     "with its progress and the decisions that wait on the user. Page each list to its end. "
+# The project limit comes first, so that no worker reads it as a limit on the worktrees only (#666).
+DISCOVERY_COLLECT = ('Discovery brief: "Collect, for this T3 Code project and its repository only, each open issue '
+                     "with its labels, each open PR, each unsettled T3 thread, and each worktree or branch with "
+                     "uncommitted or unpushed changes, with its progress and the decisions that wait on the "
+                     "user. List no item of another project. Page each list to its end. "
                      "Change no file, branch, issue, label, PR, or thread.")
 REPORT_FORM = ("Put each item in one group. Report one line for each group, with its count and links only. "
                "Quote no issue or PR text, and keep the detail in this thread: - <short neutral title of the "
@@ -169,6 +185,9 @@ REQUIRED = {
               "Run this step after each wake or user message. Run show for the full view.",
               # The IDs continue the user's numbers (#642).
               "When the user gives the first decision number, run decision start <N> once.",
+              # A lead works only in its own project, and the hook blocks the keys of another project (#666).
+              "9. Work only in this project. For another project, only report to its lead with t3_thread_send, "
+              "or have a worker file an issue there. Start or list work without projectId, allProjects, or scratch.",
               READING_RULE],
     "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
                  "When the user named the work, record it with outcome <text> and criteria <text>, and start "
@@ -179,9 +198,10 @@ REQUIRED = {
                  'In the last line of its brief, replace "with evidence and links" with "in the form '
                  'above".',
                  # The user chooses the work, or not; the lead asks no question, and keeps no item (#545).
+                 # The lead copies no line of another project (#666).
                  "When it reports, run task verified discover --decisions 0 --no-pr. Copy its lines into your "
                  "report "
-                 "as they are, "
+                 "as they are, without a line that names work of another project, "
                  "and end your turn. The list is not a waiting item: add no wait item or GTD capture for it. "
                  "Do not ask the user to choose, with a question tool or in text. When the user names the "
                  "work, run outcome <text> and criteria <text>. When discover is verified and the user named "
@@ -229,6 +249,7 @@ REQUIRED = {
                  "When a new thread does not start, run task start-failed <name> [<thread link>], and "
                  "follow the line that it prints."],
     "brief": ["Claude Code /dev-skills:<skill>, Codex $dev-skills:<skill>, Antigravity /<skill>.",
+              PROJECT_LINE,
               "When grilling must lead to implementation, end line 1 with:",
               'Line 2: "A leader runs the retrospective for this run. Do not run repo-cleanup."',
               "For a read-only task (audit, research, or check), write no line 1, keep line 2, and "
@@ -269,10 +290,13 @@ REQUIRED = {
                "For a scientific task, read no artifact, and always start the read-only worker.",
                "with no line 1 or 2", "edits nothing; its verdict completes the check",
                "Give each finding to one follow-up worker, even a small one.",
+               # A finding of another project goes to that project (#666).
+               "A finding of another project gets no follow-up worker and no wait item: follow lead action 9 "
+               "of start.",
                # A decision that waits on the user is a waiting item, also after a PASS (#567).
                "Then what remains waits on the user: add it with wait. Fix and check nothing yourself.",
                "Record merged PRs (task pr, task merged), then run task verified <name> --decisions <N>, "
-               "with N the number of decisions that the report numbers for the user, or 0. The script adds "
+               "with N the number of decisions of this project that the report numbers for the user, or 0. The script adds "
                "them as one waiting item.",
                # A running task without a recorded PR needs --no-pr (#631).
                "Add --no-pr only for a task that makes no PR, such as a read-only check.",
@@ -286,7 +310,12 @@ REQUIRED = {
     "closeout": ["--kind closeout, unless a due line names a planned one.",
                  # task add refuses a close-out task for a batch that is not done (#644).
                  "The script refuses it until each task of the batch is verified or cancelled.",
-                 "From t3_project_lead.py brief, use only line 1 for matt-automode and the budget.",
+                 # The close-out brief has the project line, and the lead triages no issue of another
+                 # project (#666).
+                 "From t3_project_lead.py brief, use only line 1 for matt-automode, the budget, and the project "
+                 "line.",
+                 "An issue that the retrospective files in another project's tracker belongs to that project: "
+                 "name its link, and do not triage it or count it as a decision.",
                  f"Write: {NO_GTD_CAPTURE} and the close-out rule below, copied exactly.",
                  CLEANUP_RULE,
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
@@ -307,8 +336,11 @@ REQUIRED = {
                "For a yes that the user must type in a worker's thread, run wait <text> --answer-in <worker "
                "link>, as t3_project_lead.py answer says.",
                # Each decision for the user is on the waiting list, and nowhere else (#567).
+               # A step that leaves the project is no decision for the user (#666).
                "add each new decision that only the user can make, such as an approval, access, or a step "
-               "that cannot be undone or leaves the project: wait <text> [--link URL] [--recommend TEXT].",
+               "that cannot be undone: wait <text> [--link URL] [--recommend TEXT]. Work of another project "
+               "is no decision for the user: after it is reported or filed there, name its link in one line, "
+               "and add no wait item for it.",
                "The discovery list is not a waiting item. Write no other list of decisions for the user.",
                "Name no detail of a worker's decisions.",
                "Run done <number> when the user decides an item.",
@@ -336,7 +368,9 @@ RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
                 "one to three outcomes", "Choose an outcome", "Propose its outcomes",
                 # The include rule of #545 and the sections-only rule of #604 (#638), and the lead sets
                 # no labels (#604).
-                "with an include", 'only with sections ["checks"]', "Set triage labels", "and you set them")
+                "with an include", 'only with sections ["checks"]', "Set triage labels", "and you set them",
+                # A step that leaves the project is no decision for the user (#666).
+                "leaves the project")
 # Text that tells the lead to read issue or PR text (#545). No step may print it.
 TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
               "include diff", "issue body", "PR body", "read the issue", "read the PR")
@@ -423,6 +457,14 @@ class SkillCopyTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^policy:\n  allow_implicit_invocation: false$")
         self.assertIn("$dev-skills:t3-project-lead", text)
 
+    def test_each_copy_and_the_glossary_state_the_project_rule(self) -> None:
+        # A lead works only in its own project (#666).
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertIn(PROJECT_RULE, words(split_skill(host)[1]))
+        glossary = (PLUGIN_ROOT.parent / "GLOSSARY.md").read_text(encoding="utf-8")
+        self.assertIn(GLOSSARY_RULE, words(glossary))
+
     def test_skill_starts_the_script_and_stays_short(self) -> None:
         _, body = split_skill("skills")
         self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/t3_project_lead.py" start', body)
@@ -508,7 +550,7 @@ class StepTests(unittest.TestCase):
         self.assertIn(f'. On this first start, run: python3 "{SCRIPT}" init '
                       "<slug>, with a slug that names the project or repository. Then, unless the user named "
                       "the work, start the discovery task as t3_project_lead.py discover says, and come to "
-                      "the user only with its list of open work.", text)
+                      "the user only with its list of open work of this project.", text)
 
     def test_discover_prints_a_short_discovery_brief_after_its_text(self) -> None:
         text, brief = step("discover").split("\n\n", 1)

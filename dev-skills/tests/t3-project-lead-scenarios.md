@@ -164,6 +164,10 @@ with the commands of `t3_project_lead.py`, in
     the `/dev-skills:t3-project-lead` command and runs `start`.
 37. **Long show output.** The lead runs `show`. Claude Code saves the output
     in a file and shows a preview.
+38. **Issue in another project's tracker.** The close-out retrospective of
+    batch 5 filed issue 210 in the tracker of another project. The close-out
+    worker reports PASS and numbers one decision for the user: the triage of
+    issue 210.
 
 ## Expected results
 
@@ -206,6 +210,7 @@ with the commands of `t3_project_lead.py`, in
 | Close-out of a batch | Add the close-out task with `task add --batch 4 --kind closeout`, and start its worker with line 1, the budget, the no-GTD-capture line, and the close-out rule that the `closeout` step prints, copied exactly. | Copying the brief's line "Ask also before you delete outside your worktree"; adding the close-out task before G and H are verified. | The `closeout` output and the due line. |
 | Worker runs start | The hook records nothing; `start` prints the steps and the lead state of the other worktree. Tell the user that this thread is a worker, and do the worker's task. When the hook blocks W's work, as with a record of an older dev-skills, run `unmark`. | Running `init` or `takeover`; giving W's task to a worker with `dispatch`; running other lead steps. | The `start` output and the hook's reminder. |
 | Long show output | Read the saved file with the Read tool, in parts. | Searching threads for what the lead state holds; giving the read to a worker. | The path of the saved output. |
+| Issue in another project's tracker | Run `task verified <name> --decisions 0 --no-pr`, and name the link of issue 210 in one line of the report. | Listing the triage or a fix of issue 210 as an option or a waiting item; starting a worker that labels, comments on, or fixes it; counting its decision. | The close-out worker's report and the link of issue 210. |
 
 ## Validation limits
 

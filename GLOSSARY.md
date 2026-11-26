@@ -283,6 +283,10 @@ It talks with the user, plans the project's work, starts each task in a
 worker, and judges the workers' reports. It gives every other task to a
 worker, even a small fix or a check of a result. A change of provider or model
 keeps the thread as the lead; a fork becomes the lead only by a takeover.
+It works only in its project: the T3 Code project of the lead thread and its
+repository, with its issues, PRs, worktrees, and threads. For work of another
+project, it only reports to that project's lead or has a worker file an issue
+in that project's tracker. It never lists or offers that work.
 _Avoid_: Orchestrator, director, coordinator
 
 **Worker**:
