@@ -5,8 +5,9 @@ repo-cleanup acts only on the REMOVE lines. This script removes nothing: it
 runs git, read-only gh commands, and live_worktrees.py, which is next to it.
 
 Each line has four tab-separated fields: KEEP or REMOVE; the kind (folder,
-worktree, branch, or remote-branch); the folder path, the worktree path as
-`git worktree list` prints it, or the branch name; and the reason. The rules:
+worktree, branch, config-section, or remote-branch); the folder path, the
+worktree path as `git worktree list` prints it, the branch name, or the config
+section; and the reason. The rules:
 
 - Keep the main checkout, the Default Branch, and the worktree that the
   current session runs in: the top level of --repo.
@@ -66,6 +67,11 @@ worktree, branch, or remote-branch); the folder path, the worktree path as
   branch of each kept local branch: the remote branch with its name or its
   upstream. A branch's PRs are those whose head is its upstream branch, or
   the branch name when it has no upstream on the remote.
+- Remove each branch.<name> section of the repository config whose local
+  branch does not exist. `git branch -D` deletes a branch and exits 0 also
+  when it cannot write the config, for example in a sandbox, and the section
+  then stays (#643). With --config-sections, print only these lines, and read
+  only the Git config and the local branches.
 
 The exit status is 0 when the plan is printed, and 1 when no plan can be
 made, for example outside a repository or without a known Default Branch.
@@ -428,6 +434,23 @@ def refs(repo: str, prefix: str) -> dict[str, tuple[str, str]]:
     return found
 
 
+def config_sections(repo: str,
+                    local: dict[str, tuple[str, str]]) -> list[tuple[str, str, str, str]]:
+    """Return a REMOVE line for each branch.<name> section of the config with no local branch.
+
+    `git branch -D` deletes the branch and exits 0 also when it cannot write
+    the config, for example in a sandbox, and the section stays (#643). A key
+    of a branch section has a subsection, the branch name, between its first
+    and last dot; a key without one, such as branch.autoSetupMerge, is a
+    setting.
+    """
+    output = git(repo, "config", "--local", "--name-only", "-z", "--list")
+    names = [key[len("branch."):key.rindex(".")] for key in (output or "").split("\0")
+             if key.startswith("branch.") and key.count(".") >= 2]
+    return [(REMOVE, "config-section", f"branch.{name}", f"no local branch {name}")
+            for name in dict.fromkeys(names) if name not in local]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=".",
@@ -439,9 +462,16 @@ def main() -> None:
     parser.add_argument("--main-only", action="store_true",
                         help="the repository documents the planning folder location "
                              "in the main checkout")
+    parser.add_argument("--config-sections", action="store_true",
+                        help="print only the config-section lines; read only the Git config "
+                             "and the local branches")
     args = parser.parse_args()
 
     current = os.path.realpath(git(args.repo, "rev-parse", "--show-toplevel").strip())
+    if args.config_sections:
+        for line in config_sections(args.repo, refs(args.repo, "refs/heads/")):
+            print("\t".join(line))
+        return
     default, default_ref = default_branch(args.repo, args.remote, args.default_branch)
     worktrees = worktree_list(args.repo)
     live, live_error = live_worktrees(args.repo)
@@ -571,6 +601,7 @@ def main() -> None:
         lines.append((action, "branch", name, reason))
         for remote_name in dict.fromkeys((name, pr_head(name))):
             locals_of.setdefault(remote_name, []).append(name)
+    lines += config_sections(args.repo, local)
     for name, (tip, _) in refs(args.repo, remote_prefix).items():
         if name in ("HEAD", default):
             continue
