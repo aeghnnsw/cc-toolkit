@@ -81,6 +81,11 @@
 > the worktrees of its verified tasks: the cleanup plan keeps no worktree of a
 > `verified` or `closed-out` task once the close-out task of its batch has
 > started, and the worker of such a task is no idle worker. Read [Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).
+>
+> **Superseded in part (2026-11-26, issue #612).** Only `init`, `takeover`,
+> and a `start` of the thread that owns the lead state record a session. Read
+> [Lead threads only](0007-gate-the-project-lead-with-a-session-checked-hook.md#lead-threads-only)
+> in ADR 0007.
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current

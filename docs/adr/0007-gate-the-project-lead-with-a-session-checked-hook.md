@@ -18,6 +18,12 @@
 > **Superseded in part (2026-11-24, issue #574).** A `start` run in a command
 > list also records a session, as in `S=<script>; python3 $S start 2>&1 |
 > head -80`. Read [Start in a command list](#start-in-a-command-list).
+>
+> **Superseded in part (2026-11-26, issues #612 and #621).** Only `init`,
+> `takeover`, and a `start` of the thread that owns the lead state record a
+> session, and `unmark` removes a wrong record. In a recorded session, the
+> lead may also read the tool outputs that Claude Code saved for the session,
+> and its gtd-inbox files. Read [Lead threads only](#lead-threads-only).
 
 A project lead must give every task except its own lead actions to a worker
 ([#520](https://github.com/aeghnnsw/cc-toolkit/issues/520)). Text alone did
@@ -192,3 +198,47 @@ a lead, and the gate blocks the `rm` of its record. A record only turns the
 gate on. The gate does not change: in a recorded session it allows one
 simple command, so it blocks the same command list from the next call, and
 only the three-word `start` refreshes the record.
+
+## Lead threads only
+
+A worker thread ran `start` when the skill's command reached it. The hook
+recorded the worker's session and blocked its work
+([#612](https://github.com/aeghnnsw/cc-toolkit/issues/612)). The user chose
+to keep `start` open to every thread and to change what records a session.
+
+Now `init <slug>`, with an optional `--also`, and `takeover` record a
+session in any thread: each makes a lead. A `start` records a session only
+when `T3CODE_THREAD_ID` in the hook's environment is the owner of the lead
+state in the Git working tree of the call's cwd. A working tree without a
+lead state records nothing, so a worker in its own worktree is never
+recorded. The command forms of
+[Start in a command list](#start-in-a-command-list) still apply.
+
+The check fails closed. When a lead state may be there and the hook cannot
+tell its owner, `start` records the session: without `T3CODE_THREAD_ID` or
+an absolute cwd, or with a lead state that the hook cannot read or that has
+no owner. On 2026-11-26, the Claude Code process that T3 Code started had
+`T3CODE_THREAD_ID` in its environment, which its hooks inherit. The Codex
+app-server daemons had none, so a Codex hook may lack it. Then a `start` in
+the lead's working tree records the session of any thread.
+
+`t3_project_lead.py unmark` removes a wrong record. In a recorded session,
+the hook removes the record before the script runs, only when it can tell
+that the thread is no lead: the hook has `T3CODE_THREAD_ID`, the worktrees
+of the repository hold a lead state, and another thread owns each one.
+Otherwise it blocks the call with the reason and keeps the record. A
+repository without a lead state, as after `finish`, keeps the record too: a
+finished lead thread is still a lead thread, and only the user settles it.
+The script makes the same check and changes no lead state. The reminder on
+each user message names `unmark` for a thread that is not the lead.
+
+In a recorded session, the read rule also allows the tool outputs that
+Claude Code saved for the session, and gtd-inbox files
+([#621](https://github.com/aeghnnsw/cc-toolkit/issues/621)). Claude Code
+saves an output over its inline limit in `<folder>/<session>/tool-results/`,
+next to the transcript `<folder>/<session>.jsonl` that the payload names,
+and shows a preview, so a lead could not read a long `show` output. A
+payload without such a transcript path, as from Codex and Antigravity,
+allows no saved output. A gtd-inbox file is a `.json` file outside every Git
+work tree whose content is a GTD binding or request, as the write rule
+checks.

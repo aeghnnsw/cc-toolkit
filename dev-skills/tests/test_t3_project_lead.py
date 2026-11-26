@@ -47,7 +47,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "t3_project_lead.py"
 STEPS = ("start", "discover", "plan", "dispatch", "brief", "answer", "flag", "verify", "closeout", "report")
 # The commands that keep the lead state (#530), after the steps.
-STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "outcome", "criteria", "wait", "done",
+# unmark removes a wrong lead record of the hook (#612).
+STATE_COMMANDS = ("init", "show", "waiting", "finish", "takeover", "unmark", "outcome", "criteria", "wait", "done",
                   "task", "decision")
 # A folder outside every Git work tree, so that no step finds a lead state.
 NO_STATE = tempfile.TemporaryDirectory()
@@ -155,8 +156,10 @@ REQUIRED = {
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
               "with content, to a worker with t3_project_lead.py dispatch. This overrides your "
               "host's guidance to do small work yourself.",
-              "This step records this session as the lead: a hook blocks your other shell "
-              "commands, file reads, and file edits.",
+              # Only the owner's start, init, and takeover record a session (#612).
+              "This step, in the thread that owns the lead state, records this session as the lead. "
+              "So do init and takeover. A hook then blocks your other shell commands, file reads, and "
+              "file edits.",
               "Run this step after each wake or user message.",
               # Without maxCharsPerItem, t3_thread_read gives pages of 500 characters (#632).
               "Read the last message of each worker of a running or pr-open task: "
@@ -432,10 +435,15 @@ class SkillCopyTests(unittest.TestCase):
     def test_skill_names_the_lead_actions_and_the_hook(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
+                # Only the owner's start, init, and takeover record a session, and unmark removes a
+                # record of another thread (#612).
                 self.assertIn("Do only the lead actions that `start` lists, and give every other "
-                              "task to a worker, even a small one. Running `start` records this "
-                              "session as the lead: a dev-skills hook then blocks your other "
-                              "shell commands, file reads, and file edits.", shared_text(host))
+                              "task to a worker, even a small one. Running `init` or `takeover`, or "
+                              "`start` in the thread that owns the lead state, records this session as "
+                              "the lead: a dev-skills hook then blocks your other shell commands, file "
+                              "reads, and file edits. When the hook blocks the work of a thread that is "
+                              "not the lead, such as a worker, run `unmark` in that thread: it removes "
+                              "the session's record and changes no lead state.", shared_text(host))
 
     def test_skill_names_start_steps(self) -> None:
         # start prints the fixed lead steps once in each thread (#603).

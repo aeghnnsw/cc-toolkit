@@ -365,6 +365,45 @@ class LeadStateTests(unittest.TestCase):
         return subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=self.repo,
                               env=self.env, capture_output=True, text=True, check=True).stdout
 
+    def test_unmark_in_a_thread_that_is_not_the_lead_changes_no_lead_state(self) -> None:
+        # Issue #612: unmark is for a worker that the hook recorded as a lead; the hook removes the record.
+        self.ok("init", "x")
+        worker = self.worktree("w")
+        before = (self.state_text(), self.events())
+        for cwd in (worker, self.repo):
+            with self.subTest(cwd=cwd):
+                out = self.ok("unmark", cwd=cwd, thread=OTHER)
+                self.assertIn("This session has no lead record now: the t3-project-lead hook removed it before "
+                              "this command ran, if it had one. The lead state did not change.", words(out))
+        self.assertEqual((self.state_text(), self.events()), before)
+
+    def test_unmark_refuses_a_thread_that_may_be_the_lead(self) -> None:
+        # Issue #612: the script makes the hook's check, so a lead does not read that its record is gone.
+        def refusal(reason: str, cwd: Path | None = None, thread: str | None = OWNER) -> None:
+            result = self.run_lead("unmark", cwd=cwd, thread=thread)
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("unmark refused, so a lead record of this session stays: ", words(result.stderr))
+            self.assertIn(reason, words(result.stderr))
+
+        refusal("no worktree of this repository holds a lead state, as after finish")
+        self.ok("init", "x")
+        worker = self.worktree("w")
+        before = (self.state_text(), self.events())
+        refusal(f"this thread owns the lead state {self.folder()}")
+        refusal("this thread owns the lead state", cwd=worker)
+        refusal("no T3CODE_THREAD_ID", cwd=worker, thread=None)
+        self.assertEqual((self.state_text(), self.events()), before)
+        state = json.loads(self.state_text())
+        del state["owner"]
+        (self.folder() / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        refusal("has no owner", cwd=worker, thread=OTHER)
+        (self.folder() / "state.json").write_text("{not json", encoding="utf-8")
+        refusal("cannot read the lead states", cwd=worker, thread=OTHER)
+        shutil.rmtree(self.folder())
+        self.ok("init", "x")
+        self.ok("finish")
+        refusal("no worktree of this repository holds a lead state", cwd=worker, thread=OTHER)
+
     def test_init_creates_one_folder_that_git_ignores(self) -> None:
         # planning_folder.py makes the folder, with the local date, and makes Git ignore .scratch/ (#599).
         output = self.ok("init", "demo")
