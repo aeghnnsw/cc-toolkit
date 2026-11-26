@@ -17,6 +17,7 @@ import shlex
 import sys
 import tempfile
 import traceback
+from collections import namedtuple
 from pathlib import Path
 
 from hook_logs import append_log, host_log_dir
@@ -124,6 +125,11 @@ HEREDOC_OPERATOR_RE = re.compile(
     r"<<-?[ \t]*"
     r"(?P<word>(?:'[^'\n]*'|\"[^\"\n]*\"|\\.|[^\s'\"<>|&;()`\\])+)"
 )
+# One heredoc operator: `quoted` tells whether its word holds a quote or a
+# backslash, as in `<<'EOF'` or `<<\EOF`, so that the shell expands nothing
+# in the body. `tabs` tells whether it is `<<-`, which removes the leading
+# tabs of each body line.
+HeredocOperator = namedtuple("HeredocOperator", "quoted tabs")
 HEREDOC_WORD_PART_RE = re.compile(r"'([^']*)'|\"([^\"]*)\"|\\(.)|([^'\"\\]+)")
 ANSI_C_STRING_RE = re.compile(r"\$'((?:[^'\\]|\\.)*)'")
 # `<<< WORD`: a here string, whose word a shell reads as code (#479).
@@ -491,10 +497,9 @@ def _heredoc_delimiter_candidates(line, quote):
     """Return the delimiter words of each heredoc that one command line
     opens, in the order the shell reads their bodies.
 
-    Each item is (words, quoted): the words that can end one body (see
-    `_heredoc_delimiter_words`), and whether the operator's word holds a
-    quote or a backslash, as in `<<'EOF'`. The shell expands nothing in the
-    body of such a word. Recognizes the operators outside quotes.
+    Each item is (words, operator): the words that can end one body (see
+    `_heredoc_delimiter_words`), and a HeredocOperator. Recognizes the
+    operators outside quotes.
     Also returns the quote state at the end of the line, so a quoted string
     that spans lines cannot be read as a heredoc operator.
 
@@ -549,8 +554,11 @@ def _heredoc_delimiter_candidates(line, quote):
                 index += 2
                 continue
             word = match.group("word")
-            quoted = any(character in word for character in "'\"\\")
-            delimiters.append((_heredoc_delimiter_words(match), quoted))
+            operator = HeredocOperator(
+                quoted=any(mark in word for mark in "'\"\\"),
+                tabs=match.group().startswith("<<-"),
+            )
+            delimiters.append((_heredoc_delimiter_words(match), operator))
             index = match.end()
             continue
         index += 1
@@ -616,12 +624,16 @@ def _heredoc_parts(command):
     return _read_heredoc_lines(command, _heredoc_operators)
 
 
-def _read_heredoc_lines(command, scan):
+def _read_heredoc_lines(command, scan, body_end=None):
     """Split `command` into its command lines and heredoc bodies.
 
     `scan(line, state)` returns the operators of one line, each as (words
     that can end its body, a flag), and the state for the next line. Return
-    (code, bodies), with each body as (text, flag).
+    (code, bodies), with each body as (text, flag). A body ends at the first
+    line that is one of the words apart from surrounding whitespace. With
+    `body_end(lines, start, words, flag)`, it ends at the index that
+    `body_end` returns for the body that starts at `lines[start]`, or never
+    when it returns None.
 
     The split fails closed (#479). An operator whose body never ends can be
     a misread, as in `${x//<</y}`, so the rest of `command` stays code. An
@@ -641,11 +653,14 @@ def _read_heredoc_lines(command, scan):
         if (len(line) - len(line.rstrip("\\"))) % 2:
             operators = []
         for words, flag in operators:
-            end = next(
-                (end for end in range(index, len(lines))
-                 if lines[end].strip() in words),
-                None,
-            )
+            if body_end is not None:
+                end = body_end(lines, index, words, flag)
+            else:
+                end = next(
+                    (end for end in range(index, len(lines))
+                     if lines[end].strip() in words),
+                    None,
+                )
             if end is None:
                 break
             bodies.append(("\n".join(lines[index:end]), flag))
@@ -668,15 +683,15 @@ def strip_heredoc_bodies(command):
     return split_heredoc_bodies(command)[0]
 
 
-def split_heredoc_bodies(command):
-    """Return (code, bodies): `command` without its heredoc bodies, as
-    `strip_heredoc_bodies` returns it, and the bodies.
+def split_heredoc_bodies(command, body_end=None):
+    """Split `command` into its command lines and its heredoc bodies.
 
-    Each body is (text, quoted), where `quoted` tells whether the end word
-    of its operator holds a quote or a backslash, as in `<<'EOF'` or
-    `<<\\EOF`. The shell expands nothing in such a body.
+    Return (code, bodies). `code` is `command` without the body lines, as
+    `strip_heredoc_bodies` returns it. Each body is (text, operator), with a
+    HeredocOperator. `body_end` can replace the rule that ends a body; see
+    `_read_heredoc_lines`. A body that never ends stays code.
     """
-    return _read_heredoc_lines(command, _heredoc_delimiter_candidates)
+    return _read_heredoc_lines(command, _heredoc_delimiter_candidates, body_end)
 
 
 def _data_form_segments(line):

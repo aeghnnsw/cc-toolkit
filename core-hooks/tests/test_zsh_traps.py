@@ -146,6 +146,12 @@ EQUALS_TRAPS = {
     "x=$(cat <<EOF\n$(echo ==q9)\nEOF\n)": "==q9",
     "echo \"$(cat <<EOF\n$(echo ==q9)\nEOF\n)\"": "==q9",
     "cat <<'A' <<B\n$(echo ==q8)\nA\n$(echo ==q9)\nB": "==q9",
+    "cat <<EOF\nx\\\\\n$(echo ==q9)\nEOF": "==q9",
+    "cat <<EOF\n$(( '$(echo ==q9 | wc -c)' ))\nEOF": "==q9",
+    # zsh ends a body only at the exact end word, and joins a line that
+    # ends in a backslash with the next line.
+    "cat <<EOF\n EOF\ncat <<'Y'\n$(echo ==q9)\nY\nEOF": "==q9",
+    "cat <<EOF\nx\\\nEOF\ncat <<'Y'\n$(echo ==q9)\nY\nEOF": "==q9",
 }
 
 # Commands that zsh runs without an `=name` expansion.
@@ -195,6 +201,9 @@ EQUALS_SAFE = [
     "cat <<EOF\n$(echo \"==q9\" '==q8')\nEOF",
     "cat <<EOF\n$(cat <<'X'\n==q9\nX\n)\nEOF",
     "cat <<EOF\n$(cat =(echo hi))\nEOF",
+    "cat >/dev/null <<EOF\n$$(echo ==q9)\nEOF",
+    "cat <<'A'\n A\ncat <<B\n$(echo ==q9)\nB\nA",
+    "cat <<-'A'\n\t A\ncat <<B\n$(echo ==q9)\nB\nA",
     # Heredoc end words.
     "cat <<=EOF\nhi\n=EOF",
     "cat <<-=EOF\n\thi\n\t=EOF",
