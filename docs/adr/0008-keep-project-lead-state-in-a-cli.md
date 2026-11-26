@@ -59,6 +59,11 @@
 > written. `start` prints the fixed lead steps once in each thread.
 > `task start-failed` records a thread that did not start. Read
 > [The lead folder, failed starts, and the steps once](#the-lead-folder-failed-starts-and-the-steps-once).
+>
+> **Superseded in part (2026-11-26, issues #632 and #638).** The hook passes
+> `pull_request_read` with `sections` or `include` set to `["checks"]`, and
+> blocks `t3_thread_read` without `maxCharsPerItem`. Read
+> [Both check parameters of pull_request_read, and the page size of t3_thread_read](#both-check-parameters-of-pull_request_read-and-the-page-size-of-t3_thread_read).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -518,6 +523,9 @@ and no `sections` blocks: the server can ignore `include` and return the
 default sections, and the hook cannot tell which name a host uses. Any other
 value, and a tool input that is not an object, also block. `start` tells
 the lead to pass `sections` `["checks"]`.
+(Superseded by #638: a T3 Code build can name the parameter `include`, and
+the hook passes either name; read
+[Both check parameters of pull_request_read, and the page size of t3_thread_read](#both-check-parameters-of-pull_request_read-and-the-page-size-of-t3_thread_read).)
 
 The `start` step also said "Set triage labels and issue state". The hook
 blocks `gh`, and the lead has no tool that sets labels, so a worker had to
@@ -565,3 +573,45 @@ due line settles an idle worker while the record is open. A new thread closes
 the record only after the start limit passes without a failure, because the
 lead runs `task start` before T3 can show a failure. `task start` refuses a
 worker that a running, pr-open, or merged task uses, and a settled worker.
+
+## Both check parameters of pull_request_read, and the page size of t3_thread_read
+
+Added on 2026-11-26 for
+[#638](https://github.com/aeghnnsw/cc-toolkit/issues/638) and
+[#632](https://github.com/aeghnnsw/cc-toolkit/issues/632).
+
+T3 Code builds differ in the check parameter of `pull_request_read`. The
+build that #604 measured has `sections`. The build of another lead session,
+and of a worker session on 2026-11-26, has `include`, a list of `body`,
+`checks`, `threads`, `comments`, and `diff`, and no `sections`. The hook
+passed only `sections`, so it blocked every check read of a lead in an
+`include` build.
+
+Now, in a recorded session, the hook passes `pull_request_read` when
+`sections` or `include` is present and each one that is present is exactly
+`["checks"]`. A call with neither blocks, because a default can hold the PR
+body. Any other value, the two set to different values, and a tool input
+that is not an object also block. `start` tells the lead to call
+`pull_request_read` only with `sections` or `include` `["checks"]`.
+
+The worker session measured the `include` build: `include` `["checks"]`
+returned the state, the check counts, and the check runs, without the body
+or the comments. A call with `sections` failed with
+`Unknown argument "sections"`. No session measured how a `sections` build
+treats an `include`. If that build ignores `include`, a call with only
+`include` `["checks"]` gets its default, `summary` and `checks`, and the
+summary can hold the PR body. The hook cannot tell which build a host runs,
+and it accepts this risk: the lead sends the parameter that its tool schema
+names, the one build that was measured rejects an argument that it does not
+have, and the old rule blocked every check read in an `include` build.
+
+Without `maxCharsPerItem`, `t3_thread_read` gives each item in pages of 500
+characters. After a context summary, a lead left the option out and read
+one worker report in 8 calls. Now, in a recorded session, the hook blocks
+`t3_thread_read` unless `maxCharsPerItem` is a positive integer, and the
+block names 8000. The Claude Code and Codex hook matchers select
+`t3_thread_read`, and `start` tells the lead to pass `maxCharsPerItem`
+8000. Antigravity has no known hook payload for MCP calls, so there only
+the step text holds both rules.
+`dev-skills/tests/test_t3_project_lead_hook.py` and
+`dev-skills/tests/test_t3_project_lead.py` check these rules.

@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|exec_command|shell|apply_patch|spawn_agent|Agent|^request_user_input(_async)?$|^mcp__([0-9a-f]{12}__)?t3_code(_direct)?__(read_issue|pull_request_read|t3_pending_request)$",
+        "matcher": "Bash|exec_command|shell|apply_patch|spawn_agent|Agent|^request_user_input(_async)?$|^mcp__([0-9a-f]{12}__)?t3_code(_direct)?__(read_issue|pull_request_read|t3_pending_request|t3_thread_read)$",
         "hooks": [
           {
             "type": "command",

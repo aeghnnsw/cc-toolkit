@@ -38,8 +38,8 @@ REMINDER = ('This is a t3-project-lead session. Before anything else in this tur
             f'python3 "{STEP_SCRIPT}" start')
 DAY = 24 * 60 * 60
 TEXT_LINE = ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
-             'pull_request_list, and pull_request_read with sections set to ["checks"]. Give a triage '
-             "that needs issue text to a read-only worker.")
+             'pull_request_list, and pull_request_read with sections or include, as your tool names it, set '
+             'to ["checks"]. Give a triage that needs issue text to a read-only worker.')
 # The blocks of a question tool and of an answer to a worker's question (#554).
 QUESTION_LINE = ("Ask no question with a question tool. List in plain text and end your turn. Write a decision "
                  "that only the user can make in plain text, with your recommendation. Never ask the user to "
@@ -52,6 +52,12 @@ PENDING = {"claude": ("mcp__t3-code__t3_pending_request",),
            "codex": ("mcp__t3_code__t3_pending_request", "mcp__t3_code_direct__t3_pending_request",
                      "mcp__0123456789ab__t3_code__t3_pending_request")}
 RESPOND = {"action": "respond", "threadId": "worker-1", "requestId": "r1", "answers": {"q1": "Remove it"}}
+# Without maxCharsPerItem, t3_thread_read gives each item in pages of 500 characters (#632).
+THREAD_LINE = ("Call t3_thread_read with maxCharsPerItem, such as 8000. Without it, a worker report comes in "
+               "pages of 500 characters.")
+THREAD_READ = {"claude": ("mcp__t3-code__t3_thread_read",),
+               "codex": ("mcp__t3_code__t3_thread_read", "mcp__t3_code_direct__t3_thread_read",
+                         "mcp__0123456789ab__t3_code__t3_thread_read")}
 # The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
 # keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
 # mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
@@ -221,6 +227,11 @@ class SessionWithoutRecordTests(HookCase):
         jobs += [(host, tool_payload(host, name, RESPOND, self.main)) for host in ("claude", "codex")
                  for name in PENDING[host]]
         self.check(jobs, allowed=True)
+        self.assertFalse(self.state.exists())
+
+    def test_thread_reads_pass(self):
+        self.check([(host, tool_payload(host, name, {"threadId": "worker-1"}, self.main))
+                    for host in ("claude", "codex") for name in THREAD_READ[host]], allowed=True)
         self.assertFalse(self.state.exists())
 
     def test_antigravity_reads_the_conversation_id_not_a_session_id(self):
@@ -599,20 +610,23 @@ class GateTests(HookCase):
                               allowed=False)
 
     def test_pull_request_read_with_text_is_blocked(self):
-        # pull_request_read takes sections (#604). Without sections, it returns the default, summary and
-        # checks, and the summary can hold the PR body. The server can ignore include, so a call with
-        # include and no sections also gets the default.
-        sections = (["summary"], ["conversation"], ["diff"], ["checks", "summary"], ["diff", "checks"],
-                    ["summary", "checks", "conversation", "diff"])
-        inputs = ([{"number": 5, "sections": value} for value in sections]
-                  + [{}, {"number": 5}, {"repository": "o/r", "includeResolved": True}, {"include": ["checks"]},
-                     {"number": 5, "include": ["body", "diff"]}, {"sections": ["checks"], "include": ["body"]},
+        # One T3 Code build names the check parameter sections (#604), and another names it include (#638).
+        # Without either, a build returns its default, and the sections default holds the summary, which can
+        # hold the PR body. The two parameters set to different values also block.
+        values = (["summary"], ["conversation"], ["diff"], ["body"], ["comments"], ["threads"], ["checks", "summary"],
+                  ["diff", "checks"], ["body", "checks", "threads", "comments", "diff"])
+        inputs = ([{"number": 5, key: value} for key in ("sections", "include") for value in values]
+                  + [{}, {"number": 5}, {"repository": "o/r", "includeResolved": True},
+                     {"sections": ["checks"], "include": ["body"]}, {"sections": ["body"], "include": ["checks"]},
                      {"sections": ["checks"], "include": ["checks", "diff"]}])
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
 
     def test_pull_request_read_without_text_passes(self):
+        # The T3 Code shape of #638 is {"number": 630, "include": ["checks"]}.
         inputs = ({"sections": ["checks"]}, {"number": 5, "sections": ["checks"]},
                   {"repository": "o/r", "includeResolved": True, "cursor": "c1", "sections": ["checks"]},
+                  {"number": 630, "include": ["checks"]}, {"include": ["checks"]},
+                  {"repository": "o/r", "includeResolved": True, "cursor": "c1", "include": ["checks"]},
                   {"sections": ["checks"], "include": ["checks"]})
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=True)
 
@@ -621,9 +635,10 @@ class GateTests(HookCase):
         # not an object (Codex passes arguments that do not parse as a string).
         values = ("checks", None, [], ["checks", "checks"], [1], ["checks", None], {"checks": True}, ["Checks"],
                   ["files"])
-        inputs = ([{"sections": value} for value in values]
+        inputs = ([{key: value} for key in ("sections", "include") for value in values]
                   + [{"sections": ["checks"], "include": value} for value in values]
-                  + ["{not json", ["sections"], None])
+                  + [{"sections": value, "include": ["checks"]} for value in values]
+                  + ["{not json", ["sections"], ["include"], None])
         self.check_text_reads(text_calls(PR_READ, inputs), allowed=False)
 
     def check_named(self, cases, *, allowed, line=None):
@@ -645,6 +660,19 @@ class GateTests(HookCase):
         inputs = (RESPOND, {"action": "respond"}, {}, {"action": None}, {"action": ["list"]}, {"action": "Respond"},
                   {"action": "write"}, "not a dict", None)
         self.check_named(text_calls(PENDING, inputs), allowed=False, line=RESPOND_LINE)
+
+    def test_a_thread_read_without_a_page_size_is_blocked(self):
+        # The hook fails closed: maxCharsPerItem must be a positive integer (#632).
+        inputs = ({"threadId": "worker-1"}, {"threadId": "worker-1", "itemId": "i1", "textOffset": 500},
+                  *({"threadId": "worker-1", "maxCharsPerItem": value}
+                    for value in (None, True, False, "8000", 0, -1, 1.5, [8000])), {}, "not a dict", None)
+        self.check_named(text_calls(THREAD_READ, inputs), allowed=False, line=THREAD_LINE)
+
+    def test_a_thread_read_with_a_page_size_passes(self):
+        inputs = ({"threadId": "worker-1", "maxCharsPerItem": 8000},
+                  {"threadId": "worker-1", "maxCharsPerItem": 1, "view": "activity", "limit": 5},
+                  {"threadId": "worker-1", "itemId": "i1", "textOffset": 8000, "maxCharsPerItem": 20000})
+        self.check_named(text_calls(THREAD_READ, inputs), allowed=True)
 
     def test_a_list_or_read_of_pending_requests_passes(self):
         inputs = ({"action": "list"}, {"action": "list", "threadId": "worker-1"},
@@ -871,7 +899,7 @@ def matcher_names(entry):
 class HookFileTests(HookCase):
     CLAUDE_TOOLS = {"Bash", "Monitor", "Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit",
                     "Agent", "Task", "AskUserQuestion", *READ_ISSUE["claude"], *PR_READ["claude"],
-                    *PENDING["claude"]}
+                    *PENDING["claude"], *THREAD_READ["claude"]}
     CODEX_TOOLS = ("Bash", "exec_command", "shell", "apply_patch", "spawn_agent", "collaborationspawn_agent")
     ANTIGRAVITY_TOOLS = {"run_command", "read_file", "view_file", "list_dir", "grep_search", "write_file",
                          "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content",
@@ -916,13 +944,15 @@ class HookFileTests(HookCase):
                 self.assertRegex(name, entry["matcher"])
         # Codex reads a matcher with other characters than letters, digits, "_", and "|" as a regular
         # expression that can match part of a name. Its environment form needs one (#545).
-        for name in (*READ_ISSUE["codex"], *PR_READ["codex"], *PENDING["codex"], *QUESTION_TOOLS["codex"]):
+        for name in (*READ_ISSUE["codex"], *PR_READ["codex"], *PENDING["codex"], *QUESTION_TOOLS["codex"],
+                     *THREAD_READ["codex"]):
             with self.subTest(name=name):
                 self.assertRegex(name, entry["matcher"])
         for name in ("mcp__t3_code__list_issues", "mcp__t3_code__read_issue_x", "mcp__other__read_issue",
                      "mcp__0123456789__t3_code__read_issue", "xmcp__t3_code__read_issue",
                      "mcp__t3_code__t3_pending_requests", "mcp__other__t3_pending_request", "request_user_input_x",
-                     "x_request_user_input"):
+                     "x_request_user_input", "mcp__t3_code__t3_thread_read_x", "mcp__other__t3_thread_read",
+                     "mcp__t3_code__t3_thread_list"):
             with self.subTest(name=name):
                 self.assertNotRegex(name, entry["matcher"])
         self.assertEqual(command, '[ -f "${PLUGIN_ROOT}/scripts/t3_project_lead_hook.py" ] || exit 0; '

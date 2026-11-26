@@ -52,7 +52,8 @@ NO_STATE = tempfile.TemporaryDirectory()
 # triage lines. #554, #555, and #560 took `start` to 244 words with the plain-text rule and the show
 # line, `plan` to 243 with the default batch, and `brief` to 237 with the worker's question line.
 # #607 took `brief` to 248 words: the worker asks in plain text, then ends its turn.
-# #623 took `dispatch` to 249 words with the pin record line.
+# #623 took `dispatch` to 249 words with the pin record line. #632 and #638 took `start` from 242 to 247
+# words with the page size of t3_thread_read and the include of pull_request_read.
 STEP_WORD_LIMIT = 250
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
@@ -74,8 +75,8 @@ LEAD_ACTIONS = (
     "2. Plan tasks, briefs, and lead decisions.",
     "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs.",
     "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
-    'their text. Never call read_issue. Call pull_request_read only with sections ["checks"]. No '
-    "diff, code, or log.",
+    'their text. Never call read_issue. Call pull_request_read only with sections or include ["checks"]. '
+    "No diff, code, or log.",
     "5. Run this script; it keeps the lead state.",
     "6. Judge reports: accept, start a follow-up, or ask the user.",
     "7. Set issue state; a worker sets triage labels.",
@@ -96,8 +97,9 @@ PR_WAIT_WORKER = ('"When your PR waits on checks, report its URL and full head S
 PR_WAIT_LEAD = ("When a worker reports that its PR waits on checks, watch the PR, and resume the "
                 "worker when the checks finish.")
 # The lead reads no issue or PR text (#545): a lead that read issues was flagged. Only this rule may
-# name read_issue. pull_request_read takes sections, and its default includes the PR summary (#604).
-READING_RULE = 'Never call read_issue. Call pull_request_read only with sections ["checks"].'
+# name read_issue. A T3 Code build names the check parameter of pull_request_read sections (#604) or
+# include (#638), and its default can hold the PR body.
+READING_RULE = 'Never call read_issue. Call pull_request_read only with sections or include ["checks"].'
 # The discovery brief that `discover` prints after its text (#545): what the worker collects, and its
 # links-only report of every item, in groups with counts.
 DISCOVERY_COLLECT = ('Discovery brief: "Collect each open issue with its labels, each open PR, each unsettled T3 '
@@ -123,8 +125,9 @@ REQUIRED = {
               "This step records this session as the lead: a hook blocks your other shell "
               "commands, file reads, and file edits.",
               "Run this step after each wake or user message.",
+              # Without maxCharsPerItem, t3_thread_read gives pages of 500 characters (#632).
               "Read the last message of each worker of a running or pr-open task: "
-              "t3_thread_list with includeSubagents, then t3_thread_read.",
+              "t3_thread_list with includeSubagents, then t3_thread_read with maxCharsPerItem 8000.",
               "Never state a worker's status from memory.",
               # start prints a compact view (#555).
               "Run this step after each wake or user message. Run show for the full view.",
@@ -268,8 +271,9 @@ RETIRED_TEXT = ("lead.md", "time limit", "in minutes", "At either limit",
                 "approved outcome",
                 # The lead lists the open work and asks the user no question (#545).
                 "one to three outcomes", "Choose an outcome", "Propose its outcomes",
-                # pull_request_read has no include parameter, and the lead sets no labels (#604).
-                "with an include", "Set triage labels", "and you set them")
+                # The include rule of #545 and the sections-only rule of #604 (#638), and the lead sets
+                # no labels (#604).
+                "with an include", 'only with sections ["checks"]', "Set triage labels", "and you set them")
 # Text that tells the lead to read issue or PR text (#545). No step may print it.
 TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include comments", "include threads",
               "include diff", "issue body", "PR body", "read the issue", "read the PR")

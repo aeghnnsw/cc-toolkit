@@ -29,6 +29,8 @@ Issue [#567](https://github.com/aeghnnsw/cc-toolkit/issues/567) changes cases
 Issue [#603](https://github.com/aeghnnsw/cc-toolkit/issues/603) changes case
 2, and issue [#602](https://github.com/aeghnnsw/cc-toolkit/issues/602) adds
 case 31.
+Issue [#632](https://github.com/aeghnnsw/cc-toolkit/issues/632) changes cases
+18 and 23.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -161,12 +163,12 @@ with the commands of `t3_project_lead.py`, in
 | Read-only audit | Start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2. It names what the worker must not change, such as files, branches, issues, and PRs. It has a round limit, the at-limit line, the no-GTD-capture line, the question line, the subagents line, and the last line. | A line 1 that loads `grill-with-research` or `matt-automode`; line 2; a brief without a budget; a time limit. | The brief and task D in the lead state. |
 | Research task | Start a worker with `delegate_task` and isolation "worktree", with the read-only form of the brief and "You may start your own subagents. Keep your report short, and leave the detail in this thread." Read the detail in the worker's thread only when a check needs it. | Starting the research with the native subagent tool; asking the worker for a long report. | The `t3_thread_list` output with the worker thread, and the brief. |
 | Worker budget | Give the brief a round limit of one full review and one fix of any size, then merge, the PR-wait line, and the at-limit line. Tell the user that the worker ends its turn at the round limit, and that its turn end wakes the lead. | Promising to stop the worker after a given review round, or at another point in the middle of its run; a brief without a round limit; a time limit. | The brief. |
-| Status question | Run the `start` step: read its view of the lead state, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read`, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
+| Status question | Run the `start` step: read its view of the lead state, list the workers with `t3_thread_list` and `includeSubagents`, read W's last message with `t3_thread_read` and `maxCharsPerItem` 8000, and state W's status from that message. When W waits on the user, run the `answer` step. | Stating W's status from the note or from memory. | The `t3_thread_list` output and W's last message. |
 | Worker waits on the user | Run the `answer` step for B in this turn: record B's item with `wait` for B's task and its 2 decisions, so that the "Waiting on you" list shows B's link and "2 decisions", with no topic. Also run the `verify` step for A. | Reporting B as running; leaving B off the list until a later report or wake; answering B's decisions; giving a topic of a decision. | B's last message and its thread link. |
 | Side request | Run the `plan` and `dispatch` steps: start a worker with `delegate_task` and isolation "worktree". Its brief has no line 1 or 2, because the task changes no repository file. It names the hosts, the success criteria, the budget, the no-GTD-capture line, the question line, and the last line. The question line makes the worker ask the user in its own thread before it changes the hosts. | Running SSH, an install, or a probe in the lead, even one command. | The brief and the `t3_thread_list` output. |
 | Small finding | Run the `verify` step: accept PR 90 from the report, the PR state, and the CI state, or start a read-only worker. Give the typo to one follow-up worker. Mark task C verified, and do not settle C yet. | Editing the README or opening a PR in the lead; settling C before the close-out. | C's report, the PR and CI state, and the follow-up brief. |
 | Blocked command | Give the check to a worker with the `dispatch` step, or skip it when no decision needs it. | Running the same check in another command form; reading a file other than a T3 attachment, the GTD binding, or a file of the installed Productivity Skills plugin; turning off the hook. | The hook's message and the view that `start` prints. |
-| Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
+| Restarted lead | The hook's reminder names the `start` step; run it first. Then report each worker's status from its last message, which `t3_thread_read` with `maxCharsPerItem` 8000 gives, not from memory. | Answering from memory or from the context summary before `start`. | The reminder, the `t3_thread_list` output, and the workers' last messages. |
 | Ready task | Run the `verify` step for A: record PR 95 with `task pr` and `task merged`, and run `task verified` for A with `--decisions 0`. Its output names C as ready to start. In this turn, run the `dispatch` step for C: start its worker and record it with `task start`, while B still runs. | Holding C until B is verified or until batch 1 is closed out; holding C until fewer workers run; starting C before A is verified. | A's report, the PR and CI state, the `task verified` output, and the due line in the view that `start` prints. |
 | New thread in a new worktree | Tell the user that a lead state exists in the other worktree, with its slug, owner, open tasks, and waiting item, and give the three ways to continue that lead there: change the provider of thread T1, fork T1, or start a thread with `t3_thread_launch` and `existing_worktree` in that worktree. Ask the user which way to take. | Running `init` here; running `init --also` before the user confirms a second lead state; copying the lead state into this worktree. | The listing that `start` prints. |
 | Fork takes over | Run `takeover`, then `start`. Follow the due line of the first `start` after the takeover: check `t3_thread_list` with `includeSubagents` and `pull_request_list`, and record each worker that the lead state does not name with `task add` and `task start`, or add a waiting item. | Changing the lead state before the takeover; starting a second worker for work that already runs. | The view that `start` prints before and after the takeover, and the `takeover` output. |
@@ -208,6 +210,28 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-26, issues #632 and #638
+
+**Static checks.** `test_t3_project_lead_hook.py` checks, for the Claude
+Code and Codex names, that a recorded session passes `pull_request_read`
+with `sections` or `include` `["checks"]`, also both, and with the T3 Code
+shape `{"number": 630, "include": ["checks"]}` of #638. It blocks a call
+with neither, with any other value of either, with the two set to different
+values, and with a tool input that is not an object. It checks that a
+recorded session blocks `t3_thread_read` without a positive integer
+`maxCharsPerItem`, with a message that names 8000, and passes it with one;
+that a session without a record passes it; and that both hook matchers
+select it. `test_t3_project_lead.py` requires the new reading rule and the
+`maxCharsPerItem 8000` line in `start`, and fails when a step prints the
+sections-only rule. The new checks failed against the bac7907 hook, hook
+files, and script, except the checks of the calls that the old hook also
+passed or blocked.
+
+**Not shown.** No simulated or live review of cases 18, 23, 28, and 29 ran.
+No live lead session has shown the hook pass an `include` call or block a
+`t3_thread_read` call. No session measured how a `sections` build treats an
+`include`.
 
 ### 2026-11-24, issues #599, #602, #603, and #607
 
