@@ -24,6 +24,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox_check import require_ps  # noqa: E402
+
+
+def setUpModule():
+    # In a sandbox that blocks ps, one error with the fix replaces a failure for each test.
+    require_ps()
+
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SKILL = PLUGIN_ROOT / "skills" / "pressure-test" / "SKILL.md"
 SCRIPT = SKILL.parent / "scripts" / "codex_critic.py"

@@ -272,6 +272,32 @@ class RunSuiteTests(GitRepoTestCase):
         self.assertEqual(self.run_suite("--", "true", cwd=outside).returncode, 2)
         self.assertEqual(self.run_suite("--rerun").returncode, 2)
 
+    def test_summary_names_the_sandbox_when_a_failing_run_reports_a_denied_operation(self):
+        # The Claude Code sandbox blocks /bin/ps, so starting it raises this error.
+        denied = [
+            "PermissionError: [Errno 1] Operation not permitted: '/bin/ps'",
+            "FATAL: could not create shared memory segment: Operation not permitted",
+            "PermissionError: [Errno 1] Operation not permitted (while attempting to bind)",
+            "OSError: [Errno 1] Operation not permitted: 'fourth'",
+        ]
+        script = ("import sys; lines = sys.argv[2:]; print(lines[0]); print('\\n'.join(lines)); "
+                  "sys.exit(int(sys.argv[1]))")
+        failing = self.run_suite("--", sys.executable, "-c", script, "1", *denied)
+        self.assertEqual(failing.returncode, 1)
+        summary = failing.stdout.split("==== run_suite summary ====\n")[1]
+        self.assertEqual(summary.splitlines(), [
+            'Sandbox: 5 output lines report "Operation not permitted", for example:',
+            *[f"  {line}" for line in denied[:3]],
+            "A sandbox probably blocks the suite, so these failures may not come from the change.",
+            "Run the same command again outside the sandbox (in Claude Code: the Bash tool "
+            "with dangerouslyDisableSandbox).",
+            "Exit status: 1",
+        ])
+
+        passing = self.run_suite("--", sys.executable, "-c", script, "0", *denied)
+        self.assertEqual(passing.returncode, 0)
+        self.assertNotIn("Sandbox:", passing.stdout)
+
 
 def marker_time(age: timedelta) -> str:
     """Return the marker form of the time that is age before now."""

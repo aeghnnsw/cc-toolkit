@@ -500,7 +500,11 @@ in parallel. A repository's merge-lock tool can make the runs of the other
 worktrees wait with a priority marker; cc-toolkit writes none. See
 [ADR 0011](docs/adr/0011-give-the-merge-lock-holder-suite-priority-with-a-marker.md).
 The script reports a pass recorded for the same clean tree instead of a new
-run, and it prints the failing tests and the exit status last.
+run, and it prints the failing tests and the exit status last. When a
+failing run prints `Operation not permitted`, the summary says that a
+sandbox probably blocks the suite. Run the command again outside the
+sandbox. The Claude Code sandbox blocks `ps`, which the `dev-skills` suite
+needs.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov, which the `dev-skills` command
