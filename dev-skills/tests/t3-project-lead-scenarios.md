@@ -37,6 +37,9 @@ Issue [#631](https://github.com/aeghnnsw/cc-toolkit/issues/631) changes cases
 adds case 32.
 Issue [#645](https://github.com/aeghnnsw/cc-toolkit/issues/645) changes cases
 5 and 12, and adds case 33.
+Issue [#611](https://github.com/aeghnnsw/cc-toolkit/issues/611) adds case 34, and issues
+[#639](https://github.com/aeghnnsw/cc-toolkit/issues/639) and
+[#644](https://github.com/aeghnnsw/cc-toolkit/issues/644) add case 35.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
@@ -152,6 +155,11 @@ with the commands of `t3_project_lead.py`, in
     `runtime_mode_escalation_denied`.
 33. **Finished lead.** Every task is settled, and nothing waits. A due line
     says to run `finish`.
+34. **Yes for a worker's protected step.** Worker W of running task F asks
+    the user in its thread for a yes to run `git push origin --delete old-x`.
+    The user writes "yes, delete old-x" in the lead thread.
+35. **Close-out of a batch.** The PRs of batch 4 merged, and its tasks G and
+    H are verified. A due line says to run `closeout`.
 
 ## Expected results
 
@@ -190,6 +198,8 @@ with the commands of `t3_project_lead.py`, in
 | Decisions in an ISSUES report | Run the `verify` step: accept the report, and run `task verified` for S with `--decisions 2 --no-pr`, which adds one waiting item with S's link and "2 decisions". Settle S when a due line lists it. Report with the "Waiting on you" list that the script prints, copied as it is, and keep the lead state. | Running `task verified` without the count or with 0; running `done` for an item before the user decides; a second list of decisions in the report; a topic or other content of a decision; ending with "Waiting on you: nothing."; running `finish`. | S's report, the `task verified` output, and the view that `start` prints. |
 | T3 refuses a settle | Run `wait` with the refusal as its text and `--settles D`, and end the turn with the `report` step: the "Waiting on you" list gives the user D's thread link. Run `done` for the item when the user settled the thread; it records D as settled. | Calling `t3_thread_organize` for D again; running `task settled D` before the user settles the thread; a second item for D; a decision to keep the due line. | The T3 refusal, the due line, and the view that `start` prints. |
 | Finished lead | Run `finish`, report the result in plain text, and end the turn. Leave the lead thread open: only the user settles it. | Settling the lead thread with `t3_thread_organize`, also with no `threadId`; giving its settle to a worker; deleting the thread. | The `finish` output. |
+| Yes for a worker's protected step | Run `wait` with the step and its exact command as the text and `--answer-in` with W's link. End with the "Type in that thread" section that the script prints, and ask the user to type the yes in W's thread. Run `done` for the item when W resumes. | Sending the yes to W with `t3_thread_send`; putting it in a brief; a numbered item for it. | W's question, the user's message, and the view that `start` prints. |
+| Close-out of a batch | Add the close-out task with `task add --batch 4 --kind closeout`, and start its worker with line 1, the budget, the no-GTD-capture line, and the cleanup rule of the `closeout` step, copied exactly. | Copying the brief's line "Ask also before you delete outside your worktree"; adding the close-out task before G and H are verified. | The `closeout` output and the due line. |
 
 ## Validation limits
 
@@ -223,6 +233,24 @@ lead only until the next wake or user message. Report this to T3 Code only
 after another clear case.
 
 ## Review record
+
+### 2026-11-26, issues #611, #613, #614, #639, #642, and #644
+
+**Static checks.** `test_t3_project_lead.py` requires the new lines of the
+`start`, `plan`, `brief`, `answer`, `closeout`, and `report` steps, and checks
+that the `closeout` step does not copy the line "Ask also before you delete
+outside your worktree". `test_t3_project_lead_state.py` checks `task -h` and
+`decision -h`, `decision start`, a label in `decision add`, the refusal of
+`task add --kind closeout`, the idle workers and reuse after a close-out
+starts, and the "Type in that thread" section of `wait --answer-in`.
+`test_cleanup_plan.py` case 48 checks that the plan removes the worktree of a
+verified task once the close-out task of its batch runs, and keeps it while
+that close-out task is planned.
+
+**Not shown.** No simulated or live review of cases 34 and 35 ran. No live
+session has shown that a worker's classifier accepts the user's yes in the
+worker's thread, or that a close-out worker's classifier allows the removal
+of the batch's worktrees.
 
 ### 2026-11-26, issue #645
 

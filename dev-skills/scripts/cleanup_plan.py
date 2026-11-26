@@ -16,9 +16,11 @@ section; and the reason. The rules:
   --planning-location names, also with --main-only. Keep a worktree whose
   .scratch or lead folder cannot be read.
 - Read each lead state, also the one in the main checkout. Keep each worktree
-  whose path a task of a lead state records while the task is not settled. A
-  task matches no worktree by its branch: T3 Code renames a branch after the
-  task starts. When a .scratch, a lead folder, or a lead state cannot be read,
+  whose path a task of a lead state records while the task is not settled,
+  except a task that is verified or closed-out once the close-out task of its
+  batch has started (#639): the batch close-out removes the worktrees of its
+  verified tasks. A task matches no worktree by its branch: T3 Code renames a
+  branch after the task starts. When a .scratch, a lead folder, or a lead state cannot be read,
   keep every worktree that the plan would otherwise remove, with the error.
 - Keep each worktree that a T3 Code thread owns while the thread is not
   settled (#578). The t3 CLI is T3CODE_CLI_PATH when it is set, else t3 on
@@ -94,7 +96,7 @@ from typing import NoReturn
 from live_worktrees import WINDOW_MINUTES
 from planning_folder import Failed as PlanningFailed, entries as planning_entries
 from t3_project_lead import (SETTLED, Refused as LeadStateRefused, accepted as accepted_task,
-                             lead_folders, load as load_lead_state)
+                             lead_folders, load as load_lead_state, worktree_released)
 
 LIVE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_worktrees.py")
 ISSUE_KEY = re.compile(r"(\d+)-")
@@ -276,7 +278,7 @@ def find_lead_folders(root: str) -> tuple[list[str], str | None]:
 
 
 def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, str], str | None]:
-    """Return the worktrees that the tasks of the lead states record (#575, #610).
+    """Return the worktrees that the tasks of the lead states record (#575, #610, #639).
 
     The result is (kept, ended, None), with the error of the first lead state
     that cannot be read in place of None. kept maps the real path of each
@@ -285,7 +287,8 @@ def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, s
     accepted task that records it, when every task that records it is
     accepted. The lead accepted the final report of that task's worker, and
     settles a replaced worker at once (task worker), so their sessions have
-    ended.
+    ended. A task whose worktree the close-out of its batch removes keeps no
+    worktree (worktree_released of t3_project_lead.py).
     """
     kept: dict[str, str] = {}
     ended: dict[str, str] = {}
@@ -293,7 +296,8 @@ def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, s
     first_error = None
     for folder in folders:
         try:
-            for task in load_lead_state(folder)["tasks"]:
+            state = load_lead_state(folder)
+            for task in state["tasks"]:
                 paths = task.get("worktrees") or []
                 if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
                     raise TypeError(f"task {task['name']} has the worktrees {paths!r}")
@@ -303,7 +307,7 @@ def lead_task_worktrees(folders: list[str]) -> tuple[dict[str, str], dict[str, s
                         ended.setdefault(path, about)
                     else:
                         not_accepted.add(path)
-                    if task["state"] != SETTLED:
+                    if task["state"] != SETTLED and not worktree_released(state, task):
                         kept.setdefault(path, f"{about}, not settled")
         except (OSError, ValueError, KeyError, TypeError, AttributeError,
                 LeadStateRefused) as error:

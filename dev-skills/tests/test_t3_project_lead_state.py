@@ -802,8 +802,9 @@ class LeadStateTests(unittest.TestCase):
 
     def test_a_ready_close_out_task_names_the_closeout_step(self) -> None:
         self.ok("init", "demo")
-        self.ok("task", "add", "a", "Task a")
+        # task add refuses a close-out for a batch with an open task (#644), so a planned close-out comes first.
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
+        self.ok("task", "add", "a", "Task a")
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "pr", "a", "5")
         self.ok("task", "merged", "a", "5", "abcdef1")
@@ -1246,14 +1247,112 @@ class LeadStateTests(unittest.TestCase):
 
     def test_decisions_are_added_and_dropped_by_id(self) -> None:
         self.ok("init", "demo")
-        self.assertIn("Decision D1 added.", self.ok("decision", "add", "Squash each merge."))
+        self.assertIn("D1: decision added.", self.ok("decision", "add", "Squash each merge."))
         self.ok("decision", "add", "Merge one PR at a time.")
         self.ok("decision", "drop", "D1")
         self.refused("decision", "drop", "D1", reason="no decision D1")
-        self.assertIn("Decision D3 added.", self.ok("decision", "add", "Workers start from master."))
+        self.assertIn("D3: decision added.", self.ok("decision", "add", "Workers start from master."))
         view = self.ok("show")
         self.assertNotIn("D1 ", view)
         self.assertIn("- D2 Merge one PR at a time.", view)
+
+    def test_decision_start_continues_the_numbers_of_the_user(self) -> None:
+        # The user numbered the decisions from D76, and the lead added 14 to each ID that the script printed
+        # (#642).
+        self.ok("init", "demo")
+        self.ok("decision", "add", "Squash each merge.")
+        self.refused("decision", "start", "0", reason="a decision number is positive")
+        self.refused("decision", "start", "1", reason="D1 is stored, so the next decision number must be above 1")
+        self.assertEqual(self.ok("decision", "start", "76").strip(), "The next decision is D76.")
+        self.assertEqual(self.events()[-1], {"time": self.events()[-1]["time"], "command": "decision start",
+                                             "next_decision": 76})
+        self.assertEqual(self.ok("decision", "add", "Merge one PR at a time.").strip(), "D76: decision added.")
+        self.refused("decision", "start", "76", reason="D76 is stored, so the next decision number must be above 76")
+        self.ok("decision", "start", "80")
+        self.ok("decision", "add", "Workers start from master.")
+        self.ok("decision", "drop", "D76")
+        view = self.ok("show")
+        self.assertIn("- D1 Squash each merge.\n- D80 Workers start from master.", view)
+
+    def test_decision_add_takes_a_label_only_when_it_is_the_next_id(self) -> None:
+        # A lead stored 33 decisions under IDs 14 below the labels at the start of their texts (#614).
+        self.ok("init", "demo")
+        self.assertEqual(self.ok("decision", "add", "D1: Squash each merge.").strip(), "D1: decision added.")
+        self.refused("decision", "add", "D17 Merge one PR at a time.",
+                     reason="the decision starts with the label D17, but its ID is D2. Give the text without a "
+                            "label, and cite the ID that the script prints. When the user numbers the decisions "
+                            "from another number, run decision start <N> first")
+        # The label that the ID replaces does not count toward the limit of 200 characters.
+        self.ok("decision", "add", "D2 " + "x" * 200)
+        for value in ("Dec 5 is the release date.", "D3x is a host."):
+            self.ok("decision", "add", value)
+        decisions = [(decision["id"], decision["text"]) for decision in json.loads(self.state_text())["decisions"]]
+        self.assertEqual(decisions, [("D1", "Squash each merge."), ("D2", "x" * 200),
+                                     ("D3", "Dec 5 is the release date."), ("D4", "D3x is a host.")])
+
+    def test_task_and_decision_help_list_each_action(self) -> None:
+        # task -h printed only the word "action", so a lead guessed the actions (#613).
+        for command, actions in (("task", LEAD.TASK_CHANGES), ("decision", LEAD.DECISION_CHANGES)):
+            with self.subTest(command=command):
+                result = self.run_lead(command, "-h")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for action in actions:
+                    self.assertRegex(result.stdout, rf"\n    {re.escape(action)}\s+[a-z]")
+
+    def test_task_add_refuses_a_close_out_for_a_batch_with_an_open_task(self) -> None:
+        # task start refused the close-out after the lead had started its worker (#644).
+        self.ok("init", "demo")
+        self.merged_task("a", "5")
+        self.ok("task", "add", "b", "Task b", "--batch", "1")
+        self.ok("task", "start", "b", WORKER.format("b"))
+        self.refused("task", "add", "close-1", "Close out batch 1", "--kind", "closeout", "--batch", "1",
+                     reason="batch 1 still has tasks that are not verified or cancelled")
+        self.ok("task", "cancel", "b")
+        self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout", "--batch", "1")
+
+    def test_the_workers_of_a_started_close_out_take_no_new_task(self) -> None:
+        # A batch close-out removes the worktrees of its verified tasks (#639), so their workers are no idle
+        # workers.
+        self.ok("init", "demo")
+        self.merged_task("a", "5")
+        self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
+        self.ok("task", "add", "b", "Task b")
+        self.ok("task", "start-failed", "b")
+        self.assertIn(f"Idle workers: {WORKER.format('a')}.", words(self.ok("start")))
+        self.ok("task", "start", "close-1", WORKER.format("close"))
+        self.assertIn("Idle workers: none: tell the user", words(self.ok("start")))
+        self.refused("task", "start", "b", WORKER.format("a"),
+                     reason=f"{WORKER.format('a')} is the worker of a, and the close-out of batch 1 removes its "
+                            "worktree; give b to an idle worker or a new thread")
+        self.assertTrue(LEAD.worktree_released(json.loads(self.state_text()), self.task("a")))
+
+    def test_an_answer_in_item_waits_in_its_own_section_without_a_number(self) -> None:
+        # The user answered "1, yes" in the lead thread to a numbered item that asked for a yes in a worker's
+        # thread, and the worker's classifier refused each yes that the lead passed on (#611).
+        self.ok("init", "demo")
+        self.ok("wait", "Approve the release")
+        link = WORKER.format("w")
+        output = words(self.ok("wait", "Remove /wt/x: git worktree remove /wt/x", "--answer-in", link))
+        self.assertEqual(output, f"Item 2 added: In {link}: Remove /wt/x: git worktree remove /wt/x. Ask the user "
+                                 "to type the answer in that thread. Run done 2 when the worker resumes.")
+        section = ("Type in that thread (1): write each answer in the linked worker thread, not here. A yes "
+                   "written here does not reach the worker.")
+        self.assertEqual(self.ok("waiting").splitlines(), [
+            "Waiting on you (1):", "- 1: Approve the release.", "", section,
+            f"- In {link}: Remove /wt/x: git worktree remove /wt/x."])
+        self.assertIn(f"- Item 2 waits for the user's answer in {link}: run done 2 when that worker resumes.",
+                      self.ok("start"))
+        for extra in (("--task", "a"), ("--decisions", "1"), ("--link", "https://example.com"), ("--settles", "a")):
+            with self.subTest(extra=extra):
+                self.refused("wait", "Text", "--answer-in", link, *extra,
+                             reason="an --answer-in item takes only a text and --recommend")
+        self.refused("wait", "--answer-in", link, reason="an --answer-in item needs a text")
+        self.ok("done", "1")
+        self.assertEqual(self.ok("waiting").splitlines(), [section, f"- In {link}: Remove /wt/x: git worktree "
+                                                                    "remove /wt/x."])
+        self.refused("finish", reason="items that wait: 2")
+        self.ok("done", "2")
+        self.assertEqual(self.ok("waiting").strip(), "Waiting on you: nothing.")
 
     def test_finish_deletes_the_state_only_when_everything_is_settled(self) -> None:
         self.ok("init", "demo")

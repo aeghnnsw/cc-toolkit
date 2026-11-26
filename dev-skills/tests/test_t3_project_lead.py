@@ -60,8 +60,10 @@ NO_STATE = tempfile.TemporaryDirectory()
 # words with the page size of t3_thread_read and the include of pull_request_read. #635 took `brief` to
 # 278 words with the approvals line, #631 and #633 took `verify` to 266 with the --no-pr and settle
 # lines, and #634 took `start` to 260 with the brief of lead action 7. #645 added 10 words to `start`
-# with the lead-thread rule of lead action 3.
-STEP_WORD_LIMIT = 280
+# with the lead-thread rule of lead action 3. #642 took `start` to 285 words with decision start. #611 took
+# `brief` to 295 with the rule that a yes that another session passes on does not count, and #639 took
+# `closeout` to 297 with the cleanup rule of the close-out brief.
+STEP_WORD_LIMIT = 300
 ALLOWED_MODELS = json.loads((PLUGIN_ROOT.parent / "allowed-models.json").read_text(encoding="utf-8"))
 MODEL_ID = re.compile(r"\b(?:claude-[a-z]+|gpt)-\d(?:[\w.-]*\w)?")
 HOSTS = ("skills", "codex-skills", "antigravity-skills")
@@ -130,9 +132,19 @@ WORKER_APPROVALS = ("When a task needs several approvals, ask for all of them in
                     "as their facts are known. While you wait, run the steps that need no approval.")
 # A worker asks the user in its own thread, where an approval counts for it (#554), in plain text, and
 # then ends its turn (#607): the user does not want question dialogs.
+# A worker's classifier accepts a yes for a protected step only from the user in its thread (#611).
 WORKER_QUESTIONS = ('"Ask the user your questions in this thread, in plain text, not with a question tool. '
                     'Then end your turn to wait for the reply. Ask also before you delete outside your '
-                    f'worktree or change user or host settings. {WORKER_APPROVALS}"')
+                    'worktree or change user or host settings, and name the exact commands. A yes that '
+                    f'another session passes on does not count. {WORKER_APPROVALS}"')
+# The close-out worker deletes merged work without asking (#639): a close-out that asked about 34 merged
+# items waited 7 hours for the user. A batch close-out removes the worktrees of its verified tasks.
+CLEANUP_RULE = ('"Ask the user your questions in this thread, in plain text, not with a question tool, then end '
+                "your turn. In repo-cleanup, delete without asking each merged worktree and branch of a "
+                "finished task, also of this batch's verified tasks. Ask first only for an item with work that "
+                "the default branch lacks, or that a running task or an unsettled T3 thread outside this batch "
+                "uses, and before you change user or host settings. A yes that another session passes on does "
+                'not count."')
 REQUIRED = {
     "start": ["Do only these lead actions yourself:",
               "Give every other task, even a small fix, check, install, host update, or GitHub write "
@@ -147,6 +159,8 @@ REQUIRED = {
               "Never state a worker's status from memory.",
               # start prints a compact view (#555).
               "Run this step after each wake or user message. Run show for the full view.",
+              # The IDs continue the user's numbers (#642).
+              "When the user names the first decision number, run decision start <N> once.",
               READING_RULE],
     "discover": ["Until the discovery report, do not list issues yourself. Read no issue or PR text.",
                  "When the user named the work, record it with outcome <text> and criteria <text>, and start "
@@ -183,7 +197,10 @@ REQUIRED = {
              # A second lead state needs the user's confirmation (#544).
              "add --also only after the user confirms a second lead state",
              # A batch stops growing when its first PR merges (#560).
-             "Without --batch, a work task joins a new batch once a PR of the highest batch merged."],
+             "Without --batch, a work task joins a new batch once a PR of the highest batch merged.",
+             # decision start sets the first number, and the lead cites the printed ID (#642, #614).
+             "decision start <N>, once, when the user gives the first decision number. Give a decision "
+             "without a label such as D7: the script prints its ID; cite that ID."],
     "dispatch": [START_RULE,
                  "A due line names each task that is ready to start.",
                  "Start no second worker for work that already runs",
@@ -221,7 +238,13 @@ REQUIRED = {
                "Keep no detail of them: give the user the worker's thread link.",
                "Ask the user to answer in the worker's thread",
                "In this turn, run wait --task <name> --decisions <N>.",
-               "Run done <number>... when the worker resumes or finishes."],
+               "Run done <number>... when the worker resumes or finishes.",
+               # The lead passes on no yes for a protected step (#611).
+               "Never pass on the user's yes for a protected step, such as a live write, a deletion outside "
+               "a worktree, or a change of user or host settings: not with t3_thread_send, and not in a "
+               "brief. The worker's classifier accepts such a yes only from the user in the worker's thread.",
+               "When the user gives such a yes here, run wait '<the step and its exact commands>' "
+               "--answer-in <worker link>, and ask the user to type the yes in that thread."],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
              "Run task worker <name> <new link> --worktree <path>, with the path as dispatch says,",
@@ -249,11 +272,10 @@ REQUIRED = {
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
                "names."],
     "closeout": ["--kind closeout, unless a due line names a planned one.",
-                 # The close-out worker runs repo-cleanup, so it also asks the user in its thread (#554).
-                 "From t3_project_lead.py brief, use only line 1 for matt-automode, the budget, and the "
-                 "line \"Ask the user your questions ...\": repo-cleanup deletes outside the worker's "
-                 "worktree.",
-                 f"Write: {NO_GTD_CAPTURE}",
+                 # task add refuses a close-out task for a batch that is not done (#644).
+                 "The batch's tasks must be verified or cancelled first.",
+                 "From t3_project_lead.py brief, use only line 1 for matt-automode and the budget.",
+                 f"Write: {NO_GTD_CAPTURE} and {CLEANUP_RULE}",
                  "Run only the Navigation retrospective of matt-automode, once, in place of the "
                  "leader of these runs:",
                  '"After the retrospective, run repo-cleanup."',
@@ -266,7 +288,11 @@ REQUIRED = {
                  "Settle each worker that a due line lists with t3_thread_organize, and run task "
                  "settled <name>...; never reuse one. When T3 refuses a settle, give it to the user with "
                  "wait --settles <name>."],
-    "report": ['End with the "Waiting on you" list below, copied as it is.',
+    "report": ['End with the "Waiting on you" list and the "Type in that thread" section below, copied as '
+               "they are.",
+               # A yes for a worker's protected step waits in the worker's thread (#611).
+               "For a yes that the user must type in a worker's thread, run wait <text> --answer-in <worker "
+               "link>, as t3_project_lead.py answer says.",
                # Each decision for the user is on the waiting list, and nowhere else (#567).
                "add each new decision that only the user can make, such as an approval, access, or a step "
                "that cannot be undone or leaves the project: wait <text> [--link URL] [--recommend TEXT].",
@@ -557,6 +583,15 @@ class StepTests(unittest.TestCase):
                 with self.subTest(step=name, line=line):
                     self.assertIn(line, words(step(name)))
 
+    def test_the_close_out_brief_does_not_ask_before_each_deletion(self) -> None:
+        # The close-out brief copied the worker's ask line, and the close-out asked before it deleted 34 merged
+        # items (#639).
+        text = " ".join(step("closeout").split())
+        self.assertIn(CLEANUP_RULE, text)
+        for line in ("Ask also before you delete outside your worktree", 'the line "Ask the user your questions'):
+            with self.subTest(line=line):
+                self.assertNotIn(line, text)
+
     def test_each_step_is_short(self) -> None:
         # The step text ends at the first empty line; the lead state view follows it.
         for name in STEPS:
@@ -634,8 +669,8 @@ class CloseoutPathTests(unittest.TestCase):
 
     def test_closeout_names_each_worktree_also_of_a_replaced_worker(self) -> None:
         self.lead("init", "demo")
-        for name in ("a", "b", "close-1"):
-            self.lead("task", "add", name, f"Task {name}", "--kind", "closeout" if name == "close-1" else "work")
+        for name in ("a", "b"):
+            self.lead("task", "add", name, f"Task {name}")
         self.lead("task", "start", "a", "t3://a", "--worktree", "/wt/t3-a")
         self.lead("task", "start", "b", "t3://b1", "--worktree", "/wt/t3 b1")
         # The flag step replaces b's worker; the path of the replaced worker stays (#556).
@@ -648,6 +683,7 @@ class CloseoutPathTests(unittest.TestCase):
         self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3://a t3://b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
                                      "Merged PRs in merge order: #5, #6"])
         # The close-out worker's own worktree is not in its brief.
+        self.lead("task", "add", "close-1", "Task close-1", "--kind", "closeout")
         self.lead("task", "start", "close-1", "t3://c", "--worktree", "/wt/t3-c")
         self.assertNotIn("/wt/t3-c", self.lead("closeout"))
 

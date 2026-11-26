@@ -76,6 +76,14 @@
 > lead thread. `finish` and the `report` step tell the lead to leave its
 > thread open, and the hook blocks a lead's settle of its own thread. Read
 > [Only the user settles the lead thread](#only-the-user-settles-the-lead-thread).
+>
+> **Superseded in part (2026-11-26, issues #611, #613, #614, #639, #642, and
+> #644).** A batch close-out removes the worktrees of its verified tasks: the
+> cleanup plan keeps no worktree of a `verified` or `closed-out` task once the
+> close-out task of its batch has started. `task add --kind closeout` refuses
+> a batch that is not done. `decision start` sets the next decision number.
+> `wait --answer-in` adds an item that the user answers in a worker's thread.
+> Read [Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -259,7 +267,9 @@ worktree by its recorded path only: T3 Code renames a branch after
 a recorded path, such as a task from before #556, keeps no worktree by this
 rule. The close-out runs repo-cleanup while the tasks of its batch are
 `verified`, so it keeps their worktrees. A later repo-cleanup removes them
-after the lead settles the workers.
+after the lead settles the workers. (Superseded by #639: the close-out
+removes the worktrees of its verified tasks; read
+[Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).)
 
 When a lead state exists but cannot be read, the plan keeps every worktree
 that it would otherwise remove, and the reason gives the error: an `OSError`,
@@ -306,7 +316,9 @@ still keeps the worktree, which protects a session that runs (#419). The
 #575 rule above, which keeps the worktree of a task that is not `settled`,
 decides first. So the close-out still keeps the worktrees of its `verified`
 tasks, and the repo-cleanup after the lead settles the workers removes them
-without the 60-minute wait.
+without the 60-minute wait. (Superseded by #639: the close-out removes the
+worktrees of its verified tasks; read
+[Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).)
 
 When only session logs and Antigravity conversations keep a worktree,
 `live_worktrees.py` prints the time when their 60-minute window ends, and the
@@ -590,7 +602,10 @@ showed each failure only after its start limit of 10 minutes. `task
 start-failed` records such a start. While the record is open, `start` and
 `dispatch` print one line: start no new thread, give each next task to an idle
 worker, and ask one to find the cause. An idle worker is the worker of a
-verified or closed-out task that no running, pr-open, or merged task uses. No
+verified or closed-out task that no running, pr-open, or merged task uses.
+(Superseded in part by #639: an idle worker is the worker of a verified task
+whose batch's close-out has not started; read
+[Decision numbers, close-out cleanup, and answers in worker threads](#decision-numbers-close-out-cleanup-and-answers-in-worker-threads).) No
 due line settles an idle worker while the record is open. A new thread closes
 the record only after the start limit passes without a failure, because the
 lead runs `task start` before T3 can show a failure. `task start` refuses a
@@ -720,3 +735,71 @@ IDs from T3 tools and from the environment, which give one form.
 `dev-skills/tests/test_t3_project_lead_hook.py`,
 `dev-skills/tests/test_t3_project_lead.py`, and
 `dev-skills/tests/test_t3_project_lead_state.py` check these rules.
+
+## Decision numbers, close-out cleanup, and answers in worker threads
+
+Added on 2026-11-26 for [#611](https://github.com/aeghnnsw/cc-toolkit/issues/611), [#613](https://github.com/aeghnnsw/cc-toolkit/issues/613), [#614](https://github.com/aeghnnsw/cc-toolkit/issues/614),
+[#639](https://github.com/aeghnnsw/cc-toolkit/issues/639), [#642](https://github.com/aeghnnsw/cc-toolkit/issues/642), and
+[#644](https://github.com/aeghnnsw/cc-toolkit/issues/644).
+
+### Decision numbers
+
+A user named the first decision number of a new lead, D76, because earlier
+leads had the lower numbers. The lead state numbered from D1, so the lead
+added 14 to each ID that the script printed. It also put its own label, such
+as `D189`, at the start of each text, and the script stored that text as
+`D175`. Now `decision start <N>` sets the next ID to `D<N>`. It refuses a
+number that is not above the highest stored decision, so that two stored
+decisions cannot have the same ID. It also works on a lead state that already
+has decisions, so `init` gets no such option. `decision add` removes a label
+at the start of the text when the label is the next ID, and refuses another
+label. Its output starts with the stored ID. `task -h` and `decision -h` list
+each action with its help (#613).
+
+### The close-out cleanup
+
+The `closeout` step told the lead to copy the brief line "Ask also before you
+delete outside your worktree". Each item that repo-cleanup removes is outside
+the close-out worktree, so one close-out asked the user about 34 merged items
+and waited about 7 hours. The user decided that a batch close-out removes the
+worktrees of its verified tasks. Now the `closeout` step gives the close-out
+brief a cleanup rule: delete without asking each merged worktree and branch
+of a finished task, also of the batch's verified tasks; ask first only for an
+item with work that the default branch lacks, or that a running task or an
+unsettled T3 thread outside the batch uses.
+
+This changes the #575 rule of
+[The worktrees of lead tasks](#the-worktrees-of-lead-tasks). The cleanup plan
+keeps no worktree for a task that is `verified` or `closed-out` once the
+close-out task of its batch has started (`worktree_released` of
+`t3_project_lead.py`). Each other task that is not `settled` still keeps its
+worktrees, also a verified task of a batch whose close-out has not started.
+The other keep rules do not change: a Git lock, a running process,
+uncommitted changes, an unsettled T3 thread, a branch that is not merged, and
+a lead state that cannot be read. The worker of a task whose worktree the
+close-out removes takes no new task: it is no idle worker after a failed
+thread start, and `task start` and `task worker` refuse it.
+
+`task add --kind closeout` refuses a batch with a task that is not verified
+or cancelled, with the message of `task start` (#644). A lead started the
+close-out worker with `delegate_task` before `task start` refused the task.
+`task start` keeps the check for a task that a later `task add` opens.
+
+### Answers in worker threads
+
+A worker's auto-mode classifier accepts a yes for a protected step, such as a
+live write, a deletion outside its worktree, or a change of user or host
+settings, only from the user in the worker's thread. Leads passed on the
+user's yes with `t3_thread_send` and in briefs, and the classifiers refused
+each one. A list that numbered such an item made the user answer "1, yes" in
+the lead thread. Now the `answer` step tells the lead never to pass on such a
+yes. `wait <text> --answer-in <worker link>` adds an item whose text names the
+step and its exact commands. The waiting list prints such items after the
+numbered items, without numbers, in the section "Type in that thread", with
+the link. A due line gives the lead the item number for `done`. The worker
+brief says that a yes that another session passes on does not count, and
+that the worker names the exact commands when it asks.
+
+`dev-skills/tests/test_t3_project_lead.py`,
+`dev-skills/tests/test_t3_project_lead_state.py`, and
+`dev-skills/tests/test_cleanup_plan.py` check these rules.
