@@ -95,7 +95,7 @@ triage, priorities.
 watch PRs.
 4. Read worker messages, and the state, labels, titles, and check counts of
 issues and PRs, not their text. Never call read_issue. Call pull_request_read
-only with sections ["checks"]. No diff, code, or log.
+only with sections or include ["checks"]. No diff, code, or log.
 5. Run this script; it keeps the lead state.
 6. Judge reports: accept, start a follow-up, or ask the user.
 7. Set issue state; a worker sets triage labels.
@@ -108,8 +108,8 @@ this session as the lead: a hook blocks your other shell commands, file reads,
 and file edits.
 Run this step after each wake or user message. Run show for the full view.
 Read the last message of each worker of a running or pr-open task:
-t3_thread_list with includeSubagents, then t3_thread_read. Never state a
-worker's status from memory.
+t3_thread_list with includeSubagents, then t3_thread_read with maxCharsPerItem
+8000. Never state a worker's status from memory.
 Next: t3_project_lead.py plan for new work; answer, verify, or flag for
 waiting, finished, or failed workers; else report.
 """,

@@ -25,19 +25,22 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. Other tools pass, and so do MCP tools, except the reads of issue
-  and PR text and the questions below. A blocked call exits 2 with the
-  reason on stderr. A call that the hook cannot check also exits 2.
+  and PR text, the questions, and the thread reads below. A blocked call
+  exits 2 with the reason on stderr. A call that the hook cannot check also
+  exits 2.
 - Issue and PR text (issue #545): a lead that read open issues itself was
   flagged by the model provider's safeguards, and a flag stops the whole lead
   thread. So in a recorded session, the hook blocks two T3 Code MCP tools:
   `read_issue`, which always returns the body and the comments, and
-  `pull_request_read` unless its `sections` is exactly `["checks"]` (issue
-  #604). A call without `sections` blocks, because the default, `summary`
-  and `checks`, can return the PR body. An `include`, for a host that uses
-  that name, must also be absent or exactly `["checks"]`. Any other value
-  blocks. Claude Code names the tools `mcp__t3-code__<tool>`. Codex changes
-  `-` to `_`, as in `mcp__t3_code__<tool>`, puts a 12-character environment
-  hash after `mcp__` for a server of one environment, as in
+  `pull_request_read` unless its check parameter is exactly `["checks"]`.
+  T3 Code builds name that parameter `sections` (issue #604) or `include`
+  (issue #638); when a call has both, each must be `["checks"]`. A call
+  with neither blocks, because a default, such as `summary` and `checks`,
+  can return the PR body. Any other value blocks. The hook cannot tell
+  which name the host's build uses. Claude Code names the tools
+  `mcp__t3-code__<tool>`. Codex changes `-` to `_`, as in
+  `mcp__t3_code__<tool>`, puts a 12-character environment hash after
+  `mcp__` for a server of one environment, as in
   `mcp__<hash>__t3_code__<tool>`, and its sessions also use the server key
   `t3-code-direct`. A read-only worker reads the text instead. Antigravity
   has no known hook payload for MCP calls, so there only the step text holds
@@ -55,6 +58,11 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   every mode (`codex-rs/core/src/tools/registry.rs`). Antigravity has no known
   hook payload for its question tool, so there only the step text holds the
   rule.
+- Thread reads (issue #632): without `maxCharsPerItem`, `t3_thread_read`
+  gives each item in pages of 500 characters, and a lead spent 8 calls on
+  one worker report and stopped before its end. So in a recorded session, the hook blocks
+  `t3_thread_read` unless `maxCharsPerItem` is a positive integer; the
+  block names 8000. In Antigravity, only the step text holds the rule.
 - GTD (issue #531): the gate also allows the calls of a gtd-inbox capture:
   reads of the GTD binding and of an installed Productivity Skills plugin
   outside every Git work tree; one simple command `uv run --no-project
@@ -101,8 +109,10 @@ ALLOWED = {
     "respond": ("Do not answer a worker's question: run t3_project_lead.py answer, and give the user the "
                 "worker's thread link. t3_pending_request may only list or read."),
     "text": ("Read no issue or PR text: a lead that read issues was flagged. Allowed: list_issues, "
-             'pull_request_list, and pull_request_read with sections set to ["checks"]. Give a '
-             "triage that needs issue text to a read-only worker."),
+             'pull_request_list, and pull_request_read with sections or include, as your tool names it, '
+             'set to ["checks"]. Give a triage that needs issue text to a read-only worker.'),
+    "thread": ("Call t3_thread_read with maxCharsPerItem, such as 8000. Without it, a worker report "
+               "comes in pages of 500 characters."),
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
 }
@@ -120,9 +130,11 @@ AGENT_TOOLS = frozenset({"Agent", "Task", "spawn_agent", "invoke_subagent"})
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "request_user_input", "request_user_input_async"})
 PENDING_READS = frozenset({"list", "read"})
 # T3 Code MCP servers, with "-" read as "_" (issue #545): Claude Code and Codex name a tool
-# mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The one sections
-# value with which pull_request_read returns no PR text (#604). A list, because JSON gives one.
+# mcp__<server>__<tool>, and Codex can put an environment segment after mcp__. The check
+# parameters of pull_request_read in T3 Code builds, sections (#604) and include (#638), and the one
+# value with which the tool returns no PR text. A list, because JSON gives one.
 T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
+PR_CHECK_PARAMETERS = ("sections", "include")
 PR_CHECKS_ONLY = ["checks"]
 # Path arguments: Claude Code first, then Antigravity.
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
@@ -284,6 +296,7 @@ def gate(payload, host, folder, session):
     tool = t3_tool(name)
     check_text_read(tool, arguments)
     check_pending_request(tool, arguments)
+    check_thread_read(tool, arguments)
     cwd = payload_cwd(payload)
     if name == "apply_patch" or name in EDIT_TOOLS:
         # Only t3_project_lead.py writes the lead state; the lead writes only gtd-inbox files.
@@ -324,16 +337,19 @@ def check_text_read(tool, arguments):
     """Raise Blocked when a T3 Code MCP call can return issue or PR text (issue #545).
 
     `read_issue` always returns the body and the comments. `pull_request_read`
-    passes only when its `sections` equals PR_CHECKS_ONLY and its `include`,
-    when present, does too (#604). A missing `sections` gets the default,
-    which includes the summary; any other input fails closed.
+    passes only when one of its check parameters, `sections` (#604) or
+    `include` (#638), is present, and each present one equals PR_CHECKS_ONLY.
+    Without either, the tool returns a default that can hold the PR body; two
+    different values and any other input fail closed.
     """
     if tool == "read_issue":
         raise Blocked("text")
     if tool != "pull_request_read":
         return
-    if (not isinstance(arguments, dict) or arguments.get("sections") != PR_CHECKS_ONLY
-            or arguments.get("include", PR_CHECKS_ONLY) != PR_CHECKS_ONLY):
+    if not isinstance(arguments, dict):
+        raise Blocked("text")
+    values = [arguments[key] for key in PR_CHECK_PARAMETERS if key in arguments]
+    if not values or any(value != PR_CHECKS_ONLY for value in values):
         raise Blocked("text")
 
 
@@ -348,6 +364,21 @@ def check_pending_request(tool, arguments):
     action = arguments.get("action") if isinstance(arguments, dict) else None
     if not isinstance(action, str) or action not in PENDING_READS:
         raise Blocked("respond")
+
+
+def check_thread_read(tool, arguments):
+    """Raise Blocked when a `t3_thread_read` call has no page size (#632).
+
+    Without `maxCharsPerItem`, the tool gives each item in pages of 500
+    characters, so a lead spent 8 calls on one worker report and stopped
+    before its end. Only a positive integer passes; a missing or other
+    value, and an input that is not an object, fail closed.
+    """
+    if tool != "t3_thread_read":
+        return
+    size = arguments.get("maxCharsPerItem") if isinstance(arguments, dict) else None
+    if type(size) is not int or size < 1:
+        raise Blocked("thread")
 
 
 def tool_paths(arguments, default):
