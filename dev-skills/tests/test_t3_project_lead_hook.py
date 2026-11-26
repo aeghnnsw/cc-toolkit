@@ -58,9 +58,6 @@ THREAD_LINE = ("Call t3_thread_read with maxCharsPerItem, such as 8000. Without 
 THREAD_READ = {"claude": ("mcp__t3-code__t3_thread_read",),
                "codex": ("mcp__t3_code__t3_thread_read", "mcp__t3_code_direct__t3_thread_read",
                          "mcp__0123456789ab__t3_code__t3_thread_read")}
-# The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
-# keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
-# mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
 # Only the user settles a lead thread (#645). t3_thread_organize settles the calling thread when the call
 # names no threadId.
 ORGANIZE = {"claude": ("mcp__t3-code__t3_thread_organize",),
@@ -68,11 +65,14 @@ ORGANIZE = {"claude": ("mcp__t3-code__t3_thread_organize",),
                       "mcp__0123456789ab__t3_code__t3_thread_organize")}
 SETTLE_LINES = ["BLOCKED: t3-project-lead: Only the user settles a lead thread.",
                 "Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, name "
-                "its threadId. When this block stays, give that settle to the user with t3_project_lead.py "
-                "wait --settles <task>."]
+                "its threadId. When the hook blocks the settle of a worker's thread, give it to the user with "
+                "t3_project_lead.py wait --settles <task>."]
 LEAD_THREAD = "thread:lead-1"
 OWNER_THREAD = "thread:owner-1"
 WORKER_THREAD = "thread:worker-1"
+# The T3 Code MCP tools that can return issue or PR text, in each host's names (#545). Claude Code
+# keeps the server key t3-code. Codex changes "-" to "_", puts a 12-character environment hash after
+# mcp__ for a server of one environment, and its sessions also use the server key t3-code-direct.
 READ_ISSUE = {"claude": ("mcp__t3-code__read_issue",),
               "codex": ("mcp__t3_code__read_issue", "mcp__t3_code_direct__read_issue",
                         "mcp__0123456789ab__t3_code__read_issue")}

@@ -98,7 +98,6 @@ import os
 import sys
 
 SCRIPT_NAME = "t3_project_lead.py"
-THREAD_VARIABLE = "T3CODE_THREAD_ID"
 ANTIGRAVITY = "antigravity"
 SESSION_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
 RECORD_DAYS = 30
@@ -131,8 +130,8 @@ ALLOWED = {
     "thread": ("Call t3_thread_read with maxCharsPerItem, such as 8000. Without it, a worker report "
                "comes in pages of 500 characters."),
     "settle": ("Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, "
-               "name its threadId. When this block stays, give that settle to the user with "
-               "t3_project_lead.py wait --settles <task>."),
+               "name its threadId. When the hook blocks the settle of a worker's thread, give it to the "
+               "user with t3_project_lead.py wait --settles <task>."),
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
 }
@@ -447,7 +446,7 @@ def lead_threads(cwd):
         sys.path.insert(0, here)
     import t3_project_lead
 
-    threads = {os.environ.get(THREAD_VARIABLE, "").strip()}
+    threads = {t3_project_lead.current_thread()}
     folder = t3_project_lead.find_lead(git(cwd, "rev-parse", "--show-toplevel") or cwd)
     if folder is not None:
         owner = t3_project_lead.load(folder).get("owner")

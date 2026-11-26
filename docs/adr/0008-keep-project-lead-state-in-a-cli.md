@@ -683,34 +683,39 @@ Added on 2026-11-26 for
 [#645](https://github.com/aeghnnsw/cc-toolkit/issues/645).
 
 A lead ran `finish`, which printed "Settle this thread." The lead then
-called `t3_thread_organize` with `action` `settle` and no `threadId`, and so
+called `t3_thread_organize` with `action` `settle` and no `threadId`. So it
 settled its own thread at the end of its turn. The `report` step also said
-"then settle this thread". The user did not ask for this: only the user
+"then settle this thread". The user did not ask for this. Only the user
 settles a lead thread, and the lead thread stays active until then.
 
 Now `finish` prints "Leave this thread open: only the user settles the lead
-thread." The `report` step says the same, and lead action 3 of `start`
-says "Never settle the lead thread: only the user settles it." The skill
-copies and the "Settle" entry of the glossary state the rule. The settle of
-worker threads does not change.
+thread." The `report` step says the same. Lead action 3 of `start` says
+"Never settle the lead thread: only the user settles it." The skill copies
+and the "Settle" entry of the glossary state the rule. The settle of worker
+threads does not change.
 
 In a recorded session, the hook blocks `t3_thread_organize` with `action`
-`settle` when the call names no `threadId`, which settles the calling
-thread, or names a lead thread: the calling thread, from
-`T3CODE_THREAD_ID` in the hook's environment, or the owner of the lead state
-in the Git working tree of the call's `cwd`. The owner covers a session of
-another thread, such as the old lead after a `takeover`. A settle that names
-another thread, such as a worker's, passes. The check fails closed: when the
-hook knows no lead thread, the call has no absolute `cwd`, or the lead state
-cannot be read, a settle that names a thread blocks, and the lead gives that
-settle to the user with `wait --settles`. The first line of the hook's
-message says that only the user settles a lead thread, in place of the line
-that gives a blocked call to a worker. The Claude Code and Codex hook matchers select
+`settle` in three cases:
+
+- The call names no `threadId`. Such a call settles the calling thread.
+- The call names the calling thread, from `T3CODE_THREAD_ID` in the hook's
+  environment.
+- The call names the owner of the lead state in the Git working tree of the
+  call's `cwd`. This case covers a session of another thread, such as the
+  old lead after a `takeover`.
+
+A settle that names another thread, such as a worker's, passes. The check
+fails closed. It blocks a settle that names a thread when the hook knows no
+lead thread, when the call has no absolute `cwd`, or when the lead state
+cannot be read. The lead then gives that settle to the user with
+`wait --settles`. The first line of the hook's message says that only the
+user settles a lead thread. It replaces the line that gives a blocked call
+to a worker. The Claude Code and Codex hook matchers select
 `t3_thread_organize`. In Antigravity, only the step text holds the rule.
 
 The hook compares thread IDs as exact strings, after it removes white space
 at the ends. Another text form of the lead thread's ID would pass. No
-session measured whether T3 Code accepts such a form; the lead takes thread
+session measured whether T3 Code accepts such a form. The lead takes thread
 IDs from T3 tools and from the environment, which give one form.
 `dev-skills/tests/test_t3_project_lead_hook.py`,
 `dev-skills/tests/test_t3_project_lead.py`, and

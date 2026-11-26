@@ -35,6 +35,8 @@ Issue [#632](https://github.com/aeghnnsw/cc-toolkit/issues/632) changes cases
 Issue [#631](https://github.com/aeghnnsw/cc-toolkit/issues/631) changes cases
 21, 28, and 30, and issue [#633](https://github.com/aeghnnsw/cc-toolkit/issues/633)
 adds case 32.
+Issue [#645](https://github.com/aeghnnsw/cc-toolkit/issues/645) changes cases
+5 and 12, and adds case 33.
 Apply each case to the [Claude Code skill](../skills/t3-project-lead/SKILL.md),
 the [Codex skill](../codex-skills/t3-project-lead/SKILL.md), and the
 [Antigravity skill](../antigravity-skills/t3-project-lead/SKILL.md), with the
