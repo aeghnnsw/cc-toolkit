@@ -1,8 +1,10 @@
 name: CI
 
-# One job on Linux and one on macOS run the package validator, the root tests, and the plugin test suites
-# on each pull request.
-# The commands match the Verification table in CONTRIBUTING.md.
+# On each pull request, each check runs in its own job on Linux and on macOS: the package validator, the root tests,
+# and each plugin test suite. The jobs run in parallel, up to the GitHub limit on concurrent jobs; GitHub runs at most
+# five macOS jobs of an account at a time, so some macOS jobs wait in a queue (#661).
+# The commands match the Verification table in CONTRIBUTING.md, except that the validator and the root tests run on
+# Python 3.11, their declared minimum (#601).
 on:
   pull_request:
 
@@ -15,11 +17,32 @@ concurrency:
 
 jobs:
   checks:
+    name: ${{ matrix.suite.name }} (${{ matrix.os }})
     # Core Hooks and Dev Skills run on Linux and macOS hosts, so the suites run on both (#496).
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # Dev Skills runs longest. It is first, so that GitHub creates its job first on each OS. GitHub does not
+        # guarantee the order in which the jobs start.
+        suite:
+          - name: Dev Skills tests
+            # pytest and pytest-cov let the lean-tests checks that run pytest run instead of skip.
+            run: uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'
+          - name: Package validator
+            run: uv run --no-project --python 3.11 python scripts/validate_packages.py --base origin/master
+          - name: Root tests
+            run: uv run --no-project --python 3.11 python -m unittest discover -s tests -p 'test_*.py'
+          - name: CC Customize tests
+            run: python3 -m unittest discover -s cc-customize/tests -p 'test_*.py'
+          - name: Core Hooks tests
+            run: python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
+          - name: Creator Skills tests
+            run: python3 -m unittest discover -s creator-skills/tests -p 'test_*.py'
+          - name: PyMOL Skills tests
+            run: python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
+          - name: Productivity Skills tests
+            run: uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -36,8 +59,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # zsh runs the zsh cases of the Core Hooks, Dev Skills, and cc-customize suites, and jq runs the cc-customize
-      # checks.
+      # Each job installs every test tool. zsh runs the zsh cases of the Core Hooks, Dev Skills, and cc-customize
+      # suites, and jq runs the cc-customize checks.
       # The productivity-skills suite needs initdb, pg_ctl, and psql; the Linux runner installs PostgreSQL
       # outside PATH. A missing tool fails the check step below, so that no suite skips its cases.
       - name: Install the Linux test tools
@@ -63,35 +86,5 @@ jobs:
       - name: Check the test tools
         run: command -v git jq lsof python3 uv zsh initdb pg_ctl psql
 
-      - name: Package validator
-        if: ${{ !cancelled() }}
-        run: uv run --no-project --python '>=3.11' python scripts/validate_packages.py --base origin/master
-
-      - name: Root tests
-        if: ${{ !cancelled() }}
-        run: uv run --no-project --python '>=3.11' python -m unittest discover -s tests -p 'test_*.py'
-
-      - name: CC Customize tests
-        if: ${{ !cancelled() }}
-        run: python3 -m unittest discover -s cc-customize/tests -p 'test_*.py'
-
-      - name: Core Hooks tests
-        if: ${{ !cancelled() }}
-        run: python3 -m unittest discover -s core-hooks/tests -p 'test_*.py'
-
-      - name: Creator Skills tests
-        if: ${{ !cancelled() }}
-        run: python3 -m unittest discover -s creator-skills/tests -p 'test_*.py'
-
-      - name: Dev Skills tests
-        if: ${{ !cancelled() }}
-        # pytest and pytest-cov let the lean-tests checks that run pytest run instead of skip.
-        run: uv run --no-project --python '>=3.11' --with pytest --with pytest-cov python -m unittest discover -s dev-skills/tests -p 'test_*.py'
-
-      - name: PyMOL Skills tests
-        if: ${{ !cancelled() }}
-        run: python3 -m unittest discover -s pymol-skills/tests -p 'test_*.py'
-
-      - name: Productivity Skills tests
-        if: ${{ !cancelled() }}
-        run: uv run --no-project --python '>=3.11' python -m unittest discover -s productivity-skills/tests -p 'test_*.py'
+      - name: ${{ matrix.suite.name }}
+        run: ${{ matrix.suite.run }}
