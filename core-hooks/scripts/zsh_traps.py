@@ -40,8 +40,9 @@ separator word, such as `======` in a `for` loop, and the check finds no
 trap in the corrected command. Normal host permissions still apply. It
 denies other commands with an unquoted `=name` word that zsh expands. When
 `name` is no command on `PATH`, zsh would stop the command line there. When
-it is a command, the command gets its path instead of the word. The word can start with parts that can expand to nothing, as in
-`""==a` or `$x=a`, and brace expansion can put the `=` first, as in
+it is a command, the command gets its path instead of the word. The word
+can start with parts that can expand to nothing, as in `""==a` or `$x=a`,
+and brace expansion can put the `=` first, as in
 `{=a,b}`. The check reads array elements, the parts after a `:` of an
 assignment value, `[[ ... ]]` operands, and the default word of
 `${name:-word}` too. The denial of a word that names no command ends with
@@ -66,7 +67,8 @@ strict recognizer for each `echo` command. It changes nothing in a command
 with a heredoc, or with a quote, backslash, backtick, `$`, or `#` before the
 end of the last `echo` command that it would change. The run of the
 corrected command skips a command with `${`, `$'`, or a backslash-newline,
-where the check can read quoted text as words.
+where the check can read quoted text as words, and a command with `eval`,
+which reads its words again.
 
 An Antigravity PreToolUse hook cannot warn without blocking the command,
 and no measured Antigravity contract changes the command. So with
@@ -237,8 +239,9 @@ ECHO_COMMAND_RE = re.compile(
 SEPARATOR_RE = re.compile(r"={2,}[A-Za-z0-9_]*=*")
 # Text that the analysis can read wrongly, so that it takes quoted text for a
 # word: a `${...}` expansion, which can hold quotes; a `$'...'` string after
-# an escaped `$`; and a backslash-newline, as in `[[\` at a line end.
-UNSAFE_CORRECTION_RE = re.compile(r"\$\{|\$'|\\\n")
+# an escaped `$`; and a backslash-newline, as in `[[\` at a line end. Also
+# `eval`, which reads its words again after zsh removes the backslash.
+UNSAFE_CORRECTION_RE = re.compile(r"\$\{|\$'|\\\n|\beval\b")
 # Operators that join the commands of a list; None is an edge of the command.
 LIST_OPERATORS = {None, ";", "&&", "||", "\n"}
 # A heredoc redirection, such as `<<` or `<<-`, but not a `<<<` string.

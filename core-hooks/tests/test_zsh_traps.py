@@ -631,6 +631,23 @@ class ZshTrapTests(unittest.TestCase):
                 self.assertIn("failed to read the command (RecursionError", message)
                 self.assertIn(steps, message)
 
+    def test_hook_keeps_the_denial_when_the_separator_correction_fails(self):
+        command = next(iter(SEPARATOR_CORRECTIONS))
+        payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+        for host in ("claude", "codex"):
+            with self.subTest(host=host):
+                stdout = io.StringIO()
+                with mock.patch.object(
+                    zsh_traps, "separator_correction", side_effect=ValueError
+                ), mock.patch.object(sys, "stdin", io.StringIO(payload)), \
+                        mock.patch.object(sys, "argv", ["zsh_traps.py", "--host", host]), \
+                        mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}), \
+                        contextlib.redirect_stdout(stdout), self.assertRaises(SystemExit):
+                    zsh_traps.main()
+                output = json.loads(stdout.getvalue())["hookSpecificOutput"]
+                self.assertEqual(output["permissionDecision"], "deny")
+                self.assertNotIn("updatedInput", output)
+
     def test_reads_many_brace_alternatives_quickly(self):
         # Brace expansion doubles the words for each `{,}`; the check must
         # not do the same.
@@ -998,7 +1015,7 @@ class ZshTrapTests(unittest.TestCase):
                         self.assertEqual(checked_again.returncode, 0, checked_again.stderr)
                         self.assertEqual(checked_again.stdout, "")
 
-    def test_echo_quoting_skips_get_the_corrected_command(self):
+    def test_commands_that_the_echo_quoting_skips_get_the_corrected_command(self):
         # The `echo` quoting skips these commands; each word that names no
         # command is a separator word, so the hook runs the corrected command.
         commands = (
@@ -1064,6 +1081,8 @@ class ZshTrapTests(unittest.TestCase):
             "echo a\\\n; echo =====",
             "echo ===== ${label}",
             "echo $'a'; echo =====",
+            # `eval` reads `\=====` again, so zsh would still stop there.
+            "eval echo =====; echo after",
             "echo =====; echo ===== =sh",
             "echo ===\\=CODEX",
             "echo ====\\\nCODEX",
@@ -1086,7 +1105,7 @@ class ZshTrapTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, original.stdout)
 
-    def test_rewrite_never_edits_text_inside_a_substitution_heredoc_or_test(self):
+    def test_echo_quoting_never_edits_text_inside_a_substitution_heredoc_or_test(self):
         # The tokenizer can read a comment, a heredoc body, an escape, or a
         # quote wrongly, and `&&` in `[[ ]]` joins conditions, not commands.
         commands = (
