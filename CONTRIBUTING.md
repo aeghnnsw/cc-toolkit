@@ -400,8 +400,11 @@ git worktree add trees/doc-<description> -b doc-<description>
 
 Run these checks locally before opening a pull request. On each pull
 request, [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the
-package validator, the root tests, and the plugin test suites in one job on
-Linux and one on macOS. It does not run the Codex skill validator or `agy`.
+package validator, the root tests, and each plugin test suite in its own
+job, on Linux and on macOS. The jobs run in parallel. CI runs the validator
+and the root tests on Python 3.11, their declared minimum; the local
+commands below accept a newer Python. CI does not run the Codex skill
+validator or `agy`.
 There is no repository-wide build command. Run every row that matches your
 change from the repository root:
 
