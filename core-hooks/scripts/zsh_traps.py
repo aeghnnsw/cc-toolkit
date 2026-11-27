@@ -33,11 +33,14 @@
 The hook runs when the user's shell is zsh, prints JSON, and exits 0. With
 `--host claude` or `--host codex`, it quotes missing-command separators in
 each simple `echo` command of a list that `;`, `&&`, `||`, or newlines
-join, such as `cat a; echo =====; cat b`. Normal host permissions still
-apply. It denies other commands with an unquoted `=name` word that zsh
-expands. When `name` is no command on `PATH`, zsh would stop the command
-line there. When it is a command, the command gets its path instead of the
-word. The word can start with parts that can expand to nothing, as in
+join, such as `cat a; echo =====; cat b`. When that quoting does not apply,
+it runs the corrected command of trap 1, described below, in place of the
+command. It does so only when each word that names no command is a
+separator word, such as `======` in a `for` loop, and the check finds no
+trap in the corrected command. Normal host permissions still apply. It
+denies other commands with an unquoted `=name` word that zsh expands. When
+`name` is no command on `PATH`, zsh would stop the command line there. When
+it is a command, the command gets its path instead of the word. The word can start with parts that can expand to nothing, as in
 `""==a` or `$x=a`, and brace expansion can put the `=` first, as in
 `{=a,b}`. The check reads array elements, the parts after a `:` of an
 assignment value, `[[ ... ]]` operands, and the default word of
@@ -58,15 +61,17 @@ so the check reads it as a command for `=name` words. Traps 1
 to 3 also skip double-quoted text and `(( ... ))` arithmetic, and traps 2
 and 3 skip `[[ ... ]]` tests; zsh expands traps 4 and 5 in double quotes
 and tests too. This
-is a heuristic, not a full zsh parser. The rewrite uses a separate strict
-recognizer for each `echo` command. It changes nothing in a command with a
-heredoc, or with a quote, backslash, backtick, `$`, or `#` before the end
-of the last `echo` command that it would change.
+is a heuristic, not a full zsh parser. The `echo` quoting uses a separate
+strict recognizer for each `echo` command. It changes nothing in a command
+with a heredoc, or with a quote, backslash, backtick, `$`, or `#` before the
+end of the last `echo` command that it would change. The run of the
+corrected command skips a command with `${`, `$'`, or a backslash-newline,
+where the check can read quoted text as words.
 
 An Antigravity PreToolUse hook cannot warn without blocking the command,
 and no measured Antigravity contract changes the command. So with
 `--host antigravity`, the hook writes nothing to stdout. It blocks a
-command that the rewrite fixes, with a reason on stderr that names the
+command that the `echo` quoting fixes, with a reason on stderr that names the
 corrected command, and it blocks a command with any other trap, with the
 trap messages on stderr. It skips the glob check: the check reads the
 files before the command runs, so it can block a command that first
@@ -230,6 +235,10 @@ ECHO_COMMAND_RE = re.compile(
     r"(?:[ \t]+(?:[A-Za-z0-9_]+|={2,}(?:[A-Za-z0-9_]+=*)?))+[ \t]*"
 )
 SEPARATOR_RE = re.compile(r"={2,}[A-Za-z0-9_]*=*")
+# Text that the analysis can read wrongly, so that it takes quoted text for a
+# word: a `${...}` expansion, which can hold quotes; a `$'...'` string after
+# an escaped `$`; and a backslash-newline, as in `[[\` at a line end.
+UNSAFE_CORRECTION_RE = re.compile(r"\$\{|\$'|\\\n")
 # Operators that join the commands of a list; None is an edge of the command.
 LIST_OPERATORS = {None, ";", "&&", "||", "\n"}
 # A heredoc redirection, such as `<<` or `<<-`, but not a `<<<` string.
@@ -1268,6 +1277,31 @@ def corrected_command(command, cwd=None, host=None):
     return corrected
 
 
+def separator_correction(command, cwd=None, host=None):
+    """Return the corrected command that the hook runs in place of
+    `command`, or None.
+
+    Each `=word` of `command` that names no command must be a separator
+    word, such as `======`, and the check must find no trap in the corrected
+    command, so that no other block or warning is lost. A command with text
+    that the analysis can read wrongly gets None: a backslash in quoted text
+    would change what the command prints.
+    """
+    if UNSAFE_CORRECTION_RE.search(command):
+        return None
+    findings = Findings()
+    _analyze(command, findings, 0)
+    missing = [
+        word.text for word in findings.equals_words if _names_no_command(word.text)
+    ]
+    if not missing or not all(SEPARATOR_RE.fullmatch(word) for word in missing):
+        return None
+    corrected = corrected_command(command, cwd, host)
+    if corrected is None or zsh_traps(corrected, cwd, host):
+        return None
+    return corrected
+
+
 def _quote_echo_separators(command):
     """Quote missing-command separators in the simple echo commands of a list.
 
@@ -1457,9 +1491,13 @@ def main():
             and input_data.get("tool_name") == "Bash"
             and isinstance(input_data.get("tool_input"), dict)
         ):
-            quoted = _quote_echo_separators(command)
-            if quoted is not None and not zsh_traps(quoted, cwd, host):
-                updated_input = dict(input_data["tool_input"], command=quoted)
+            rewritten = _quote_echo_separators(command)
+            if rewritten is not None and zsh_traps(rewritten, cwd, host):
+                rewritten = None
+            if rewritten is None and any(trap.blocks for trap in traps):
+                rewritten = separator_correction(command, cwd, host)
+            if rewritten is not None:
+                updated_input = dict(input_data["tool_input"], command=rewritten)
         elif host == ANTIGRAVITY:
             quoted = _quote_echo_separators(command)
             if quoted is not None and not zsh_traps(quoted, cwd, host):

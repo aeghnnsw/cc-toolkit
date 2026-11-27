@@ -446,6 +446,24 @@ BSD_SAFE = [
 # Commands that run `timeout`; the check warns when no `timeout` is on PATH.
 TIMEOUT_TRAPS = ["timeout 5 make test", "cd x && timeout 5 make", "x=$(timeout 1 true)"]
 
+# Commands that the `echo` quoting skips, and the corrected command that the
+# hook runs in their place for Claude Code and Codex (#670). Each word that
+# names no command is a separator word, and the corrected command has no trap.
+SEPARATOR_CORRECTIONS = {
+    "for n in 1 2; do echo issue $n; echo ======; done":
+        "for n in 1 2; do echo issue $n; echo \\======; done",
+    'S=/bin/echo; "$S" a; echo ======; "$S" b': 'S=/bin/echo; "$S" a; echo \\======; "$S" b',
+    "f=x; echo == $f | cat": "f=x; echo \\== $f | cat",
+    "echo a; echo ===== # note": "echo a; echo \\===== # note",
+    "printf '%s\\n' 'x; echo ====='; echo =====": "printf '%s\\n' 'x; echo ====='; echo \\=====",
+    'x=$(echo a; echo =====); echo "$x"': 'x=$(echo a; echo \\=====); echo "$x"',
+    'x=$(echo a # )\necho =====\n); echo "$x"': 'x=$(echo a # )\necho \\=====\n); echo "$x"',
+    'x=$(case a in a)\necho =====\n;; esac); echo "$x"':
+        'x=$(case a in a)\necho \\=====\n;; esac); echo "$x"',
+    '[ "a" == "a" ] && echo same': '[ "a" \\== "a" ] && echo same',
+    "[[ a == == ]] || echo differ": "[[ a == \\== ]] || echo differ",
+}
+
 
 def glob_directory(temp_dir):
     """Fill `temp_dir` with `a.txt` and `sub/b.md`, and return its path."""
@@ -851,9 +869,9 @@ class ZshTrapTests(unittest.TestCase):
         self.assertEqual(response["systemMessage"], output["permissionDecisionReason"])
 
     def test_each_host_gets_the_corrected_command_in_the_denial(self):
-        # The separator rewrite skips a pipeline, so each host denies it.
-        command = "echo ===== | cat"
-        expected = "Run it as it is:\necho \\===== | cat"
+        # `=q9` is no separator word, so no host runs the corrected command.
+        command = "echo =q9 | cat"
+        expected = "Run it as it is:\necho \\=q9 | cat"
         for host in (None, "claude", "codex"):
             with self.subTest(host=host):
                 result = run_hook(command, host=host)
@@ -861,6 +879,44 @@ class ZshTrapTests(unittest.TestCase):
                 output = json.loads(result.stdout)["hookSpecificOutput"]
                 self.assertEqual(output["permissionDecision"], "deny")
                 self.assertTrue(output["permissionDecisionReason"].endswith(expected))
+        result = run_hook(command, host="antigravity")
+        self.assertEqual(result.returncode, zsh_traps.block_status("antigravity"), result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(result.stderr.rstrip("\n").endswith(expected), result.stderr)
+
+    @unittest.skipUnless(ZSH, "zsh is not installed")
+    def test_current_hosts_run_the_corrected_command_for_separator_words(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for command, corrected in SEPARATOR_CORRECTIONS.items():
+                self.assertIn("not found", run_zsh(command, temp_dir).stderr, command)
+                # Without the EQUALS option, zsh runs the command as the agent meant it.
+                intended = run_zsh(command, temp_dir, equals=False)
+                for host in ("claude", "codex"):
+                    with self.subTest(host=host, command=command):
+                        result = run_hook(command, host=host)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        response = json.loads(result.stdout)
+                        self.assertNotIn("systemMessage", response)
+                        output = response["hookSpecificOutput"]
+                        self.assertEqual(output.get("updatedInput"), {"command": corrected})
+                        self.assertNotIn("permissionDecisionReason", output)
+                        self.assertEqual(
+                            output.get("permissionDecision"), "allow" if host == "codex" else None
+                        )
+                        actual = run_zsh(corrected, temp_dir)
+                        self.assertEqual(
+                            (actual.returncode, actual.stdout, actual.stderr),
+                            (intended.returncode, intended.stdout, intended.stderr),
+                        )
+                        self.assertEqual(run_hook(corrected, host=host).stdout, "")
+
+    def test_other_hosts_keep_the_denial_of_a_separator_word(self):
+        command = next(iter(SEPARATOR_CORRECTIONS))
+        expected = "Run it as it is:\n" + SEPARATOR_CORRECTIONS[command]
+        result = run_hook(command)
+        output = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(output["permissionDecision"], "deny")
+        self.assertTrue(output["permissionDecisionReason"].endswith(expected))
         result = run_hook(command, host="antigravity")
         self.assertEqual(result.returncode, zsh_traps.block_status("antigravity"), result.stderr)
         self.assertEqual(result.stdout, "")
@@ -942,7 +998,9 @@ class ZshTrapTests(unittest.TestCase):
                         self.assertEqual(checked_again.returncode, 0, checked_again.stderr)
                         self.assertEqual(checked_again.stdout, "")
 
-    def test_unsupported_commands_keep_their_existing_denial(self):
+    def test_echo_quoting_skips_get_the_corrected_command(self):
+        # The `echo` quoting skips these commands; each word that names no
+        # command is a separator word, so the hook runs the corrected command.
         commands = (
             "echo ===== | cat",
             "echo ===== &",
@@ -955,31 +1013,20 @@ class ZshTrapTests(unittest.TestCase):
             "if true; then echo =====; fi",
             "for i in 1; do echo =====; done",
             "case a in a) echo =====;; esac",
-            "cat <<EOF\nx\nEOF\necho =====",
-            "cat <<-EOF; echo =====\n\tx\n\tEOF",
-            "echo a; echo ===== # note",
             "x=$(echo a; echo =====); echo b",
-            "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"; echo =====",
             "echo $(date) # note\necho =====",
-            "printf '%s\\n' 'x; echo ====='; echo =====",
             'cat "a b"; echo =====',
             "echo $HOME; echo =====",
-            "echo a\\\n; echo =====",
             "echo a; printf =====; echo b",
-            "echo =====; echo ===== =sh",
             "echo =====; echo ===== | cat",
             "! echo =====; echo b",
             "echo ===== # =====",
             "echo ===== '====='",
             'echo ===== "====="',
-            "echo ===\\=CODEX",
-            "echo ====\\\nCODEX",
             "echo ===== $label",
-            "echo ===== ${label}",
             "echo ===== $(true)",
             "echo ===== `true`",
             "echo ===== {a,b}",
-            "echo ===== *.missing",
             "echo ===== > file",
             "echo ===== 2>/dev/null",
             "echo ===== <<< hi",
@@ -994,6 +1041,32 @@ class ZshTrapTests(unittest.TestCase):
             "echo -- =====",
             "echo ===== -n",
             "printf ====CODEX",
+        )
+        for command in commands:
+            corrected = zsh_traps.corrected_command(command)
+            self.assertIsNotNone(corrected, command)
+            original = run_hook(command)
+            self.assertEqual(json.loads(original.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+            for host in ("claude", "codex"):
+                with self.subTest(host=host, command=command):
+                    result = run_hook(command, host=host)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    output = json.loads(result.stdout)["hookSpecificOutput"]
+                    self.assertEqual(output.get("updatedInput"), {"command": corrected})
+
+    def test_unsupported_commands_keep_their_existing_denial(self):
+        commands = (
+            "cat <<EOF\nx\nEOF\necho =====",
+            "cat <<-EOF; echo =====\n\tx\n\tEOF",
+            "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"; echo =====",
+            # The analysis can read the text of `${...}`, `$'...'`, or a
+            # backslash-newline wrongly, so the hook runs no corrected command.
+            "echo a\\\n; echo =====",
+            "echo ===== ${label}",
+            "echo $'a'; echo =====",
+            "echo =====; echo ===== =sh",
+            "echo ===\\=CODEX",
+            "echo ====\\\nCODEX",
             "echo ===== =sh",
             "echo ===== =/bin/sh",
             "echo ===== =missing_command_361",
@@ -1033,6 +1106,9 @@ class ZshTrapTests(unittest.TestCase):
         )
         for command in commands:
             self.assertIsNone(zsh_traps._quote_echo_separators(command), command)
+            if command in SEPARATOR_CORRECTIONS:
+                # The analysis reads it right; zsh checks the corrected command.
+                continue
             original = run_hook(command)
             for host in ("claude", "codex"):
                 with self.subTest(host=host, command=command):
@@ -1130,7 +1206,7 @@ class ZshTrapTests(unittest.TestCase):
             }
             return run_hook_input(json.dumps(payload), args=("--host", "claude"))
 
-        for command in ('[ "a" == "a" ]', next(iter(FLAG_TRAPS))):
+        for command in ("echo =q9", next(iter(FLAG_TRAPS))):
             with self.subTest(command=command):
                 monitor = run("Monitor", {"command": command})
                 bash = run("Bash", {"command": command})
@@ -1141,11 +1217,13 @@ class ZshTrapTests(unittest.TestCase):
                     (monitor.returncode, monitor.stdout, monitor.stderr),
                     (bash.returncode, bash.stdout, bash.stderr),
                 )
-        bash = json.loads(run("Bash", {"command": "echo ====="}).stdout)
-        self.assertIn("updatedInput", bash["hookSpecificOutput"])
-        monitor = json.loads(run("Monitor", {"command": "echo ====="}).stdout)
-        self.assertEqual(monitor["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertNotIn("updatedInput", monitor["hookSpecificOutput"])
+        for command in ("echo =====", next(iter(SEPARATOR_CORRECTIONS))):
+            with self.subTest(command=command):
+                bash = json.loads(run("Bash", {"command": command}).stdout)
+                self.assertIn("updatedInput", bash["hookSpecificOutput"])
+                monitor = json.loads(run("Monitor", {"command": command}).stdout)
+                self.assertEqual(monitor["hookSpecificOutput"]["permissionDecision"], "deny")
+                self.assertNotIn("updatedInput", monitor["hookSpecificOutput"])
         result = run("Monitor", {
             "ws": {"url": "wss://events.example.invalid/stream"},
             "description": "events",
