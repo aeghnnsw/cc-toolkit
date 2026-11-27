@@ -1,6 +1,6 @@
 ---
 name: t3-project-lead
-version: 1.8.0
+version: 1.9.0
 description: "Use when the user invokes t3-project-lead to lead a T3 Code project: plan worker tasks, dispatch T3 workers, and judge their reports, while workers do all other work."
 disable-model-invocation: true
 ---
@@ -32,8 +32,8 @@ summary. `start` prints its fixed lead steps once in each thread, and
 change it only with the script's commands, and read it with `start` or
 `show`.
 
-Never settle the lead thread, also after `finish`: only the user settles it.
-Delete the lead thread only after `finish`. When T3's `worktreeOnDelete`
+Never settle or archive the lead thread, also after `finish`: only the user
+does. Delete the lead thread only after `finish`. When T3's `worktreeOnDelete`
 setting is on, T3 removes a thread's worktree, and the lead state in it, when
 the thread is deleted.
 

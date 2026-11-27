@@ -43,9 +43,9 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   blocks every other shell command, every other file read, every file
   edit, and native subagents, so only the script reads or writes the lead
   state. Other tools pass, and so do MCP tools, except the reads of issue
-  and PR text, the questions, the thread reads, the settles of a lead
-  thread, and the calls of another project below. A blocked call exits 2
-  with the reason on stderr. A call that the hook cannot check also
+  and PR text, the questions, the thread reads, the settles and archives of
+  a lead thread, and the calls of another project below. A blocked call
+  exits 2 with the reason on stderr. A call that the hook cannot check also
   exits 2.
 - Issue and PR text (issue #545): a lead that read open issues itself was
   flagged by the model provider's safeguards, and a flag stops the whole lead
@@ -96,6 +96,12 @@ Claude Code, Codex, and Antigravity run this hook before a tool call
   line says that only the user settles a lead thread, in place of the line
   that gives the call to a worker. In Antigravity, only the step text holds
   the rule.
+- Archive (issue #659): an archive also takes a thread off the user's
+  active list. So the hook checks `archive` as it checks `settle`, in the
+  same cases, and the block's first line says that only the user archives a
+  lead thread. `pin`, `unpin`, `unsettle`, and the other actions pass: a lead
+  pins each worker, because T3 Code settles a delegated worker by itself when
+  its turn ends (issue #668).
 - Project (issue #666): a lead offered the work of another project to the
   user. A lead works only in its own project. So in a recorded session, the
   hook blocks the T3 Code MCP calls that aim at another project:
@@ -153,9 +159,10 @@ SESSION_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 RECORD_DAYS = 30
 BLOCK_LINE = ("BLOCKED: t3-project-lead: This is not a lead action. Give it to a worker with "
               "`t3_project_lead.py dispatch`.")
-# The first line of a block that is not BLOCK_LINE: no worker may settle a lead thread (#645) or do
-# the work of another project (#666) either.
+# The first line of a block that is not BLOCK_LINE: no worker may settle or archive a lead thread (#645,
+# #659) or do the work of another project (#666) either.
 FIRST_LINES = {"settle": "BLOCKED: t3-project-lead: Only the user settles a lead thread.",
+               "archive": "BLOCKED: t3-project-lead: Only the user archives a lead thread.",
                "unmark": "BLOCKED: t3-project-lead: The hook keeps the lead record of this session.",
                "project": "BLOCKED: t3-project-lead: A lead works only in its own project."}
 ALLOWED = {
@@ -189,6 +196,8 @@ ALLOWED = {
     "settle": ("Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, "
                "name its threadId. When the hook blocks the settle of a worker's thread, give it to the "
                "user with t3_project_lead.py wait --settles <task>."),
+    "archive": ("Leave the lead thread open: only the user archives it. To archive a worker's thread, name "
+                "its threadId."),
     "unmark": "It removes the record only when it can tell that this thread is not the lead: {reason}.",
     "error": "The hook could not check this call ({error}). Allowed: the lead actions that "
              "t3_project_lead.py start lists.",
@@ -219,6 +228,9 @@ PENDING_READS = frozenset({"list", "read"})
 T3_SERVERS = frozenset({"t3_code", "t3_code_direct"})
 PR_CHECK_PARAMETERS = ("sections", "include")
 PR_CHECKS_ONLY = ["checks"]
+# The t3_thread_organize actions that take a thread off the user's active list: only the user does them to a
+# lead thread (#645, #659).
+CLOSING_ACTIONS = ("settle", "archive")
 # Path arguments: Claude Code first, then Antigravity.
 PATH_KEYS = ("file_path", "notebook_path", "path", "AbsolutePath", "Path", "File", "FilePath",
              "TargetFile", "DirectoryPath", "SearchPath", "SearchDirectory")
@@ -568,32 +580,34 @@ def check_thread_read(tool, arguments):
 
 
 def check_settle(tool, arguments, cwd):
-    """Raise Blocked when a `t3_thread_organize` call is a settle of a lead thread (#645).
+    """Raise Blocked when a `t3_thread_organize` call settles (#645) or archives (#659) a lead thread.
 
-    Only the user settles a lead thread. A settle with no `threadId` settles
-    the calling thread, which is a lead thread in a recorded session. A
-    settle that names a thread of lead_threads also blocks. A settle that
-    names another thread, such as a worker's, passes, and so do the other
-    actions. An input that is not an object, an action that is not a
-    string, and a settle that names a thread when the hook knows no lead
-    thread or cannot read the lead state fail closed.
+    Only the user settles or archives a lead thread. Such a call with no
+    `threadId` acts on the calling thread, which is a lead thread in a
+    recorded session. A call that names a thread of lead_threads also
+    blocks. One that names another thread, such as a worker's, passes, and so
+    do the other actions, such as pin, unpin, and unsettle. An input that is
+    not an object and an action that is not a string block as a settle. A
+    settle or archive that names a thread when the hook knows no lead thread
+    or cannot read the lead state fails closed.
     """
     if tool != "t3_thread_organize":
         return
     action = arguments.get("action") if isinstance(arguments, dict) else None
     if not isinstance(action, str):
         raise Blocked("settle")
-    if action.strip().lower() != "settle":
+    action = action.strip().lower()
+    if action not in CLOSING_ACTIONS:
         return
     thread = arguments.get("threadId")
     if not isinstance(thread, str) or not thread.strip():
-        raise Blocked("settle")
+        raise Blocked(action)
     try:
         leads = lead_threads(cwd)
     except Exception:
-        raise Blocked("settle") from None
+        raise Blocked(action) from None
     if not leads or thread.strip() in leads:
-        raise Blocked("settle")
+        raise Blocked(action)
 
 
 def check_project(tool, arguments):

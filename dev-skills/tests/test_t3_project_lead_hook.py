@@ -12,7 +12,8 @@ can answer a worker's question. Issue #574 also records a session for
 `start` in a command list. Issue #612 records a session only at `init`,
 `takeover`, and a `start` of the owner thread, and adds `unmark`. Issue #621
 allows reads of the session's saved tool outputs and gtd-inbox files. Issue
-#666 blocks the T3 Code MCP calls that aim a lead at another project. Each
+#666 blocks the T3 Code MCP calls that aim a lead at another project, and
+issue #659 blocks an archive of a lead thread as #645 blocks a settle. Each
 test runs the hook as a process with a JSON payload on stdin, as Claude Code,
 Codex, and Antigravity do, and checks the exit status, stdout, stderr, and
 the state folder.
@@ -80,6 +81,10 @@ SETTLE_LINES = ["BLOCKED: t3-project-lead: Only the user settles a lead thread."
                 "Leave the lead thread open, and give its settle to no worker. To settle a worker's thread, name "
                 "its threadId. When the hook blocks the settle of a worker's thread, give it to the user with "
                 "t3_project_lead.py wait --settles <task>."]
+# Only the user archives a lead thread (#659).
+ARCHIVE_LINES = ["BLOCKED: t3-project-lead: Only the user archives a lead thread.",
+                 "Leave the lead thread open: only the user archives it. To archive a worker's thread, name its "
+                 "threadId."]
 LEAD_THREAD = "thread:lead-1"
 OWNER_THREAD = "thread:owner-1"
 WORKER_THREAD = "thread:worker-1"
@@ -317,7 +322,8 @@ class SessionWithoutRecordTests(HookCase):
     def test_settles_pass(self):
         self.check([(host, tool_payload(host, name, tool_input, self.main))
                     for host in ("claude", "codex") for name in ORGANIZE[host]
-                    for tool_input in ({"action": "settle"}, {"action": "settle", "threadId": WORKER_THREAD})],
+                    for tool_input in ({"action": "settle"}, {"action": "settle", "threadId": WORKER_THREAD},
+                                       {"action": "archive"})],
                    allowed=True, env={"T3CODE_THREAD_ID": LEAD_THREAD})
         self.assertFalse(self.state.exists())
 
@@ -893,7 +899,7 @@ class GateTests(HookCase):
 
 
 class SettleTests(HookCase):
-    """A recorded session settles no lead thread: only the user settles it (#645)."""
+    """A recorded session settles (#645) or archives (#659) no lead thread: only the user does."""
 
     def setUp(self):
         super().setUp()
@@ -908,9 +914,9 @@ class SettleTests(HookCase):
         self.lead_state.write_text(json.dumps({"schema": 1, "slug": "y", "owner": OWNER_THREAD}),
                                    encoding="utf-8")
 
-    def check_settles(self, inputs, *, allowed, cwd=None, thread=LEAD_THREAD):
+    def check_settles(self, inputs, *, allowed, cwd=None, thread=LEAD_THREAD, lines=SETTLE_LINES):
         """Check each tool input with each Claude Code and Codex name of t3_thread_organize, in a session
-        of the T3 thread `thread`; a blocked call prints the settle lines."""
+        of the T3 thread `thread`; a blocked call prints `lines`."""
         env = {"T3CODE_THREAD_ID": thread} if thread is not None else {}
         jobs = [(host, tool_payload(host, name, tool_input, self.main if cwd is None else cwd))
                 for host, names in ORGANIZE.items() for name in names for tool_input in inputs]
@@ -922,7 +928,7 @@ class SettleTests(HookCase):
                     self.assert_passes(result)
                 else:
                     self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
-                    self.assertEqual(result.stderr.splitlines(), SETTLE_LINES)
+                    self.assertEqual(result.stderr.splitlines(), lines)
 
     def test_a_settle_with_no_thread_is_blocked(self):
         # A call with no threadId settles the calling thread, the lead thread.
@@ -967,10 +973,38 @@ class SettleTests(HookCase):
                             *({"action": value, "threadId": WORKER_THREAD} for value in (None, ["settle"], 1))),
                            allowed=False)
 
+    def test_an_archive_of_a_lead_thread_is_blocked(self):
+        # An archive takes a thread off the user's active list, as a settle does (#659).
+        blocked = ({"action": "archive"}, {"action": "archive", "environmentId": "env-1"},
+                   {"action": "archive", "threadId": ""}, {"action": "archive", "threadId": LEAD_THREAD},
+                   {"action": " Archive", "threadId": f" {LEAD_THREAD} "})
+        for thread in (LEAD_THREAD, None):
+            self.check_settles(blocked, allowed=False, thread=thread, lines=ARCHIVE_LINES)
+        self.check_settles(({"action": "archive", "threadId": OWNER_THREAD},), allowed=False, cwd=self.tree,
+                           lines=ARCHIVE_LINES)
+        # It fails closed as a settle does: no known lead thread, or no absolute cwd.
+        worker = ({"action": "archive", "threadId": WORKER_THREAD},)
+        self.check_settles(worker, allowed=False, thread=None, lines=ARCHIVE_LINES)
+        self.check_settles(worker, allowed=False, cwd="relative/cwd", lines=ARCHIVE_LINES)
+
+    def test_an_archive_of_a_worker_thread_passes(self):
+        inputs = ({"action": "archive", "threadId": WORKER_THREAD},)
+        self.check_settles(inputs, allowed=True)
+        self.check_settles(inputs, allowed=True, cwd=self.tree, thread=None)
+
+    def test_a_lead_pins_unpins_and_unsettles_a_worker_thread(self):
+        # T3 Code settles a delegated worker when its turn ends, unless the thread is pinned (#668): the lead
+        # pins each worker, unpins it when its task is verified or cancelled, and unsettles a waiting worker.
+        inputs = [{"action": action, "threadId": WORKER_THREAD, **extra}
+                  for action in ("pin", "unpin", "unsettle") for extra in ({}, {"environmentId": "env-1"})]
+        self.check_settles(inputs, allowed=True)
+        self.check_settles(inputs, allowed=True, cwd=self.tree, thread=None)
+        self.check_settles(inputs, allowed=True, cwd="relative/cwd")
+
     def test_other_actions_pass(self):
         self.check_settles(({"action": "pin"}, {"action": "unsettle"}, {"action": "mark_unread"},
                             {"action": "snooze", "snoozedUntil": "2026-11-27T09:00:00Z"},
-                            {"action": "archive", "threadId": WORKER_THREAD}), allowed=True)
+                            {"action": "unarchive", "threadId": LEAD_THREAD}), allowed=True)
 
 
 class ProjectScopeTests(HookCase):

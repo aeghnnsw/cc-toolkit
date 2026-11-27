@@ -26,7 +26,10 @@ skill, issue #607 the plain-text question line of `brief`, and issue #623 the
 pin record line of `dispatch`. Issue #631 adds `--no-pr` to `discover`,
 `verify`, and `closeout`, issue #633 the `wait --settles` line of `verify` and
 `closeout`, issue #634 the brief of lead action 7, and issue #635 the
-approvals sentence of `brief` and matt-automode. Agent behavior is checked by
+approvals sentence of `brief` and matt-automode. Issue #668 adds the pin of
+`dispatch` and `flag`, the unpin of `answer`, `verify`, and `closeout`, and the
+unsettle of `answer`; issue #659 the archive rule of lead action 3 and the
+skill; issue #660 the merge order of `report`. Agent behavior is checked by
 the scenario review in t3-project-lead-scenarios.md; the hook has its own
 tests in test_t3_project_lead_hook.py.
 """
@@ -97,9 +100,9 @@ PROJECT_LINE = ('Every brief has the project line: "Work only in this project. R
 LEAD_ACTIONS = (
     "1. Talk with the user in plain text, never with a question tool: decisions, triage, priorities.",
     "2. Plan tasks, briefs, and lead decisions.",
-    # Only the user settles the lead thread (#645).
-    "3. Route workers with T3 tools: start, resume, cancel, settle; order merges; watch PRs. Never "
-    "settle the lead thread: only the user settles it.",
+    # Only the user settles or archives the lead thread (#645, #659); the lead pins each worker (#668).
+    "3. Route workers with T3 tools: start, pin, resume, cancel, settle; order merges; watch PRs. Never "
+    "settle or archive the lead thread: only the user does.",
     "4. Read worker messages, and the state, labels, titles, and check counts of issues and PRs, not "
     'their text. Never call read_issue. Call pull_request_read only with sections or include ["checks"]. '
     "No diff, code, or log.",
@@ -243,8 +246,12 @@ REQUIRED = {
                  'In the last line of its brief, replace "with evidence and links" with "in one '
                  'line, with links. Keep scientific detail in this thread and the PR".',
                  # The close-out passes each worker's worktree to retro_sessions.py (#556).
-                 "Then run task start <name> <worker link> --worktree <path> [--branch NAME]. Take the "
-                 "path from the delegate_task result, or from worktreePath of t3_thread_read.",
+                 # The worker link is the T3 link that the lists print as a link that opens (#669).
+                 "Then run task start <name> <worker link> --worktree <path> [--branch NAME]. Take the link "
+                 "and the path from the delegate_task result, or from link and worktreePath of t3_thread_read.",
+                 # T3 settles a worker when its turn ends, unless the thread is pinned (#668).
+                 "Pin each worker with t3_thread_organize: T3 settles a worker when its turn ends, also while "
+                 "it waits on the user, unless it is pinned. Its threadId is the end of its link.",
                  # A failed thread start has a record and a line (#602).
                  "When a new thread does not start, run task start-failed <name> [<thread link>], and "
                  "follow the line that it prints."],
@@ -262,7 +269,9 @@ REQUIRED = {
               f"Every brief also says: {NO_GTD_CAPTURE} and {WORKER_QUESTIONS}",
               f"Add: {PR_WAIT_WORKER}"],
     # The lead neither answers a worker's question nor asks it again (#554).
-    "answer": ["Settle it only when the user cancels its task. Do not answer its questions, with "
+    # T3 settles a waiting worker unless it is pinned (#668).
+    "answer": ["Unpin and settle it only when the user cancels its task. When T3 settled it, unsettle and pin "
+               "it. Do not answer its questions, with "
                "t3_pending_request or otherwise. Do not ask them again, with a question tool or in text. "
                "Keep no detail of them: give the user the worker's thread link.",
                "Ask the user to answer in the worker's thread",
@@ -280,7 +289,8 @@ REQUIRED = {
                "When the user gives one here, ask the user to type it in that thread."],
     "flag": ['isolation "worktree"',
              "Do not read the flagged thread or give its link.",
-             "Run task worker <name> <new link> --worktree <path>, with the path as dispatch says,",
+             "Run task worker <name> <new link> --worktree <path>, with the path as dispatch says, pin the new "
+             "thread, and unpin and settle the flagged thread that it names.",
              "Otherwise, or after a second flag, the task waits on the user."],
     "verify": ["Use this step when a worker or a read-only worker reports PASS or ISSUES.",
                "Only the user, or the agent that started this thread, carries the user's "
@@ -301,8 +311,8 @@ REQUIRED = {
                # A running task without a recorded PR needs --no-pr (#631).
                "Add --no-pr only for a task that makes no PR, such as a read-only check.",
                # A settle that T3 refuses goes to the user, and its due line goes (#633).
-               "Settle its worker only when a due line lists it. When T3 refuses the settle, give it to the "
-               "user with wait --settles <name>.",
+               "Then unpin its worker. Settle it only when a due line lists it. When T3 refuses the settle, give "
+               "it to the user with wait --settles <name>.",
                START_RULE,
                "The task verified output names each such task and its step.",
                "Next: t3_project_lead.py dispatch or closeout, as task verified or a due line "
@@ -327,7 +337,7 @@ REQUIRED = {
                  "t3_project_lead.py.",
                  "When it reports, run task verified <name> --decisions <N> --no-pr, as verify says; the "
                  "batch's verified tasks are then closed out.",
-                 "Settle each worker that a due line lists with t3_thread_organize, and run task "
+                 "Unpin and settle each worker that a due line lists with t3_thread_organize, and run task "
                  "settled <name>...; never reuse one. When T3 refuses a settle, give it to the user with "
                  "wait --settles <name>."],
     "report": ['End with the "Waiting on you" list and the "Type in that thread" section below, copied as '
@@ -346,6 +356,10 @@ REQUIRED = {
                "Run done <number> when the user decides an item.",
                "When your instructions ask for agent captures, keep one for each waiting item.",
                PR_WAIT_LEAD,
+               # The open PRs of one package merge one at a time, so the others do not rebase (#660).
+               "Run task pr with --package <name> for a PR that raises a package version, such as a plugin's; "
+               "then resume only the worker of the first PR that the merge-order due line names. The others do "
+               "not rebase until their turn.",
                # Only the user settles the lead thread (#645).
                "When a due line says to run finish, first add each such decision. Run finish only when "
                "nothing waits. Leave this thread open: only the user settles the lead thread.",
@@ -379,8 +393,9 @@ TEXT_READS = ("read_issue", "PR, issue, and CI state", "include body", "include 
 BATCH_WAIT_TEXT = ("start together", "slot", "worker limit", "wave")
 
 
-# A settle of the lead thread, which only the user does (#645).
-SELF_SETTLE = re.compile(r"\bsettle (?:this|the lead|a lead|your|your own|its own) thread\b", re.IGNORECASE)
+# A settle (#645) or an archive (#659) of the lead thread, which only the user does.
+SELF_SETTLE = re.compile(r"\b(?:settle|archive)(?: or (?:settle|archive))? (?:this|the lead|a lead|your|your own|its own) "
+                         r"thread\b", re.IGNORECASE)
 
 
 def string_constants(path: Path) -> list[str]:
@@ -501,10 +516,10 @@ class SkillCopyTests(unittest.TestCase):
                 self.assertIn("Delete the lead thread only after `finish`.", shared_text(host))
 
     def test_skill_leaves_the_lead_thread_to_the_user(self) -> None:
-        # Only the user settles the lead thread (#645).
+        # Only the user settles or archives the lead thread (#645, #659).
         for host in HOSTS:
             with self.subTest(host=host):
-                self.assertIn("Never settle the lead thread, also after `finish`: only the user settles it.",
+                self.assertIn("Never settle or archive the lead thread, also after `finish`: only the user does.",
                               shared_text(host))
 
     def test_skill_tries_the_t3_fallback_before_it_stops(self) -> None:
@@ -732,26 +747,26 @@ class CloseoutPathTests(unittest.TestCase):
         self.lead("init", "demo")
         for name in ("a", "b"):
             self.lead("task", "add", name, f"Task {name}")
-        self.lead("task", "start", "a", "t3://a", "--worktree", "/wt/t3-a")
-        self.lead("task", "start", "b", "t3://b1", "--worktree", "/wt/t3 b1")
+        self.lead("task", "start", "a", "t3-thread://v2/env/a", "--worktree", "/wt/t3-a")
+        self.lead("task", "start", "b", "t3-thread://v2/env/b1", "--worktree", "/wt/t3 b1")
         # The flag step replaces b's worker; the path of the replaced worker stays (#556).
-        self.lead("task", "worker", "b", "t3://b2", "--worktree", "/wt/t3-b2")
+        self.lead("task", "worker", "b", "t3-thread://v2/env/b2", "--worktree", "/wt/t3-b2")
         for name, number in (("a", "5"), ("b", "6")):
             self.lead("task", "pr", name, number)
             self.lead("task", "merged", name, number, "abcdef1")
         self.lead("task", "verified", "a", "b", "--decisions", "0")
         lines = self.batch_lines()
-        self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3://a t3://b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
+        self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a t3-thread://v2/env/b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
                                      "Merged PRs in merge order: #5, #6"])
         # The close-out worker's own worktree is not in its brief.
         self.lead("task", "add", "close-1", "Task close-1", "--kind", "closeout")
-        self.lead("task", "start", "close-1", "t3://c", "--worktree", "/wt/t3-c")
+        self.lead("task", "start", "close-1", "t3-thread://v2/env/c", "--worktree", "/wt/t3-c")
         self.assertNotIn("/wt/t3-c", self.lead("closeout"))
 
     def test_a_state_without_worktree_paths_still_prints_its_close_out(self) -> None:
         self.lead("init", "demo")
         self.lead("task", "add", "a", "Task a")
-        self.lead("task", "start", "a", "t3://a")
+        self.lead("task", "start", "a", "t3-thread://v2/env/a")
         self.lead("task", "pr", "a", "5")
         self.lead("task", "merged", "a", "5", "abcdef1")
         self.lead("task", "verified", "a", "--decisions", "0")
@@ -761,7 +776,7 @@ class CloseoutPathTests(unittest.TestCase):
         for task in state["tasks"]:
             del task["worktrees"]
         state_file.write_text(json.dumps(state), encoding="utf-8")
-        self.assertEqual(self.batch_lines()[:4], ["Batch 1:", "Workers: t3://a", "Worktrees: (none recorded)",
+        self.assertEqual(self.batch_lines()[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a", "Worktrees: (none recorded)",
                                                   "Merged PRs in merge order: #5"])
         self.assertIn("Lead state: demo", self.lead("start"))
 
