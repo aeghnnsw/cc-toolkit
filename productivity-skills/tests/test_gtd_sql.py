@@ -220,19 +220,19 @@ class DatabaseCase(RendererCase):
     @classmethod
     def start_server(cls):
         missing = [tool for tool in ("initdb", "pg_ctl", "psql") if not shutil.which(tool)]
+        if missing and os.environ.get("GTD_TESTS_SKIP_POSTGRES") == "1":
+            # unittest shows a skip reason only with -v, so stderr says it too.
+            reason = ("GTD_TESTS_SKIP_POSTGRES=1 skips the SQL contract tests. Missing from PATH: "
+                      f"{', '.join(missing)}.")
+            print(reason, file=sys.stderr)
+            raise unittest.SkipTest(reason)
         if missing:
-            names = f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} missing"
-            if os.environ.get("GTD_TESTS_SKIP_POSTGRES") == "1":
-                # unittest shows a skip reason only with -v, so stderr says it too.
-                reason = f"GTD_TESTS_SKIP_POSTGRES=1 skips the SQL contract tests; {names} from PATH."
-                print(reason, file=sys.stderr)
-                raise unittest.SkipTest(reason)
             # A missing tool fails instead of skipping, because a skip prints OK and can pass as a local
             # test run (#665).
             raise RuntimeError(
-                f"the SQL contract tests need initdb, pg_ctl, and psql on PATH, and {names}. Install "
-                "PostgreSQL and put its bin folder on PATH, or set GTD_TESTS_SKIP_POSTGRES=1 to skip the SQL "
-                "contract tests."
+                f"the SQL contract tests need PostgreSQL tools that are missing from PATH: {', '.join(missing)}. "
+                "Install PostgreSQL and put its bin folder on PATH, or set GTD_TESTS_SKIP_POSTGRES=1 to skip the "
+                "SQL contract tests."
             )
         cluster = tempfile.TemporaryDirectory(prefix="pg-")
         unittest.addModuleCleanup(cluster.cleanup)
@@ -355,11 +355,11 @@ class SandboxCheckTests(unittest.TestCase):
 class MissingToolTests(unittest.TestCase):
     """A missing PostgreSQL tool fails the SQL classes; GTD_TESTS_SKIP_POSTGRES=1 skips them (#665)."""
 
-    def start_server_with_only_psql(self, skip=None):
+    def start_server_with_only_psql(self, skip_value=None):
         """Start the test server with psql as the only PostgreSQL tool on PATH.
 
-        Return the SkipTest instead of raising it, because a raised SkipTest skips this test, and a
-        skip prints OK.
+        skip_value is the value of GTD_TESTS_SKIP_POSTGRES, or None to leave it unset. Return the
+        SkipTest instead of raising it, because a raised SkipTest skips this test, and a skip prints OK.
         """
         with tempfile.TemporaryDirectory(prefix="bin-") as folder:
             path = Path(folder) / "psql"
@@ -367,8 +367,8 @@ class MissingToolTests(unittest.TestCase):
             path.chmod(0o755)
             with mock.patch.dict(os.environ, {"PATH": folder}):
                 os.environ.pop("GTD_TESTS_SKIP_POSTGRES", None)
-                if skip is not None:
-                    os.environ["GTD_TESTS_SKIP_POSTGRES"] = skip
+                if skip_value is not None:
+                    os.environ["GTD_TESTS_SKIP_POSTGRES"] = skip_value
                 try:
                     DatabaseCase.start_server()
                 except unittest.SkipTest as skipped:
@@ -376,21 +376,20 @@ class MissingToolTests(unittest.TestCase):
         self.fail("start_server neither failed nor skipped")
 
     def test_missing_tool_fails_and_names_the_tools_and_the_skip_variable(self):
-        for skip in (None, "0", "true"):
-            with self.subTest(skip=skip):
+        for skip_value in (None, "0", "true"):
+            with self.subTest(skip_value=skip_value):
                 with self.assertRaises(RuntimeError) as raised:
-                    self.start_server_with_only_psql(skip)
+                    self.start_server_with_only_psql(skip_value)
                 message = str(raised.exception)
-                self.assertTrue(message.startswith("the SQL contract tests need initdb, pg_ctl, and psql on PATH, "
-                                                   "and initdb, pg_ctl are missing."), message)
+                self.assertTrue(message.startswith("the SQL contract tests need PostgreSQL tools that are missing "
+                                                   "from PATH: initdb, pg_ctl."), message)
                 self.assertIn("set GTD_TESTS_SKIP_POSTGRES=1", message)
 
     def test_skip_variable_skips_and_says_so_on_stderr(self):
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             skipped = self.start_server_with_only_psql("1")
-        reason = ("GTD_TESTS_SKIP_POSTGRES=1 skips the SQL contract tests; initdb, pg_ctl are missing from "
-                  "PATH.")
+        reason = "GTD_TESTS_SKIP_POSTGRES=1 skips the SQL contract tests. Missing from PATH: initdb, pg_ctl."
         self.assertEqual(str(skipped), reason)
         self.assertEqual(stderr.getvalue(), reason + "\n")
 
