@@ -100,9 +100,9 @@ while it waits on the user, unless the thread is pinned (issue #668). So the
 `dispatch` step and `task start` tell the lead to pin each worker; `task
 verified`, `task cancel`, and each settle tell it to unpin; and `answer` tells
 it to unsettle and pin a waiting worker that T3 settled. A worker link is the
-T3 link that `delegate_task` returns, `t3-thread://v2/<environment>/<thread>`
-or the Markdown link around it (issue #669): the lists print it as a Markdown
-link that T3 opens. `task pr --package` puts the open PRs of one package, such
+T3 link that `delegate_task` returns,
+`t3-thread://v2/<environmentId>/<threadId>`, or the Markdown link around it
+(issue #669): the lists print it as a Markdown link that T3 opens. `task pr --package` puts the open PRs of one package, such
 as a plugin, in one merge order, and `task later` moves a PR to its end (issue
 #660): only the first PR rebases and merges, so the others do not rebase and
 start CI again after each merge.
@@ -265,8 +265,8 @@ Next: t3_project_lead.py dispatch.
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
 the user. Unpin and settle it only when the user cancels its task. When T3
-settled it, unsettle and pin it. Do not answer its
-questions, with t3_pending_request or otherwise. Do not ask them again, with a
+settled it, unsettle and pin it. Do not answer its questions, with
+t3_pending_request or otherwise. Do not ask them again, with a
 question tool or in text. Keep no detail of them: give the user the worker's
 thread link.
 In this turn, run wait --task <name> --decisions <N>. The script adds the
@@ -377,8 +377,8 @@ other list of decisions for the user. Name no detail of a worker's decisions.
 Run done <number> when the user decides an item. When your instructions ask
 for agent captures, keep one for each waiting item.
 When a due line says to run finish, first add each such decision. Run finish
-only when nothing waits. Leave this thread open: only the user settles the
-lead thread.
+only when nothing waits. Leave this thread open: only the user settles or
+archives the lead thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
@@ -445,15 +445,16 @@ SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 # The link of a T3 thread, which delegate_task and t3_thread_read return, and the Markdown link around it
-# (#669): T3 opens [title](t3-thread://v2/<environment>/<thread>). The thread is the threadId.
+# (#669): T3 opens [title](t3-thread://v2/<environmentId>/<threadId>).
 T3_LINK = re.compile(r"t3-thread://v2/[^/\s()\[\]]+/([^/\s()\[\]]+)")
 MARKDOWN_LINK = re.compile(r"\[[^\]\n]*\]\((.*)\)")
 PACKAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}")
 # A decision label of the lead at the start of a decision's text, such as "D189: " (#614).
 DECISION_LABEL = re.compile(r"D(\d+)(?:[\s:;,.)-]+|$)")
 # What the next PR of a merge order runs after its rebase (#660), as matt-automode and CONTRIBUTING say.
-REBASE_CHECKS = ("After a rebase that changes only versions and changelog entries, it runs only the version and "
-                 "changelog checks, and CI runs the suites.")
+REBASE_CHECKS = ("After a rebase that changes only versions and changelog entries, it runs only the version script "
+                 "and the package validator, or the version and changelog checks of its repository, not the test "
+                 "suites; CI runs them.")
 # What task start and task add --kind closeout say about a batch that is not done (#644).
 OPEN_BATCH = "batch {} still has tasks that are not verified or cancelled"
 KINDS = ("work", "check", "closeout")
@@ -1175,13 +1176,20 @@ def order_text(state: dict, package: str) -> str:
 def change_task_pr(state, args, time):
     task = find_task(state, args.name)
     require(task, ACTIVE + (MERGED,), "task pr")
-    if args.number < 1 or any(pr["number"] == args.number for pr in task["prs"]):
+    if args.package is not None and not PACKAGE.fullmatch(args.package):
+        raise Refused("a package name has letters, digits, and . _ @ / -, at most 64 characters")
+    recorded = next((pr for pr in task["prs"] if pr["number"] == args.number), None)
+    if recorded is not None and args.package is not None and not recorded["merged"] and not recorded.get("package"):
+        # A PR recorded without a package joins the end of the merge order (#660).
+        recorded["package"], recorded["place"] = args.package, next_place(state)
+        return (f"{task['name']}: PR #{args.number} is in the merge order of {args.package}: "
+                f"{order_text(state, args.package)}.", {"task": task["name"], "pr": args.number,
+                                                         "package": args.package})
+    if args.number < 1 or recorded is not None:
         raise Refused(f"PR #{args.number} is not a new positive PR number for {task['name']}")
     pr = {"number": args.number, "commit": None, "merged": None}
     message = f"{task['name']}: PR #{args.number} is open."
     if args.package is not None:
-        if not PACKAGE.fullmatch(args.package):
-            raise Refused("a package name has letters, digits, and . _ @ / -, at most 64 characters")
         # The PRs of one package raise the same versions, so each merge makes the others conflict (#660).
         pr["package"], pr["place"] = args.package, next_place(state)
     task["prs"].append(pr)
@@ -1200,8 +1208,8 @@ def change_task_later(state, args, time):
     if pr is None or task["state"] == CANCELLED:
         raise Refused(f"PR #{args.number} is not an open PR of {task['name']}")
     if not pr.get("package"):
-        raise Refused(f"PR #{args.number} has no package, so it has no merge order; record it with task pr "
-                      "--package")
+        raise Refused(f"PR #{args.number} has no package, so it has no merge order; add it with task pr "
+                      f"{task['name']} {args.number} --package <name>")
     pr["place"] = next_place(state)
     package = pr["package"]
     return (f"PR #{args.number} is last in the merge order of {package}: {order_text(state, package)}.",
@@ -1224,7 +1232,8 @@ def change_task_merged(state, args, time):
     if order:
         after, after_pr = order[0]
         message += (f" Next in the merge order of {pr['package']}: #{after_pr['number']} ({after['name']}). "
-                    f"Resume only its worker, to rebase once and merge; the others wait. {REBASE_CHECKS}")
+                    f"Resume only its worker, {worker_text(after)}, to rebase once and merge; the others wait. "
+                    f"{REBASE_CHECKS}")
     return message, event
 
 
@@ -1249,7 +1258,7 @@ def change_task_verified(state, args, time):
     message = f"{task['name']} is verified."
     if task["worker"]:
         # The worker waits on the user no more, so T3 may settle it (#668).
-        message += f" Unpin its worker with t3_thread_organize: {task['worker']}"
+        message += f" Unpin its worker {task['worker']} with t3_thread_organize."
     if task["kind"] == "closeout":
         closed = [other for other in batch_tasks(state, task["batch"])
                   if other["state"] == VERIFIED and other["kind"] != "closeout"]
@@ -1504,7 +1513,8 @@ def cmd_finish(args) -> str:
                           f"items that wait: {', '.join(items) or 'none'}")
     shutil.rmtree(folder)
     # Only the user settles the lead thread (#645).
-    return f"Lead state deleted: {folder}. Leave this thread open: only the user settles the lead thread."
+    return (f"Lead state deleted: {folder}. Leave this thread open: only the user settles or archives the lead "
+            "thread.")
 
 
 # Views.
@@ -1625,9 +1635,11 @@ def due_lines(state: dict) -> list[str]:
     for package in packages:
         order = merge_order(state, package)
         if len(order) > 1:
+            first, first_pr = order[0]
             lines.append(f"Merge order of {package}: {order_text(state, package)}. Resume only the worker of "
-                         f"#{order[0][1]['number']} to merge; the others do not rebase until their turn. For a PR "
-                         "that cannot merge now, run task later <name> <number>.")
+                         f"#{first_pr['number']}, {worker_text(first)}, to merge; the others do not rebase until "
+                         f"their turn. {REBASE_CHECKS} For a PR that cannot merge now, run task later <name> "
+                         "<number>.")
     # One line for all paused tasks, so that the view does not grow with them (#555).
     paused = [task["name"] for task in state["tasks"] if task["state"] == PAUSED]
     if paused:

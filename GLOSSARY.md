@@ -85,9 +85,9 @@ branch changes. It also writes these versions into the branch's entry
 files.
 
 **Merge order**:
-The order in which the open pull requests of one plugin merge, one at a time.
-Only the first one rebases; the others wait for their turn. So a merge does
-not make each of them rebase and start CI again.
+The order in which the open pull requests of one package, such as a plugin,
+merge, one at a time. Only the first one rebases; the others wait for their
+turn. So a merge does not make each of them rebase and start CI again.
 _Avoid_: Merge queue
 
 **User-invoked skill**:
@@ -300,9 +300,9 @@ A T3 Code child thread that a project lead starts for one task, in its own
 worktree. The user can write to it. T3 Code settles a worker by itself when
 its turn ends, also while it waits on the user, unless the thread is pinned.
 So the lead pins each worker until its task is verified or cancelled. When a
-worker finishes, the lead settles its thread in T3. Only while a failed thread start is open, the lead gives the
-next task to a finished worker that is not settled yet and whose batch
-close-out has not started. It never reuses a settled worker.
+worker finishes, the lead settles its thread in T3. Only while a failed
+thread start is open, the lead gives the next task to a finished worker that
+is not settled yet and whose batch close-out has not started. It never reuses a settled worker.
 _Avoid_: Subagent
 
 **Brief**:

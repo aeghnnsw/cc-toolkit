@@ -362,7 +362,7 @@ REQUIRED = {
                "not rebase until their turn.",
                # Only the user settles the lead thread (#645).
                "When a due line says to run finish, first add each such decision. Run finish only when "
-               "nothing waits. Leave this thread open: only the user settles the lead thread.",
+               "nothing waits. Leave this thread open: only the user settles or archives the lead thread.",
                "Next: after a wake or a user message, t3_project_lead.py start.",
                "Make no promise that needs a signal from the middle of a worker's run."],
 }
@@ -394,8 +394,8 @@ BATCH_WAIT_TEXT = ("start together", "slot", "worker limit", "wave")
 
 
 # A settle (#645) or an archive (#659) of the lead thread, which only the user does.
-SELF_SETTLE = re.compile(r"\b(?:settle|archive)(?: or (?:settle|archive))? (?:this|the lead|a lead|your|your own|its own) "
-                         r"thread\b", re.IGNORECASE)
+SELF_SETTLE = re.compile(r"\b(?:settle|archive)(?: or (?:settle|archive))? "
+                         r"(?:this|the lead|a lead|your|your own|its own) thread\b", re.IGNORECASE)
 
 
 def string_constants(path: Path) -> list[str]:
@@ -756,8 +756,8 @@ class CloseoutPathTests(unittest.TestCase):
             self.lead("task", "merged", name, number, "abcdef1")
         self.lead("task", "verified", "a", "b", "--decisions", "0")
         lines = self.batch_lines()
-        self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a t3-thread://v2/env/b2", "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2",
-                                     "Merged PRs in merge order: #5, #6"])
+        self.assertEqual(lines[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a t3-thread://v2/env/b2",
+                                     "Worktrees: /wt/t3-a '/wt/t3 b1' /wt/t3-b2", "Merged PRs in merge order: #5, #6"])
         # The close-out worker's own worktree is not in its brief.
         self.lead("task", "add", "close-1", "Task close-1", "--kind", "closeout")
         self.lead("task", "start", "close-1", "t3-thread://v2/env/c", "--worktree", "/wt/t3-c")
@@ -776,8 +776,8 @@ class CloseoutPathTests(unittest.TestCase):
         for task in state["tasks"]:
             del task["worktrees"]
         state_file.write_text(json.dumps(state), encoding="utf-8")
-        self.assertEqual(self.batch_lines()[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a", "Worktrees: (none recorded)",
-                                                  "Merged PRs in merge order: #5"])
+        self.assertEqual(self.batch_lines()[:4], ["Batch 1:", "Workers: t3-thread://v2/env/a",
+                                                  "Worktrees: (none recorded)", "Merged PRs in merge order: #5"])
         self.assertIn("Lead state: demo", self.lead("start"))
 
 

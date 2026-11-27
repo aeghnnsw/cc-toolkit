@@ -57,6 +57,10 @@ LEAD = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(LEAD)
 UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 WORKER = "t3-thread://v2/env/thread-{}"
+# What the next PR of a merge order runs after a rebase that changes only versions and changelog entries (#660).
+REBASE_CHECKS = ("After a rebase that changes only versions and changelog entries, it runs only the version script "
+                 "and the package validator, or the version and changelog checks of its repository, not the test "
+                 "suites; CI runs them.")
 # The T3 thread of the lead in each check, and another thread, such as a fork (#544).
 OWNER = "thread-lead"
 OTHER = "thread-fork"
@@ -842,7 +846,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "merged", "a", "5", "abcdef1")
         # b of the same batch still runs: c is ready now, and d still waits for c.
         self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(),
-                         f"a is verified. Unpin its worker with t3_thread_organize: {WORKER.format('a')} c is ready "
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. c is ready "
                          "to start: run t3_project_lead.py dispatch for it now.")
         view = self.ok("show")
         self.assertIn("- c is ready to start: run t3_project_lead.py dispatch for it now.", view)
@@ -861,7 +865,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "merged", "a", "5", "abcdef1")
         line = "close-1 is ready to start: run t3_project_lead.py closeout for it now."
         self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(),
-                         f"a is verified. Unpin its worker with t3_thread_organize: {WORKER.format('a')} {line}")
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. {line}")
         view = self.ok("show")
         self.assertIn(f"- {line}", view)
         self.assertNotIn("dispatch for it now", view)
@@ -1005,10 +1009,10 @@ class LeadStateTests(unittest.TestCase):
         self.refused("task", "verified", "survey", "audit", "--decisions", "2",
                      reason="a count above 0 takes one task name")
         self.assertEqual(self.ok("task", "verified", "survey", "--decisions", "2", "--no-pr").strip(),
-                         f"survey is verified. Unpin its worker with t3_thread_organize: {WORKER.format('survey')} "
+                         f"survey is verified. Unpin its worker {WORKER.format('survey')} with t3_thread_organize. "
                          f"Item 1 added: [survey] 2 decisions. [survey thread]({WORKER.format('survey')})")
         self.assertEqual(self.ok("task", "verified", "audit", "--decisions", "0", "--no-pr").strip(),
-                         f"audit is verified. Unpin its worker with t3_thread_organize: {WORKER.format('audit')}")
+                         f"audit is verified. Unpin its worker {WORKER.format('audit')} with t3_thread_organize.")
         self.assertEqual([(event["task"], event["decisions"]) for event in self.events()
                           if event["command"] == "task verified"], [("survey", 2), ("audit", 0)])
         self.ok("task", "settled", "survey", "audit")
@@ -1145,10 +1149,12 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "verified", "a", "--decisions", "0")
         self.assertIn("Merged PRs in merge order: #9, #3", self.ok("closeout"))
 
-    def package_line(self, order: str, first: str) -> str:
-        """Return the due line of the merge order of the package dev-skills (#660)."""
-        return (f"- Merge order of dev-skills: {order}. Resume only the worker of {first} to merge; the others do "
-                "not rebase until their turn. For a PR that cannot merge now, run task later <name> <number>.")
+    def package_line(self, order: str, first: str, task: str) -> str:
+        """Return the due line of the merge order of the package dev-skills (#660), whose first PR `first` is
+        of `task`."""
+        return (f"- Merge order of dev-skills: {order}. Resume only the worker of {first}, "
+                f"[{task} thread]({WORKER.format(task)}), to merge; the others do not rebase until their turn. "
+                f"{REBASE_CHECKS} For a PR that cannot merge now, run task later <name> <number>.")
 
     def test_the_open_prs_of_one_package_merge_in_the_order_recorded(self) -> None:
         # Each merge of a PR that raises a package version made the other PRs of that package conflict, and
@@ -1173,15 +1179,14 @@ class LeadStateTests(unittest.TestCase):
             {"number": 9, "commit": None, "merged": None}])
         self.assertEqual(json.loads(self.state_text())["next_place"], 3)
         view = self.ok("show")
-        self.assertIn(f"\n{self.package_line('#5 (a), #7 (b)', '#5')}\n", view)
+        self.assertIn(f"\n{self.package_line('#5 (a), #7 (b)', '#5', 'a')}\n", view)
         self.assertEqual(view.count("Merge order of"), 1)
         self.refused("task", "pr", "c", "13", "--package", "two words",
                      reason="a package name has letters, digits, and . _ @ / -, at most 64 characters")
         self.assertEqual(self.ok("task", "merged", "a", "5", "abcdef1").strip(),
                          "a: PR #5 merged; the task is merged. Next in the merge order of dev-skills: #7 (b). Resume "
-                         "only its worker, to rebase once and merge; the others wait. After a rebase that changes "
-                         "only versions and changelog entries, it runs only the version and changelog checks, and CI "
-                         "runs the suites.")
+                         f"only its worker, [b thread]({WORKER.format('b')}), to rebase once and merge; the others "
+                         f"wait. {REBASE_CHECKS}")
         self.assertNotIn("Merge order of", self.ok("show"))
         self.assertEqual(self.ok("task", "merged", "b", "7", "abcdef2").strip(), "b: PR #7 merged; the task is merged.")
         self.assertEqual(self.ok("task", "merged", "c", "9", "abcdef3").strip(), "c: PR #9 merged; the task is merged.")
@@ -1200,9 +1205,14 @@ class LeadStateTests(unittest.TestCase):
         event = self.events()[-1]
         self.assertEqual({key: event[key] for key in ("command", "task", "pr", "package", "to")},
                          {"command": "task later", "task": "a", "pr": 5, "package": "dev-skills", "to": "last"})
-        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c), #5 (a)', '#7')}\n", self.ok("show"))
-        self.refused("task", "later", "d", "11", reason="PR #11 has no package, so it has no merge order; record it "
-                                                         "with task pr --package")
+        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c), #5 (a)', '#7', 'b')}\n", self.ok("show"))
+        self.refused("task", "later", "d", "11", reason="PR #11 has no package, so it has no merge order; add it "
+                                                         "with task pr d 11 --package <name>")
+        # A PR recorded without a package joins the end of the merge order.
+        self.assertEqual(self.ok("task", "pr", "d", "11", "--package", "dev-skills").strip(),
+                         "d: PR #11 is in the merge order of dev-skills: #7 (b), #9 (c), #5 (a), #11 (d).")
+        self.refused("task", "pr", "d", "11", "--package", "dev-skills", reason="not a new positive PR number")
+        self.refused("task", "pr", "d", "11", reason="not a new positive PR number")
         self.refused("task", "later", "a", "6", reason="PR #6 is not an open PR of a")
         self.refused("task", "later", "missing", "5", reason="no task named missing")
         self.assertIn("Next in the merge order of dev-skills: #9 (c).", self.ok("task", "merged", "b", "7", "abcdef1"))
@@ -1215,7 +1225,7 @@ class LeadStateTests(unittest.TestCase):
             self.ok("task", "start", name, WORKER.format(name))
             self.ok("task", "pr", name, number, "--package", "dev-skills")
         self.ok("task", "cancel", "a")
-        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c)', '#7')}\n", self.ok("show"))
+        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c)', '#7', 'b')}\n", self.ok("show"))
         self.refused("task", "later", "a", "5", reason="PR #5 is not an open PR of a")
         self.ok("task", "cancel", "b")
         self.assertNotIn("Merge order of", self.ok("show"))
@@ -1247,7 +1257,7 @@ class LeadStateTests(unittest.TestCase):
         self.assertTrue(output.startswith("c is running. Pin its worker with t3_thread_organize. The failed thread "
                                           "start stays open until "), output)
         self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0", "--no-pr").strip(),
-                         f"a is verified. Unpin its worker with t3_thread_organize: {WORKER.format('a')}")
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize.")
         self.assertEqual(self.ok("task", "cancel", "b").strip(),
                          f"b is cancelled. Unpin and settle its worker: {WORKER.format('b')}")
         self.ok("task", "cancel", "c")
@@ -1334,8 +1344,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
         self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
-                         f"a is verified. Unpin its worker with t3_thread_organize: {WORKER.format('a')} b is "
-                         f"verified. Unpin its worker with t3_thread_organize: {WORKER.format('b')} c is ready to "
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. b is "
+                         f"verified. Unpin its worker {WORKER.format('b')} with t3_thread_organize. c is ready to "
                          "start: run t3_project_lead.py dispatch for it now.")
         self.ok("task", "start", "c", WORKER.format("c"))
         self.ok("task", "verified", "c", "--decisions", "0", "--no-pr")
@@ -1369,8 +1379,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
         self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
-                         f"a is verified. Unpin its worker with t3_thread_organize: {WORKER.format('a')} b is "
-                         f"verified. Unpin its worker with t3_thread_organize: {WORKER.format('b')} c is ready to "
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. b is "
+                         f"verified. Unpin its worker {WORKER.format('b')} with t3_thread_organize. c is ready to "
                          "start: run t3_project_lead.py dispatch for it now.")
 
     def test_a_worker_records_its_worktree(self) -> None:
@@ -1586,7 +1596,8 @@ class LeadStateTests(unittest.TestCase):
         # Only the user settles the lead thread (#645).
         output = self.ok("finish").strip()
         self.assertTrue(output.startswith("Lead state deleted: "), output)
-        self.assertTrue(output.endswith(". Leave this thread open: only the user settles the lead thread."),
+        self.assertTrue(output.endswith(". Leave this thread open: only the user settles or archives the lead "
+                                        "thread."),
                         output)
         self.assertFalse(folder.exists())
 
