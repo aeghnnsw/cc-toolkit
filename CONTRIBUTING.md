@@ -488,7 +488,11 @@ versions that a test writes to a fixture or quotes from another tool.
 The table in [Verification](#verification) gives the command for each suite.
 
 The `productivity-skills` suite needs `uv` and PostgreSQL tools (`initdb`,
-`pg_ctl`, and `psql`). `uv` supplies Python 3.11+.
+`pg_ctl`, and `psql`) on `PATH`. `uv` supplies Python 3.11+. When a
+PostgreSQL tool is missing, the SQL contract tests fail and name the missing
+tool. On a machine without PostgreSQL, set `GTD_TESTS_SKIP_POSTGRES=1` to
+skip them; the run then says that it skips them. CI installs PostgreSQL and
+does not set the variable, so the SQL contract tests run there.
 
 The `dev-skills` suite takes about 5 minutes on an idle machine, and
 longer when other test runs share the machine. Of this time,
