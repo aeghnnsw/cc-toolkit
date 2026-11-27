@@ -399,12 +399,12 @@ git worktree add trees/doc-<description> -b doc-<description>
 ## Verification
 
 Run these checks locally before opening a pull request. On each pull
-request, [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the
-package validator, the root tests, and each plugin test suite in its own
-job, on Linux and on macOS. The jobs run in parallel. CI runs the validator
-and the root tests on Python 3.11, their declared minimum; the local
-commands below accept a newer Python. CI does not run the Codex skill
-validator or `agy`.
+request, [.github/workflows/ci.yml](.github/workflows/ci.yml) runs each
+check in its own job, on Linux and on macOS: the package validator, the
+root tests, and each plugin test suite. The jobs run in parallel, up to the
+GitHub limit on concurrent jobs. CI runs the validator and the root tests
+on Python 3.11, their declared minimum; the local commands below accept a
+newer Python. CI does not run the Codex skill validator or `agy`.
 There is no repository-wide build command. Run every row that matches your
 change from the repository root:
 

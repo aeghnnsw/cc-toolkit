@@ -1,7 +1,8 @@
 name: CI
 
-# On each pull request, each suite runs in its own job on Linux and on macOS: the package validator, the root tests,
-# and the plugin test suites. The jobs run in parallel, so a pull request waits for the slowest suite only (#661).
+# On each pull request, each check runs in its own job on Linux and on macOS: the package validator, the root tests,
+# and each plugin test suite. The jobs run in parallel, up to the GitHub limit on concurrent jobs; GitHub runs at most
+# five macOS jobs of an account at a time, so some macOS jobs wait in a queue (#661).
 # The commands match the Verification table in CONTRIBUTING.md, except that the validator and the root tests run on
 # Python 3.11, their declared minimum (#601).
 on:
@@ -22,7 +23,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # Dev Skills runs longest, so it is first: when GitHub queues the macOS jobs, it starts first.
+        # Dev Skills runs longest. It is first, so that GitHub creates its job first on each OS. GitHub does not
+        # guarantee the order in which the jobs start.
         suite:
           - name: Dev Skills tests
             # pytest and pytest-cov let the lean-tests checks that run pytest run instead of skip.
