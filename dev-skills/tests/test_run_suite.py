@@ -115,6 +115,15 @@ class GitRepoTestCase(unittest.TestCase):
     def log_lines(self) -> list[str]:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
+    def use_fake_ps(self, body: str) -> None:
+        """Put a fake ps that runs this shell body first on the PATH of the script."""
+        folder = self.tmp / "bin"
+        folder.mkdir(exist_ok=True)
+        ps = folder / "ps"
+        ps.write_text(f"#!/bin/sh\n{body}\n")
+        ps.chmod(0o755)
+        self.env = dict(self.env, PATH=f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
+
     def suite_lock_path(self, command: list[str], folder: str = ".") -> Path:
         """Return the lock file of a suite, as run_suite.py names it."""
         return RUN_SUITE.suite_lock_path(self.repo / ".git",
@@ -301,6 +310,40 @@ class RunSuiteTests(GitRepoTestCase):
         passing = self.run_suite("--", sys.executable, "-c", script, "0", *denied)
         self.assertEqual(passing.returncode, 0)
         self.assertNotIn("Sandbox:", passing.stdout)
+
+    def test_dev_skills_suite_runs_no_command_when_ps_cannot_list_process_1(self):
+        # In the Claude Code sandbox, ps cannot read the processes of other commands.
+        self.use_fake_ps("exit 1")
+        # Git does not track the empty folder, so the working tree stays clean.
+        (self.repo / "dev-skills" / "tests").mkdir(parents=True)
+        write = [sys.executable, "-c", "import sys; open(sys.argv[1], 'a').write('ran\\n')",
+                 str(self.log)]
+        for cwd, folder in ((self.repo, "dev-skills/tests"), (self.repo / "sub", "../dev-skills/tests"),
+                            (self.repo, "--start-directory=dev-skills/tests")):
+            with self.subTest(cwd=cwd.name, folder=folder):
+                blocked = self.run_suite("--", *write, folder, cwd=cwd)
+                self.assertEqual(blocked.returncode, 2)
+                self.assertEqual(blocked.stderr, (
+                    "run_suite: a sandbox blocks ps (ps -o pid= -p 1 exited 1: no output), and the "
+                    "dev-skills suite needs it, so no test ran. Run the same command again outside "
+                    "the sandbox (in Claude Code: the Bash tool with dangerouslyDisableSandbox).\n"))
+                self.assertEqual(self.log_lines(), [])
+
+        other = self.run_suite("--", *write, "tests")
+        self.assertEqual(other.returncode, 0, other.stderr)
+        self.assertEqual(self.log_lines(), ["ran"])
+
+        self.use_fake_ps("echo '    1'")
+        allowed = self.run_suite("--", *write, "dev-skills/tests")
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        self.assertEqual(self.log_lines(), ["ran", "ran"])
+
+    def test_ps_check_blocks_a_ps_that_cannot_start_and_passes_a_missing_ps(self):
+        denied = PermissionError(1, "Operation not permitted", "/bin/ps")
+        with mock.patch.object(RUN_SUITE.subprocess, "run", side_effect=denied):
+            self.assertEqual(RUN_SUITE.ps_block(), "[Errno 1] Operation not permitted: '/bin/ps'")
+        with mock.patch.object(RUN_SUITE.subprocess, "run", side_effect=FileNotFoundError(2, "ps")):
+            self.assertIsNone(RUN_SUITE.ps_block())
 
 
 def marker_time(age: timedelta) -> str:

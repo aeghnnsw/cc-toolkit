@@ -526,7 +526,8 @@ run, and it prints the failing tests and the exit status last. When a
 failing run prints `Operation not permitted`, the summary says that a
 sandbox probably blocks the suite. Run the command again outside the
 sandbox. The Claude Code sandbox blocks `ps`, which the `dev-skills` suite
-needs.
+needs. So before a `dev-skills` suite, the script checks that `ps` can list
+process 1. When it cannot, the script runs no test and exits 2.
 
 The lean-tests checks in `dev-skills/tests/test_lean_tests.py` that run
 pytest need pytest and pytest-cov, which the `dev-skills` command

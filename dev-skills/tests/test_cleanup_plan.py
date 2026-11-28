@@ -379,7 +379,8 @@ class WorktreeCases(PlanTestCase):
 
     def test_case_07_keeps_a_new_branch_at_the_default_tip(self):
         self.assert_kept_with_branches(self.feat_b, "no commit of its own",
-                                       "less than 60 minutes ago")
+                                       "less than 60 minutes ago",
+                                       "a later cleanup run removes it; do not wait for it")
 
     def test_case_08_removes_a_worktree_merged_with_a_merge_commit(self):
         self.assert_removed_with_branches(self.feat_c, "merged PR #51")
@@ -970,7 +971,8 @@ class MergedTipCases(PlanTestCase):
         for worktree in (self.pr_new, self.main_new):
             with self.subTest(worktree=worktree.name):
                 self.assert_kept_with_branches(worktree, "no commit of its own",
-                                               "less than 60 minutes ago")
+                                               "less than 60 minutes ago",
+                                               "a later cleanup run removes it; do not wait for it")
 
     def test_case_23_keeps_such_a_branch_with_a_live_session(self):
         for worktree in (self.pr_live, self.main_live):
