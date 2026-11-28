@@ -59,10 +59,12 @@ hash.
    that `git rev-parse --git-common-dir` prints. The record lasts after
    the temporary folder and the worktree are removed. Each worktree of the
    clone can read it. Git never commits or pushes it. Write the
-   `record` path of the summary as `<pin-record>`. The record holds each
-   source text, so `pin --check` needs only the record, and you can remove
-   `<source-dir>`. pin never changes a record. `--record FILE` writes the
-   new record FILE instead, and exits with status 2 when FILE exists.
+   `record` path of the summary as `<pin-record>`. pin also prints the path
+   last, to stderr, as `lean_tests.py: pin record: <path>`. The record
+   holds each source text, so `pin --check` needs only the record, and you
+   can remove `<source-dir>`. pin never changes a record. `--record FILE`
+   writes the new record FILE instead, and exits with status 2 when FILE
+   exists.
 4. Report `<pin-record>` and the `sha256` value of each source to the user.
    Step 7 compares the pinned texts with these values. A later session that
    continues the work runs `pin --check <pin-record>`, and does not pin

@@ -308,6 +308,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(brief, indent=1))
     else:
         print(json.dumps(result, indent=1))
+    if args.command == "pin" and result["summary"].get("record"):
+        # The record path is the last line, so `2>&1 | tail -N` shows it.
+        sys.stdout.flush()
+        print(f"lean_tests.py: pin record: {result['summary']['record']}", file=sys.stderr)
     if "error" in result:
         return 2
     failed = args.command in ("gate", "pin", "changed-files") and result["summary"].get("passed") is False

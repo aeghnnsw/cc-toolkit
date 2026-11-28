@@ -231,7 +231,8 @@ class Planner:
             return KEEP, f"{reason}, but its creation time cannot be read: {error}"
         if minutes < WINDOW_MINUTES:
             return KEEP, (f"{reason}, but its reflog shows that it was created {minutes} "
-                          f"minutes ago, less than {WINDOW_MINUTES} minutes ago")
+                          f"minutes ago, less than {WINDOW_MINUTES} minutes ago; a later cleanup "
+                          "run removes it; do not wait for it")
         return REMOVE, reason
 
     def folder(self, path: str) -> tuple[str, str]:

@@ -2626,6 +2626,19 @@ class DefaultPinRecordTest(unittest.TestCase):
         self.assertEqual(check["summary"]["pinned_at"], data["summary"]["pinned_at"])
         self.assertEqual(check["sources"][0]["sha256"], data["summary"]["sha256"]["request"])
 
+    def test_last_output_line_names_the_record_so_tail_shows_it(self) -> None:
+        for run in (1, 2):
+            with self.subTest(run=run):
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "pin", "--record", "--project", str(self.worktree),
+                     "--source", f"request={self.request}"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=self.env)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                *body, last = result.stdout.splitlines()
+                record = json.loads("\n".join(body))["summary"]["record"]
+                self.assertTrue(Path(record).is_file())
+                self.assertEqual(last, f"lean_tests.py: pin record: {record}")
+
     def test_outside_git_needs_a_record_file(self) -> None:
         plain = self.tmp / "plain"
         plain.mkdir()

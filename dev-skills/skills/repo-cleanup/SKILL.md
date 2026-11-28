@@ -1,6 +1,6 @@
 ---
 name: repo-cleanup
-version: 1.15.0
+version: 1.15.1
 description: This skill should be used when the user asks to "clean up merged branches", "remove merged worktrees", "run repo-cleanup", or "clean up after the merge", or when a workflow or repository instructions say to run repo-cleanup after work merges. It cleans merged worktrees and branches, reconciles completed issues, deletes their planning folders, and updates the Default Branch.
 ---
 
@@ -146,6 +146,9 @@ order:
   1. Wait until the latest such time.
   2. Run the plan command again with the same options.
   3. Act on its new `REMOVE` lines in the order above.
+- Wait only for a kept worktree whose reason gives such a time. Do not wait
+  for an item that the plan keeps because its branch was created less than 60
+  minutes ago: a later cleanup run removes it.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
 - Report what was cleaned and retained: each `KEEP` line with its reason.

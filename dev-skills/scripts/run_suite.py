@@ -82,12 +82,21 @@ status: the number of such lines, the first 3 distinct ones, and the fix.
 A sandbox, such as the Claude Code sandbox, gives this error when it blocks
 an operation that a test needs, for example starting /bin/ps, a bind to
 127.0.0.1, or shared memory for initdb. The note says to run the same
-command again outside the sandbox. The script does not probe the sandbox
-before the run, because it cannot know which operations a suite needs.
+command again outside the sandbox.
+
+Sandbox check. The script cannot know which operations a suite needs, so it
+probes only for the dev-skills suite: a command with an argument that names
+the dev-skills/tests folder of the worktree. That suite needs ps to read
+processes that it did not start. Before the marker wait and the lock wait,
+the script runs "ps -o pid= -p 1" once. When ps cannot start, or does not
+list process 1, the script prints one line to stderr that a sandbox blocks
+ps, runs no command, and exits 2. A missing ps passes the check, and the
+tests that need ps fail or skip.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
-reuses a recorded pass; 2 outside a Git checkout or without a command.
+reuses a recorded pass; 2 outside a Git checkout, without a command, or when
+a sandbox blocks ps for the dev-skills suite.
 """
 
 from __future__ import annotations
@@ -133,6 +142,9 @@ PYTEST_TOTALS = re.compile(r"(?:=+ )?(?:\d+ \w+(?:, \d+ \w+)*|no tests ran) in \
 DENIED = "Operation not permitted"
 # The sandbox note shows at most this many distinct lines.
 DENIED_EXAMPLES = 3
+# The dev-skills suite needs ps to read processes that it did not start, such as process 1.
+PS_SUITE = ("dev-skills", "tests")
+PS_PROBE = ["ps", "-o", "pid=", "-p", "1"]
 # The lock wait line shows a line break of a holder's command as \n.
 ESCAPE_LINE_BREAKS = str.maketrans({"\n": "\\n", "\r": "\\r"})
 
@@ -383,6 +395,27 @@ def sandbox_note(denied: list[str]) -> list[str]:
                "with dangerouslyDisableSandbox)."])
 
 
+def needs_ps(command: list[str], top: str) -> bool:
+    """Return whether an argument of the command names the dev-skills/tests folder of the worktree."""
+    cwd = str(Path.cwd().resolve())
+    suite = os.path.join(str(Path(top).resolve()), *PS_SUITE)
+    return any(os.path.normpath(os.path.join(cwd, arg)) == suite for arg in command[1:] if arg)
+
+
+def ps_block() -> str | None:
+    """Return why ps cannot list process 1, or None when it can or when ps is missing."""
+    try:
+        result = subprocess.run(PS_PROBE, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        return None
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return str(error)
+    if result.stdout.split() != ["1"]:
+        detail = result.stderr.strip().splitlines()[-1:] or ["no output"]
+        return f"{shlex.join(PS_PROBE)} exited {result.returncode}: {detail[0]}"
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(usage="%(prog)s [--rerun] -- <command> [args...]",
                                      description=__doc__,
@@ -400,6 +433,13 @@ def main() -> None:
     if not common_dir or not top:
         print("run_suite: not inside a Git checkout", file=sys.stderr)
         sys.exit(2)
+    if needs_ps(command, top):
+        block = ps_block()
+        if block is not None:
+            print(f"run_suite: a sandbox blocks ps ({block}), and the dev-skills suite needs it, "
+                  "so no test ran. Run the same command again outside the sandbox (in Claude Code: "
+                  "the Bash tool with dangerouslyDisableSandbox).", file=sys.stderr)
+            sys.exit(2)
     common = Path(common_dir)
     folder = Path(os.path.relpath(Path.cwd().resolve(), Path(top).resolve())).as_posix()
     # A suite is a command in a folder: the key of its lock and of its recorded pass.
