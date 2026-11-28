@@ -86,12 +86,14 @@ command again outside the sandbox.
 
 Sandbox check. The script cannot know which operations a suite needs, so it
 probes only for the dev-skills suite: a command with an argument that names
-the dev-skills/tests folder of the worktree. That suite needs ps to read
-processes that it did not start. Before the marker wait and the lock wait,
-the script runs "ps -o pid= -p 1" once. When ps cannot start, or does not
-list process 1, the script prints one line to stderr that a sandbox blocks
-ps, runs no command, and exits 2. A missing ps passes the check, and the
-tests that need ps fail or skip.
+the dev-skills/tests folder of the worktree, as a path or as the value of an
+option, such as --start-directory=dev-skills/tests. A path through a
+symbolic link or in another letter case names the same folder. That suite
+needs ps to read processes that it did not start. Before the marker wait and
+the lock wait, the script runs "ps -o pid= -p 1" once. When ps cannot start,
+or does not list process 1, the script prints one line to stderr that a
+sandbox blocks ps, runs no command, and exits 2. A missing ps passes the
+check, and the tests that need ps fail or skip.
 
 Exit status: the exit status of the command (127 when the command is not
 found, 126 when it cannot run, 128 + N after signal N); 0 when the script
@@ -145,6 +147,9 @@ DENIED_EXAMPLES = 3
 # The dev-skills suite needs ps to read processes that it did not start, such as process 1.
 PS_SUITE = ("dev-skills", "tests")
 PS_PROBE = ["ps", "-o", "pid=", "-p", "1"]
+# The fix that the sandbox note and the ps check give.
+OUTSIDE_SANDBOX = ("Run the same command again outside the sandbox (in Claude Code: the Bash tool "
+                   "with dangerouslyDisableSandbox).")
 # The lock wait line shows a line break of a holder's command as \n.
 ESCAPE_LINE_BREAKS = str.maketrans({"\n": "\\n", "\r": "\\r"})
 
@@ -391,15 +396,19 @@ def sandbox_note(denied: list[str]) -> list[str]:
     return ([f'Sandbox: {count} "{DENIED}", for example:']
             + [f"  {line}" for line in examples]
             + ["A sandbox probably blocks the suite, so these failures may not come from the change.",
-               "Run the same command again outside the sandbox (in Claude Code: the Bash tool "
-               "with dangerouslyDisableSandbox)."])
+               OUTSIDE_SANDBOX])
 
 
 def needs_ps(command: list[str], top: str) -> bool:
-    """Return whether an argument of the command names the dev-skills/tests folder of the worktree."""
-    cwd = str(Path.cwd().resolve())
-    suite = os.path.join(str(Path(top).resolve()), *PS_SUITE)
-    return any(os.path.normpath(os.path.join(cwd, arg)) == suite for arg in command[1:] if arg)
+    """Return whether an argument of the command names the dev-skills/tests folder of the worktree.
+
+    An argument names it as a path, or as the value of an option, as in --start-directory=PATH.
+    """
+    suite = os.path.join(top, *PS_SUITE)
+    if not os.path.isdir(suite):
+        return False
+    paths = [part for arg in command[1:] for part in (arg, arg.partition("=")[2]) if part]
+    return any(os.path.exists(path) and os.path.samefile(path, suite) for path in paths)
 
 
 def ps_block() -> str | None:
@@ -437,8 +446,7 @@ def main() -> None:
         block = ps_block()
         if block is not None:
             print(f"run_suite: a sandbox blocks ps ({block}), and the dev-skills suite needs it, "
-                  "so no test ran. Run the same command again outside the sandbox (in Claude Code: "
-                  "the Bash tool with dangerouslyDisableSandbox).", file=sys.stderr)
+                  f"so no test ran. {OUTSIDE_SANDBOX}", file=sys.stderr)
             sys.exit(2)
     common = Path(common_dir)
     folder = Path(os.path.relpath(Path.cwd().resolve(), Path(top).resolve())).as_posix()

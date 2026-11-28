@@ -146,9 +146,9 @@ order:
   1. Wait until the latest such time.
   2. Run the plan command again with the same options.
   3. Act on its new `REMOVE` lines in the order above.
-- Wait only for a kept worktree whose reason gives such a time. Do not wait
-  for an item that the plan keeps because its branch was created less than 60
-  minutes ago: a later cleanup run removes it.
+- Do not wait for a worktree, branch, or remote branch that the plan keeps
+  because its branch was created less than 60 minutes ago. Its reason gives
+  no end time, and a later cleanup run removes it.
 - Fast-forward a clean Default Branch when it is behind. Preserve repository data
   whenever cleanup or branch state is unsafe or uncertain.
 - Report what was cleaned and retained: each `KEEP` line with its reason.

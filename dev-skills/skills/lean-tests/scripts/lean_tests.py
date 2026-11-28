@@ -308,7 +308,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(brief, indent=1))
     else:
         print(json.dumps(result, indent=1))
-    if args.command == "pin" and result["summary"].get("record"):
+    if args.command == "pin" and args.record is not None:
         # The record path is the last line, so `2>&1 | tail -N` shows it.
         sys.stdout.flush()
         print(f"lean_tests.py: pin record: {result['summary']['record']}", file=sys.stderr)

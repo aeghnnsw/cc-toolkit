@@ -115,6 +115,15 @@ class GitRepoTestCase(unittest.TestCase):
     def log_lines(self) -> list[str]:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
+    def use_fake_ps(self, body: str) -> None:
+        """Put a fake ps that runs this shell body first on the PATH of the script."""
+        folder = self.tmp / "bin"
+        folder.mkdir(exist_ok=True)
+        ps = folder / "ps"
+        ps.write_text(f"#!/bin/sh\n{body}\n")
+        ps.chmod(0o755)
+        self.env = dict(self.env, PATH=f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
+
     def suite_lock_path(self, command: list[str], folder: str = ".") -> Path:
         """Return the lock file of a suite, as run_suite.py names it."""
         return RUN_SUITE.suite_lock_path(self.repo / ".git",
@@ -302,22 +311,16 @@ class RunSuiteTests(GitRepoTestCase):
         self.assertEqual(passing.returncode, 0)
         self.assertNotIn("Sandbox:", passing.stdout)
 
-    def use_fake_ps(self, body: str) -> None:
-        """Put a fake ps that runs this shell body first on the PATH of the script."""
-        folder = self.tmp / "bin"
-        folder.mkdir(exist_ok=True)
-        ps = folder / "ps"
-        ps.write_text(f"#!/bin/sh\n{body}\n")
-        ps.chmod(0o755)
-        self.env = dict(self.env, PATH=f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
-
     def test_dev_skills_suite_runs_no_command_when_ps_cannot_list_process_1(self):
         # In the Claude Code sandbox, ps cannot read the processes of other commands.
         self.use_fake_ps("exit 1")
+        # Git does not track the empty folder, so the working tree stays clean.
+        (self.repo / "dev-skills" / "tests").mkdir(parents=True)
         write = [sys.executable, "-c", "import sys; open(sys.argv[1], 'a').write('ran\\n')",
                  str(self.log)]
-        for cwd, folder in ((self.repo, "dev-skills/tests"), (self.repo / "sub", "../dev-skills/tests")):
-            with self.subTest(cwd=cwd.name):
+        for cwd, folder in ((self.repo, "dev-skills/tests"), (self.repo / "sub", "../dev-skills/tests"),
+                            (self.repo, "--start-directory=dev-skills/tests")):
+            with self.subTest(cwd=cwd.name, folder=folder):
                 blocked = self.run_suite("--", *write, folder, cwd=cwd)
                 self.assertEqual(blocked.returncode, 2)
                 self.assertEqual(blocked.stderr, (
