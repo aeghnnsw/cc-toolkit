@@ -94,6 +94,12 @@
 > lead's project, and in a recorded session the hook blocks the T3 calls
 > that name a project, all projects, or a Scratch folder. Read
 > [A lead works only in its own project](#a-lead-works-only-in-its-own-project).
+>
+> **Superseded in part (2026-11-27, issues #659, #660, #668, and #669).** The
+> lead pins each worker until its task is verified or cancelled, a worker
+> link is the T3 link of the thread, the hook blocks a lead's archive of its
+> own thread, and the open PRs of one package merge in one order. Read
+> [Pinned workers, thread links, and the merge order](#pinned-workers-thread-links-and-the-merge-order).
 
 A project lead kept its state in `lead.md`, which it changed by hand with
 Read, Edit, and Write. The `plan` step said that the file "holds current
@@ -723,7 +729,10 @@ Now `finish` prints "Leave this thread open: only the user settles the lead
 thread." The `report` step says the same. Lead action 3 of `start` says
 "Never settle the lead thread: only the user settles it." The skill copies
 and the "Settle" entry of the glossary state the rule. The settle of worker
-threads does not change.
+threads does not change. (Superseded in part by #659 and #668: lead action 3,
+`finish`, and the skill copies also name an archive of the lead thread, and
+the lead unpins a worker before it settles it. Read
+[Pinned workers, thread links, and the merge order](#pinned-workers-thread-links-and-the-merge-order).)
 
 In a recorded session, the hook blocks `t3_thread_organize` with `action`
 `settle` in three cases:
@@ -868,3 +877,56 @@ holds the rule.
 
 `dev-skills/tests/test_t3_project_lead_hook.py` and
 `dev-skills/tests/test_t3_project_lead.py` check these rules.
+
+## Pinned workers, thread links, and the merge order
+
+Added on 2026-11-27 for [#659](https://github.com/aeghnnsw/cc-toolkit/issues/659),
+[#660](https://github.com/aeghnnsw/cc-toolkit/issues/660),
+[#668](https://github.com/aeghnnsw/cc-toolkit/issues/668), and
+[#669](https://github.com/aeghnnsw/cc-toolkit/issues/669).
+
+T3 Code 0.1.13 settles a delegated worker by itself when its turn ends and
+its result reaches the lead. It does so also when the worker waits on the
+user, and the user's auto-settle settings do not apply. On 2026-11-27, T3
+made 191 of 193 worker settles (`thread.auto-settle`), and workers that asked
+the user questions left the active list within about a minute. T3 does not
+settle a pinned thread. So the `dispatch` step and `task start` tell the lead
+to pin each worker with `t3_thread_organize`. `task verified`, `task cancel`,
+the settle due lines, and the `verify`, `closeout`, and `flag` steps tell it
+to unpin a worker. The `answer` step tells it to unsettle and pin a waiting
+worker that T3 settled.
+
+The lists printed bare thread IDs, which T3 does not open. T3 opens a
+Markdown link to `t3-thread://v2/<environmentId>/<threadId>`, the `link` that
+`delegate_task` and `t3_thread_read` return. No environment variable names
+the environment ID, so the script cannot build the link. `task start`,
+`task worker`, `task start-failed`, and `wait --answer-in` now take that
+link, or the Markdown link around it, and refuse another form. The task
+lines, the due lines, and the waiting list print it as a Markdown link. The
+threadId is the end of the link. A state from before this change prints its
+links as they are.
+
+An archive takes a thread off the user's active list, as a settle does. So
+in a recorded session, the hook blocks `t3_thread_organize` with `action`
+`archive` in the cases of
+[Only the user settles the lead thread](#only-the-user-settles-the-lead-thread),
+and fails closed in the same cases. Its first line says that only the user
+archives a lead thread. `pin`, `unpin`, `unsettle`, and the other actions
+pass. Lead action 3 of `start`, `finish`, the `report` step, and the skill
+copies say that only the user settles or archives the lead thread.
+
+Parallel PRs of one plugin raise the same versions, so each merge made the
+other PRs conflict. The lead had each open PR rebase at once, and each rebase
+started CI again. Now `task pr --package <name>` puts the open PRs of one
+package in a merge order, in the order recorded. A due line names the order
+while more than one PR of the package is open. Only the worker of the first
+PR rebases and merges; the others do not rebase until their turn. The due
+line and `task merged` name the next PR with its link, and say that after a
+rebase that changes only versions and changelog entries, the worker runs only
+the version script and the package validator, not the test suites. `task
+later` moves a PR that cannot merge now to the end of the order, and `task pr
+--package` adds a recorded PR to it.
+
+`dev-skills/tests/test_t3_project_lead_hook.py`,
+`dev-skills/tests/test_t3_project_lead.py`, and
+`dev-skills/tests/test_t3_project_lead_state.py` check these rules.

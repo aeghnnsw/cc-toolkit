@@ -84,6 +84,12 @@ next version above `origin/master`, for each plugin and skill that the
 branch changes. It also writes these versions into the branch's entry
 files.
 
+**Merge order**:
+The order in which the open pull requests of one package, such as a plugin,
+merge, one at a time. Only the first one rebases; the others wait for their
+turn. So a merge does not make each of them rebase and start CI again.
+_Avoid_: Merge queue
+
 **User-invoked skill**:
 A skill that a host loads only when the user invokes it by name. The agent
 cannot load it through the host's skill tool.
@@ -291,10 +297,12 @@ _Avoid_: Orchestrator, director, coordinator
 
 **Worker**:
 A T3 Code child thread that a project lead starts for one task, in its own
-worktree. The user can write to it. When a worker finishes, the lead settles
-its thread in T3. Only while a failed thread start is open, the lead gives the
-next task to a finished worker that is not settled yet and whose batch
-close-out has not started. It never reuses a settled worker.
+worktree. The user can write to it. T3 Code settles a worker by itself when
+its turn ends, also while it waits on the user, unless the thread is pinned.
+So the lead pins each worker until its task is verified or cancelled. When a
+worker finishes, the lead settles its thread in T3. Only while a failed
+thread start is open, the lead gives the next task to a finished worker that
+is not settled yet and whose batch close-out has not started. It never reuses a settled worker.
 _Avoid_: Subagent
 
 **Brief**:
@@ -346,8 +354,9 @@ worktree: T3 Code removes a thread's worktree when the thread is deleted or
 its pull request merges, if its settings say so. A project lead settles the
 workers of a batch with a merged pull request only after the batch's close-out
 worker reports, because the close-out worker reads the workers' sessions.
-Only the user settles a project lead's own thread; the project lead never
-does, also after it finishes.
+Only the user settles or archives a project lead's own thread; the project
+lead never does, also after it finishes. An archive is another T3 Code action
+that also takes a thread off the active list.
 _Avoid_: Archive
 
 **Lead state**:

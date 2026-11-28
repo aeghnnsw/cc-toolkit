@@ -94,6 +94,18 @@ The t3-project-lead hook records a session as the lead at `init`, at
 #612). `unmark` is for a thread that is not the lead, such as a worker that
 the hook recorded: the hook removes the record before the command runs, and
 the script makes the same check, `unmark_refusal`, and changes no lead state.
+
+T3 Code 0.1.13 settles a delegated worker by itself when its turn ends, also
+while it waits on the user, unless the thread is pinned (issue #668). So the
+`dispatch` step and `task start` tell the lead to pin each worker; `task
+verified`, `task cancel`, and each settle tell it to unpin; and `answer` tells
+it to unsettle and pin a waiting worker that T3 settled. A worker link is the
+T3 link that `delegate_task` returns,
+`t3-thread://v2/<environmentId>/<threadId>`, or the Markdown link around it
+(issue #669): the lists print it as a Markdown link that T3 opens. `task pr --package` puts the open PRs of one package, such
+as a plugin, in one merge order, and `task later` moves a PR to its end (issue
+#660): only the first PR rebases and merges, so the others do not rebase and
+start CI again after each merge.
 """
 
 from __future__ import annotations
@@ -120,8 +132,8 @@ Do only these lead actions yourself:
 1. Talk with the user in plain text, never with a question tool: decisions,
 triage, priorities.
 2. Plan tasks, briefs, and lead decisions.
-3. Route workers with T3 tools: start, resume, cancel, settle; order merges;
-watch PRs. Never settle the lead thread: only the user settles it.
+3. Route workers with T3 tools: start, pin, resume, cancel, settle; order
+merges; watch PRs. Never settle or archive the lead thread: only the user does.
 4. Read worker messages, and the state, labels, titles, and check counts of
 issues and PRs, not their text. Never call read_issue. Call pull_request_read
 only with sections or include ["checks"]. No diff, code, or log.
@@ -212,9 +224,12 @@ task's issue.
 Add: "You may start your own subagents. Keep your report short, and leave the
 detail in this thread."
 Then run task start <name> <worker link> --worktree <path> [--branch NAME].
-Take the path from the delegate_task result, or from worktreePath of
-t3_thread_read. When a new thread does not start, run task start-failed <name>
-[<thread link>], and follow the line that it prints.
+Take the link and the path from the delegate_task result, or from link and
+worktreePath of t3_thread_read. When a new thread does not start, run task
+start-failed <name> [<thread link>], and follow the line that it prints.
+Pin each worker with t3_thread_organize: T3 settles a worker when its turn
+ends, also while it waits on the user, unless it is pinned. Its threadId is
+the end of its link.
 Next: t3_project_lead.py report while workers run.
 """,
     "brief": """
@@ -249,8 +264,9 @@ Next: t3_project_lead.py dispatch.
 """,
     "answer": """
 A worker that asks questions, reports BLOCKED, or fails with no flag waits on
-the user. Settle it only when the user cancels its task. Do not answer its
-questions, with t3_pending_request or otherwise. Do not ask them again, with a
+the user. Unpin and settle it only when the user cancels its task. When T3
+settled it, unsettle and pin it. Do not answer its questions, with
+t3_pending_request or otherwise. Do not ask them again, with a
 question tool or in text. Keep no detail of them: give the user the worker's
 thread link.
 In this turn, run wait --task <name> --decisions <N>. The script adds the
@@ -278,7 +294,8 @@ provider on claude-sonnet-5-5. Give it the same brief, any line 1 in the Claude
 Code form, the branch, PR, and issue from start and pull_request_list, and
 "Continue from this state." Do not read the flagged thread or give its link.
 Run task worker <name> <new link> --worktree <path>, with the path as
-dispatch says, and settle the flagged thread that it names.
+dispatch says, pin the new thread, and unpin and settle the flagged thread
+that it names.
 Otherwise, or after a second flag, the task waits on the user.
 Next: t3_project_lead.py report.
 """,
@@ -301,8 +318,8 @@ Record merged PRs (task pr, task merged), then run task verified <name>
 --decisions <N>, with N the number of decisions of this project that the
 report numbers for the user, or 0. The script adds them as one waiting item.
 Add --no-pr only for a task that makes no PR, such as a read-only check.
-Settle its worker only when a due line lists it. When T3 refuses the settle,
-give it to the user with wait --settles <name>.
+Then unpin its worker. Settle it only when a due line lists it. When T3
+refuses the settle, give it to the user with wait --settles <name>.
 Start each planned task as soon as each task that it waits for is verified,
 also while other workers run; do not wait for the rest of its batch. The task
 verified output names each such task and its step.
@@ -328,10 +345,10 @@ in one line, with links."
 When it reports, run task verified <name> --decisions <N> --no-pr, as verify
 says; the batch's verified tasks are then closed out. An issue that the
 retrospective files in another project's tracker belongs to that project:
-name its link, and do not triage it or count it as a decision. Settle each
-worker that a due line lists with t3_thread_organize, and run task settled
-<name>...; never reuse one. When T3 refuses a settle, give it to the user with
-wait --settles <name>.
+name its link, and do not triage it or count it as a decision. Unpin and
+settle each worker that a due line lists with t3_thread_organize, and run task
+settled <name>...; never reuse one. When T3 refuses a settle, give it to the
+user with wait --settles <name>.
 Next: t3_project_lead.py report.
 """,
     "report": """
@@ -341,6 +358,9 @@ and after its merge, task merged <name> <number> <commit>. Then run
 t3_project_lead.py verify for each worker that finished. When a worker reports
 that its PR waits on checks, watch the PR, and resume the worker when the
 checks finish.
+Run task pr with --package <name> for a PR that raises a package version, such
+as a plugin's; then resume only the worker of the first PR that the
+merge-order due line names. The others do not rebase until their turn.
 Start with one status line. Then Running, Done (verified), and Decided.
 A worker's turn end wakes you. Make no promise that needs a signal from the
 middle of a worker's run.
@@ -357,8 +377,8 @@ other list of decisions for the user. Name no detail of a worker's decisions.
 Run done <number> when the user decides an item. When your instructions ask
 for agent captures, keep one for each waiting item.
 When a due line says to run finish, first add each such decision. Run finish
-only when nothing waits. Leave this thread open: only the user settles the
-lead thread.
+only when nothing waits. Leave this thread open: only the user settles or
+archives the lead thread.
 Next: after a wake or a user message, t3_project_lead.py start.
 """,
 }
@@ -424,8 +444,17 @@ NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FOLDER = re.compile(r"\d{8}-lead-[a-z0-9][a-z0-9-]*")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
+# The link of a T3 thread, which delegate_task and t3_thread_read return, and the Markdown link around it
+# (#669): T3 opens [title](t3-thread://v2/<environmentId>/<threadId>).
+T3_LINK = re.compile(r"t3-thread://v2/[^/\s()\[\]]+/([^/\s()\[\]]+)")
+MARKDOWN_LINK = re.compile(r"\[[^\]\n]*\]\((.*)\)")
+PACKAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}")
 # A decision label of the lead at the start of a decision's text, such as "D189: " (#614).
 DECISION_LABEL = re.compile(r"D(\d+)(?:[\s:;,.)-]+|$)")
+# What the next PR of a merge order runs after its rebase (#660), as matt-automode and CONTRIBUTING say.
+REBASE_CHECKS = ("After a rebase that changes only versions and changelog entries, it runs only the version script "
+                 "and the package validator, or the version and changelog checks of its repository, not the test "
+                 "suites; CI runs them.")
 # What task start and task add --kind closeout say about a batch that is not done (#644).
 OPEN_BATCH = "batch {} still has tasks that are not verified or cancelled"
 KINDS = ("work", "check", "closeout")
@@ -661,7 +690,27 @@ def link(value: str, what: str) -> str:
 
 
 def worker_link(value: str) -> str:
+    """Return the T3 link of a worker thread (#669): the link that delegate_task returns, or the URL in the
+    Markdown link around it. A bare threadId gives no link that T3 opens, so it is refused."""
+    value = value.strip()
+    markdown = MARKDOWN_LINK.fullmatch(value)
+    if markdown:
+        value = markdown.group(1).strip()
+    if not T3_LINK.fullmatch(value):
+        raise Refused(f"the worker link must be the link that delegate_task returns, "
+                      f"t3-thread://v2/<environmentId>/<threadId>, or the Markdown link around it; got {value!r}")
     return link(value, "worker link")
+
+
+def thread_link(value: str, label: str) -> str:
+    """Return a Markdown link that T3 opens for a worker link (#669). An older state can hold another form,
+    such as a bare threadId, which stays as it is."""
+    return f"[{label}]({value})" if T3_LINK.fullmatch(value) else value
+
+
+def worker_text(task: dict) -> str:
+    """Return the worker link of a task as a Markdown link that T3 opens (#669)."""
+    return thread_link(task["worker"], f"{task['name']} thread")
 
 
 def worktree_path(value: str) -> str:
@@ -1045,7 +1094,9 @@ def change_task_start(state, args, time):
     add_worktree(task, worktree)
     task["started"] = time
     event = move(task, RUNNING, time, worker=task["worker"], branch=task["branch"], worktree=worktree)
-    return f"{task['name']} is running.{note_new_thread(state, worker, task, time, event)}", event
+    # T3 settles a delegated worker when its turn ends, unless the thread is pinned (#668).
+    return (f"{task['name']} is running. Pin its worker with t3_thread_organize."
+            f"{note_new_thread(state, worker, task, time, event)}"), event
 
 
 def change_task_start_failed(state, args, time):
@@ -1098,16 +1149,71 @@ def change_task_worker(state, args, time):
         event["settled"] = [other["name"] for other in taken]
     taken_text = "".join(f" {other['name']} is settled: {task['name']} took its thread." for other in taken)
     trial = note_new_thread(state, task["worker"], task, time, event)
-    return f"{task['name']} has a new worker. Settle the replaced worker now: {old}{taken_text}{trial}", event
+    return (f"{task['name']} has a new worker: pin it with t3_thread_organize. Unpin and settle the replaced "
+            f"worker now: {old}{taken_text}{trial}"), event
+
+
+def next_place(state: dict) -> int:
+    """Return the next place in a merge order (#660), and count it. A state from before #660 starts at 1."""
+    place = state.get("next_place", 1)
+    state["next_place"] = place + 1
+    return place
+
+
+def merge_order(state: dict, package: str) -> list[tuple[dict, dict]]:
+    """Return the open PRs of `package`, with their tasks, in merge order (#660). A PR of a cancelled task
+    has no place."""
+    prs = [(task, pr) for task in state["tasks"] if task["state"] != CANCELLED for pr in task["prs"]
+           if not pr["merged"] and pr.get("package") == package]
+    return sorted(prs, key=lambda item: item[1]["place"])
+
+
+def order_text(state: dict, package: str) -> str:
+    """Return the merge order of `package`, such as "#5 (a), #7 (b)"."""
+    return ", ".join(f"#{pr['number']} ({task['name']})" for task, pr in merge_order(state, package))
 
 
 def change_task_pr(state, args, time):
     task = find_task(state, args.name)
     require(task, ACTIVE + (MERGED,), "task pr")
-    if args.number < 1 or any(pr["number"] == args.number for pr in task["prs"]):
+    if args.package is not None and not PACKAGE.fullmatch(args.package):
+        raise Refused("a package name has letters, digits, and . _ @ / -, at most 64 characters")
+    recorded = next((pr for pr in task["prs"] if pr["number"] == args.number), None)
+    if recorded is not None and args.package is not None and not recorded["merged"] and not recorded.get("package"):
+        # A PR recorded without a package joins the end of the merge order (#660).
+        recorded["package"], recorded["place"] = args.package, next_place(state)
+        return (f"{task['name']}: PR #{args.number} is in the merge order of {args.package}: "
+                f"{order_text(state, args.package)}.", {"task": task["name"], "pr": args.number,
+                                                         "package": args.package})
+    if args.number < 1 or recorded is not None:
         raise Refused(f"PR #{args.number} is not a new positive PR number for {task['name']}")
-    task["prs"].append({"number": args.number, "commit": None, "merged": None})
-    return f"{task['name']}: PR #{args.number} is open.", move(task, PR_OPEN, time, pr=args.number)
+    pr = {"number": args.number, "commit": None, "merged": None}
+    message = f"{task['name']}: PR #{args.number} is open."
+    if args.package is not None:
+        # The PRs of one package raise the same versions, so each merge makes the others conflict (#660).
+        pr["package"], pr["place"] = args.package, next_place(state)
+    task["prs"].append(pr)
+    event = move(task, PR_OPEN, time, pr=args.number)
+    if args.package is not None:
+        event["package"] = args.package
+        message += f" Merge order of {args.package}: {order_text(state, args.package)}."
+    return message, event
+
+
+def change_task_later(state, args, time):
+    """Move an open PR to the end of the merge order of its package (#660), such as a PR that waits on the
+    user, so that the next PR can merge."""
+    task = find_task(state, args.name)
+    pr = next((pr for pr in task["prs"] if pr["number"] == args.number and not pr["merged"]), None)
+    if pr is None or task["state"] == CANCELLED:
+        raise Refused(f"PR #{args.number} is not an open PR of {task['name']}")
+    if not pr.get("package"):
+        raise Refused(f"PR #{args.number} has no package, so it has no merge order; add it with task pr "
+                      f"{task['name']} {args.number} --package <name>")
+    pr["place"] = next_place(state)
+    package = pr["package"]
+    return (f"PR #{args.number} is last in the merge order of {package}: {order_text(state, package)}.",
+            {"task": task["name"], "pr": args.number, "package": package, "to": "last"})
 
 
 def change_task_merged(state, args, time):
@@ -1121,7 +1227,14 @@ def change_task_merged(state, args, time):
     pr["commit"], pr["merged"] = args.commit, time
     new = MERGED if all(item["merged"] for item in task["prs"]) else PR_OPEN
     event = move(task, new, time, pr=args.number, commit=args.commit)
-    return f"{task['name']}: PR #{args.number} merged; the task is {new}.", event
+    message = f"{task['name']}: PR #{args.number} merged; the task is {new}."
+    order = merge_order(state, pr["package"]) if pr.get("package") else []
+    if order:
+        after, after_pr = order[0]
+        message += (f" Next in the merge order of {pr['package']}: #{after_pr['number']} ({after['name']}). "
+                    f"Resume only its worker, {worker_text(after)}, to rebase once and merge; the others wait. "
+                    f"{REBASE_CHECKS}")
+    return message, event
 
 
 def change_task_verified(state, args, time):
@@ -1143,6 +1256,9 @@ def change_task_verified(state, args, time):
     if args.no_pr:
         event["no_pr"] = True
     message = f"{task['name']} is verified."
+    if task["worker"]:
+        # The worker waits on the user no more, so T3 may settle it (#668).
+        message += f" Unpin its worker {task['worker']} with t3_thread_organize."
     if task["kind"] == "closeout":
         closed = [other for other in batch_tasks(state, task["batch"])
                   if other["state"] == VERIFIED and other["kind"] != "closeout"]
@@ -1185,7 +1301,8 @@ def change_task_cancel(state, args, time):
     if task["worker"] is None:
         return (f"{task['name']} is cancelled. It has no worker: run task settled {task['name']}.",
                 move(task, CANCELLED, time))
-    return f"{task['name']} is cancelled. Settle its worker.", move(task, CANCELLED, time)
+    return (f"{task['name']} is cancelled. Unpin and settle its worker: {task['worker']}",
+            move(task, CANCELLED, time))
 
 
 def change_task_pause(state, args, time):
@@ -1396,7 +1513,8 @@ def cmd_finish(args) -> str:
                           f"items that wait: {', '.join(items) or 'none'}")
     shutil.rmtree(folder)
     # Only the user settles the lead thread (#645).
-    return f"Lead state deleted: {folder}. Leave this thread open: only the user settles the lead thread."
+    return (f"Lead state deleted: {folder}. Leave this thread open: only the user settles or archives the lead "
+            "thread.")
 
 
 # Views.
@@ -1410,7 +1528,7 @@ def item_text(item: dict) -> str:
     """Return a waiting item without its number. An --answer-in item starts with its worker link (#611)."""
     answer_in = item.get("answer_in")
     if answer_in:
-        line = f"In {item['link']}: "
+        line = f"In {thread_link(item['link'], 'worker thread')}: "
     else:
         line = f"[{item['task']}] " if item["task"] else ""
     line += with_period(item["text"])
@@ -1419,7 +1537,8 @@ def item_text(item: dict) -> str:
     if item["recommend"]:
         line += f" Lead recommends: {with_period(item['recommend'])}"
     if item["link"] and not answer_in:
-        line += f" {item['link']}"
+        label = f"{item['task']} thread" if item["task"] else "thread"
+        line += f" {thread_link(item['link'], label)}"
     return line
 
 
@@ -1460,7 +1579,7 @@ def task_line(task: dict, now: datetime.datetime) -> str:
     if task["branch"]:
         line += f" Branch: {task['branch']}."
     if task["worker"] and task["state"] != SETTLED:
-        line += f" Worker: {task['worker']}"
+        line += f" Worker: {worker_text(task)}"
     return line
 
 
@@ -1474,8 +1593,11 @@ def failed_start_lines(state: dict) -> list[str]:
     if not failed:
         return []
     tasks = ", ".join(dict.fromkeys(record["task"] for record in failed))
-    threads = " ".join(dict.fromkeys(record["thread"] for record in failed if record.get("thread")))
-    idle = " ".join(idle_workers(state)) or "none: tell the user, and add the cause with wait"
+    threads = " ".join(dict.fromkeys(thread_link(record["thread"], f"{record['task']} thread")
+                                     for record in failed if record.get("thread")))
+    idle = " ".join(thread_link(worker, f"idle worker {number}")
+                    for number, worker in enumerate(idle_workers(state), 1))
+    idle = idle or "none: tell the user, and add the cause with wait"
     trial = state.get("start_trial")
     if trial:
         end = (f"The new thread of {trial['task']}, recorded at {trial['time']}, closes this line at "
@@ -1508,6 +1630,16 @@ def due_lines(state: dict) -> list[str]:
             lines.append(f"Batch {batch}: every task is verified; merged PRs {prs}. Run "
                          "t3_project_lead.py closeout.")
     lines += ready_lines(state)
+    # One line for each package with more than one open PR (#660): each merge makes the others conflict.
+    packages = dict.fromkeys(pr["package"] for task in state["tasks"] for pr in task["prs"] if pr.get("package"))
+    for package in packages:
+        order = merge_order(state, package)
+        if len(order) > 1:
+            first, first_pr = order[0]
+            lines.append(f"Merge order of {package}: {order_text(state, package)}. Resume only the worker of "
+                         f"#{first_pr['number']}, {worker_text(first)}, to merge; the others do not rebase until "
+                         f"their turn. {REBASE_CHECKS} For a PR that cannot merge now, run task later <name> "
+                         "<number>.")
     # One line for all paused tasks, so that the view does not grow with them (#555).
     paused = [task["name"] for task in state["tasks"] if task["state"] == PAUSED]
     if paused:
@@ -1525,10 +1657,10 @@ def due_lines(state: dict) -> list[str]:
             runner = busy_task(state, task["worker"], task) if task["worker"] else None
             if runner is not None:
                 lines.append(f"Run task settled {task['name']}, and keep its worker's thread: "
-                             f"{runner['name']} runs on it now: {task['worker']}")
+                             f"{runner['name']} runs on it now: {worker_text(runner)}")
             elif task["worker"]:
-                lines.append(f"Settle the worker of {task['name']}, then run task settled "
-                             f"{task['name']}: {task['worker']}")
+                lines.append(f"Unpin and settle the worker of {task['name']}, then run task settled "
+                             f"{task['name']}: {worker_text(task)}")
             else:
                 lines.append(f"{task['name']} has no worker: run task settled {task['name']}.")
         if task["kind"] == "check" and task["state"] in ACCEPTED:
@@ -1544,8 +1676,9 @@ def due_lines(state: dict) -> list[str]:
     tasks = {task["name"]: task for task in state["tasks"]}
     for item in state["items"]:
         if item.get("answer_in"):
-            lines.append(f"Item {item['number']} waits for the user's answer in {item['link']}: run done "
-                         f"{item['number']} when that worker resumes.")
+            lines.append(f"Item {item['number']} waits for the user's answer in "
+                         f"{thread_link(item['link'], 'worker thread')}: run done {item['number']} when that "
+                         "worker resumes.")
         task = tasks.get(item["task"])
         only_user = item.get("from_report") or item.get("settles")
         if task is not None and task["state"] in DONE and not only_user:
@@ -1750,7 +1883,8 @@ CHANGES = {
 }
 TASK_CHANGES = {
     "add": change_task_add, "start": change_task_start, "worker": change_task_worker,
-    "start-failed": change_task_start_failed, "pr": change_task_pr, "merged": change_task_merged,
+    "start-failed": change_task_start_failed, "pr": change_task_pr, "later": change_task_later,
+    "merged": change_task_merged,
     "verified": change_task_verified,
     "settled": change_task_settled, "cancel": change_task_cancel, "pause": change_task_pause,
     "resume": change_task_resume,
@@ -1819,6 +1953,11 @@ def parser() -> argparse.ArgumentParser:
     pr = task.add_parser("pr", help="record a PR of a task")
     pr.add_argument("name")
     pr.add_argument("number", type=int)
+    pr.add_argument("--package", help="the package, such as a plugin, whose version the PR raises: the open PRs "
+                                      "of one package merge one at a time, in the order recorded")
+    later = task.add_parser("later", help="move an open PR to the end of the merge order of its package")
+    later.add_argument("name")
+    later.add_argument("number", type=int)
     merged = task.add_parser("merged", help="record the merge of a PR of a task")
     merged.add_argument("name")
     merged.add_argument("number", type=int)

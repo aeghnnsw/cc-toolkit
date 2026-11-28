@@ -18,7 +18,10 @@ arguments. Issue #556 records each worker's worktree, and issue #560 starts a
 new batch for a work task once a PR of the highest batch merged. Issue #631
 makes `task verified` refuse a running task with no recorded PR unless
 `--no-pr` is given. Issue #633 settles the earlier task of a thread that
-`task worker` takes, and adds `wait --settles`.
+`task worker` takes, and adds `wait --settles`. Issue #660 puts the open PRs
+of one package in one merge order (`task pr --package`, `task later`), issue
+#668 tells the lead to pin each worker and to unpin it, and issue #669 takes
+only the T3 link as a worker link and prints it as a Markdown link.
 
 Issue #568: most checks call the script's `main()` in this process, with the
 check's environment and folder, because a new Python process for each of
@@ -54,6 +57,10 @@ LEAD = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(LEAD)
 UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 WORKER = "t3-thread://v2/env/thread-{}"
+# What the next PR of a merge order runs after a rebase that changes only versions and changelog entries (#660).
+REBASE_CHECKS = ("After a rebase that changes only versions and changelog entries, it runs only the version script "
+                 "and the package validator, or the version and changelog checks of its repository, not the test "
+                 "suites; CI runs them.")
 # The T3 thread of the lead in each check, and another thread, such as a fork (#544).
 OWNER = "thread-lead"
 OTHER = "thread-fork"
@@ -84,7 +91,7 @@ CHANGE_COMMANDS = (
     ("decision", "add", "Squash."), ("decision", "drop", "D1"), ("task", "add", "b", "Task b"),
     ("task", "start", "a", WORKER.format(1)), ("task", "worker", "a", WORKER.format(2)),
     ("task", "start-failed", "a"),
-    ("task", "pr", "a", "5"), ("task", "merged", "a", "5", "abcdef1"),
+    ("task", "pr", "a", "5"), ("task", "later", "a", "5"), ("task", "merged", "a", "5", "abcdef1"),
     ("task", "verified", "a", "--decisions", "0"),
     ("task", "settled", "a"), ("task", "cancel", "a"), ("task", "pause", "a"), ("task", "resume", "a"),
     ("finish",),
@@ -504,11 +511,12 @@ class LeadStateTests(unittest.TestCase):
         task = self.task("a")
         self.assertEqual((task["state"], task["worker"], task["started"], task["worktrees"]),
                          ("planned", None, None, ["/wt/t3-a1"]))
-        line = (f"A thread start failed for a, first at {self.events()[-1]['time']}; failed threads: {failed}. "
-                "Start no new thread until the cause is fixed. Give each next task to an idle worker: "
-                "t3_thread_send to its thread with freshContext true and the brief, then task start <name> <its "
-                f"link>. Ask an idle worker to find the cause. Idle workers: {idle}. After the fix, a new thread "
-                "closes this line once T3's start limit of 10 minutes passes without a failure.")
+        # The line prints each thread as a Markdown link that T3 opens (#669).
+        line = (f"A thread start failed for a, first at {self.events()[-1]['time']}; failed threads: "
+                f"[a thread]({failed}). Start no new thread until the cause is fixed. Give each next task to an idle "
+                "worker: t3_thread_send to its thread with freshContext true and the brief, then task start <name> "
+                f"<its link>. Ask an idle worker to find the cause. Idle workers: [idle worker 1]({idle}). After the "
+                "fix, a new thread closes this line once T3's start limit of 10 minutes passes without a failure.")
         self.assertEqual(output, f"a: the thread start failed, and a is planned. {line}")
         self.assertIn(f"- {line}", words(self.ok("start")))
         self.assertIn(line, words(self.ok("dispatch")))
@@ -516,7 +524,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start-failed", "b")
         self.assertIn("A thread start failed for a, b, first at ", words(self.ok("start")))
         # The idle worker takes the task in its own worktree; the record stays open.
-        self.assertEqual(self.ok("task", "start", "cause", idle).strip(), "cause is running.")
+        self.assertEqual(self.ok("task", "start", "cause", idle).strip(),
+                         "cause is running. Pin its worker with t3_thread_organize.")
         self.assertEqual(self.task("cause")["worktrees"], ["/wt/t3-done"])
         self.assertIn("Idle workers: none: tell the user, and add the cause with wait.", words(self.ok("start")))
         self.refused("task", "start", "a", idle, reason=f"{idle} is the worker of cause, which is running")
@@ -570,13 +579,13 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "d", "Task d")
         self.ok("task", "start", "d", WORKER.format("d"))
         self.ok("task", "verified", "d", "--decisions", "0", "--no-pr")
-        settle = f"- Settle the worker of d, then run task settled d: {WORKER.format('d')}"
+        settle = f"- Unpin and settle the worker of d, then run task settled d: [d thread]({WORKER.format('d')})"
         self.assertIn(settle, self.ok("start"))
         self.ok("task", "add", "a", "Task a", "--batch", "2")
         self.ok("task", "start-failed", "a")
         view = self.ok("start")
         self.assertNotIn(settle, view)
-        self.assertIn(f"Idle workers: {WORKER.format('d')}.", words(view))
+        self.assertIn(f"Idle workers: [idle worker 1]({WORKER.format('d')}).", words(view))
 
     def test_task_start_failed_and_a_reused_worker_are_checked(self) -> None:
         self.ok("init", "demo")
@@ -612,11 +621,13 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "b", "Task b", "--batch", "2")
         self.ok("task", "start", "b", worker)
         view = words(self.ok("start"))
-        self.assertIn(f"- Run task settled a, and keep its worker's thread: b runs on it now: {worker}", view)
-        self.assertNotIn("Settle the worker of a", view)
+        self.assertIn(f"- Run task settled a, and keep its worker's thread: b runs on it now: [b thread]({worker})",
+                      view)
+        self.assertNotIn("settle the worker of a", view)
         self.ok("task", "settled", "a")
         self.ok("task", "verified", "b", "--decisions", "0", "--no-pr")
-        self.assertIn(f"- Settle the worker of b, then run task settled b: {worker}", words(self.ok("start")))
+        self.assertIn(f"- Unpin and settle the worker of b, then run task settled b: [b thread]({worker})",
+                      words(self.ok("start")))
 
     def test_task_verified_needs_a_recorded_pr_or_no_pr(self) -> None:
         # A lead verified four running tasks whose workers had merged PRs, and the state recorded no PR (#631).
@@ -662,7 +673,8 @@ class LeadStateTests(unittest.TestCase):
         # The close-out of batch 1 still names the worker and worktree of the settled task.
         self.assertIn(f"Workers: {WORKER.format('pr-task')} {thread}", words(self.ok("closeout")))
         self.ok("task", "verified", "move", "--decisions", "0", "--no-pr")
-        self.assertIn(f"- Settle the worker of move, then run task settled move: {thread}", words(self.ok("start")))
+        self.assertIn(f"- Unpin and settle the worker of move, then run task settled move: [move thread]({thread})",
+                      words(self.ok("start")))
         # task worker refuses a busy or a settled thread, as task start does.
         self.ok("task", "add", "c", "Task c", "--batch", "2")
         self.ok("task", "start", "c", WORKER.format("c"))
@@ -683,7 +695,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "d", "Task d")
         self.ok("task", "start", "d", worker)
         self.ok("task", "verified", "d", "--decisions", "0", "--no-pr")
-        settle = f"Settle the worker of d, then run task settled d: {worker}"
+        settle = f"Unpin and settle the worker of d, then run task settled d: [d thread]({worker})"
         self.assertIn(settle, words(self.ok("start")))
         self.ok("task", "add", "e", "Task e", "--batch", "2")
         self.ok("task", "start", "e", WORKER.format("e"))
@@ -697,13 +709,13 @@ class LeadStateTests(unittest.TestCase):
             with self.subTest(args=args):
                 self.refused("wait", *args, reason=reason)
         output = words(self.ok("wait", "T3 refused the settle.", "--settles", "d"))
-        self.assertEqual(output, f"Item 1 added: [d] T3 refused the settle. {worker} Run done 1 when the user "
-                                 "settled the thread; done records d as settled.")
+        self.assertEqual(output, f"Item 1 added: [d] T3 refused the settle. [d thread]({worker}) Run done 1 when "
+                                 "the user settled the thread; done records d as settled.")
         self.assertEqual(self.task("d")["state"], "verified")
         view = words(self.ok("start"))
         self.assertNotIn(settle, view)
         self.assertNotIn("Run done 1", view)
-        self.assertIn(f"- 1: [d] T3 refused the settle. {worker}", view)
+        self.assertIn(f"- 1: [d] T3 refused the settle. [d thread]({worker})", view)
         self.refused("wait", "--settles", "d", reason="item 1 already gives the settle of d to the user")
         # The user settles that thread, so no task reuses it, and a failed start lists it as no idle worker.
         reuse = f"item 1 gives the settle of {worker} to the user; never reuse a worker that the user settles"
@@ -766,7 +778,10 @@ class LeadStateTests(unittest.TestCase):
         self.refused("task", "pr", "a", "5", reason="a is planned; task pr needs running or pr-open")
         self.refused("task", "verified", "a", "--decisions", "0", reason="a is planned")
         self.refused("task", "resume", "a", reason="task resume needs paused")
-        self.refused("task", "start", "a", "two words", reason="the worker link must be one word")
+        self.refused("task", "start", "a", "two words",
+                     reason="the worker link must be the link that delegate_task returns, "
+                            "t3-thread://v2/<environmentId>/<threadId>, or the Markdown link around it; got 'two "
+                            "words'")
         self.ok("task", "start", "a", WORKER.format(1))
         self.refused("task", "start", "a", WORKER.format(1), reason="a is running")
         self.ok("task", "pr", "a", "5")
@@ -830,8 +845,9 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "pr", "a", "5")
         self.ok("task", "merged", "a", "5", "abcdef1")
         # b of the same batch still runs: c is ready now, and d still waits for c.
-        self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(), "a is verified. c is ready to "
-                         "start: run t3_project_lead.py dispatch for it now.")
+        self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(),
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. c is ready "
+                         "to start: run t3_project_lead.py dispatch for it now.")
         view = self.ok("show")
         self.assertIn("- c is ready to start: run t3_project_lead.py dispatch for it now.", view)
         self.assertNotIn("d is ready", view)
@@ -848,7 +864,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "pr", "a", "5")
         self.ok("task", "merged", "a", "5", "abcdef1")
         line = "close-1 is ready to start: run t3_project_lead.py closeout for it now."
-        self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(), f"a is verified. {line}")
+        self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0").strip(),
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. {line}")
         view = self.ok("show")
         self.assertIn(f"- {line}", view)
         self.assertNotIn("dispatch for it now", view)
@@ -934,7 +951,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("task", "add", "grill", "Design the cache")
         self.ok("task", "start", "grill", WORKER.format(1))
-        self.assertIn("Item 1 added: [grill] 5 decisions. " + WORKER.format(1),
+        self.assertIn(f"Item 1 added: [grill] 5 decisions. [grill thread]({WORKER.format(1)})",
                       self.ok("wait", "--task", "grill", "--decisions", "5"))
         self.ok("wait", "Triage #503", "--recommend", "ready-for-agent")
         self.ok("done", "1")
@@ -992,9 +1009,10 @@ class LeadStateTests(unittest.TestCase):
         self.refused("task", "verified", "survey", "audit", "--decisions", "2",
                      reason="a count above 0 takes one task name")
         self.assertEqual(self.ok("task", "verified", "survey", "--decisions", "2", "--no-pr").strip(),
-                         "survey is verified. Item 1 added: [survey] 2 decisions. " + WORKER.format("survey"))
+                         f"survey is verified. Unpin its worker {WORKER.format('survey')} with t3_thread_organize. "
+                         f"Item 1 added: [survey] 2 decisions. [survey thread]({WORKER.format('survey')})")
         self.assertEqual(self.ok("task", "verified", "audit", "--decisions", "0", "--no-pr").strip(),
-                         "audit is verified.")
+                         f"audit is verified. Unpin its worker {WORKER.format('audit')} with t3_thread_organize.")
         self.assertEqual([(event["task"], event["decisions"]) for event in self.events()
                           if event["command"] == "task verified"], [("survey", 2), ("audit", 0)])
         self.ok("task", "settled", "survey", "audit")
@@ -1003,7 +1021,7 @@ class LeadStateTests(unittest.TestCase):
         self.assertNotIn("Run done 1", view)
         self.assertTrue(json.loads(self.state_text())["items"][0]["from_report"])
         self.assertNotIn("run t3_project_lead.py finish", view)
-        self.assertIn("- 1: [survey] 2 decisions. " + WORKER.format("survey"), view)
+        self.assertIn(f"- 1: [survey] 2 decisions. [survey thread]({WORKER.format('survey')})", view)
         self.refused("finish", reason="items that wait: 1")
         self.ok("done", "1")
         self.assertIn(FINISH_LINE, self.ok("show"))
@@ -1032,12 +1050,12 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "b", WORKER.format("b"))
         self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a")
-        self.assertIn("Item 1 added: [a] 2 decisions. " + WORKER.format("a"),
+        self.assertIn(f"Item 1 added: [a] 2 decisions. [a thread]({WORKER.format('a')})",
                       self.ok("wait", "--task", "a", "--decisions", "2"))
         self.ok("wait", "--task", "b", "--decisions", "1")
         view = self.ok("show")
         self.assertNotIn("Run done", view)
-        self.assertIn("- 2: [b] 1 decision. " + WORKER.format("b"), view)
+        self.assertIn(f"- 2: [b] 1 decision. [b thread]({WORKER.format('b')})", view)
         self.ok("task", "add", "c", "Task c")
         self.refused("wait", "--task", "c", "--decisions", "1", reason="c has no worker; add the item "
                      "without --task")
@@ -1056,7 +1074,7 @@ class LeadStateTests(unittest.TestCase):
         self.assertNotIn("- a (", view)
         self.assertNotIn("- b (", view)
         self.assertIn("Closed out, worker not settled: 1 task.", view)
-        self.assertRegex(view, r"- c \(batch 2\) running, 0 min: Task c\. Worker: t3-thread://")
+        self.assertIn(f"- c (batch 2) running, 0 min: Task c. Worker: [c thread]({WORKER.format(3)})\n", view)
         self.assertRegex(view, r"Now: " + UTC.pattern)
 
     def test_due_lines_name_the_next_mechanical_steps(self) -> None:
@@ -1082,8 +1100,10 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "close-1", WORKER.format(9))
         self.ok("task", "verified", "close-1", "--decisions", "0", "--no-pr")
         view = self.ok("show")
-        self.assertIn("- Settle the worker of a, then run task settled a: " + WORKER.format("a"), view)
-        self.assertIn("- Settle the worker of close-1, then run task settled close-1:", view)
+        self.assertIn(f"- Unpin and settle the worker of a, then run task settled a: [a thread]({WORKER.format('a')})",
+                      view)
+        self.assertIn(f"- Unpin and settle the worker of close-1, then run task settled close-1: "
+                      f"[close-1 thread]({WORKER.format(9)})", view)
         self.ok("task", "settled", "a")
         self.ok("task", "settled", "close-1")
         self.ok("done", "1")
@@ -1129,14 +1149,125 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "verified", "a", "--decisions", "0")
         self.assertIn("Merged PRs in merge order: #9, #3", self.ok("closeout"))
 
+    def package_line(self, order: str, first: str, task: str) -> str:
+        """Return the due line of the merge order of the package dev-skills (#660), whose first PR `first` is
+        of `task`."""
+        return (f"- Merge order of dev-skills: {order}. Resume only the worker of {first}, "
+                f"[{task} thread]({WORKER.format(task)}), to merge; the others do not rebase until their turn. "
+                f"{REBASE_CHECKS} For a PR that cannot merge now, run task later <name> <number>.")
+
+    def test_the_open_prs_of_one_package_merge_in_the_order_recorded(self) -> None:
+        # Each merge of a PR that raises a package version made the other PRs of that package conflict, and
+        # each of them rebased and ran CI again (#660).
+        self.ok("init", "demo")
+        for name in ("a", "b", "c", "d"):
+            self.ok("task", "add", name, f"Task {name}")
+            self.ok("task", "start", name, WORKER.format(name))
+        self.assertEqual(self.ok("task", "pr", "a", "5", "--package", "dev-skills").strip(),
+                         "a: PR #5 is open. Merge order of dev-skills: #5 (a).")
+        self.assertEqual(self.events()[-1]["package"], "dev-skills")
+        # A package with one open PR has no merge-order line.
+        self.assertNotIn("Merge order of", self.ok("show"))
+        self.assertEqual(self.ok("task", "pr", "b", "7", "--package", "dev-skills").strip(),
+                         "b: PR #7 is open. Merge order of dev-skills: #5 (a), #7 (b).")
+        # PRs without --package have no merge order.
+        self.assertEqual(self.ok("task", "pr", "c", "9").strip(), "c: PR #9 is open.")
+        self.ok("task", "pr", "d", "11")
+        self.assertEqual([pr for task in ("a", "b", "c") for pr in self.task(task)["prs"]], [
+            {"number": 5, "commit": None, "merged": None, "package": "dev-skills", "place": 1},
+            {"number": 7, "commit": None, "merged": None, "package": "dev-skills", "place": 2},
+            {"number": 9, "commit": None, "merged": None}])
+        self.assertEqual(json.loads(self.state_text())["next_place"], 3)
+        view = self.ok("show")
+        self.assertIn(f"\n{self.package_line('#5 (a), #7 (b)', '#5', 'a')}\n", view)
+        self.assertEqual(view.count("Merge order of"), 1)
+        self.refused("task", "pr", "c", "13", "--package", "two words",
+                     reason="a package name has letters, digits, and . _ @ / -, at most 64 characters")
+        self.assertEqual(self.ok("task", "merged", "a", "5", "abcdef1").strip(),
+                         "a: PR #5 merged; the task is merged. Next in the merge order of dev-skills: #7 (b). Resume "
+                         f"only its worker, [b thread]({WORKER.format('b')}), to rebase once and merge; the others "
+                         f"wait. {REBASE_CHECKS}")
+        self.assertNotIn("Merge order of", self.ok("show"))
+        self.assertEqual(self.ok("task", "merged", "b", "7", "abcdef2").strip(), "b: PR #7 merged; the task is merged.")
+        self.assertEqual(self.ok("task", "merged", "c", "9", "abcdef3").strip(), "c: PR #9 merged; the task is merged.")
+
+    def test_task_later_moves_an_open_pr_to_the_end_of_its_merge_order(self) -> None:
+        # A PR that cannot merge now, such as one that waits on the user, lets the next PR merge (#660).
+        self.ok("init", "demo")
+        for name in ("a", "b", "c", "d"):
+            self.ok("task", "add", name, f"Task {name}")
+            self.ok("task", "start", name, WORKER.format(name))
+        for name, number in (("a", "5"), ("b", "7"), ("c", "9")):
+            self.ok("task", "pr", name, number, "--package", "dev-skills")
+        self.ok("task", "pr", "d", "11")
+        self.assertEqual(self.ok("task", "later", "a", "5").strip(),
+                         "PR #5 is last in the merge order of dev-skills: #7 (b), #9 (c), #5 (a).")
+        event = self.events()[-1]
+        self.assertEqual({key: event[key] for key in ("command", "task", "pr", "package", "to")},
+                         {"command": "task later", "task": "a", "pr": 5, "package": "dev-skills", "to": "last"})
+        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c), #5 (a)', '#7', 'b')}\n", self.ok("show"))
+        self.refused("task", "later", "d", "11", reason="PR #11 has no package, so it has no merge order; add it "
+                                                         "with task pr d 11 --package <name>")
+        # A PR recorded without a package joins the end of the merge order.
+        self.assertEqual(self.ok("task", "pr", "d", "11", "--package", "dev-skills").strip(),
+                         "d: PR #11 is in the merge order of dev-skills: #7 (b), #9 (c), #5 (a), #11 (d).")
+        self.refused("task", "pr", "d", "11", "--package", "dev-skills", reason="not a new positive PR number")
+        self.refused("task", "pr", "d", "11", reason="not a new positive PR number")
+        self.refused("task", "later", "a", "6", reason="PR #6 is not an open PR of a")
+        self.refused("task", "later", "missing", "5", reason="no task named missing")
+        self.assertIn("Next in the merge order of dev-skills: #9 (c).", self.ok("task", "merged", "b", "7", "abcdef1"))
+        self.refused("task", "later", "b", "7", reason="PR #7 is not an open PR of b")
+
+    def test_a_pr_of_a_cancelled_task_has_no_place_in_the_merge_order(self) -> None:
+        self.ok("init", "demo")
+        for name, number in (("a", "5"), ("b", "7"), ("c", "9")):
+            self.ok("task", "add", name, f"Task {name}")
+            self.ok("task", "start", name, WORKER.format(name))
+            self.ok("task", "pr", name, number, "--package", "dev-skills")
+        self.ok("task", "cancel", "a")
+        self.assertIn(f"\n{self.package_line('#7 (b), #9 (c)', '#7', 'b')}\n", self.ok("show"))
+        self.refused("task", "later", "a", "5", reason="PR #5 is not an open PR of a")
+        self.ok("task", "cancel", "b")
+        self.assertNotIn("Merge order of", self.ok("show"))
+        self.assertEqual(self.ok("task", "merged", "c", "9", "abcdef1").strip(), "c: PR #9 merged; the task is merged.")
+
     def test_a_replaced_worker_is_named_once_to_settle(self) -> None:
         self.ok("init", "demo")
         self.ok("task", "add", "a", "Task a")
         self.ok("task", "start", "a", WORKER.format(1))
+        # T3 settles a worker that is not pinned when its turn ends (#668).
         output = self.ok("task", "worker", "a", WORKER.format(2))
-        self.assertIn("Settle the replaced worker now: " + WORKER.format(1), output)
+        self.assertEqual(output.strip(), "a has a new worker: pin it with t3_thread_organize. Unpin and settle the "
+                                         f"replaced worker now: {WORKER.format(1)}")
         self.assertEqual(self.task("a")["worker"], WORKER.format(2))
         self.assertNotIn(WORKER.format(1), self.ok("show"))
+
+    def test_the_lead_pins_each_worker_and_unpins_it_when_its_wait_ends(self) -> None:
+        # T3 Code settles a delegated worker when its turn ends, also while it waits on the user, unless the
+        # thread is pinned (#668).
+        self.ok("init", "demo")
+        for name in ("a", "b", "c"):
+            self.ok("task", "add", name, f"Task {name}")
+        self.assertEqual(self.ok("task", "start", "a", WORKER.format("a")).strip(),
+                         "a is running. Pin its worker with t3_thread_organize.")
+        self.ok("task", "start", "b", WORKER.format("b"))
+        # The pin comes before the note of a new thread after a failed start.
+        self.ok("task", "start-failed", "c")
+        output = words(self.ok("task", "start", "c", WORKER.format("c")))
+        self.assertTrue(output.startswith("c is running. Pin its worker with t3_thread_organize. The failed thread "
+                                          "start stays open until "), output)
+        self.assertEqual(self.ok("task", "verified", "a", "--decisions", "0", "--no-pr").strip(),
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize.")
+        self.assertEqual(self.ok("task", "cancel", "b").strip(),
+                         f"b is cancelled. Unpin and settle its worker: {WORKER.format('b')}")
+        self.ok("task", "cancel", "c")
+        # An open failed start keeps the idle worker a unsettled (#602), so close it first.
+        self.age_start_trial(minutes=11)
+        view = self.ok("show")
+        for name in ("a", "b", "c"):
+            with self.subTest(name=name):
+                self.assertIn(f"- Unpin and settle the worker of {name}, then run task settled {name}: "
+                              f"[{name} thread]({WORKER.format(name)})\n", view)
 
     def test_pause_resume_and_cancel(self) -> None:
         self.ok("init", "demo")
@@ -1157,7 +1288,8 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "b", "Task b")
         self.ok("task", "start", "b", WORKER.format(2))
         self.ok("task", "cancel", "b")
-        self.assertIn("- Settle the worker of b, then run task settled b:", self.ok("show"))
+        self.assertIn(f"- Unpin and settle the worker of b, then run task settled b: [b thread]({WORKER.format(2)})",
+                      self.ok("show"))
         self.ok("task", "settled", "b")
 
     def test_start_prints_a_compact_view_that_does_not_grow(self) -> None:
@@ -1212,8 +1344,9 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
         self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
-                         "a is verified. b is verified. c is "
-                         "ready to start: run t3_project_lead.py dispatch for it now.")
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. b is "
+                         f"verified. Unpin its worker {WORKER.format('b')} with t3_thread_organize. c is ready to "
+                         "start: run t3_project_lead.py dispatch for it now.")
         self.ok("task", "start", "c", WORKER.format("c"))
         self.ok("task", "verified", "c", "--decisions", "0", "--no-pr")
         self.ok("task", "settled", "a", "b")
@@ -1246,8 +1379,9 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "start", "a", WORKER.format("a"))
         self.ok("task", "start", "b", WORKER.format("b"))
         self.assertEqual(self.ok("task", "verified", "a", "b", "--decisions", "0", "--no-pr").strip(),
-                         "a is verified. b is verified. c is "
-                         "ready to start: run t3_project_lead.py dispatch for it now.")
+                         f"a is verified. Unpin its worker {WORKER.format('a')} with t3_thread_organize. b is "
+                         f"verified. Unpin its worker {WORKER.format('b')} with t3_thread_organize. c is ready to "
+                         "start: run t3_project_lead.py dispatch for it now.")
 
     def test_a_worker_records_its_worktree(self) -> None:
         # The close-out reads the sessions of each worktree, also of a replaced worker (#556).
@@ -1360,7 +1494,7 @@ class LeadStateTests(unittest.TestCase):
         self.ok("task", "add", "close-1", "Close out batch 1", "--kind", "closeout")
         self.ok("task", "add", "b", "Task b")
         self.ok("task", "start-failed", "b")
-        self.assertIn(f"Idle workers: {WORKER.format('a')}.", words(self.ok("start")))
+        self.assertIn(f"Idle workers: [idle worker 1]({WORKER.format('a')}).", words(self.ok("start")))
         self.ok("task", "start", "close-1", WORKER.format("close"))
         self.assertIn("Idle workers: none: tell the user", words(self.ok("start")))
         self.refused("task", "start", "b", WORKER.format("a"),
@@ -1374,27 +1508,80 @@ class LeadStateTests(unittest.TestCase):
         self.ok("init", "demo")
         self.ok("wait", "Approve the release")
         link = WORKER.format("w")
+        # The item prints the worker link as a Markdown link that T3 opens (#669).
         output = words(self.ok("wait", "Remove /wt/x: git worktree remove /wt/x", "--answer-in", link))
-        self.assertEqual(output, f"Item 2 added: In {link}: Remove /wt/x: git worktree remove /wt/x. Ask the user "
-                                 "to type the answer in that thread. Run done 2 when the worker resumes.")
+        self.assertEqual(output, f"Item 2 added: In [worker thread]({link}): Remove /wt/x: git worktree remove "
+                                 "/wt/x. Ask the user to type the answer in that thread. Run done 2 when the worker "
+                                 "resumes.")
         section = ("Type in that thread (1): write each answer in the linked worker thread, not here. A yes "
                    "written here does not reach the worker.")
         self.assertEqual(self.ok("waiting").splitlines(), [
             "Waiting on you (1):", "- 1: Approve the release.", "", section,
-            f"- In {link}: Remove /wt/x: git worktree remove /wt/x."])
-        self.assertIn(f"- Item 2 waits for the user's answer in {link}: run done 2 when that worker resumes.",
-                      self.ok("start"))
+            f"- In [worker thread]({link}): Remove /wt/x: git worktree remove /wt/x."])
+        self.assertIn(f"- Item 2 waits for the user's answer in [worker thread]({link}): run done 2 when that worker "
+                      "resumes.", words(self.ok("start")))
         for extra in (("--task", "a"), ("--decisions", "1"), ("--link", "https://example.com"), ("--settles", "a")):
             with self.subTest(extra=extra):
                 self.refused("wait", "Text", "--answer-in", link, *extra,
                              reason="an --answer-in item takes only a text and --recommend")
         self.refused("wait", "--answer-in", link, reason="an --answer-in item needs a text")
         self.ok("done", "1")
-        self.assertEqual(self.ok("waiting").splitlines(), [section, f"- In {link}: Remove /wt/x: git worktree "
-                                                                    "remove /wt/x."])
+        self.assertEqual(self.ok("waiting").splitlines(), [section, f"- In [worker thread]({link}): Remove /wt/x: git "
+                                                                    "worktree remove /wt/x."])
         self.refused("finish", reason="items that wait: 2")
         self.ok("done", "2")
         self.assertEqual(self.ok("waiting").strip(), "Waiting on you: nothing.")
+
+    def test_a_worker_link_is_the_t3_link_and_the_lists_print_it_as_a_markdown_link(self) -> None:
+        # A lead recorded bare thread IDs, which T3 does not open from the lead thread (#669).
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Fix a")
+        self.ok("task", "add", "b", "Fix b")
+        refusal = ("the worker link must be the link that delegate_task returns, t3-thread://v2/<environmentId>/"
+                   "<threadId>, or the Markdown link around it; got {!r}")
+        for value, got in (("thread:delegated-task:abc", "thread:delegated-task:abc"), ("thread-a", "thread-a"),
+                           ("https://example.com/thread-a", "https://example.com/thread-a"),
+                           ("t3-thread://v2/env", "t3-thread://v2/env"),
+                           ("t3-thread://v2/env/thread-a/more", "t3-thread://v2/env/thread-a/more"),
+                           ("[Fix a](thread:delegated-task:abc)", "thread:delegated-task:abc")):
+            with self.subTest(value=value):
+                self.refused("task", "start", "a", value, reason=refusal.format(got))
+        bare = "thread:delegated-task:abc"
+        self.refused("wait", "Approve it", "--answer-in", bare, reason=refusal.format(bare))
+        self.refused("task", "start-failed", "a", bare, reason=refusal.format(bare))
+        # The Markdown link around the T3 link is accepted, and the state holds only the URL.
+        link = WORKER.format("a")
+        self.assertEqual(self.ok("task", "start", "a", f"[Fix a]({link})").strip(),
+                         "a is running. Pin its worker with t3_thread_organize.")
+        self.assertEqual((self.task("a")["worker"], self.events()[-1]["worker"]), (link, link))
+        self.refused("task", "worker", "a", bare, reason=refusal.format(bare))
+        self.assertIn(f"\n- a (batch 1) running, 0 min: Fix a. Worker: [a thread]({link})\n", self.ok("show"))
+        self.ok("wait", "--task", "a", "--decisions", "1")
+        self.ok("wait", "Read the log", "--link", WORKER.format("x"))
+        self.assertEqual(self.ok("waiting").splitlines(), [
+            "Waiting on you (2):", f"- 1: [a] 1 decision. [a thread]({link})",
+            f"- 2: Read the log. [thread]({WORKER.format('x')})"])
+        self.ok("task", "cancel", "b")
+        self.ok("task", "verified", "a", "--decisions", "0", "--no-pr")
+        self.assertIn(f"\n- Unpin and settle the worker of a, then run task settled a: [a thread]({link})\n",
+                      self.ok("show"))
+
+    def test_a_worker_of_an_older_state_that_is_no_t3_link_prints_as_it_is(self) -> None:
+        # A state from before #669 can hold a bare thread ID, which is no link that T3 opens.
+        self.ok("init", "demo")
+        self.ok("task", "add", "a", "Fix a")
+        self.ok("task", "start", "a", WORKER.format("a"))
+        self.ok("wait", "--task", "a", "--decisions", "1")
+        bare = "thread:delegated-task:abc"
+        path = self.folder() / "state.json"
+        state = json.loads(path.read_text(encoding="utf-8"))
+        state["tasks"][0]["worker"] = state["items"][0]["link"] = bare
+        path.write_text(json.dumps(state), encoding="utf-8")
+        view = self.ok("show")
+        self.assertIn(f"\n- a (batch 1) running, 0 min: Fix a. Worker: {bare}\n", view)
+        self.assertIn(f"\n- 1: [a] 1 decision. {bare}\n", view)
+        self.ok("task", "verified", "a", "--decisions", "0", "--no-pr")
+        self.assertIn(f"\n- Unpin and settle the worker of a, then run task settled a: {bare}\n", self.ok("show"))
 
     def test_finish_deletes_the_state_only_when_everything_is_settled(self) -> None:
         self.ok("init", "demo")
@@ -1409,7 +1596,8 @@ class LeadStateTests(unittest.TestCase):
         # Only the user settles the lead thread (#645).
         output = self.ok("finish").strip()
         self.assertTrue(output.startswith("Lead state deleted: "), output)
-        self.assertTrue(output.endswith(". Leave this thread open: only the user settles the lead thread."),
+        self.assertTrue(output.endswith(". Leave this thread open: only the user settles or archives the lead "
+                                        "thread."),
                         output)
         self.assertFalse(folder.exists())
 

@@ -352,6 +352,18 @@ changelog entries, run only the package validator locally, and let CI run
 the suites on the new head. Run a suite locally again only when the
 resolution changes another file.
 
+When a rebase conflicts in a document where both sides only add independent
+notes or entries, such as the notes of an ADR, keep both, with the
+`origin/master` side first. Stop and ask only when both sides change the same
+statement.
+
+Parallel pull requests of one plugin raise the same versions, so each merge
+makes the others conflict. Merge them one at a time, in a merge order, and
+rebase a pull request only when it is the next to merge. Do not rebase each
+of them after each merge: each rebase starts CI again. The
+`t3_project_lead.py` script of Dev Skills keeps this order for a project
+lead.
+
 ## What belongs in Git
 
 Classify a file by its purpose and expected lifetime, regardless of whether
